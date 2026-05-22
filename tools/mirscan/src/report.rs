@@ -180,7 +180,7 @@ impl<'tcx> ControlDependencyVisitor<'tcx> {
             // Find where this local is assigned
             for (_bb, bb_data) in self.body.basic_blocks.iter_enumerated() {
                 for statement in &bb_data.statements {
-                    if let StatementKind::Assign(ref assign) = &statement.kind {
+                    if let StatementKind::Assign(assign) = &statement.kind {
                         let (place, rvalue) = &**assign;
                         if place.local == local {
                             // Found assignment to this local
@@ -277,7 +277,7 @@ impl<'tcx> DataDependencyVisitor<'tcx> {
         // Iterate through all statements to track which locals are derived from what sources
         for (bb, bb_data) in self.body.basic_blocks.iter_enumerated() {
             for statement in &bb_data.statements {
-                if let StatementKind::Assign(ref assign) = &statement.kind {
+                if let StatementKind::Assign(assign) = &statement.kind {
                     println!("Analyzing statement in BB {:?}: {:?}", bb, statement);
                     let (place, rvalue) = &**assign;
                     

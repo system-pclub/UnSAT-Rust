@@ -31,13 +31,6 @@ use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::{ TyCtxt};
 use rustc_session::config::{ErrorOutputType};
 use rustc_session::{EarlyDiagCtxt};
-use std::fs::File;
-use std::io::Write;
-pub mod pass;
-pub mod audit;
-pub mod llm_async;
-pub mod fs;
-pub mod cargo;
 pub mod report;
 // pub mod invariants;
 struct CompilerCalls {}
@@ -99,16 +92,17 @@ impl rustc_driver::Callbacks for CompilerCalls {
             }
         }
         let report = report::audit(tcx);
-        match File::create(&report_output) {
-            Ok(mut file) => {
-                let json_str = serde_json::to_string_pretty(&report).unwrap();
-                if let Err(e) = file.write_all(json_str.as_bytes()) {
-                    eprintln!("Failed to write report to {:?}: {}", report_output, e);
+        let json_str = serde_json::to_string_pretty(&report).unwrap();
+        match std::fs::write(&report_output, json_str.as_bytes()) {
+            Ok(_) => {
+                if report_output.is_file() {
+                    eprintln!("[+] {:?}", report_output);
+                } else {
+                    eprintln!("Failed to persist report output file {:?}", report_output);
                 }
-                eprintln!("[+] {:?}", report_output);
             }
             Err(e) => {
-                eprintln!("Failed to create report output file {:?}: {}", report_output, e);
+                eprintln!("Failed to write report output file {:?}: {}", report_output, e);
             }
         }
         
