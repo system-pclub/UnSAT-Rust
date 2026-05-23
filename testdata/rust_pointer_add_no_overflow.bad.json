@@ -1,0 +1,56 @@
+{
+  "rule": "rust.pointer_add.no_overflow",
+  "description": "Incorrect formulation: flags equality with max as overflow.",
+  "function": {
+    "name": "ptr_add",
+    "arguments": [
+      {"name": "base", "sort": "Int"},
+      {"name": "offset", "sort": "Int"},
+      {"name": "max_usize", "sort": "Int"}
+    ]
+  },
+  "abstracts": [
+    {
+      "name": "base_value",
+      "parameters": [{"name": "base", "sort": "Int"}],
+      "returns": {"sort": "Int"}
+    },
+    {
+      "name": "offset_value",
+      "parameters": [{"name": "offset", "sort": "Int"}],
+      "returns": {"sort": "Int"}
+    },
+    {
+      "name": "max_value",
+      "parameters": [{"name": "max_usize", "sort": "Int"}],
+      "returns": {"sort": "Int"}
+    }
+  ],
+  "variables": [
+    {
+      "name": "base_v",
+      "sort": "Int",
+      "selector": {"apply": "base_value", "args": [{"argument": "base"}]}
+    },
+    {
+      "name": "off_v",
+      "sort": "Int",
+      "selector": {"apply": "offset_value", "args": [{"argument": "offset"}]}
+    },
+    {
+      "name": "max_v",
+      "sort": "Int",
+      "selector": {"apply": "max_value", "args": [{"argument": "max_usize"}]}
+    }
+  ],
+  "buggy_violation": {
+    "op": ">=",
+    "args": [
+      {
+        "op": "+",
+        "args": [{"var": "base_v"}, {"var": "off_v"}]
+      },
+      {"var": "max_v"}
+    ]
+  }
+}

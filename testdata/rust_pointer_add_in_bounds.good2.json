@@ -1,0 +1,80 @@
+{
+  "rule": "rust.pointer_add.in_bounds",
+  "description": "ptr::add UB: equivalent NOT-AND form — violation when offset is non-zero and NOT (self in [alloc_start, alloc_end) AND self+offset in [alloc_start, alloc_end]).",
+  "function": {
+    "name": "ptr_add",
+    "arguments": [
+      {"name": "self_ptr", "sort": "Int"},
+      {"name": "count",    "sort": "Int"}
+    ]
+  },
+  "abstracts": [
+    {
+      "name": "base_addr",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "Numeric address of the source pointer"
+    },
+    {
+      "name": "alloc_start",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "Start address of the allocation self_ptr is derived from"
+    },
+    {
+      "name": "alloc_end",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "One-past-end address of that allocation"
+    },
+    {
+      "name": "offset_bytes",
+      "parameters": [{"name": "count", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "count * size_of::<T>() in bytes"
+    }
+  ],
+  "variables": [
+    {
+      "name": "addr",
+      "sort": "Int",
+      "selector": {"apply": "base_addr",    "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "alloc_s",
+      "sort": "Int",
+      "selector": {"apply": "alloc_start",  "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "alloc_e",
+      "sort": "Int",
+      "selector": {"apply": "alloc_end",    "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "off",
+      "sort": "Int",
+      "selector": {"apply": "offset_bytes", "args": [{"argument": "count"}]}
+    }
+  ],
+  "buggy_violation": {
+    "op": "and",
+    "args": [
+      {"op": "!=", "args": [{"var": "off"}, {"int": 0}]},
+      {
+        "op": "not",
+        "args": [
+          {
+            "op": "and",
+            "args": [
+              {"op": ">=", "args": [{"var": "addr"}, {"var": "alloc_s"}]},
+              {"op": "<=", "args": [
+                {"op": "+", "args": [{"var": "addr"}, {"var": "off"}]},
+                {"var": "alloc_e"}
+              ]}
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

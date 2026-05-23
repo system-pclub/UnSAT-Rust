@@ -1,0 +1,90 @@
+{
+  "rule": "rust.pointer_add.in_bounds",
+  "description": "ptr::add UB: if byte offset is non-zero, self must lie in its allocation and self+offset must not exceed the allocation end. Using OR-of-violations form.",
+  "function": {
+    "name": "ptr_add",
+    "arguments": [
+      {"name": "self_ptr", "sort": "Int"},
+      {"name": "count",    "sort": "Int"}
+    ]
+  },
+  "abstracts": [
+    {
+      "name": "base_addr",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "Numeric address of the source pointer"
+    },
+    {
+      "name": "alloc_start",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "Start address of the allocation self_ptr is derived from"
+    },
+    {
+      "name": "alloc_end",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "One-past-end address of that allocation"
+    },
+    {
+      "name": "offset_bytes",
+      "parameters": [{"name": "count", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "count * size_of::<T>() in bytes"
+    }
+  ],
+  "variables": [
+    {
+      "name": "addr",
+      "sort": "Int",
+      "selector": {"apply": "base_addr",   "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "alloc_s",
+      "sort": "Int",
+      "selector": {"apply": "alloc_start", "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "alloc_e",
+      "sort": "Int",
+      "selector": {"apply": "alloc_end",   "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "off",
+      "sort": "Int",
+      "selector": {"apply": "offset_bytes", "args": [{"argument": "count"}]}
+    }
+  ],
+  "buggy_violation": {
+    "op": "and",
+    "args": [
+      {"op": "!=", "args": [{"var": "off"}, {"int": 0}]},
+      {
+        "op": "or",
+        "args": [
+          {"op": "<", "args": [{"var": "addr"}, {"var": "alloc_s"}]},
+          {"op": ">", "args": [
+            {"op": "+", "args": [{"var": "addr"}, {"var": "off"}]},
+            {"var": "alloc_e"}
+          ]}
+        ]
+      }
+    ]
+  }
+}
+
+If the computed offset is non-zero, then self must be derived 
+from a pointer to some allocation, 
+and the entire memory range between self and 
+the result must be in bounds of that allocation. 
+
+pub const unsafe fn add(self, count: usize) -> *const T
+
+
+func test_add {
+    let ptr: *const T = ...;
+    let new_ptr = ptr.add(count);
+}
+
+count != 0 and (ptr < alloc_start(ptr) or ptr + count > alloc_end(ptr))

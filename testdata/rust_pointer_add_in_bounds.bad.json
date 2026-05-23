@@ -1,0 +1,71 @@
+{
+  "rule": "rust.pointer_add.in_bounds",
+  "description": "Incorrect: only checks that self+offset does not exceed alloc_end, but omits the check that self itself lies within the allocation. A self pointer below alloc_start slips through.",
+  "function": {
+    "name": "ptr_add",
+    "arguments": [
+      {"name": "self_ptr", "sort": "Int"},
+      {"name": "count",    "sort": "Int"}
+    ]
+  },
+  "abstracts": [
+    {
+      "name": "base_addr",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "Numeric address of the source pointer"
+    },
+    {
+      "name": "alloc_start",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "Start address of the allocation self_ptr is derived from"
+    },
+    {
+      "name": "alloc_end",
+      "parameters": [{"name": "self_ptr", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "One-past-end address of that allocation"
+    },
+    {
+      "name": "offset_bytes",
+      "parameters": [{"name": "count", "sort": "Int"}],
+      "returns": {"sort": "Int"},
+      "meaning": "count * size_of::<T>() in bytes"
+    }
+  ],
+  "variables": [
+    {
+      "name": "addr",
+      "sort": "Int",
+      "selector": {"apply": "base_addr",    "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "alloc_s",
+      "sort": "Int",
+      "selector": {"apply": "alloc_start",  "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "alloc_e",
+      "sort": "Int",
+      "selector": {"apply": "alloc_end",    "args": [{"argument": "self_ptr"}]}
+    },
+    {
+      "name": "off",
+      "sort": "Int",
+      "selector": {"apply": "offset_bytes", "args": [{"argument": "count"}]}
+    }
+  ],
+  "buggy_violation": {
+    "op": "and",
+    "args": [
+      {"op": "!=", "args": [{"var": "off"}, {"int": 0}]},
+      {"op": ">", "args": [
+        {"op": "+", "args": [{"var": "addr"}, {"var": "off"}]},
+        {"var": "alloc_e"}
+      ]}
+    ]
+  }
+}
+
+off != 0 and addr + off > alloc_e
