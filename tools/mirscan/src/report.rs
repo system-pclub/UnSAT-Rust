@@ -15,6 +15,7 @@ pub struct FnInfo {
     pub line_start: usize,  // signature line number
     pub line_end: usize,    // signature line number
     pub body_end: usize,    // line number of the closing brace of the function body
+    #[serde(skip)]
     pub call_chains: Vec<String>, // e.g. ["fn_a -> fn_b "], only for mutators across multiple struct functions
 }
 
@@ -38,13 +39,22 @@ pub struct Suspect {
     pub target_fn: FnInfo,
     pub unsafe_call: FnInfo,
     pub callsite: CallsiteInfo,
+
+    #[serde(skip)]
     pub unsafe_call_used_fields: Vec<String>,
+    #[serde(skip)]
     pub unsafe_call_used_params: Vec<usize>, // parameter indices used in unsafe call
+    #[serde(skip)]
     pub unsafe_call_used_globals: Vec<String>, // global variable names used in unsafe call
+    #[serde(skip)]
     pub unsafe_call_control_fields: Vec<String>, // self fields that control whether unsafe call executes
+    #[serde(skip)]
     pub unsafe_call_control_params: Vec<usize>, // params that control whether unsafe call executes
+    #[serde(skip)]
     pub unsafe_call_control_globals: Vec<String>, // globals that control whether unsafe call executes
+    #[serde(skip)]
     pub constructors: Vec<FnInfo>,
+    #[serde(skip)]
     pub mutators: Vec<FnInfo>,
 }
 
