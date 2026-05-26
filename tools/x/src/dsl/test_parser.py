@@ -55,6 +55,12 @@ def test_reject_unknown_operator() -> None:
         parse_dsl("unknown_op(ptr@1:2)", OPERATORS_PATH)
 
 
+def test_allow_unknown_operator_for_discovery() -> None:
+    ast = parse_dsl("fresh_op(ptr@1:2)", OPERATORS_PATH, allow_unknown_operators=True)
+
+    assert list_operators(ast) == ["fresh_op"]
+
+
 def test_task2_validation_rejects_operator_usage() -> None:
     ast = parse_dsl("alloc_id(ptr@329:30) != None", OPERATORS_PATH)
 

@@ -144,10 +144,11 @@ class _Lexer:
 
 
 class _Parser:
-    def __init__(self, text: str, allowed_operators: set[str]):
+    def __init__(self, text: str, allowed_operators: set[str], *, allow_unknown_operators: bool):
         self._tokens = _Lexer(text).tokenize()
         self._index = 0
         self._allowed_operators = allowed_operators
+        self._allow_unknown_operators = allow_unknown_operators
 
     def parse(self) -> Expression:
         expression = self._parse_expression(1)
@@ -197,7 +198,10 @@ class _Parser:
 
             if self._match("("):
                 args = self._parse_call_args()
-                if identifier.value not in self._allowed_operators:
+                if (
+                    identifier.value not in self._allowed_operators
+                    and not self._allow_unknown_operators
+                ):
                     raise DSLValidationError(
                         f"Unknown operator {identifier.value!r}. Allowed operators: {sorted(self._allowed_operators)}"
                     )
@@ -265,9 +269,14 @@ class _Parser:
         return True
 
 
-def parse_dsl(source: str, operator_config: str | Path | Sequence[str] | Sequence[Mapping[str, Any]]) -> Expression:
+def parse_dsl(
+    source: str,
+    operator_config: str | Path | Sequence[str] | Sequence[Mapping[str, Any]],
+    *,
+    allow_unknown_operators: bool = False,
+) -> Expression:
     allowed_operators = _resolve_operator_names(operator_config)
-    parser = _Parser(source, allowed_operators)
+    parser = _Parser(source, allowed_operators, allow_unknown_operators=allow_unknown_operators)
     return parser.parse()
 
 

@@ -6,6 +6,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import tomllib
+from typing import Iterable
+
+from dsl import DSLParseError, DSLValidationError, list_operators, parse_dsl, validate_task1_ast, validate_task2_ast
+
+
+PLACEHOLDER = "<placeholder>"
 
 
 def _find_repo_root() -> Path:
@@ -167,6 +173,177 @@ def _load_rules_by_path(repo_root: Path) -> dict[str, list[dict[str, object]]]:
     return grouped
 
 
+def _load_operator_entries(repo_root: Path) -> list[dict[str, object]]:
+    operators_path = repo_root / "operators.json"
+    if not operators_path.is_file():
+        return []
+
+    data = json.loads(operators_path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise RuntimeError(f"operators.json must be a JSON array: {operators_path}")
+
+    entries: list[dict[str, object]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise RuntimeError(f"operators.json entries must be JSON objects: {operators_path}")
+        entries.append(dict(item))
+    return entries
+
+
+def _save_operator_entries(repo_root: Path, operators: list[dict[str, object]]) -> None:
+    operators_path = repo_root / "operators.json"
+    operators_path.write_text(json.dumps(operators, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _operator_names(operators: list[dict[str, object]]) -> set[str]:
+    names: set[str] = set()
+    for entry in operators:
+        name = entry.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return names
+
+
+def _merge_new_operator_entries(
+    operators: list[dict[str, object]],
+    new_operator_names: Iterable[str],
+) -> list[str]:
+    existing = _operator_names(operators)
+    added: list[str] = []
+    for name in sorted(set(new_operator_names)):
+        if name in existing:
+            continue
+        operators.append(
+            {
+                "name": name,
+                "input": [],
+                "output": {"type": "Unknown"},
+                "description": "Discovered from task1 DSL during sync.",
+            }
+        )
+        existing.add(name)
+        added.append(name)
+    return added
+
+
+def _target_identity(target: dict[str, object]) -> tuple[str, str, str, int, int]:
+    target_fn = target.get("target_fn")
+    unsafe_call = target.get("unsafe_call")
+    callsite = target.get("callsite")
+
+    target_name = target_fn.get("name") if isinstance(target_fn, dict) else ""
+    unsafe_name = unsafe_call.get("name") if isinstance(unsafe_call, dict) else ""
+    unsafe_path = unsafe_call.get("path") if isinstance(unsafe_call, dict) else ""
+    callsite_line = callsite.get("line") if isinstance(callsite, dict) else 0
+    callsite_col = callsite.get("col") if isinstance(callsite, dict) else 0
+
+    return (
+        target_name if isinstance(target_name, str) else "",
+        unsafe_name if isinstance(unsafe_name, str) else "",
+        unsafe_path if isinstance(unsafe_path, str) else "",
+        callsite_line if isinstance(callsite_line, int) else 0,
+        callsite_col if isinstance(callsite_col, int) else 0,
+    )
+
+
+def _load_existing_rule_tasks(meta_path: Path) -> dict[tuple[str, str, str, int, int], dict[str, dict[str, str]]]:
+    if not meta_path.is_file():
+        return {}
+
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+    report = data.get("report")
+    if not isinstance(report, dict):
+        return {}
+    targets = report.get("targets")
+    if not isinstance(targets, list):
+        return {}
+
+    saved: dict[tuple[str, str, str, int, int], dict[str, dict[str, str]]] = {}
+    for raw_target in targets:
+        if not isinstance(raw_target, dict):
+            continue
+        rules = raw_target.get("rules")
+        if not isinstance(rules, dict):
+            continue
+
+        preserved_rules: dict[str, dict[str, str]] = {}
+        for rule_id, rule_tasks in rules.items():
+            if not isinstance(rule_id, str) or not isinstance(rule_tasks, dict):
+                continue
+
+            preserved_rules[rule_id] = {
+                "task1": rule_tasks.get("task1") if isinstance(rule_tasks.get("task1"), str) else PLACEHOLDER,
+                "task2": rule_tasks.get("task2") if isinstance(rule_tasks.get("task2"), str) else PLACEHOLDER,
+                "task3": rule_tasks.get("task3") if isinstance(rule_tasks.get("task3"), str) else PLACEHOLDER,
+            }
+
+        saved[_target_identity(raw_target)] = preserved_rules
+
+    return saved
+
+
+def _validate_task_dsl(
+    crate_name: str,
+    target: dict[str, object],
+    rule_id: str,
+    task_name: str,
+    dsl_text: str,
+    operators: list[dict[str, object]],
+    repo_root: Path,
+) -> None:
+    target_fn = target.get("target_fn")
+    target_name = target_fn.get("name") if isinstance(target_fn, dict) else "<unknown target>"
+
+    try:
+        ast = parse_dsl(dsl_text, operators, allow_unknown_operators=True)
+        if task_name == "task1":
+            used_operators = list_operators(ast)
+            added = _merge_new_operator_entries(operators, used_operators)
+            if added:
+                _save_operator_entries(repo_root, operators)
+            validate_task1_ast(ast, used_operators)
+        elif task_name == "task2":
+            validate_task2_ast(ast)
+    except (DSLParseError, DSLValidationError) as exc:
+        print(
+            f"invalid {task_name} DSL for crate={crate_name} target={target_name} rule={rule_id}: {exc}"
+        )
+
+
+def _merge_rule_tasks(
+    crate_name: str,
+    target: dict[str, object],
+    matched_rules: dict[str, dict[str, str]],
+    preserved_rules: dict[str, dict[str, str]],
+    operators: list[dict[str, object]],
+    repo_root: Path,
+) -> dict[str, dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+
+    for rule_id, default_tasks in matched_rules.items():
+        existing = preserved_rules.get(rule_id, {})
+        merged_tasks = {
+            "task1": existing.get("task1", default_tasks["task1"]),
+            "task2": existing.get("task2", default_tasks["task2"]),
+            "task3": existing.get("task3", default_tasks["task3"]),
+        }
+
+        for task_name in ("task1", "task2"):
+            dsl_text = merged_tasks.get(task_name)
+            if isinstance(dsl_text, str) and dsl_text != PLACEHOLDER:
+                _validate_task_dsl(crate_name, target, rule_id, task_name, dsl_text, operators, repo_root)
+
+        merged[rule_id] = merged_tasks
+
+    return merged
+
+
 def _match_rules_for_target(
     target: dict[str, object],
     rules_by_path: dict[str, list[dict[str, object]]],
@@ -234,8 +411,12 @@ def _match_rules_for_target(
 
 
 def _transform_report(
+    crate_name: str,
     report: dict[str, object],
     rules_by_path: dict[str, list[dict[str, object]]],
+    preserved_rule_tasks: dict[tuple[str, str, str, int, int], dict[str, dict[str, str]]],
+    operators: list[dict[str, object]],
+    repo_root: Path,
 ) -> dict[str, object]:
     report_targets = report.get("targets")
     if not isinstance(report_targets, list):
@@ -249,7 +430,16 @@ def _transform_report(
             continue
 
         target = dict(raw_target)
-        target["rules"] = _match_rules_for_target(target, rules_by_path)
+        matched_rules = _match_rules_for_target(target, rules_by_path)
+        preserved_rules = preserved_rule_tasks.get(_target_identity(target), {})
+        target["rules"] = _merge_rule_tasks(
+            crate_name,
+            target,
+            matched_rules,
+            preserved_rules,
+            operators,
+            repo_root,
+        )
         targets.append(target)
 
     return {"targets": targets}
@@ -260,6 +450,7 @@ def run(args: argparse.Namespace) -> int:
     repo_root = _find_repo_root()
     crates_dir = repo_root / "crates"
     rules_by_path = _load_rules_by_path(repo_root)
+    operators = _load_operator_entries(repo_root)
 
     mirscan_rustc = _resolve_mirscan_rustc(repo_root)
     crate_dirs = _find_crates(crates_dir)
@@ -267,6 +458,8 @@ def run(args: argparse.Namespace) -> int:
     for crate_dir in crate_dirs:
         crate_name = crate_dir.name or "unknown"
         crate_dir_relative = crate_dir.relative_to(repo_root).as_posix()
+        out_path = crates_dir / f"{crate_name}.json"
+        preserved_rule_tasks = _load_existing_rule_tasks(out_path)
 
         print(f"syncing crate {crate_name} with rustc={mirscan_rustc}")
 
@@ -283,7 +476,14 @@ def run(args: argparse.Namespace) -> int:
         if not isinstance(report, dict):
             raise RuntimeError(f"report.json must be a JSON object for crate {crate_name} at {report_path}")
 
-        transformed_report = _transform_report(report, rules_by_path)
+        transformed_report = _transform_report(
+            crate_name,
+            report,
+            rules_by_path,
+            preserved_rule_tasks,
+            operators,
+            repo_root,
+        )
         report_path.write_text(
             json.dumps(transformed_report, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -300,7 +500,6 @@ def run(args: argparse.Namespace) -> int:
             "report": transformed_report,
         }
 
-        out_path = crates_dir / f"{crate_name}.json"
         out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     return 0
