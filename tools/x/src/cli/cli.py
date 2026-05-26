@@ -1,165 +1,57 @@
 import argparse
-import json
-import os
-from pathlib import Path
-import shutil
-import subprocess
-import tomllib
 
-from cli.cmd.compare import run as compare_run
-from cli.cmd.view import run as view_run
-from cli.cmd.generate import run as generate_run
-from cli.cmd.get_batch_task import run as get_batch_task_run
-from cli.cmd.submit_batch_task import run as submit_batch_task_run
-from cli.cmd.cancel_batch_task import run as cancel_batch_task_run
-from cli.cmd.process import run as process_run
+def _run_view(args: argparse.Namespace) -> int:
+    from cli.cmd.view import run
+
+    return run(args)
 
 
-def _find_repo_root() -> Path:
-    start = Path.cwd().resolve()
-    for directory in [start, *start.parents]:
-        if (directory / "crates").is_dir():
-            return directory
-    raise RuntimeError(
-        f"could not locate repository root from {start} (expected an ancestor containing crates/)"
-    )
+def _run_compare(args: argparse.Namespace) -> int:
+    from cli.cmd.compare import run
+
+    return run(args)
 
 
-def _find_crates(crates_dir: Path) -> list[Path]:
-    if not crates_dir.is_dir():
-        raise RuntimeError(f"failed to read crates directory {crates_dir}")
+def _run_generate(args: argparse.Namespace) -> int:
+    from cli.cmd.generate import run
 
-    crate_dirs = [
-        child
-        for child in crates_dir.iterdir()
-        if child.is_dir() and (child / "Cargo.toml").is_file()
-    ]
-    return sorted(crate_dirs)
+    return run(args)
 
 
-def _build_local_mirscan(repo_root: Path) -> None:
-    mirscan_manifest = repo_root / "tools" / "mirscan" / "Cargo.toml"
-    if not mirscan_manifest.is_file():
-        return
+def _run_get_batch_task(args: argparse.Namespace) -> int:
+    from cli.cmd.get_batch_task import run
 
-    result = subprocess.run(
-        ["cargo", "build", "--manifest-path", str(mirscan_manifest)],
-        cwd=repo_root,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            "building local mirscan failed "
-            f"(manifest: {mirscan_manifest}, exit: {result.returncode})"
-        )
+    return run(args)
 
 
-def _resolve_mirscan_rustc(repo_root: Path) -> str:
-    configured = os.environ.get("MIRSCAN_RUSTC")
-    if configured:
-        return configured
+def _run_submit_batch_task(args: argparse.Namespace) -> int:
+    from cli.cmd.submit_batch_task import run
 
-    local_raudit = repo_root / "tools" / "mirscan" / "target" / "release" / "raudit"
-    if local_raudit.is_file():
-        return str(local_raudit)
-    local_raudit_exe = local_raudit.with_suffix(".exe")
-    if local_raudit_exe.is_file():
-        return str(local_raudit_exe)
-
-    _build_local_mirscan(repo_root)
-    if local_raudit.is_file():
-        return str(local_raudit)
-    if local_raudit_exe.is_file():
-        return str(local_raudit_exe)
-
-    path_raudit = shutil.which("raudit")
-    if path_raudit:
-        return path_raudit
-    path_mirscan = shutil.which("mirscan")
-    if path_mirscan:
-        return path_mirscan
-
-    raise RuntimeError(
-        "could not find mirscan rustc binary; set MIRSCAN_RUSTC or build tools/mirscan "
-        "(expected tools/mirscan/target/release/raudit)"
-    )
+    return run(args)
 
 
-def _compile_crate(crate_dir: Path, mirscan_rustc: str, report_path: Path) -> None:
-    if report_path.exists():
-        report_path.unlink()
+def _run_cancel_batch_task(args: argparse.Namespace) -> int:
+    from cli.cmd.cancel_batch_task import run
 
-    clean_result = subprocess.run(["cargo", "clean"], cwd=crate_dir, check=False)
-    if clean_result.returncode != 0:
-        raise RuntimeError(f"cargo clean failed in {crate_dir} (exit: {clean_result.returncode})")
-
-    env = os.environ.copy()
-    env["RUSTC"] = mirscan_rustc
-    env["ANALYSIS_OUT"] = str(report_path)
-    check_result = subprocess.run(["cargo", "check"], cwd=crate_dir, env=env, check=False)
-    if check_result.returncode != 0:
-        raise RuntimeError(
-            f"cargo check failed in {crate_dir} with RUSTC={mirscan_rustc} "
-            f"and ANALYSIS_OUT={report_path} (exit: {check_result.returncode})"
-        )
+    return run(args)
 
 
-def _parse_package_name_and_description(cargo_toml_content: str) -> tuple[str | None, str | None]:
-    manifest = tomllib.loads(cargo_toml_content)
-    package = manifest.get("package")
-    if not isinstance(package, dict):
-        return None, None
+def _run_process(args: argparse.Namespace) -> int:
+    from cli.cmd.process import run
 
-    name = package.get("name")
-    description = package.get("description")
-
-    return (
-        name if isinstance(name, str) else None,
-        description if isinstance(description, str) else None,
-    )
+    return run(args)
 
 
-def run_sync(args: argparse.Namespace) -> int:
-    _ = args
-    repo_root = _find_repo_root()
-    crates_dir = repo_root / "crates"
-    meta_dir = repo_root / "meta"
-    meta_dir.mkdir(parents=True, exist_ok=True)
+def _run_sync(args: argparse.Namespace) -> int:
+    from cli.cmd.sync import run
 
-    mirscan_rustc = _resolve_mirscan_rustc(repo_root)
-    crate_dirs = _find_crates(crates_dir)
+    return run(args)
 
-    for crate_dir in crate_dirs:
-        crate_name = crate_dir.name or "unknown"
-        crate_dir_relative = crate_dir.relative_to(repo_root).as_posix()
 
-        print(f"syncing crate {crate_name} with rustc={mirscan_rustc}")
+def _run_merge_rules(args: argparse.Namespace) -> int:
+    from cli.cmd.merge_rules import run
 
-        report_path = crate_dir / "report.json"
-        _compile_crate(crate_dir, mirscan_rustc, report_path)
-
-        try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"report.json is not valid JSON for crate {crate_name} at {report_path}"
-            ) from exc
-
-        cargo_toml_path = crate_dir / "Cargo.toml"
-        cargo_toml_content = cargo_toml_path.read_text(encoding="utf-8")
-        parsed_name, parsed_description = _parse_package_name_and_description(cargo_toml_content)
-
-        out = {
-            "crate_dir": crate_dir_relative,
-            "crate_name": parsed_name,
-            "description": parsed_description,
-            "report": report,
-        }
-
-        out_path = meta_dir / f"{crate_name}.json"
-        out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    return 0
+    return run(args)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -177,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
         "json_path",
         help="Path to rule JSON file.",
     )
-    view_parser.set_defaults(func=view_run)
+    view_parser.set_defaults(func=_run_view)
 
     compare_parser = subparsers.add_parser(
         "compare",
@@ -196,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Compare buggy_violation globally, without preconditions and operation_semantics.",
     )
-    compare_parser.set_defaults(func=compare_run)
+    compare_parser.set_defaults(func=_run_compare)
     
     generate_parser = subparsers.add_parser(
         "generate",
@@ -214,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         help="Path to output the generated rule JSON files.",
     )
-    generate_parser.set_defaults(func=generate_run)
+    generate_parser.set_defaults(func=_run_generate)
 
     get_batch_task_parser = subparsers.add_parser(
         "get-batch-task",
@@ -224,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
         "batch_id",
         help="OpenAI batch task id.",
     )
-    get_batch_task_parser.set_defaults(func=get_batch_task_run)
+    get_batch_task_parser.set_defaults(func=_run_get_batch_task)
 
     submit_batch_task_parser = subparsers.add_parser(
         "submit-batch-task",
@@ -236,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Path to input JSONL file for OpenAI batch requests.",
     )
-    submit_batch_task_parser.set_defaults(func=submit_batch_task_run)
+    submit_batch_task_parser.set_defaults(func=_run_submit_batch_task)
 
     cancel_batch_task_parser = subparsers.add_parser(
         "cancel-batch-task",
@@ -246,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
         "batch_id",
         help="OpenAI batch task id to cancel.",
     )
-    cancel_batch_task_parser.set_defaults(func=cancel_batch_task_run)
+    cancel_batch_task_parser.set_defaults(func=_run_cancel_batch_task)
 
     process_parser = subparsers.add_parser(
         "process",
@@ -261,13 +153,29 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Directory where extracted rule JSON files will be written.",
     )
-    process_parser.set_defaults(func=process_run)
+    process_parser.set_defaults(func=_run_process)
 
     sync_parser = subparsers.add_parser(
         "sync",
         help="Compile crates with MIR scan rustc and persist crate metadata + report.",
     )
-    sync_parser.set_defaults(func=run_sync)
+    sync_parser.set_defaults(func=_run_sync)
+
+    merge_rules_parser = subparsers.add_parser(
+        "merge-rules",
+        help="Merge TP=1 rows from all CSV rule files into a single rules.csv.",
+    )
+    merge_rules_parser.add_argument(
+        "--rules-dir",
+        default=".local/rules",
+        help="Directory containing rule CSV files to merge.",
+    )
+    merge_rules_parser.add_argument(
+        "--output",
+        default="rules.csv",
+        help="Path to merged CSV output file.",
+    )
+    merge_rules_parser.set_defaults(func=_run_merge_rules)
 
     return parser
 

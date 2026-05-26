@@ -60,7 +60,18 @@ pub struct Suspect {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
-    pub suspects: Vec<Suspect>,
+    pub targets: Vec<Suspect>,
+}
+
+fn normalize_to_rust_relative(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    if let Some(index) = normalized.find("/rust/") {
+        return normalized[index + 1..].to_string();
+    }
+    if normalized.starts_with("rust/") {
+        return normalized;
+    }
+    normalized
 }
 
 // Visitor to find all unsafe function calls in a function body
@@ -666,7 +677,7 @@ fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
         .unwrap_or(span);
     let body_end_loc = source_map.lookup_char_pos(body_span.hi());
     let name = tcx.def_path_str(def_id);
-    let path = loc.file.name.prefer_local().to_string();
+    let path = normalize_to_rust_relative(&loc.file.name.prefer_local().to_string());
     
     FnInfo {
         name: name.clone(),
@@ -687,7 +698,7 @@ fn get_struct_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> StructInfo {
         .unwrap_or(span);
     let end_loc = source_map.lookup_char_pos(body_span.hi());
     let name = tcx.def_path_str(def_id);
-    let path = loc.file.name.prefer_local().to_string();
+    let path = normalize_to_rust_relative(&loc.file.name.prefer_local().to_string());
     
     StructInfo {
         name: name.clone(),
@@ -943,7 +954,7 @@ fn collect_escaped_mut_refs_in_aggregates<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id
 }
 
 pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
-    let mut suspects = Vec::new();
+    let mut targets = Vec::new();
     
     // Find all ADTs (structs/enums)
     for local_def_id in tcx.hir_crate_items(()).definitions() {
@@ -1052,7 +1063,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                                 constructors: vec![],
                                 mutators: vec![],
                             };
-                            suspects.push(suspect);
+                            targets.push(suspect);
                             continue;
                         }
 
@@ -1136,7 +1147,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                             mutators,
                         };
                         
-                        suspects.push(suspect);
+                        targets.push(suspect);
                     }
                 }
             }
@@ -1144,7 +1155,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
         }
     }
     
-    Report { suspects }
+    Report { targets }
 }
 
 
@@ -1254,10 +1265,10 @@ mod tests {
         let report = run_audit(src);
         
         // Should find suspects in get() and set() methods
-        assert!(!report.suspects.is_empty(), "Should find at least one suspect");
+        assert!(!report.targets.is_empty(), "Should find at least one suspect");
         
         // Check that we have the right structure
-        for suspect in &report.suspects {
+        for suspect in &report.targets {
             println!("Suspect: {}", suspect.target_fn.name);
             println!("  Unsafe call: {}", suspect.unsafe_call.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
@@ -1266,7 +1277,7 @@ mod tests {
         }
         
         // Verify we found the new() constructor
-        let has_constructor = report.suspects.iter()
+        let has_constructor = report.targets.iter()
             .any(|s| s.constructors.iter().any(|c| c.name.contains("new")));
         assert!(has_constructor, "Should find new() as a constructor");
     }
@@ -1297,7 +1308,7 @@ mod tests {
         let report = run_audit(src);
         
         // Should find no suspects since there are no unsafe calls
-        assert!(report.suspects.is_empty(), "Should find no suspects in safe code");
+        assert!(report.targets.is_empty(), "Should find no suspects in safe code");
     }
 
     #[test]
@@ -1340,7 +1351,7 @@ mod tests {
 
         let report = run_audit(src);
 
-        for suspect in &report.suspects {
+        for suspect in &report.targets {
             println!("Suspect: {}", suspect.target_fn.name);
             println!("  Unsafe call: {}", suspect.unsafe_call.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
@@ -1352,8 +1363,8 @@ mod tests {
         }
 
         // Should find a suspect for get_mut() and it should be flagged as a mutator
-        assert!(!report.suspects.is_empty(), "Should find at least one suspect");
-        let suspect = &report.suspects[0];
+        assert!(!report.targets.is_empty(), "Should find at least one suspect");
+        let suspect = &report.targets[0];
         assert!(suspect.mutators.iter().any(|m| m.name.contains("next")), "next() should be identified as a mutator");
     }
 
@@ -1395,16 +1406,16 @@ mod tests {
         
    
         
-        for suspect in &report.suspects {
+        for suspect in &report.targets {
             println!("Suspect: {}", suspect.target_fn.name);
             println!("  Unsafe call: {}", suspect.unsafe_call.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
             println!("  Mutators: {:?}", suspect.mutators.iter().map(|f| &f.name).collect::<Vec<_>>());
         }
 
-        assert_eq!(report.suspects.len(), 2, "suspect should be 3");
+        assert_eq!(report.targets.len(), 2, "suspect should be 3");
         
-        let suspect = &report.suspects[1];
+        let suspect = &report.targets[1];
         // Verify we found set_data as a mutator since it modifies 'data' field
         assert!(suspect.mutators.iter().any(|m| m.name.contains("set_data")), 
                 "set_data() should be identified as a mutator for the data field");
@@ -1447,7 +1458,7 @@ mod tests {
         let report = run_audit(src);
         
 
-        for suspect in &report.suspects {
+        for suspect in &report.targets {
             println!("Suspect: {}", suspect.target_fn.name);
             println!("  Unsafe call: {}", suspect.unsafe_call.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
@@ -1455,10 +1466,10 @@ mod tests {
         }
 
         // Should find suspect in access() method
-        assert_eq!(report.suspects.len(), 2, "Should find 2 suspects");
+        assert_eq!(report.targets.len(), 2, "Should find 2 suspects");
         
         
-        let suspect = &report.suspects[1];
+        let suspect = &report.targets[1];
         // Verify we found buffer_mut as a mutator since it returns &mut to buffer field
         assert!(suspect.mutators.iter().any(|m| m.name.contains("buffer_mut")), 
                 "buffer_mut() should be identified as a mutator returning &mut to buffer field");
@@ -1507,9 +1518,9 @@ mod tests {
 
         let report = run_audit(src);
         
-        assert!(!report.suspects.is_empty(), "Should find at least one suspect");
+        assert!(!report.targets.is_empty(), "Should find at least one suspect");
         
-        for suspect in &report.suspects {
+        for suspect in &report.targets {
             println!("Suspect: {}", suspect.target_fn.name);
             println!("  Unsafe call: {}", suspect.unsafe_call.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
@@ -1519,7 +1530,7 @@ mod tests {
             }
         }
         
-        let suspect = &report.suspects[0];
+        let suspect = &report.targets[0];
         // Should find both the setter and the mut ref return for ptr field
         assert!(suspect.mutators.iter().any(|m| m.name.contains("update_ptr")), 
                 "update_ptr() setter should be identified as a mutator");
