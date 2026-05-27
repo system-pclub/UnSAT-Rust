@@ -53,6 +53,13 @@ def _run_merge_rules(args: argparse.Namespace) -> int:
 
     return run(args)
 
+
+def _run_eval(args: argparse.Namespace) -> int:
+    from cli.cmd.eval import run
+
+    return run(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="x",
@@ -159,6 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
         "sync",
         help="Compile crates with MIR scan rustc and persist crate metadata + report.",
     )
+    sync_parser.add_argument(
+        "--studied-rules",
+        default="studied_rules",
+        help="Path to file listing allowed rule ids (one per line). Defaults to studied_rules.",
+    )
     sync_parser.set_defaults(func=_run_sync)
 
     merge_rules_parser = subparsers.add_parser(
@@ -176,6 +188,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to merged CSV output file.",
     )
     merge_rules_parser.set_defaults(func=_run_merge_rules)
+
+    eval_parser = subparsers.add_parser(
+        "eval",
+        help="Run LLM prompts (task1/2/3) against each crate meta JSON and save results to eval/.",
+    )
+    eval_parser.add_argument(
+        "--model",
+        default="gpt-4o",
+        help="OpenAI model to use (default: gpt-4o).",
+    )
+    eval_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print per-rule progress.",
+    )
+    eval_parser.set_defaults(func=_run_eval)
 
     return parser
 

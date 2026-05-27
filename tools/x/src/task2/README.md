@@ -1,19 +1,35 @@
-# Description
+# Task 2
 
-Short intro: Using the same unsafe call in `vec::AnonVec::remove_get` (`ptr.add` at line 329), this task binds DSL operands to concrete Rust source variables with source positions.
+## Goal
+Rewrite the rule as a source-bound expression using only local Rust variables and ordinary operators.
+
+Task 2 is intentionally more concrete than Task 1. It should not use project-specific DSL operator calls such as `alloc_id(...)` or `offset_in_alloc(...)`.
 
 ## Input
-- Code Context
-- Natural Language Rule
-- Pimitive operator: select Rust variable ( <variable name>@<line number>:<col number>)
+- Code context for one unsafe call target.
+- Natural-language rule text.
+- Primitive operand form: `<variable name>@<line>:<col>`.
 - Ordinary operators:
-==, !=, <, <=, >, >=, +, -, *, /, %, &&, ||, !
+	`==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `%`, `&&`, `||`, `!`
 
-## Output
-- DSL with the operator
+## Desired Output Format
+Return exactly one DSL expression as plain text.
 
-## Output Example
+Rules:
+- Do not return JSON.
+- Do not include Markdown fences.
+- Do not include prose, explanation, or multiple candidate answers.
+- Every non-literal operand should be a concrete source-bound variable in the form `<name>@<line>:<col>`.
+- The output must be parseable by the DSL parser under [tools/x/src/dsl/parser.py](/workspaces/UnSAT-Rust/tools/x/src/dsl/parser.py).
+- The expression must not contain any configured DSL operator calls from [operators.json](/workspaces/UnSAT-Rust/operators.json).
 
+## Validation By Sync
+When sync encounters a non-placeholder `task2` DSL:
+- It parses the DSL.
+- It validates that the AST contains no DSL operator calls.
+- If parsing or validation fails, sync prints an invalid-DLS message instead of stopping the whole sync.
+
+## Example
 Example selected primitive operands:
 
 ```text
@@ -23,7 +39,7 @@ base_offset@329:18
 capacity@329:12
 ```
 
-Example DSL with bound operands:
+Possible output:
 
 ```text
 i@329:34 >= 0 &&

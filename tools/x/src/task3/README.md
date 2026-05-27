@@ -1,23 +1,39 @@
-# Description
+# Task 3
 
-Short intro: For the `vec::AnonVec::remove_get` unsafe call example (`ptr.add`), this task validates whether each DSL operand can be resolved to a Rust variable in the local callsite context.
+## Goal
+Resolve each Task 1 operator or operand into a concrete source-level expression when possible.
+
+Task 3 is not a single DSL expression. It is a structured resolution report that records, for each relevant operator or operand, whether it can be rewritten using local Rust variables and ordinary operators only.
 
 ## Input
-- Code Context
-- For each operator used in DSL returned from Task 1
+- Code context for one unsafe call target.
+- The Task 1 DSL, especially the operators used in that DSL.
 - Ordinary operators:
-==, !=, <, <=, >, >=, +, -, *, /, %, &&, ||, !
-## Output
-- For each operator from Task 1 DSL, return resolved expression or `None`
-- Expression must contain only resolved variables and ordinary operators (`+`, `-`, `*`, `/`, `%`, `&&`, `||`, `!`, comparisons)
-- Do not include DSL operators like `alloc_id`, `offset_in_alloc`, or `alloc_block_size` inside expression
-- If an operator cannot be expressed in this form, return `None`
+	`==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `%`, `&&`, `||`, `!`
 
-## Output Example
+## Desired Output Format
+Return exactly one JSON object.
+
+Required top-level fields:
+- `caller`: string
+- `callsite`: string in `<path>:<line>:<col>` form
+- `resolutions`: array
+
+Each `resolutions` entry must be an object with:
+- `operator`: string
+- `expression`: string or `null`
+
+Rules:
+- If an operator or operand can be resolved locally, `expression` must be a plain DSL expression that uses only source-bound variables, literals, and ordinary operators.
+- Do not include project DSL operators like `alloc_id`, `offset_in_alloc`, or `alloc_block_size` inside `expression`.
+- If the operator cannot be resolved locally, set `expression` to `null`.
+- Do not include explanation outside the JSON object.
+
+## Example
 
 ```json
 {
-	"target_fn": "vec::AnonVec::remove_get",
+	"caller": "vec::AnonVec::remove_get",
 	"callsite": "src/vec.rs:329:30",
 	"resolutions": [
 		{
@@ -43,3 +59,6 @@ Short intro: For the `vec::AnonVec::remove_get` unsafe call example (`ptr.add`),
 	]
 }
 ```
+
+## Current Sync Relationship
+Sync currently validates Task 1 and Task 2 DSL fields stored in crate metadata. Task 3 is still a structured JSON output task and is not currently DSL-validated by sync.

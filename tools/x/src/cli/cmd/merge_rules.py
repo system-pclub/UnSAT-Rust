@@ -5,7 +5,7 @@ from itertools import zip_longest
 
 
 REQUIRED_COLUMNS = {"path", "name", "rule", "tp"}
-OUTPUT_COLUMNS = ["path", "name", "rule"]
+OUTPUT_COLUMNS = ["id", "path", "name", "rule"]
 
 
 def _normalize_column(name: str | None) -> str:
@@ -108,6 +108,10 @@ def run(args: argparse.Namespace) -> int:
                             "rule": (row.get("rule") or "").strip(),
                         }
                     )
+
+    rows_to_write.sort(key=lambda row: (row.get("path", ""), row.get("name", ""), row.get("rule", "")))
+    for index, row in enumerate(rows_to_write, start=1):
+        row["id"] = f"rule-{index}"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as outfile:

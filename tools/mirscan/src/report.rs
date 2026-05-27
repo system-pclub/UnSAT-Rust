@@ -35,9 +35,12 @@ pub struct CallsiteInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Suspect {
-    pub target_fn_parent: Option<StructInfo>,
-    pub target_fn: FnInfo,
-    pub unsafe_call: FnInfo,
+    #[serde(alias = "target_fn_parent")]
+    pub caller_parent: Option<StructInfo>,
+    #[serde(alias = "target_fn")]
+    pub caller: FnInfo,
+    #[serde(alias = "unsafe_call")]
+    pub callee: FnInfo,
     pub callsite: CallsiteInfo,
 
     #[serde(skip)]
@@ -1050,10 +1053,10 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                         // If fn_def_id is constructor, add suspect and return (no mutators needed since it's already a constructor)
                         if constructors.iter().any(|ctor| ctor.name == fn_info.name) {
                             let suspect = Suspect {
-                                target_fn_parent: Some(get_struct_info(tcx, def_id)),
-                                target_fn: fn_info.clone(),
+                                caller_parent: Some(get_struct_info(tcx, def_id)),
+                                caller: fn_info.clone(),
                                 callsite: callsite_info.clone(),
-                                unsafe_call: get_fn_info(tcx, callee_def_id),
+                                callee: get_fn_info(tcx, callee_def_id),
                                 unsafe_call_used_fields: vec![],
                                 unsafe_call_used_params: vec![],
                                 unsafe_call_used_globals: vec![],
@@ -1133,10 +1136,10 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
 
                         // Create suspect
                         let suspect = Suspect {
-                            target_fn_parent: Some(get_struct_info(tcx, def_id)),
-                            target_fn: fn_info.clone(),
+                            caller_parent: Some(get_struct_info(tcx, def_id)),
+                            caller: fn_info.clone(),
                             callsite: callsite_info,
-                            unsafe_call: get_fn_info(tcx, callee_def_id),
+                            callee: get_fn_info(tcx, callee_def_id),
                             unsafe_call_used_fields: used_fields,
                             unsafe_call_used_params: used_params,
                             unsafe_call_used_globals: used_globals,
@@ -1269,8 +1272,8 @@ mod tests {
         
         // Check that we have the right structure
         for suspect in &report.targets {
-            println!("Suspect: {}", suspect.target_fn.name);
-            println!("  Unsafe call: {}", suspect.unsafe_call.name);
+            println!("Suspect: {}", suspect.caller.name);
+            println!("  Unsafe call: {}", suspect.callee.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
             println!("  Constructors: {:?}", suspect.constructors.iter().map(|f| &f.name).collect::<Vec<_>>());
             println!("  Mutators: {:?}", suspect.mutators.iter().map(|f| &f.name).collect::<Vec<_>>());
@@ -1352,8 +1355,8 @@ mod tests {
         let report = run_audit(src);
 
         for suspect in &report.targets {
-            println!("Suspect: {}", suspect.target_fn.name);
-            println!("  Unsafe call: {}", suspect.unsafe_call.name);
+            println!("Suspect: {}", suspect.caller.name);
+            println!("  Unsafe call: {}", suspect.callee.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
             println!("  Constructors: {:?}", suspect.constructors.iter().map(|f| &f.name).collect::<Vec<_>>());
             for mutator in &suspect.mutators {
@@ -1407,8 +1410,8 @@ mod tests {
    
         
         for suspect in &report.targets {
-            println!("Suspect: {}", suspect.target_fn.name);
-            println!("  Unsafe call: {}", suspect.unsafe_call.name);
+            println!("Suspect: {}", suspect.caller.name);
+            println!("  Unsafe call: {}", suspect.callee.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
             println!("  Mutators: {:?}", suspect.mutators.iter().map(|f| &f.name).collect::<Vec<_>>());
         }
@@ -1459,8 +1462,8 @@ mod tests {
         
 
         for suspect in &report.targets {
-            println!("Suspect: {}", suspect.target_fn.name);
-            println!("  Unsafe call: {}", suspect.unsafe_call.name);
+            println!("Suspect: {}", suspect.caller.name);
+            println!("  Unsafe call: {}", suspect.callee.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
             println!("  Mutators: {:?}", suspect.mutators.iter().map(|f| &f.name).collect::<Vec<_>>());
         }
@@ -1521,8 +1524,8 @@ mod tests {
         assert!(!report.targets.is_empty(), "Should find at least one suspect");
         
         for suspect in &report.targets {
-            println!("Suspect: {}", suspect.target_fn.name);
-            println!("  Unsafe call: {}", suspect.unsafe_call.name);
+            println!("Suspect: {}", suspect.caller.name);
+            println!("  Unsafe call: {}", suspect.callee.name);
             println!("  Used fields: {:?}", suspect.unsafe_call_used_fields);
             println!("  Mutators ({} total):", suspect.mutators.len());
             for mutator in &suspect.mutators {

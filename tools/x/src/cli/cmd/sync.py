@@ -146,6 +146,19 @@ def _parse_rule_path(path_with_line: str) -> tuple[str, int] | None:
     return path_part, line
 
 
+def _load_studied_rule_ids(studied_rules_path: Path) -> set[str]:
+    if not studied_rules_path.is_file():
+        raise RuntimeError(f"studied rules file does not exist: {studied_rules_path}")
+
+    studied_rule_ids: set[str] = set()
+    for raw_line in studied_rules_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        studied_rule_ids.add(line)
+    return studied_rule_ids
+
+
 def _load_rules_by_path(repo_root: Path) -> dict[str, list[dict[str, object]]]:
     rules_path = repo_root / "rules.csv"
     if not rules_path.is_file():
@@ -161,9 +174,10 @@ def _load_rules_by_path(repo_root: Path) -> dict[str, list[dict[str, object]]]:
                 continue
             rule_path, rule_line = parsed
             normalized_rule_path = _normalize_to_rust_relative(rule_path)
+            rule_id = (row.get("id") or "").strip() or f"rule-{idx}"
 
             record = {
-                "id": f"rule-{idx}",
+                "id": rule_id,
                 "line": rule_line,
                 "name": (row.get("name") or "").strip(),
                 "rule": (row.get("rule") or "").strip(),
@@ -227,13 +241,19 @@ def _merge_new_operator_entries(
 
 
 def _target_identity(target: dict[str, object]) -> tuple[str, str, str, int, int]:
-    target_fn = target.get("target_fn")
-    unsafe_call = target.get("unsafe_call")
+    caller = target.get("caller")
+    if not isinstance(caller, dict):
+        caller = target.get("target_fn")
+
+    callee = target.get("callee")
+    if not isinstance(callee, dict):
+        callee = target.get("unsafe_call")
+
     callsite = target.get("callsite")
 
-    target_name = target_fn.get("name") if isinstance(target_fn, dict) else ""
-    unsafe_name = unsafe_call.get("name") if isinstance(unsafe_call, dict) else ""
-    unsafe_path = unsafe_call.get("path") if isinstance(unsafe_call, dict) else ""
+    target_name = caller.get("name") if isinstance(caller, dict) else ""
+    unsafe_name = callee.get("name") if isinstance(callee, dict) else ""
+    unsafe_path = callee.get("path") if isinstance(callee, dict) else ""
     callsite_line = callsite.get("line") if isinstance(callsite, dict) else 0
     callsite_col = callsite.get("col") if isinstance(callsite, dict) else 0
 
@@ -297,8 +317,10 @@ def _validate_task_dsl(
     operators: list[dict[str, object]],
     repo_root: Path,
 ) -> None:
-    target_fn = target.get("target_fn")
-    target_name = target_fn.get("name") if isinstance(target_fn, dict) else "<unknown target>"
+    caller = target.get("caller")
+    if not isinstance(caller, dict):
+        caller = target.get("target_fn")
+    target_name = caller.get("name") if isinstance(caller, dict) else "<unknown target>"
 
     try:
         ast = parse_dsl(dsl_text, operators, allow_unknown_operators=True)
@@ -347,14 +369,17 @@ def _merge_rule_tasks(
 def _match_rules_for_target(
     target: dict[str, object],
     rules_by_path: dict[str, list[dict[str, object]]],
+    allowed_rule_ids: set[str],
 ) -> dict[str, dict[str, str]]:
-    unsafe_call = target.get("unsafe_call")
-    if not isinstance(unsafe_call, dict):
+    callee = target.get("callee")
+    if not isinstance(callee, dict):
+        callee = target.get("unsafe_call")
+    if not isinstance(callee, dict):
         return {}
 
-    unsafe_path = unsafe_call.get("path")
-    line_start = unsafe_call.get("line_start")
-    line_end = unsafe_call.get("line_end")
+    unsafe_path = callee.get("path")
+    line_start = callee.get("line_start")
+    line_end = callee.get("line_end")
     if not isinstance(unsafe_path, str):
         return {}
 
@@ -365,6 +390,8 @@ def _match_rules_for_target(
         candidate_line = candidate.get("line")
         rule_id = candidate.get("id")
         if not isinstance(candidate_line, int) or not isinstance(rule_id, str):
+            continue
+        if rule_id not in allowed_rule_ids:
             continue
 
         is_match = False
@@ -385,7 +412,7 @@ def _match_rules_for_target(
 
     # Fallback for rust source version drift: if line numbers differ,
     # match rules in the same file by unsafe function name token.
-    unsafe_name = unsafe_call.get("name")
+    unsafe_name = callee.get("name")
     if not isinstance(unsafe_name, str):
         return matched_rules
 
@@ -397,6 +424,8 @@ def _match_rules_for_target(
         rule_id = candidate.get("id")
         rule_name = candidate.get("name")
         if not isinstance(rule_id, str) or not isinstance(rule_name, str):
+            continue
+        if rule_id not in allowed_rule_ids:
             continue
 
         normalized_rule_name = " ".join(rule_name.lower().split())
@@ -410,10 +439,27 @@ def _match_rules_for_target(
     return matched_rules
 
 
+def _normalize_target_schema(raw_target: dict[str, object]) -> dict[str, object]:
+    target = dict(raw_target)
+
+    if "caller" not in target and isinstance(target.get("target_fn"), dict):
+        target["caller"] = target["target_fn"]
+    if "callee" not in target and isinstance(target.get("unsafe_call"), dict):
+        target["callee"] = target["unsafe_call"]
+    if "caller_parent" not in target and isinstance(target.get("target_fn_parent"), dict):
+        target["caller_parent"] = target["target_fn_parent"]
+
+    target.pop("target_fn", None)
+    target.pop("unsafe_call", None)
+    target.pop("target_fn_parent", None)
+    return target
+
+
 def _transform_report(
     crate_name: str,
     report: dict[str, object],
     rules_by_path: dict[str, list[dict[str, object]]],
+    allowed_rule_ids: set[str],
     preserved_rule_tasks: dict[tuple[str, str, str, int, int], dict[str, dict[str, str]]],
     operators: list[dict[str, object]],
     repo_root: Path,
@@ -429,8 +475,8 @@ def _transform_report(
         if not isinstance(raw_target, dict):
             continue
 
-        target = dict(raw_target)
-        matched_rules = _match_rules_for_target(target, rules_by_path)
+        target = _normalize_target_schema(raw_target)
+        matched_rules = _match_rules_for_target(target, rules_by_path, allowed_rule_ids)
         preserved_rules = preserved_rule_tasks.get(_target_identity(target), {})
         target["rules"] = _merge_rule_tasks(
             crate_name,
@@ -446,9 +492,13 @@ def _transform_report(
 
 
 def run(args: argparse.Namespace) -> int:
-    _ = args
     repo_root = _find_repo_root()
     crates_dir = repo_root / "crates"
+    studied_rules_path = Path(args.studied_rules)
+    if not studied_rules_path.is_absolute():
+        studied_rules_path = (repo_root / studied_rules_path).resolve()
+    allowed_rule_ids = _load_studied_rule_ids(studied_rules_path)
+
     rules_by_path = _load_rules_by_path(repo_root)
     operators = _load_operator_entries(repo_root)
 
@@ -480,6 +530,7 @@ def run(args: argparse.Namespace) -> int:
             crate_name,
             report,
             rules_by_path,
+            allowed_rule_ids,
             preserved_rule_tasks,
             operators,
             repo_root,
