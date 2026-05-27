@@ -60,6 +60,12 @@ def _run_eval(args: argparse.Namespace) -> int:
     return run(args)
 
 
+def _run_summary(args: argparse.Namespace) -> int:
+    from cli.cmd.summary import run
+
+    return run(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="x",
@@ -204,6 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print per-rule progress.",
     )
     eval_parser.set_defaults(func=_run_eval)
+
+    summary_parser = subparsers.add_parser(
+        "summary",
+        help="Show crate/target/task summary counts from crates/*.json.",
+    )
+    summary_parser.set_defaults(func=_run_summary)
 
     return parser
 

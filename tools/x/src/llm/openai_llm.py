@@ -10,7 +10,7 @@ class OpenAILLM(LLM):
 
     def __init__(
         self,
-        model: str = "gpt-4o",
+        model: str = "gpt-5.4-mini",
         api_key: str | None = None,
         temperature: float = 0.0,
     ) -> None:
@@ -25,6 +25,8 @@ class OpenAILLM(LLM):
         self._temperature = temperature
 
     def complete(self, system: str, user: str) -> str:
+        print(f"[LLM] system prompt:\n{system}\n", flush=True)
+        print(f"[LLM] user prompt:\n{user}\n", flush=True)
         response = self._client.chat.completions.create(
             model=self._model,
             temperature=self._temperature,
