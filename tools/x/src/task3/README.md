@@ -31,6 +31,23 @@ Rules:
 
 ## Example
 
+fn func_to_verify(offset) {
+	let mem = malloc(10)
+	let mem_head = &mem 
+
+	unsafe {
+		let offset = mem_head.add(12);
+	}
+}
+
+fn func_to_verify(offset) {
+
+	unsafe {
+		let offset = offset.add(12);
+	}
+}
+
+
 ```json
 {
 	"caller": "vec::AnonVec::remove_get",

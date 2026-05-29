@@ -46,3 +46,12 @@ i@329:34 >= 0 &&
 i@329:34 <= len@329:20 &&
 base_offset@329:18 + i@329:34 <= capacity@329:12
 ```
+
+fn func_to_verify(offset) {
+	let mem = malloc(10)
+	let mem_head = &mem 
+
+	unsafe {
+		let offset = mem_head.add(12);
+	}
+}

@@ -47,18 +47,17 @@ def _task_counts_from_target(target: dict[str, Any]) -> tuple[int, int]:
     return total, marked
 
 
-def _summarize_meta(meta_path: Path) -> tuple[str, str, int, int, int]:
+def _summarize_meta(meta_path: Path) -> tuple[str, int, int, int]:
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     if not isinstance(meta, dict):
         raise RuntimeError(f"invalid crate meta JSON object: {meta_path}")
 
     crate_file_name = meta_path.stem
-    crate_name = meta.get("crate_name") if isinstance(meta.get("crate_name"), str) else ""
 
     report = meta.get("report")
     targets = report.get("targets") if isinstance(report, dict) else None
     if not isinstance(targets, list):
-        return crate_file_name, crate_name, 0, 0, 0
+        return crate_file_name, 0, 0, 0
 
     target_count = 0
     marked_tasks = 0
@@ -73,7 +72,7 @@ def _summarize_meta(meta_path: Path) -> tuple[str, str, int, int, int]:
         total_tasks += target_total
         marked_tasks += target_marked
 
-    return crate_file_name, crate_name, target_count, marked_tasks, total_tasks
+    return crate_file_name, target_count, marked_tasks, total_tasks
 
 
 def run(_args: argparse.Namespace) -> int:
@@ -90,15 +89,41 @@ def run(_args: argparse.Namespace) -> int:
     total_marked_tasks = 0
     total_tasks = 0
 
+    summaries: list[tuple[str, int, int, int]] = []
     for meta_path in meta_jsons:
-        crate_file_name, crate_name, targets, marked, tasks = _summarize_meta(meta_path)
-        display_name = f"{crate_file_name} ({crate_name})" if crate_name else crate_file_name
-        print(f"{display_name} {targets} {marked}/{tasks}")
+        crate_file_name, targets, marked, tasks = _summarize_meta(meta_path)
+        summaries.append((crate_file_name, targets, marked, tasks))
 
         total_crates += 1
         total_targets += targets
         total_marked_tasks += marked
         total_tasks += tasks
+
+    crate_header = "crate"
+    targets_header = "targets"
+    marked_header = "tasks(marked/total)"
+
+    crate_width = max(len(crate_header), *(len(crate) for crate, _, _, _ in summaries))
+    targets_width = max(
+        len(targets_header), *(len(str(targets)) for _, targets, _, _ in summaries)
+    )
+    marked_width = max(
+        len(marked_header),
+        *(len(f"{marked}/{tasks}") for _, _, marked, tasks in summaries),
+    )
+
+    print(
+        f"{crate_header:<{crate_width}} "
+        f"{targets_header:>{targets_width}} "
+        f"{marked_header:>{marked_width}}"
+    )
+
+    for crate_file_name, targets, marked, tasks in summaries:
+        print(
+            f"{crate_file_name:<{crate_width}} "
+            f"{targets:>{targets_width}} "
+            f"{f'{marked}/{tasks}':>{marked_width}}"
+        )
 
     print(
         f"TOTAL crates={total_crates} targets={total_targets} "

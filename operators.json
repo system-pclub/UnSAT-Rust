@@ -1,123 +1,132 @@
-[
-  {
-    "name": "alloc_id",
-    "input": [
-      {
-        "name": "p",
-        "type": "PointerOrReference"
-      }
-    ],
-    "output": {
-      "type": "Optional<AllocId>"
+{
+  "types": [
+    {
+      "name": "bool",
+      "description": "Boolean value."
     },
-    "description": "Returns the allocation/provenance object that pointer or reference p is derived from. None means p has no valid allocation provenance."
-  },
-  {
-    "name": "offset_in_alloc",
-    "input": [
-      {
-        "name": "p",
-        "type": "PointerOrReference"
-      }
-    ],
-    "output": {
-      "type": "IntegerBytes"
+    {
+      "name": "uint",
+      "description": "Unsigned integer value."
     },
-    "description": "Returns the byte offset of pointer or reference p from the beginning of its allocation."
-  },
-  {
-    "name": "alloc_live",
-    "input": [
-      {
-        "name": "a",
-        "type": "AllocId"
+    {
+      "name": "int",
+      "description": "Signed integer value."
+    },
+    {
+      "name": "Pointer",
+      "description": "Rust raw pointer or reference value."
+    },
+    {
+      "name": "#Allocation",
+      "description": "Abstract allocation object maintained by the verifier.",
+      "fields": [
+        {
+          "name": "layout",
+          "type": "Layout",
+          "description": "The original layout associated with this allocation."
+        },
+        {
+          "name": "allocator",
+          "type": "Allocator",
+          "description": "The allocator identity that created this allocation."
+        }
+      ]
+    },
+    {
+      "name": "Layout",
+      "description": "Rust allocation layout object.",
+      "fields": [
+        {
+          "name": "size",
+          "type": "uint",
+          "description": "The layout size."
+        },
+        {
+          "name": "align",
+          "type": "uint",
+          "description": "The layout alignment."
+        }
+      ]
+    },
+    {
+      "name": "Allocator",
+      "description": "Rust allocator identity.",
+      "fields": []
+    }
+  ],
+  "operators": [
+    {
+      "name": "get_alloc",
+      "input": [
+        {
+          "name": "p",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "#Allocation"
       },
-      {
-        "name": "site",
-        "type": "ProgramPoint"
-      }
-    ],
-    "output": {
-      "type": "Boolean"
+      "description": "Returns the abstract allocation object that pointer p is derived from."
     },
-    "description": "Returns whether allocation a is live at program point site."
-  },
-  {
-    "name": "alloc_allocator",
-    "input": [
-      {
-        "name": "a",
-        "type": "AllocId"
-      }
-    ],
-    "output": {
-      "type": "AllocatorId"
+    {
+      "name": "offset_in_alloc",
+      "input": [
+        {
+          "name": "p",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "int"
+      },
+      "description": "Returns the offset of pointer p relative to the beginning of its allocation."
     },
-    "description": "Returns the allocator instance or allocator identity that created allocation a."
-  },
-  {
-    "name": "alloc_layout",
-    "input": [
-      {
-        "name": "a",
-        "type": "AllocId"
-      }
-    ],
-    "output": {
-      "type": "Layout"
+    {
+      "name": "get_field",
+      "input": [
+        {
+          "name": "obj",
+          "type": "Object"
+        },
+        {
+          "name": "field",
+          "type": "FieldName"
+        }
+      ],
+      "output": {
+        "type": "Value"
+      },
+      "description": "Returns a typed field from an object. Valid fields and return types are defined in types."
     },
-    "description": "Returns the original layout associated with allocation a."
-  },
-  {
-    "name": "alloc_block_size",
-    "input": [
-      {
-        "name": "a",
-        "type": "AllocId"
-      }
-    ],
-    "output": {
-      "type": "IntegerBytes"
+    {
+      "name": "is_power_of_two",
+      "input": [
+        {
+          "name": "x",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether x is a power of two."
+    }
+  ],
+  "constants": [
+    {
+      "name": "Global",
+      "type": "Allocator",
+      "description": "The global Rust allocator."
     },
-    "description": "Returns the current usable size in bytes of allocation a."
-  },
-  {
-    "name": "size_of",
-    "input": [
-      {
-        "name": "x",
-        "type": "LayoutOrType"
-      }
-    ],
-    "output": {
-      "type": "IntegerBytes"
+    {
+      "name": "ISIZE_MAX",
+      "type": "int",
+      "description": "Maximum signed pointer-sized integer bound."
     },
-    "description": "Returns the size component of a layout-like or type-like value."
-  },
-  {
-    "name": "align_of",
-    "input": [
-      {
-        "name": "x",
-        "type": "LayoutOrType"
-      }
-    ],
-    "output": {
-      "type": "IntegerBytes"
-    },
-    "description": "Returns the alignment component of a layout-like or type-like value."
-  },
-  {
-    "name": "is_power_of_two",
-    "input": [
-      {
-        "name": "x",
-        "type": "Integer"
-      }
-    ],
-    "output": {
-      "type": "Boolean"
-    },
-    "description": "Returns whether integer x is a power of two."
-  }
-]
+    {
+      "name": "USIZE_BITS",
+      "type": "uint",
+      "description": "Number of bits in Rust usize."
+    }
+  ]
+}
