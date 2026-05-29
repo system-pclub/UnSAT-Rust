@@ -187,26 +187,44 @@ def _load_rules_by_path(repo_root: Path) -> dict[str, list[dict[str, object]]]:
     return grouped
 
 
-def _load_operator_entries(repo_root: Path) -> list[dict[str, object]]:
+def _load_operator_entries(repo_root: Path) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
     operators_path = repo_root / "operators.json"
     if not operators_path.is_file():
-        return []
+        return None, []
 
     data = json.loads(operators_path.read_text(encoding="utf-8"))
-    if not isinstance(data, list):
-        raise RuntimeError(f"operators.json must be a JSON array: {operators_path}")
+    document: dict[str, object] | None = None
+    raw_entries: object
+    if isinstance(data, list):
+        raw_entries = data
+    elif isinstance(data, dict):
+        raw_entries = data.get("operators")
+        if not isinstance(raw_entries, list):
+            raise RuntimeError(f"operators.json object must contain an operators array: {operators_path}")
+        document = dict(data)
+    else:
+        raise RuntimeError(f"operators.json must be a JSON array or object: {operators_path}")
 
     entries: list[dict[str, object]] = []
-    for item in data:
+    for item in raw_entries:
         if not isinstance(item, dict):
             raise RuntimeError(f"operators.json entries must be JSON objects: {operators_path}")
         entries.append(dict(item))
-    return entries
+    return document, entries
 
 
-def _save_operator_entries(repo_root: Path, operators: list[dict[str, object]]) -> None:
+def _save_operator_entries(
+    repo_root: Path,
+    operators: list[dict[str, object]],
+    document: dict[str, object] | None,
+) -> None:
     operators_path = repo_root / "operators.json"
-    operators_path.write_text(json.dumps(operators, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if document is None:
+        payload: object = operators
+    else:
+        payload = dict(document)
+        payload["operators"] = operators
+    operators_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _operator_names(operators: list[dict[str, object]]) -> set[str]:
@@ -315,6 +333,7 @@ def _validate_task_dsl(
     task_name: str,
     dsl_text: str,
     operators: list[dict[str, object]],
+    operator_document: dict[str, object] | None,
     repo_root: Path,
 ) -> None:
     caller = target.get("caller")
@@ -328,7 +347,7 @@ def _validate_task_dsl(
             used_operators = list_operators(ast)
             added = _merge_new_operator_entries(operators, used_operators)
             if added:
-                _save_operator_entries(repo_root, operators)
+                _save_operator_entries(repo_root, operators, operator_document)
             validate_task1_ast(ast, used_operators)
         elif task_name == "task2":
             validate_task2_ast(ast)
@@ -344,6 +363,7 @@ def _merge_rule_tasks(
     matched_rules: dict[str, dict[str, str]],
     preserved_rules: dict[str, dict[str, str]],
     operators: list[dict[str, object]],
+    operator_document: dict[str, object] | None,
     repo_root: Path,
 ) -> dict[str, dict[str, str]]:
     merged: dict[str, dict[str, str]] = {}
@@ -359,7 +379,16 @@ def _merge_rule_tasks(
         for task_name in ("task1", "task2"):
             dsl_text = merged_tasks.get(task_name)
             if isinstance(dsl_text, str) and dsl_text != PLACEHOLDER:
-                _validate_task_dsl(crate_name, target, rule_id, task_name, dsl_text, operators, repo_root)
+                _validate_task_dsl(
+                    crate_name,
+                    target,
+                    rule_id,
+                    task_name,
+                    dsl_text,
+                    operators,
+                    operator_document,
+                    repo_root,
+                )
 
         merged[rule_id] = merged_tasks
 
@@ -379,28 +408,24 @@ def _match_rules_for_target(
 
     unsafe_path = callee.get("path")
     line_start = callee.get("line_start")
-    line_end = callee.get("line_end")
-    if not isinstance(unsafe_path, str):
+    if not isinstance(unsafe_path, str) or not isinstance(line_start, int):
         return {}
 
     matched_rules: dict[str, dict[str, str]] = {}
     candidates = rules_by_path.get(unsafe_path, [])
 
-    for candidate in candidates:
+    def _matches_line_and_allowlist(candidate: dict[str, object], *, enforce_allowlist: bool) -> bool:
         candidate_line = candidate.get("line")
         rule_id = candidate.get("id")
         if not isinstance(candidate_line, int) or not isinstance(rule_id, str):
-            continue
-        if rule_id not in allowed_rule_ids:
-            continue
+            return False
+        if enforce_allowlist and rule_id not in allowed_rule_ids:
+            return False
+        return candidate_line == line_start
 
-        is_match = False
-        if isinstance(line_start, int) and isinstance(line_end, int):
-            is_match = line_start <= candidate_line <= line_end
-        elif isinstance(line_start, int):
-            is_match = candidate_line == line_start
-
-        if is_match:
+    for candidate in candidates:
+        rule_id = candidate.get("id")
+        if isinstance(rule_id, str) and _matches_line_and_allowlist(candidate, enforce_allowlist=True):
             matched_rules[rule_id] = {
                 "task1": "<placeholder>",
                 "task2": "<placeholder>",
@@ -410,26 +435,11 @@ def _match_rules_for_target(
     if matched_rules:
         return matched_rules
 
-    # Fallback for rust source version drift: if line numbers differ,
-    # match rules in the same file by unsafe function name token.
-    unsafe_name = callee.get("name")
-    if not isinstance(unsafe_name, str):
-        return matched_rules
-
-    fn_name = unsafe_name.rsplit("::", maxsplit=1)[-1].strip().lower()
-    if not fn_name:
-        return matched_rules
-
+    # If allowlisted IDs no longer line up with current rules.csv IDs,
+    # fallback to exact path + line_start without allowlist filtering.
     for candidate in candidates:
         rule_id = candidate.get("id")
-        rule_name = candidate.get("name")
-        if not isinstance(rule_id, str) or not isinstance(rule_name, str):
-            continue
-        if rule_id not in allowed_rule_ids:
-            continue
-
-        normalized_rule_name = " ".join(rule_name.lower().split())
-        if fn_name in normalized_rule_name:
+        if isinstance(rule_id, str) and _matches_line_and_allowlist(candidate, enforce_allowlist=False):
             matched_rules[rule_id] = {
                 "task1": "<placeholder>",
                 "task2": "<placeholder>",
@@ -462,6 +472,7 @@ def _transform_report(
     allowed_rule_ids: set[str],
     preserved_rule_tasks: dict[tuple[str, str, str, int, int], dict[str, dict[str, str]]],
     operators: list[dict[str, object]],
+    operator_document: dict[str, object] | None,
     repo_root: Path,
 ) -> dict[str, object]:
     report_targets = report.get("targets")
@@ -484,6 +495,7 @@ def _transform_report(
             matched_rules,
             preserved_rules,
             operators,
+            operator_document,
             repo_root,
         )
         targets.append(target)
@@ -500,7 +512,7 @@ def run(args: argparse.Namespace) -> int:
     allowed_rule_ids = _load_studied_rule_ids(studied_rules_path)
 
     rules_by_path = _load_rules_by_path(repo_root)
-    operators = _load_operator_entries(repo_root)
+    operator_document, operators = _load_operator_entries(repo_root)
 
     mirscan_rustc = _resolve_mirscan_rustc(repo_root)
     crate_dirs = _find_crates(crates_dir)
@@ -533,6 +545,7 @@ def run(args: argparse.Namespace) -> int:
             allowed_rule_ids,
             preserved_rule_tasks,
             operators,
+            operator_document,
             repo_root,
         )
         report_path.write_text(

@@ -72,7 +72,13 @@ def _load_operators(repo_root: Path) -> list[dict]:
     if not operators_path.is_file():
         return []
     data = json.loads(operators_path.read_text(encoding="utf-8"))
-    return data if isinstance(data, list) else []
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        operators = data.get("operators")
+        if isinstance(operators, list):
+            return [item for item in operators if isinstance(item, dict)]
+    return []
 
 
 def _read_source_lines(

@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::vec;
 use serde::{Serialize, Deserialize};
 use rustc_span::Pos;
+use rustc_span::sym;
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FnInfo {
     /// <mod>::<type>::<fn>
@@ -670,6 +671,83 @@ impl<'tcx> Visitor<'tcx> for AggregateWithMutRefVisitor<'tcx> {
 }
 
 // Helper to extract function info from DefId
+fn get_doc_line_start<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<usize> {
+    let source_map = tcx.sess.source_map();
+    let mut earliest: Option<usize> = None;
+
+    for attr in tcx.get_attrs(def_id, sym::doc) {
+        let loc = source_map.lookup_char_pos(attr.span().lo());
+        earliest = Some(match earliest {
+            Some(current) => current.min(loc.line),
+            None => loc.line,
+        });
+    }
+
+    earliest
+}
+
+fn is_doc_attr_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("#[doc") || trimmed.starts_with("# [doc")
+}
+
+fn is_doc_comment_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("///") || trimmed.starts_with("//!")
+}
+
+fn get_doc_line_start_from_source(file_path: &str, signature_line: usize) -> Option<usize> {
+    if signature_line <= 1 {
+        return None;
+    }
+
+    let content = std::fs::read_to_string(file_path).ok()?;
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+
+    let mut idx = (signature_line.saturating_sub(2)) as isize;
+    if idx as usize >= lines.len() {
+        idx = (lines.len().saturating_sub(1)) as isize;
+    }
+
+    // Skip non-doc attributes and blank lines immediately above fn signature.
+    while idx >= 0 {
+        let trimmed = lines[idx as usize].trim();
+        if trimmed.is_empty() {
+            idx -= 1;
+            continue;
+        }
+        if trimmed.starts_with("#[") && !is_doc_attr_line(trimmed) {
+            idx -= 1;
+            continue;
+        }
+        break;
+    }
+
+    if idx < 0 {
+        return None;
+    }
+
+    let current = lines[idx as usize];
+    if !(is_doc_comment_line(current) || is_doc_attr_line(current)) {
+        return None;
+    }
+
+    let mut start = idx as usize;
+    while start > 0 {
+        let prev = lines[start - 1];
+        if is_doc_comment_line(prev) || is_doc_attr_line(prev) {
+            start -= 1;
+            continue;
+        }
+        break;
+    }
+
+    Some(start + 1)
+}
+
 fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
     let span = tcx.def_span(def_id);
     let source_map = tcx.sess.source_map();
@@ -680,12 +758,16 @@ fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
         .unwrap_or(span);
     let body_end_loc = source_map.lookup_char_pos(body_span.hi());
     let name = tcx.def_path_str(def_id);
-    let path = normalize_to_rust_relative(&loc.file.name.prefer_local().to_string());
+    let file_path = loc.file.name.prefer_local().to_string();
+    let path = normalize_to_rust_relative(&file_path);
+    let line_start = get_doc_line_start(tcx, def_id)
+        .or_else(|| get_doc_line_start_from_source(&file_path, loc.line))
+        .unwrap_or(loc.line);
     
     FnInfo {
         name: name.clone(),
         path,
-        line_start: loc.line,
+        line_start,
         line_end: end_loc.line,
         body_end: body_end_loc.line,
         call_chains: vec![],
@@ -963,7 +1045,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
     for local_def_id in tcx.hir_crate_items(()).definitions() {
 
         let def_id = local_def_id.to_def_id();
-        print!("Checking item {:?} (def_id={:?})... ", tcx.def_path_str(def_id), def_id);
+        // print!("Checking item {:?} (def_id={:?})... ", tcx.def_path_str(def_id), def_id);
         // Check if it's a struct, enum, or union using def_kind first
         use rustc_hir::def::DefKind;
         match tcx.def_kind(def_id) {
@@ -1155,6 +1237,60 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                 }
             }
         }
+        }
+    }
+
+    // Also scan public safe free functions in the crate (non-methods).
+    for local_def_id in tcx.hir_crate_items(()).definitions() {
+        let def_id = local_def_id.to_def_id();
+        if !matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::Fn) {
+            continue;
+        }
+
+        if is_fn_unsafe(tcx, def_id) || !tcx.visibility(def_id).is_public() {
+            continue;
+        }
+
+        let fn_info = get_fn_info(tcx, def_id);
+
+        if let Some(local_fn_def_id) = def_id.as_local() {
+            let body = tcx.optimized_mir(local_fn_def_id);
+            let mut unsafe_visitor = UnsafeCallVisitor::new(tcx);
+            unsafe_visitor.visit_body(body);
+
+            if unsafe_visitor.unsafe_calls.is_empty() {
+                continue;
+            }
+
+            for (callee_def_id, callsite_span, _location, _arg_places) in unsafe_visitor.unsafe_calls {
+                let callsite_loc = tcx.sess.source_map().lookup_char_pos(callsite_span.lo());
+                let callsite_info = CallsiteInfo {
+                    line: callsite_loc.line,
+                    col: callsite_loc.col.to_usize() + 1,
+                };
+
+                let callee_path = tcx.def_path_str(callee_def_id);
+                if !callee_path.starts_with("std::") && !callee_path.starts_with("core::") {
+                    continue;
+                }
+
+                let suspect = Suspect {
+                    caller_parent: None,
+                    caller: fn_info.clone(),
+                    callsite: callsite_info,
+                    callee: get_fn_info(tcx, callee_def_id),
+                    unsafe_call_used_fields: vec![],
+                    unsafe_call_used_params: vec![],
+                    unsafe_call_used_globals: vec![],
+                    unsafe_call_control_fields: vec![],
+                    unsafe_call_control_params: vec![],
+                    unsafe_call_control_globals: vec![],
+                    constructors: vec![],
+                    mutators: vec![],
+                };
+
+                targets.push(suspect);
+            }
         }
     }
     

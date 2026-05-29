@@ -317,7 +317,7 @@ def _collect_operator_names(ast: Expression) -> set[str]:
 
 
 def _resolve_operator_names(
-    operator_config: str | Path | Sequence[str] | Sequence[Mapping[str, Any]],
+    operator_config: str | Path | Mapping[str, Any] | Sequence[str] | Sequence[Mapping[str, Any]],
 ) -> set[str]:
     if isinstance(operator_config, Path):
         data = json.loads(operator_config.read_text(encoding="utf-8"))
@@ -337,6 +337,12 @@ def _resolve_operator_names(
 
 
 def _extract_operator_names(data: Any) -> set[str]:
+    if isinstance(data, Mapping):
+        operators = data.get("operators")
+        if operators is None:
+            raise DSLValidationError("Operator config object must contain an 'operators' array")
+        data = operators
+
     if not isinstance(data, Sequence) or isinstance(data, (str, bytes, bytearray)):
         raise DSLValidationError("Operator config must be a JSON array of operator entries")
 
