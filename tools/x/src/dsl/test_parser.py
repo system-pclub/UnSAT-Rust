@@ -85,3 +85,9 @@ def test_nested_calls_are_preserved() -> None:
 
     assert isinstance(ast, CallExpression)
     assert isinstance(ast.args[0], CallExpression)
+
+
+def test_parse_quoted_string_literal_argument() -> None:
+    ast = parse_dsl('get_field(get_allocation(get_arg(0)), "layout") == get_arg(1)', OPERATORS_PATH)
+
+    assert isinstance(ast, BinaryExpression)

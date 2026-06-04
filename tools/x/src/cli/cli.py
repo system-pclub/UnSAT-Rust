@@ -221,6 +221,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--cargo-dir",
         help="Path to only one Rust crate to sync. If not provided, all crates in crates/ will be synced.",
     )
+    sync_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="When writing human/<crate>.json, remove old callsites/rules that are not present in current sync output.",
+    )
     sync_parser.set_defaults(func=_run_sync)
 
     merge_rules_parser = subparsers.add_parser(

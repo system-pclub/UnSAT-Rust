@@ -12,6 +12,20 @@ from dsl import DSLParseError, DSLValidationError, list_operators, parse_dsl, va
 
 
 PLACEHOLDER = "<placeholder>"
+HUMAN_PLACEHOLDER = "placeholder"
+TASK_NAMES = ("task1", "task2", "task3")
+
+
+def _task3_placeholder() -> list[dict[str, str]]:
+    return [{"expression": PLACEHOLDER, "resolve": PLACEHOLDER}]
+
+
+def _default_human_rule_tasks() -> dict[str, object]:
+    return {
+        "task1": PLACEHOLDER,
+        "task2": PLACEHOLDER,
+        "task3": _task3_placeholder(),
+    }
 
 
 def _find_repo_root() -> Path:
@@ -315,11 +329,13 @@ def _load_existing_rule_tasks(meta_path: Path) -> dict[tuple[str, str, str, int,
             if not isinstance(rule_id, str) or not isinstance(rule_tasks, dict):
                 continue
 
-            preserved_rules[rule_id] = {
-                "task1": rule_tasks.get("task1") if isinstance(rule_tasks.get("task1"), str) else PLACEHOLDER,
-                "task2": rule_tasks.get("task2") if isinstance(rule_tasks.get("task2"), str) else PLACEHOLDER,
-                "task3": rule_tasks.get("task3") if isinstance(rule_tasks.get("task3"), str) else PLACEHOLDER,
-            }
+            preserved_tasks: dict[str, str] = {}
+            for task_name in ("task1", "task2", "task3"):
+                task_value = rule_tasks.get(task_name)
+                if isinstance(task_value, str):
+                    preserved_tasks[task_name] = task_value
+
+            preserved_rules[rule_id] = preserved_tasks
 
         saved[_target_identity(raw_target)] = preserved_rules
 
@@ -368,17 +384,21 @@ def _merge_rule_tasks(
 ) -> dict[str, dict[str, str]]:
     merged: dict[str, dict[str, str]] = {}
 
-    for rule_id, default_tasks in matched_rules.items():
+    for rule_id in matched_rules.keys():
         existing = preserved_rules.get(rule_id, {})
-        merged_tasks = {
-            "task1": existing.get("task1", default_tasks["task1"]),
-            "task2": existing.get("task2", default_tasks["task2"]),
-            "task3": existing.get("task3", default_tasks["task3"]),
-        }
+        merged_tasks: dict[str, str] = {}
+
+        for task_name in ("task1", "task2", "task3"):
+            task_text = existing.get(task_name)
+            if not isinstance(task_text, str):
+                continue
+            if not task_text.strip() or task_text == PLACEHOLDER:
+                continue
+            merged_tasks[task_name] = task_text
 
         for task_name in ("task1", "task2"):
             dsl_text = merged_tasks.get(task_name)
-            if isinstance(dsl_text, str) and dsl_text != PLACEHOLDER:
+            if isinstance(dsl_text, str):
                 _validate_task_dsl(
                     crate_name,
                     target,
@@ -426,25 +446,7 @@ def _match_rules_for_target(
     for candidate in candidates:
         rule_id = candidate.get("id")
         if isinstance(rule_id, str) and _matches_line_and_allowlist(candidate, enforce_allowlist=True):
-            matched_rules[rule_id] = {
-                "task1": "<placeholder>",
-                "task2": "<placeholder>",
-                "task3": "<placeholder>",
-            }
-
-    if matched_rules:
-        return matched_rules
-
-    # If allowlisted IDs no longer line up with current rules.csv IDs,
-    # fallback to exact path + line_start without allowlist filtering.
-    for candidate in candidates:
-        rule_id = candidate.get("id")
-        if isinstance(rule_id, str) and _matches_line_and_allowlist(candidate, enforce_allowlist=False):
-            matched_rules[rule_id] = {
-                "task1": "<placeholder>",
-                "task2": "<placeholder>",
-                "task3": "<placeholder>",
-            }
+            matched_rules[rule_id] = {}
 
     return matched_rules
 
@@ -474,7 +476,7 @@ def _transform_report(
     operators: list[dict[str, object]],
     operator_document: dict[str, object] | None,
     repo_root: Path,
-) -> dict[str, object]:
+) -> tuple[dict[str, object], dict[str, dict[str, dict[str, object]]]]:
     report_targets = report.get("targets")
     if not isinstance(report_targets, list):
         raise RuntimeError("mirscan report is missing required targets array")
@@ -482,19 +484,22 @@ def _transform_report(
     targets_input = report_targets
 
     targets: list[dict[str, object]] = []
+    human_placeholders: dict[str, dict[str, dict[str, object]]] = {}
     for target_index, raw_target in enumerate(targets_input, start=1):
         if not isinstance(raw_target, dict):
             continue
 
         target = _normalize_target_schema(raw_target)
+        callsite_id = str(target_index)
         callsite = target.get("callsite")
         if isinstance(callsite, dict):
             callsite_with_id = dict(callsite)
             callsite_with_id["id"] = str(target_index)
             target["callsite"] = callsite_with_id
+            callsite_id = callsite_with_id["id"]
         matched_rules = _match_rules_for_target(target, rules_by_path, allowed_rule_ids)
         preserved_rules = preserved_rule_tasks.get(_target_identity(target), {})
-        target["rules"] = _merge_rule_tasks(
+        merged_rules = _merge_rule_tasks(
             crate_name,
             target,
             matched_rules,
@@ -503,8 +508,17 @@ def _transform_report(
             operator_document,
             repo_root,
         )
+
+        if merged_rules:
+            human_placeholders[callsite_id] = {
+                rule_id: _default_human_rule_tasks()
+                for rule_id in merged_rules.keys()
+            }
+
+        # Keep crate metadata report free of rule/task payloads; those live in human/<crate>.json.
+        target.pop("rules", None)
         targets.append(target)
-    return {"targets": targets}
+    return {"targets": targets}, human_placeholders
 
 
 def _resolve_studied_rules_path(repo_root: Path, studied_rules: str | Path) -> Path:
@@ -512,6 +526,146 @@ def _resolve_studied_rules_path(repo_root: Path, studied_rules: str | Path) -> P
     if not studied_rules_path.is_absolute():
         studied_rules_path = (repo_root / studied_rules_path).resolve()
     return studied_rules_path
+
+
+def _load_existing_human_report(report_path: Path) -> dict[str, dict[str, object]]:
+    if not report_path.is_file():
+        return {}
+
+    try:
+        loaded = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(loaded, dict):
+        return {}
+
+    existing: dict[str, dict[str, object]] = {}
+    for callsite_id, raw_rules in loaded.items():
+        if not isinstance(callsite_id, str) or not isinstance(raw_rules, dict):
+            continue
+        existing_rules: dict[str, object] = {}
+        for rule_id, task in raw_rules.items():
+            if isinstance(rule_id, str):
+                existing_rules[rule_id] = task
+        existing[callsite_id] = existing_rules
+    return existing
+
+
+def _normalize_human_rule_tasks(task_value: object) -> dict[str, object]:
+    normalized = _default_human_rule_tasks()
+
+    # Backward compatibility with old schema: rule -> "placeholder" or rule -> "task1 text".
+    if isinstance(task_value, str):
+        value = task_value.strip()
+        if value:
+            normalized["task1"] = task_value
+        return normalized
+
+    if not isinstance(task_value, dict):
+        return normalized
+
+    task1 = task_value.get("task1")
+    if isinstance(task1, str) and task1.strip():
+        normalized["task1"] = task1
+
+    task2 = task_value.get("task2")
+    if isinstance(task2, str) and task2.strip():
+        normalized["task2"] = task2
+
+    task3 = task_value.get("task3")
+    if isinstance(task3, list):
+        normalized["task3"] = task3
+    elif isinstance(task3, str) and task3.strip() and task3.strip() != PLACEHOLDER:
+        # Preserve unusual legacy task3 text instead of dropping user-authored content.
+        normalized["task3"] = task3
+
+    return normalized
+
+
+def _is_non_placeholder_task(value: object) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized not in {"", PLACEHOLDER, HUMAN_PLACEHOLDER}
+
+    if isinstance(value, dict):
+        for candidate in value.values():
+            if _is_non_placeholder_task(candidate):
+                return True
+        return False
+
+    if isinstance(value, list):
+        for candidate in value:
+            if _is_non_placeholder_task(candidate):
+                return True
+        return False
+
+    return False
+
+
+def _merge_human_report(
+    existing: dict[str, dict[str, object]],
+    incoming: dict[str, dict[str, dict[str, object]]],
+    *,
+    strict: bool,
+) -> dict[str, dict[str, object]]:
+    merged: dict[str, dict[str, object]] = {}
+
+    for callsite_id, incoming_rules in incoming.items():
+        existing_rules = existing.get(callsite_id, {})
+        merged_rules: dict[str, object] = {}
+
+        for rule_id, placeholder_tasks in incoming_rules.items():
+            existing_task = existing_rules.get(rule_id)
+            if _is_non_placeholder_task(existing_task):
+                merged_rules[rule_id] = _normalize_human_rule_tasks(existing_task)
+            elif existing_task is not None:
+                merged_rules[rule_id] = _normalize_human_rule_tasks(existing_task)
+            else:
+                merged_rules[rule_id] = _normalize_human_rule_tasks(placeholder_tasks)
+
+        if not strict:
+            for rule_id, existing_task in existing_rules.items():
+                if rule_id not in merged_rules and _is_non_placeholder_task(existing_task):
+                    merged_rules[rule_id] = _normalize_human_rule_tasks(existing_task)
+
+        if merged_rules:
+            merged[callsite_id] = merged_rules
+
+    if not strict:
+        for callsite_id, existing_rules in existing.items():
+            if callsite_id in merged:
+                continue
+            preserved_rules = {
+                rule_id: _normalize_human_rule_tasks(task)
+                for rule_id, task in existing_rules.items()
+                if _is_non_placeholder_task(task)
+            }
+            if preserved_rules:
+                merged[callsite_id] = preserved_rules
+
+    return merged
+
+
+def _sync_human_report(
+    *,
+    repo_root: Path,
+    report_name: str,
+    incoming: dict[str, dict[str, dict[str, object]]],
+    strict: bool,
+) -> Path:
+    human_dir = repo_root / "human"
+    human_dir.mkdir(parents=True, exist_ok=True)
+    human_report_path = human_dir / report_name
+
+    existing = _load_existing_human_report(human_report_path)
+    merged = _merge_human_report(existing, incoming, strict=strict)
+
+    human_report_path.write_text(
+        json.dumps(merged, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return human_report_path
 
 
 def _sync_single_crate(
@@ -523,6 +677,7 @@ def _sync_single_crate(
     operators: list[dict[str, object]],
     operator_document: dict[str, object] | None,
     mirscan_rustc: str,
+    strict: bool,
 ) -> Path:
     crate_name = crate_dir.name or "unknown"
     crates_dir = repo_root / "crates"
@@ -545,7 +700,7 @@ def _sync_single_crate(
     if not isinstance(report, dict):
         raise RuntimeError(f"report.json must be a JSON object for crate {crate_name} at {report_path}")
 
-    transformed_report = _transform_report(
+    transformed_report, human_placeholders = _transform_report(
         crate_name,
         report,
         rules_by_path,
@@ -571,6 +726,12 @@ def _sync_single_crate(
         "report": transformed_report,
     }
     out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _sync_human_report(
+        repo_root=repo_root,
+        report_name=out_path.name,
+        incoming=human_placeholders,
+        strict=strict,
+    )
     return out_path
 
 
@@ -580,6 +741,7 @@ def ensure_crate_metadata_file(
     *,
     studied_rules: str | Path = "studied_rules",
     force: bool = False,
+    strict: bool = False,
 ) -> Path:
     cargo_dir_path = Path(cargo_dir)
     if not cargo_dir_path.is_absolute():
@@ -616,6 +778,7 @@ def ensure_crate_metadata_file(
         operators=operators,
         operator_document=operator_document,
         mirscan_rustc=mirscan_rustc,
+        strict=strict,
     )
 
 
@@ -629,6 +792,7 @@ def run(args: argparse.Namespace) -> int:
     rules_by_path = _load_rules_by_path(repo_root)
     operator_document, operators = _load_operator_entries(repo_root)
     mirscan_rustc = _resolve_mirscan_rustc(repo_root)
+    strict = bool(getattr(args, "strict", False))
 
     if cargo_dir:
         cargo_dir_path = Path(cargo_dir)
@@ -653,6 +817,7 @@ def run(args: argparse.Namespace) -> int:
             operators=operators,
             operator_document=operator_document,
             mirscan_rustc=mirscan_rustc,
+            strict=strict,
         )
 
     return 0

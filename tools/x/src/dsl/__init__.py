@@ -1,11 +1,13 @@
 from dsl.errors import DSLParseError, DSLValidationError
-from dsl.parser import (
+from dsl.ast import (
     BinaryExpression,
     CallExpression,
     Identifier,
     Literal,
     SourceRef,
     UnaryExpression,
+)
+from dsl.parser import (
     list_operators,
     parse_dsl,
     validate_task1_ast,

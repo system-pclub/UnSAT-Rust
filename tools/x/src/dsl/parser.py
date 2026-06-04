@@ -1,272 +1,175 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from lark import Lark, Transformer, Token
+from lark.exceptions import UnexpectedCharacters, UnexpectedToken
+
+from dsl.ast import BinaryExpression, CallExpression, Expression, Identifier, Literal, SourceRef, UnaryExpression
 from dsl.errors import DSLParseError, DSLValidationError
 
+_GRAMMAR = r"""
+?start: expr
 
-@dataclass(frozen=True)
-class Literal:
-    value: int | bool | None
+?expr: or_expr
 
+?or_expr: and_expr
+    | or_expr "||" and_expr   -> or_expr_bin
 
-@dataclass(frozen=True)
-class Identifier:
-    name: str
+?and_expr: equality_expr
+     | and_expr "&&" equality_expr   -> and_expr_bin
 
+?equality_expr: comparison_expr
+          | equality_expr "==" comparison_expr   -> eq_expr_bin
+          | equality_expr "!=" comparison_expr   -> ne_expr_bin
 
-@dataclass(frozen=True)
-class SourceRef:
-    name: str
-    line: int
-    column: int
+?comparison_expr: add_expr
+        | comparison_expr "<" add_expr   -> lt_expr_bin
+        | comparison_expr "<=" add_expr   -> le_expr_bin
+        | comparison_expr ">" add_expr   -> gt_expr_bin
+        | comparison_expr ">=" add_expr   -> ge_expr_bin
 
+?add_expr: mul_expr
+     | add_expr "+" mul_expr   -> add_expr_bin
+     | add_expr "-" mul_expr   -> sub_expr_bin
 
-@dataclass(frozen=True)
-class CallExpression:
-    name: str
-    args: tuple[Expression, ...]
+?mul_expr: unary_expr
+     | mul_expr "*" unary_expr   -> mul_expr_bin
+     | mul_expr "/" unary_expr   -> div_expr_bin
+     | mul_expr "%" unary_expr   -> mod_expr_bin
 
+?unary_expr: "!" unary_expr   -> not_unary
+       | "-" unary_expr   -> neg_unary
+           | primary
 
-@dataclass(frozen=True)
-class UnaryExpression:
-    operator: str
-    operand: Expression
+?primary: call_expr
+        | source_ref
+        | literal
+        | IDENT   -> identifier
+        | "(" expr ")"
 
+call_expr: IDENT "(" [call_args] ")"
+call_args: expr ("," expr)*
+source_ref: IDENT "@" INT ":" INT
 
-@dataclass(frozen=True)
-class BinaryExpression:
-    operator: str
-    left: Expression
-    right: Expression
+?literal: INT      -> int_lit
+        | BOOL     -> bool_lit
+        | NONE     -> none_lit
+        | STRING   -> string_lit
 
+BOOL: "true" | "false" | "True" | "False"
+NONE: "None"
+IDENT: /[A-Za-z_][A-Za-z0-9_]*/
 
-Expression = Literal | Identifier | SourceRef | CallExpression | UnaryExpression | BinaryExpression
-
-_BINARY_PRECEDENCE = {
-    "||": 1,
-    "&&": 2,
-    "==": 3,
-    "!=": 3,
-    "<": 4,
-    "<=": 4,
-    ">": 4,
-    ">=": 4,
-    "+": 5,
-    "-": 5,
-    "*": 6,
-    "/": 6,
-    "%": 6,
-}
-_UNARY_OPERATORS = {"!", "-"}
-_MULTI_CHAR_OPERATORS = ("&&", "||", "==", "!=", "<=", ">=")
-
-
-@dataclass(frozen=True)
-class _Token:
-    kind: str
-    value: str
-    line: int
-    column: int
+%import common.INT
+%import common.ESCAPED_STRING -> STRING
+%import common.WS
+%ignore WS
+"""
 
 
-class _Lexer:
-    def __init__(self, text: str):
-        self._text = text
-        self._index = 0
-        self._line = 1
-        self._column = 1
-
-    def tokenize(self) -> list[_Token]:
-        tokens: list[_Token] = []
-        while self._index < len(self._text):
-            char = self._text[self._index]
-            if char in " \t\r":
-                self._advance(char)
-                continue
-            if char == "\n":
-                self._advance(char)
-                continue
-
-            token_line = self._line
-            token_column = self._column
-
-            matched_operator = next(
-                (operator for operator in _MULTI_CHAR_OPERATORS if self._text.startswith(operator, self._index)),
-                None,
-            )
-            if matched_operator is not None:
-                self._advance_many(matched_operator)
-                tokens.append(_Token("OP", matched_operator, token_line, token_column))
-                continue
-
-            if char in "()+-*/%,!<>@:":
-                self._advance(char)
-                token_kind = "OP" if char in "+-*/%!<>" else char
-                tokens.append(_Token(token_kind, char, token_line, token_column))
-                continue
-
-            if char.isdigit():
-                start = self._index
-                while self._index < len(self._text) and self._text[self._index].isdigit():
-                    self._advance(self._text[self._index])
-                tokens.append(_Token("INT", self._text[start:self._index], token_line, token_column))
-                continue
-
-            if char.isalpha() or char == "_":
-                start = self._index
-                while self._index < len(self._text) and (
-                    self._text[self._index].isalnum() or self._text[self._index] == "_"
-                ):
-                    self._advance(self._text[self._index])
-                tokens.append(_Token("IDENT", self._text[start:self._index], token_line, token_column))
-                continue
-
-            raise DSLParseError(f"Unexpected character {char!r}", token_line, token_column)
-
-        tokens.append(_Token("EOF", "", self._line, self._column))
-        return tokens
-
-    def _advance_many(self, text: str) -> None:
-        for char in text:
-            self._advance(char)
-
-    def _advance(self, char: str) -> None:
-        self._index += 1
-        if char == "\n":
-            self._line += 1
-            self._column = 1
-        else:
-            self._column += 1
+_LARK_PARSER = Lark(_GRAMMAR, parser="lalr", lexer="contextual", maybe_placeholders=False)
 
 
-class _Parser:
-    def __init__(self, text: str, allowed_operators: set[str], *, allow_unknown_operators: bool):
-        self._tokens = _Lexer(text).tokenize()
-        self._index = 0
+class _TreeToAst(Transformer[Token, Expression]):
+    def __init__(self, allowed_operators: set[str], *, allow_unknown_operators: bool):
+        super().__init__()
         self._allowed_operators = allowed_operators
         self._allow_unknown_operators = allow_unknown_operators
 
-    def parse(self) -> Expression:
-        expression = self._parse_expression(1)
-        if self._peek().kind != "EOF":
-            token = self._peek()
-            raise DSLParseError(f"Unexpected token {token.value!r}", token.line, token.column)
-        return expression
+    def int_lit(self, children: list[Token]) -> Literal:
+        return Literal(value=int(children[0]))
 
-    def _parse_expression(self, min_precedence: int) -> Expression:
-        left = self._parse_unary()
+    def bool_lit(self, children: list[Token]) -> Literal:
+        return Literal(value=str(children[0]).lower() == "true")
 
-        while True:
-            token = self._peek()
-            if token.kind != "OP":
-                break
-            precedence = _BINARY_PRECEDENCE.get(token.value)
-            if precedence is None or precedence < min_precedence:
-                break
+    def none_lit(self, children: list[Token]) -> Literal:
+        _ = children
+        return Literal(value=None)
 
-            operator = self._consume("OP").value
-            right = self._parse_expression(precedence + 1)
-            left = BinaryExpression(operator=operator, left=left, right=right)
+    def string_lit(self, children: list[Token]) -> Literal:
+        return Literal(value=json.loads(str(children[0])))
 
-        return left
+    def identifier(self, children: list[Token]) -> Identifier:
+        return Identifier(name=str(children[0]))
 
-    def _parse_unary(self) -> Expression:
-        token = self._peek()
-        if token.kind == "OP" and token.value in _UNARY_OPERATORS:
-            operator = self._consume("OP").value
-            operand = self._parse_unary()
-            return UnaryExpression(operator=operator, operand=operand)
-        return self._parse_primary()
+    def source_ref(self, children: list[Token]) -> SourceRef:
+        return SourceRef(name=str(children[0]), line=int(children[1]), column=int(children[2]))
 
-    def _parse_primary(self) -> Expression:
-        token = self._peek()
+    def call_args(self, children: list[Expression]) -> list[Expression]:
+        return list(children)
 
-        if token.kind == "INT":
-            value = int(self._consume("INT").value)
-            return Literal(value=value)
-
-        if token.kind == "IDENT":
-            identifier = self._consume("IDENT")
-            if identifier.value == "None":
-                return Literal(value=None)
-            if identifier.value in {"true", "false", "True", "False"}:
-                return Literal(value=identifier.value.lower() == "true")
-
-            if self._match("("):
-                args = self._parse_call_args()
-                if (
-                    identifier.value not in self._allowed_operators
-                    and not self._allow_unknown_operators
-                ):
-                    raise DSLValidationError(
-                        f"Unknown operator {identifier.value!r}. Allowed operators: {sorted(self._allowed_operators)}"
-                    )
-                return CallExpression(name=identifier.value, args=tuple(args))
-
-            if self._match("@"):
-                line = self._parse_positive_int("source line")
-                self._expect(":")
-                column = self._parse_positive_int("source column")
-                return SourceRef(name=identifier.value, line=line, column=column)
-
-            return Identifier(name=identifier.value)
-
-        if self._match("("):
-            expression = self._parse_expression(1)
-            self._expect(")")
-            return expression
-
-        found = repr(token.value) if token.value else "end of input"
-        raise DSLParseError(
-            f"Expected expression, found {found}",
-            token.line,
-            token.column,
-        )
-
-    def _parse_call_args(self) -> list[Expression]:
+    def call_expr(self, children: list[Token | list[Expression]]) -> CallExpression:
+        name = str(children[0])
         args: list[Expression] = []
-        if self._match(")"):
-            return args
+        if len(children) > 1 and isinstance(children[1], list):
+            args = children[1]
 
-        while True:
-            args.append(self._parse_expression(1))
-            if self._match(")"):
-                return args
-            self._expect(",")
+        if name not in self._allowed_operators and not self._allow_unknown_operators:
+            raise DSLValidationError(
+                f"Unknown operator {name!r}. Allowed operators: {sorted(self._allowed_operators)}"
+            )
 
-    def _parse_positive_int(self, label: str) -> int:
-        token = self._peek()
-        if token.kind != "INT":
-            raise DSLParseError(f"Expected {label}", token.line, token.column)
-        value = int(self._consume("INT").value)
-        return value
+        return CallExpression(name=name, args=tuple(args))
 
-    def _peek(self) -> _Token:
-        return self._tokens[self._index]
+    def not_unary(self, children: list[Expression]) -> UnaryExpression:
+        return UnaryExpression(operator="!", operand=children[0])
 
-    def _consume(self, kind: str) -> _Token:
-        token = self._peek()
-        if token.kind != kind:
-            raise DSLParseError(f"Expected {kind}", token.line, token.column)
-        self._index += 1
-        return token
+    def neg_unary(self, children: list[Expression]) -> UnaryExpression:
+        return UnaryExpression(operator="-", operand=children[0])
 
-    def _expect(self, symbol: str) -> None:
-        token = self._peek()
-        if token.value != symbol:
-            raise DSLParseError(f"Expected {symbol!r}", token.line, token.column)
-        self._index += 1
+    def _binary(self, operator: str, children: list[Expression]) -> BinaryExpression:
+        return BinaryExpression(operator=operator, left=children[0], right=children[1])
 
-    def _match(self, symbol: str) -> bool:
-        token = self._peek()
-        if token.value != symbol:
-            return False
-        self._index += 1
-        return True
+    def or_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("||", children)
+
+    def and_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("&&", children)
+
+    def eq_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("==", children)
+
+    def ne_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("!=", children)
+
+    def lt_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("<", children)
+
+    def le_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("<=", children)
+
+    def gt_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary(">", children)
+
+    def ge_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary(">=", children)
+
+    def add_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("+", children)
+
+    def sub_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("-", children)
+
+    def mul_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("*", children)
+
+    def div_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("/", children)
+
+    def mod_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("%", children)
+
+
+def _to_parse_error(exc: UnexpectedCharacters | UnexpectedToken) -> DSLParseError:
+    if isinstance(exc, UnexpectedCharacters):
+        return DSLParseError(f"Unexpected character {exc.char!r}", exc.line, exc.column)
+
+    token_value = str(exc.token.value) if exc.token.value is not None else ""
+    found = repr(token_value) if token_value else "end of input"
+    return DSLParseError(f"Expected expression, found {found}", exc.line, exc.column)
 
 
 def parse_dsl(
@@ -276,8 +179,13 @@ def parse_dsl(
     allow_unknown_operators: bool = False,
 ) -> Expression:
     allowed_operators = _resolve_operator_names(operator_config)
-    parser = _Parser(source, allowed_operators, allow_unknown_operators=allow_unknown_operators)
-    return parser.parse()
+    try:
+        parse_tree = _LARK_PARSER.parse(source)
+    except (UnexpectedCharacters, UnexpectedToken) as exc:
+        raise _to_parse_error(exc) from exc
+
+    transformer = _TreeToAst(allowed_operators, allow_unknown_operators=allow_unknown_operators)
+    return transformer.transform(parse_tree)
 
 
 def validate_task1_ast(ast: Expression, required_operators: Iterable[str]) -> None:

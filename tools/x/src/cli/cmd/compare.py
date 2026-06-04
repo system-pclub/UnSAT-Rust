@@ -19,6 +19,7 @@ from cli.cmd.sync import ensure_crate_metadata_file
 
 
 PLACEHOLDER = "<placeholder>"
+HUMAN_PLACEHOLDER = "placeholder"
 
 
 def _find_repo_root() -> Path:
@@ -85,6 +86,20 @@ def _build_meta_task1_index(meta_like: dict[str, object]) -> tuple[dict[tuple[st
     by_callsite_rule: dict[tuple[str, str], str] = {}
     by_rule: dict[str, str] = {}
 
+    def _task1_text(value: object) -> str | None:
+        if isinstance(value, str):
+            normalized = value.strip()
+            if normalized and normalized not in {PLACEHOLDER, HUMAN_PLACEHOLDER}:
+                return value
+            return None
+        if isinstance(value, dict):
+            task1 = value.get("task1")
+            if isinstance(task1, str):
+                normalized = task1.strip()
+                if normalized and normalized not in {PLACEHOLDER, HUMAN_PLACEHOLDER}:
+                    return task1
+        return None
+
     report = meta_like.get("report")
     targets = None
     if isinstance(report, dict):
@@ -101,20 +116,34 @@ def _build_meta_task1_index(meta_like: dict[str, object]) -> tuple[dict[tuple[st
             if not isinstance(rules, dict):
                 continue
             for rule_id, tasks in rules.items():
-                if not isinstance(rule_id, str) or not isinstance(tasks, dict):
+                if not isinstance(rule_id, str):
                     continue
-                task1 = tasks.get("task1")
-                if isinstance(task1, str) and task1 and task1 != PLACEHOLDER:
+                task1 = _task1_text(tasks)
+                if isinstance(task1, str):
                     by_callsite_rule[(callsite_key, rule_id)] = task1
                     by_rule.setdefault(rule_id, task1)
         return by_callsite_rule, by_rule
 
-    for rule_id, tasks in meta_like.items():
-        if not isinstance(rule_id, str) or not isinstance(tasks, dict):
+    for outer_key, outer_value in meta_like.items():
+        if not isinstance(outer_key, str) or not isinstance(outer_value, dict):
             continue
-        task1 = tasks.get("task1")
-        if isinstance(task1, str) and task1 and task1 != PLACEHOLDER:
-            by_rule[rule_id] = task1
+
+        # Legacy shape: {"rule-1": {"task1": "..."}}
+        task1 = _task1_text(outer_value)
+        if isinstance(task1, str):
+            by_rule[outer_key] = task1
+            continue
+
+        # New human shape: {"<callsite-id>": {"rule-1": "..."}}
+        callsite_id = outer_key
+        for rule_id, task_like in outer_value.items():
+            if not isinstance(rule_id, str):
+                continue
+            task1 = _task1_text(task_like)
+            if isinstance(task1, str):
+                by_callsite_rule[(callsite_id, rule_id)] = task1
+                by_rule.setdefault(rule_id, task1)
+
     return by_callsite_rule, by_rule
 
 
@@ -158,37 +187,31 @@ def _run_klee_for_constraint(
     if output_path.exists():
         output_path.unlink()
 
-    candidate_ids = [callsite_id]
-    if callsite_id.isdigit():
-        candidate_ids.append(f"callsite{callsite_id}")
+    cmd = [
+        klee_bin,
+        f"--ext.callsite={callsite_id}",
+        f"--ext.dsl={ast_json}",
+        f"--dump-constraints-to-file={output_path}",
+        str(ll_path),
+    ]
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if result.returncode == 0 and output_path.is_file():
+        return
 
-    last_result: subprocess.CompletedProcess[str] | None = None
-    last_cmd: list[str] | None = None
-    for candidate_id in candidate_ids:
-        cmd = [
-            klee_bin,
-            f"--ext.callsite={candidate_id}",
-            f"--ext.dsl={ast_json}",
-            f"--dump-constraints-to-file={output_path}",
-            str(ll_path),
-        ]
-        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-        if result.returncode == 0 and output_path.is_file():
-            return
-        last_result = result
-        last_cmd = cmd
-
-    if last_result is None or last_cmd is None:
-        raise RuntimeError("klee failed: no command was attempted")
+    klee_logs = [
+        (Path.cwd() / "klee-last" / "messages.txt").resolve(),
+        (Path.cwd() / "klee-last" / "warnings.txt").resolve(),
+    ]
+    existing_logs = [str(path) for path in klee_logs if path.is_file()]
+    log_hint = ", ".join(existing_logs) if existing_logs else str((Path.cwd() / "klee-last").resolve())
 
     raise RuntimeError(
         "klee failed:\n"
-        f"cmd: {' '.join(last_cmd)}\n"
-        f"exit: {last_result.returncode}\n"
+        f"cmd: {' '.join(cmd)}\n"
+        f"exit: {result.returncode}\n"
         f"dump_exists: {output_path.is_file()}\n"
         f"dump_path: {output_path}\n"
-        f"stdout: {last_result.stdout}\n"
-        f"stderr: {last_result.stderr}"
+        f"klee_log: {log_hint}"
     )
 
 
@@ -379,11 +402,18 @@ def run(args: argparse.Namespace) -> int:
         output_dir=ir_output_dir,
         rustc=args.rustc,
         test=args.test,
-        build_std=args.build_std,
+        build_std=True,
         force=False,
     )
 
     current_meta = _load_json(meta_path)
+    human_path = (repo_root / "human" / meta_path.name).resolve()
+    if human_path.is_file():
+        current_human = _load_json(human_path)
+    else:
+        # Backward compatibility for older synced metadata that still stores rules in report.targets.
+        current_human = current_meta
+
     other_meta = _load_json(other_path)
     operators = _load_operator_entries(repo_root)
 
@@ -394,6 +424,7 @@ def run(args: argparse.Namespace) -> int:
     if not isinstance(targets, list):
         raise RuntimeError(f"missing targets in {meta_path}")
 
+    current_by_callsite_rule, _ = _build_meta_task1_index(current_human)
     other_by_callsite_rule, other_by_rule = _build_meta_task1_index(other_meta)
     work_dir = Path(args.work_dir)
     if not work_dir.is_absolute():
@@ -409,9 +440,6 @@ def run(args: argparse.Namespace) -> int:
     for index, raw_target in enumerate(targets, start=1):
         if not isinstance(raw_target, dict):
             continue
-        rules = raw_target.get("rules")
-        if not isinstance(rules, dict) or not rules:
-            continue
 
         callsite_key = _target_callsite_key(raw_target, index)
         callsite_id = str(index)
@@ -421,14 +449,21 @@ def run(args: argparse.Namespace) -> int:
             if isinstance(callsite_id_raw, str) and callsite_id_raw:
                 callsite_id = callsite_id_raw
 
-        for rule_id, tasks in sorted(rules.items()):
-            if not isinstance(rule_id, str) or not isinstance(tasks, dict):
-                continue
-            left_dsl = tasks.get("task1")
-            if not isinstance(left_dsl, str) or not left_dsl or left_dsl == PLACEHOLDER:
+        left_rule_values = {
+            rule_id: task1
+            for (candidate_callsite_id, rule_id), task1 in current_by_callsite_rule.items()
+            if candidate_callsite_id == callsite_id
+        }
+        if not left_rule_values:
+            continue
+
+        for rule_id, left_dsl in sorted(left_rule_values.items()):
+            if not isinstance(rule_id, str) or not isinstance(left_dsl, str) or not left_dsl:
                 continue
 
-            right_dsl = other_by_callsite_rule.get((callsite_key, rule_id), other_by_rule.get(rule_id))
+            right_dsl = other_by_callsite_rule.get((callsite_id, rule_id))
+            if not isinstance(right_dsl, str) or not right_dsl:
+                right_dsl = other_by_callsite_rule.get((callsite_key, rule_id), other_by_rule.get(rule_id))
             if not isinstance(right_dsl, str) or not right_dsl:
                 print(f"[skip] target={callsite_key} rule={rule_id}: missing eval task1")
                 continue
