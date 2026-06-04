@@ -1,29 +1,503 @@
 import argparse
 import json
+import subprocess
 from pathlib import Path
+import re
 
-from verirule.dsl import translate_buggy_violation
-from verirule.equivalence import compare_buggy_violation_equivalence
-from verirule.utils import load_json
+from dsl import (
+    BinaryExpression,
+    CallExpression,
+    Identifier,
+    Literal,
+    SourceRef,
+    UnaryExpression,
+    parse_dsl,
+)
+
+from cli.cmd.llvmir import ensure_linked_llvm_ir_file
+from cli.cmd.sync import ensure_crate_metadata_file
+
+
+PLACEHOLDER = "<placeholder>"
+
+
+def _find_repo_root() -> Path:
+    start = Path.cwd().resolve()
+    for directory in [start, *start.parents]:
+        if (directory / "crates").is_dir():
+            return directory
+    raise RuntimeError(
+        f"could not locate repository root from {start} (expected an ancestor containing crates/)"
+    )
+
+
+def _load_json_value(path: Path) -> object:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid JSON in {path}: {exc}") from exc
+    return data
+
+
+def _load_json(path: Path) -> dict[str, object]:
+    data = _load_json_value(path)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"expected JSON object in {path}")
+    return data
+
+
+def _load_operator_entries(repo_root: Path) -> list[dict[str, object]]:
+    operators_path = repo_root / "operators.json"
+    if not operators_path.is_file():
+        return []
+
+    data = _load_json_value(operators_path)
+    raw_entries: object
+    if isinstance(data, list):
+        raw_entries = data
+    else:
+        raw_entries = data.get("operators")
+        if not isinstance(raw_entries, list):
+            raise RuntimeError(f"operators.json object must contain an operators array: {operators_path}")
+
+    entries: list[dict[str, object]] = []
+    for item in raw_entries:
+        if isinstance(item, dict):
+            entries.append(dict(item))
+    return entries
+
+
+def _target_callsite_key(target: dict[str, object], fallback_index: int) -> str:
+    caller = target.get("caller")
+    callsite = target.get("callsite")
+    if not isinstance(caller, dict) or not isinstance(callsite, dict):
+        return str(fallback_index)
+
+    path = caller.get("path")
+    line = callsite.get("line")
+    col = callsite.get("col")
+    if isinstance(path, str) and isinstance(line, int) and isinstance(col, int):
+        return f"{path}:{line}:{col}"
+    return str(fallback_index)
+
+
+def _build_meta_task1_index(meta_like: dict[str, object]) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
+    by_callsite_rule: dict[tuple[str, str], str] = {}
+    by_rule: dict[str, str] = {}
+
+    report = meta_like.get("report")
+    targets = None
+    if isinstance(report, dict):
+        targets = report.get("targets")
+    elif isinstance(meta_like.get("targets"), list):
+        targets = meta_like.get("targets")
+
+    if isinstance(targets, list):
+        for index, raw_target in enumerate(targets, start=1):
+            if not isinstance(raw_target, dict):
+                continue
+            callsite_key = _target_callsite_key(raw_target, index)
+            rules = raw_target.get("rules")
+            if not isinstance(rules, dict):
+                continue
+            for rule_id, tasks in rules.items():
+                if not isinstance(rule_id, str) or not isinstance(tasks, dict):
+                    continue
+                task1 = tasks.get("task1")
+                if isinstance(task1, str) and task1 and task1 != PLACEHOLDER:
+                    by_callsite_rule[(callsite_key, rule_id)] = task1
+                    by_rule.setdefault(rule_id, task1)
+        return by_callsite_rule, by_rule
+
+    for rule_id, tasks in meta_like.items():
+        if not isinstance(rule_id, str) or not isinstance(tasks, dict):
+            continue
+        task1 = tasks.get("task1")
+        if isinstance(task1, str) and task1 and task1 != PLACEHOLDER:
+            by_rule[rule_id] = task1
+    return by_callsite_rule, by_rule
+
+
+def _expr_to_ext_ast(expr: object) -> dict[str, object]:
+    if isinstance(expr, Literal):
+        return {"type": "literal", "value": expr.value}
+    if isinstance(expr, SourceRef):
+        return {"type": "source_ref", "selector": f"{expr.name}@{expr.line}:{expr.column}"}
+    if isinstance(expr, Identifier):
+        return {"type": "identifier", "name": expr.name}
+    if isinstance(expr, CallExpression):
+        return {
+            "type": "call",
+            "name": expr.name,
+            "args": [_expr_to_ext_ast(arg) for arg in expr.args],
+        }
+    if isinstance(expr, UnaryExpression):
+        return {
+            "type": "unary",
+            "op": expr.operator,
+            "operand": _expr_to_ext_ast(expr.operand),
+        }
+    if isinstance(expr, BinaryExpression):
+        return {
+            "type": "binary",
+            "op": expr.operator,
+            "left": _expr_to_ext_ast(expr.left),
+            "right": _expr_to_ext_ast(expr.right),
+        }
+    raise RuntimeError(f"unsupported DSL node: {type(expr).__name__}")
+
+
+def _run_klee_for_constraint(
+    *,
+    ll_path: Path,
+    callsite_id: str,
+    ast_json: str,
+    output_path: Path,
+    klee_bin: str,
+) -> None:
+    if output_path.exists():
+        output_path.unlink()
+
+    candidate_ids = [callsite_id]
+    if callsite_id.isdigit():
+        candidate_ids.append(f"callsite{callsite_id}")
+
+    last_result: subprocess.CompletedProcess[str] | None = None
+    last_cmd: list[str] | None = None
+    for candidate_id in candidate_ids:
+        cmd = [
+            klee_bin,
+            f"--ext.callsite={candidate_id}",
+            f"--ext.dsl={ast_json}",
+            f"--dump-constraints-to-file={output_path}",
+            str(ll_path),
+        ]
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if result.returncode == 0 and output_path.is_file():
+            return
+        last_result = result
+        last_cmd = cmd
+
+    if last_result is None or last_cmd is None:
+        raise RuntimeError("klee failed: no command was attempted")
+
+    raise RuntimeError(
+        "klee failed:\n"
+        f"cmd: {' '.join(last_cmd)}\n"
+        f"exit: {last_result.returncode}\n"
+        f"dump_exists: {output_path.is_file()}\n"
+        f"dump_path: {output_path}\n"
+        f"stdout: {last_result.stdout}\n"
+        f"stderr: {last_result.stderr}"
+    )
+
+
+def _split_top_level_sexprs(text: str) -> list[str]:
+    exprs: list[str] = []
+    depth = 0
+    start = -1
+    in_string = False
+    escape = False
+    in_comment = False
+
+    for i, ch in enumerate(text):
+        if in_comment:
+            if ch == "\n":
+                in_comment = False
+            continue
+
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == ";":
+            in_comment = True
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+
+        if ch == "(":
+            if depth == 0:
+                start = i
+            depth += 1
+            continue
+
+        if ch == ")":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                exprs.append(text[start : i + 1].strip())
+                start = -1
+
+    return exprs
+
+
+def _extract_command_name(expr: str) -> str | None:
+    match = re.match(r"^\(\s*([A-Za-z0-9_\-.]+)", expr)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _extract_assert_body(assert_expr: str) -> str:
+    inner = assert_expr.strip()
+    if not inner.startswith("(assert"):
+        raise RuntimeError(f"expected assert expression, got: {assert_expr[:40]}")
+    body = inner[len("(assert") :].strip()
+    if not body.endswith(")"):
+        raise RuntimeError(f"malformed assert expression: {assert_expr[:40]}")
+    return body[:-1].strip()
+
+
+def _read_smt_parts(path: Path) -> tuple[list[str], list[str]]:
+    text = path.read_text(encoding="utf-8")
+    commands = _split_top_level_sexprs(text)
+    decls: list[str] = []
+    asserts: list[str] = []
+
+    for cmd in commands:
+        name = _extract_command_name(cmd)
+        if name is None:
+            continue
+        if name == "assert":
+            asserts.append(_extract_assert_body(cmd))
+            continue
+        if name in {"declare-fun", "declare-const", "define-fun", "declare-sort", "define-sort"}:
+            decls.append(cmd)
+
+    if not asserts:
+        asserts = ["true"]
+    return decls, asserts
+
+
+def _equivalence_script(left_path: Path, right_path: Path) -> str:
+    left_decls, left_asserts = _read_smt_parts(left_path)
+    right_decls, right_asserts = _read_smt_parts(right_path)
+
+    merged_decls: list[str] = []
+    seen: set[str] = set()
+    for decl in [*left_decls, *right_decls]:
+        if decl in seen:
+            continue
+        seen.add(decl)
+        merged_decls.append(decl)
+
+    left_formula = "(and " + " ".join(left_asserts) + ")"
+    right_formula = "(and " + " ".join(right_asserts) + ")"
+
+    lines = ["(set-logic ALL)"]
+    lines.extend(merged_decls)
+    lines.append(f"(assert (xor {left_formula} {right_formula}))")
+    lines.append("(check-sat)")
+    lines.append("(exit)")
+    return "\n".join(lines) + "\n"
+
+
+def _resolve_z3_binary(repo_root: Path) -> str:
+    candidates = [
+        "z3",
+        str(repo_root / "tools" / "x" / ".venv" / "bin" / "z3"),
+    ]
+    for candidate in candidates:
+        try:
+            result = subprocess.run([candidate, "-version"], check=False, capture_output=True, text=True)
+        except OSError:
+            continue
+        if result.returncode == 0:
+            return candidate
+    raise RuntimeError("could not find z3 binary (tried PATH and tools/x/.venv/bin/z3)")
+
+
+def _check_smt_equivalence(left_path: Path, right_path: Path, z3_bin: str) -> tuple[bool | None, str]:
+    script = _equivalence_script(left_path, right_path)
+    result = subprocess.run(
+        [z3_bin, "-in"],
+        input=script,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"z3 failed comparing {left_path.name} and {right_path.name}: {result.stderr}")
+
+    output = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    status = output[-1] if output else ""
+    if status == "unsat":
+        return True, status
+    if status == "sat":
+        return False, status
+    return None, status or "unknown"
+
 
 
 
 def run(args: argparse.Namespace) -> int:
-    rule_a = load_json(args.json_a)
-    rule_b = load_json(args.json_b)
+    repo_root = _find_repo_root()
 
-    result = compare_buggy_violation_equivalence(
-        rule_a,
-        rule_b,
-        use_context=not args.no_context,
+    cargo_dir = Path(args.cargo_dir)
+    if not cargo_dir.is_absolute():
+        cargo_dir = (repo_root / cargo_dir).resolve()
+    else:
+        cargo_dir = cargo_dir.resolve()
+
+    if not cargo_dir.is_dir() or not (cargo_dir / "Cargo.toml").is_file():
+        raise RuntimeError(f"invalid crate directory: {cargo_dir}")
+
+    other_path = Path(args.other)
+    if not other_path.is_absolute():
+        other_path = (repo_root / other_path).resolve()
+    else:
+        other_path = other_path.resolve()
+    if not other_path.is_file():
+        raise RuntimeError(f"other JSON file does not exist: {other_path}")
+
+    studied_rules = Path(args.studied_rules)
+    if not studied_rules.is_absolute():
+        studied_rules = (repo_root / studied_rules).resolve()
+
+    meta_path = ensure_crate_metadata_file(
+        repo_root,
+        cargo_dir,
+        studied_rules=studied_rules,
+        force=False,
     )
 
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    ir_output_dir = Path(args.ir_output_dir)
+    if not ir_output_dir.is_absolute():
+        ir_output_dir = (repo_root / ir_output_dir).resolve()
+    else:
+        ir_output_dir = ir_output_dir.resolve()
+        
 
-    if result["equivalent"] is True:
-        return 0
+    ll_path = ensure_linked_llvm_ir_file(
+        cargo_dir=cargo_dir,
+        output_dir=ir_output_dir,
+        rustc=args.rustc,
+        test=args.test,
+        build_std=args.build_std,
+        force=False,
+    )
 
-    if result["equivalent"] is False:
-        return 1
+    current_meta = _load_json(meta_path)
+    other_meta = _load_json(other_path)
+    operators = _load_operator_entries(repo_root)
 
-    return 2
+    report = current_meta.get("report")
+    if not isinstance(report, dict):
+        raise RuntimeError(f"missing report object in {meta_path}")
+    targets = report.get("targets")
+    if not isinstance(targets, list):
+        raise RuntimeError(f"missing targets in {meta_path}")
+
+    other_by_callsite_rule, other_by_rule = _build_meta_task1_index(other_meta)
+    work_dir = Path(args.work_dir)
+    if not work_dir.is_absolute():
+        work_dir = (repo_root / work_dir).resolve()
+    else:
+        work_dir = work_dir.resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    klee_bin = args.klee_bin
+    z3_bin = _resolve_z3_binary(repo_root)
+    results: list[dict[str, object]] = []
+
+    for index, raw_target in enumerate(targets, start=1):
+        if not isinstance(raw_target, dict):
+            continue
+        rules = raw_target.get("rules")
+        if not isinstance(rules, dict) or not rules:
+            continue
+
+        callsite_key = _target_callsite_key(raw_target, index)
+        callsite_id = str(index)
+        callsite = raw_target.get("callsite")
+        if isinstance(callsite, dict):
+            callsite_id_raw = callsite.get("id")
+            if isinstance(callsite_id_raw, str) and callsite_id_raw:
+                callsite_id = callsite_id_raw
+
+        for rule_id, tasks in sorted(rules.items()):
+            if not isinstance(rule_id, str) or not isinstance(tasks, dict):
+                continue
+            left_dsl = tasks.get("task1")
+            if not isinstance(left_dsl, str) or not left_dsl or left_dsl == PLACEHOLDER:
+                continue
+
+            right_dsl = other_by_callsite_rule.get((callsite_key, rule_id), other_by_rule.get(rule_id))
+            if not isinstance(right_dsl, str) or not right_dsl:
+                print(f"[skip] target={callsite_key} rule={rule_id}: missing eval task1")
+                continue
+
+            left_ast = parse_dsl(left_dsl, operators, allow_unknown_operators=True)
+            right_ast = parse_dsl(right_dsl, operators, allow_unknown_operators=True)
+
+            left_ast_json = json.dumps(_expr_to_ext_ast(left_ast), separators=(",", ":"), ensure_ascii=False)
+            right_ast_json = json.dumps(_expr_to_ext_ast(right_ast), separators=(",", ":"), ensure_ascii=False)
+
+            left_smt = work_dir / f"{callsite_id}-{rule_id}-task1.smt2"
+            right_smt = work_dir / f"{callsite_id}-{rule_id}-task1.eval.smt2"
+
+            try:
+                _run_klee_for_constraint(
+                    ll_path=ll_path,
+                    callsite_id=callsite_id,
+                    ast_json=left_ast_json,
+                    output_path=left_smt,
+                    klee_bin=klee_bin,
+                )
+                _run_klee_for_constraint(
+                    ll_path=ll_path,
+                    callsite_id=callsite_id,
+                    ast_json=right_ast_json,
+                    output_path=right_smt,
+                    klee_bin=klee_bin,
+                )
+
+                equivalent, z3_status = _check_smt_equivalence(left_smt, right_smt, z3_bin)
+            except Exception as exc:
+                print(f"[skip] target={callsite_key} rule={rule_id}: {exc}")
+                continue
+
+            results.append(
+                {
+                    "target": callsite_key,
+                    "callsite_id": callsite_id,
+                    "rule_id": rule_id,
+                    "equivalent": equivalent,
+                    "z3": z3_status,
+                    "left_smt2": str(left_smt),
+                    "right_smt2": str(right_smt),
+                }
+            )
+
+            status_text = "equivalent" if equivalent is True else "different" if equivalent is False else "unknown"
+            print(f"[compare] target={callsite_key} rule={rule_id} => {status_text} (z3={z3_status})")
+
+    summary = {
+        "total": len(results),
+        "equivalent": sum(1 for item in results if item["equivalent"] is True),
+        "different": sum(1 for item in results if item["equivalent"] is False),
+        "unknown": sum(1 for item in results if item["equivalent"] is None),
+    }
+    print(
+        f"summary: total={summary['total']} equivalent={summary['equivalent']} "
+        f"different={summary['different']} unknown={summary['unknown']}"
+    )
+
+    output_path = Path(args.output)
+    if not output_path.is_absolute():
+        output_path = (repo_root / output_path).resolve()
+    else:
+        output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps({"summary": summary, "results": results}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(f"wrote compare report to {output_path}")
+    return 0

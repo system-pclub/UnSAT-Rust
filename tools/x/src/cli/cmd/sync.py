@@ -482,11 +482,16 @@ def _transform_report(
     targets_input = report_targets
 
     targets: list[dict[str, object]] = []
-    for raw_target in targets_input:
+    for target_index, raw_target in enumerate(targets_input, start=1):
         if not isinstance(raw_target, dict):
             continue
 
         target = _normalize_target_schema(raw_target)
+        callsite = target.get("callsite")
+        if isinstance(callsite, dict):
+            callsite_with_id = dict(callsite)
+            callsite_with_id["id"] = str(target_index)
+            target["callsite"] = callsite_with_id
         matched_rules = _match_rules_for_target(target, rules_by_path, allowed_rule_ids)
         preserved_rules = preserved_rule_tasks.get(_target_identity(target), {})
         target["rules"] = _merge_rule_tasks(
@@ -499,71 +504,155 @@ def _transform_report(
             repo_root,
         )
         targets.append(target)
-
     return {"targets": targets}
+
+
+def _resolve_studied_rules_path(repo_root: Path, studied_rules: str | Path) -> Path:
+    studied_rules_path = Path(studied_rules)
+    if not studied_rules_path.is_absolute():
+        studied_rules_path = (repo_root / studied_rules_path).resolve()
+    return studied_rules_path
+
+
+def _sync_single_crate(
+    *,
+    repo_root: Path,
+    crate_dir: Path,
+    allowed_rule_ids: set[str],
+    rules_by_path: dict[str, list[dict[str, object]]],
+    operators: list[dict[str, object]],
+    operator_document: dict[str, object] | None,
+    mirscan_rustc: str,
+) -> Path:
+    crate_name = crate_dir.name or "unknown"
+    crates_dir = repo_root / "crates"
+    crate_dir_relative = crate_dir.relative_to(repo_root).as_posix()
+    out_path = crates_dir / f"{crate_name}.json"
+    preserved_rule_tasks = _load_existing_rule_tasks(out_path)
+
+    print(f"syncing crate {crate_name} with rustc={mirscan_rustc}")
+
+    report_path = crate_dir / "report.json"
+    _compile_crate(crate_dir, mirscan_rustc, report_path)
+
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"report.json is not valid JSON for crate {crate_name} at {report_path}"
+        ) from exc
+
+    if not isinstance(report, dict):
+        raise RuntimeError(f"report.json must be a JSON object for crate {crate_name} at {report_path}")
+
+    transformed_report = _transform_report(
+        crate_name,
+        report,
+        rules_by_path,
+        allowed_rule_ids,
+        preserved_rule_tasks,
+        operators,
+        operator_document,
+        repo_root,
+    )
+    report_path.write_text(
+        json.dumps(transformed_report, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    cargo_toml_path = crate_dir / "Cargo.toml"
+    cargo_toml_content = cargo_toml_path.read_text(encoding="utf-8")
+    parsed_name, parsed_description = _parse_package_name_and_description(cargo_toml_content)
+
+    out = {
+        "crate_dir": crate_dir_relative,
+        "crate_name": parsed_name,
+        "description": parsed_description,
+        "report": transformed_report,
+    }
+    out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return out_path
+
+
+def ensure_crate_metadata_file(
+    repo_root: Path,
+    cargo_dir: str | Path,
+    *,
+    studied_rules: str | Path = "studied_rules",
+    force: bool = False,
+) -> Path:
+    cargo_dir_path = Path(cargo_dir)
+    if not cargo_dir_path.is_absolute():
+        cargo_dir_path = (repo_root / cargo_dir_path).resolve()
+    else:
+        cargo_dir_path = cargo_dir_path.resolve()
+
+    if not cargo_dir_path.is_dir():
+        raise RuntimeError(f"provided cargo dir is not a directory: {cargo_dir_path}")
+    if not (cargo_dir_path / "Cargo.toml").is_file():
+        raise RuntimeError(f"provided cargo dir does not contain Cargo.toml: {cargo_dir_path}")
+
+    out_path = (repo_root / "crates" / f"{cargo_dir_path.name}.json").resolve()
+    if out_path.is_file() and not force:
+        try:
+            loaded = json.loads(out_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                return out_path
+        except json.JSONDecodeError:
+            # Existing metadata is malformed; regenerate it.
+            pass
+
+    studied_rules_path = _resolve_studied_rules_path(repo_root, studied_rules)
+    allowed_rule_ids = _load_studied_rule_ids(studied_rules_path)
+    rules_by_path = _load_rules_by_path(repo_root)
+    operator_document, operators = _load_operator_entries(repo_root)
+    mirscan_rustc = _resolve_mirscan_rustc(repo_root)
+
+    return _sync_single_crate(
+        repo_root=repo_root,
+        crate_dir=cargo_dir_path,
+        allowed_rule_ids=allowed_rule_ids,
+        rules_by_path=rules_by_path,
+        operators=operators,
+        operator_document=operator_document,
+        mirscan_rustc=mirscan_rustc,
+    )
 
 
 def run(args: argparse.Namespace) -> int:
     repo_root = _find_repo_root()
     crates_dir = repo_root / "crates"
-    studied_rules_path = Path(args.studied_rules)
-    if not studied_rules_path.is_absolute():
-        studied_rules_path = (repo_root / studied_rules_path).resolve()
-    allowed_rule_ids = _load_studied_rule_ids(studied_rules_path)
+    cargo_dir = getattr(args, "cargo_dir", None)
 
+    studied_rules_path = _resolve_studied_rules_path(repo_root, args.studied_rules)
+    allowed_rule_ids = _load_studied_rule_ids(studied_rules_path)
     rules_by_path = _load_rules_by_path(repo_root)
     operator_document, operators = _load_operator_entries(repo_root)
-
     mirscan_rustc = _resolve_mirscan_rustc(repo_root)
-    crate_dirs = _find_crates(crates_dir)
+
+    if cargo_dir:
+        cargo_dir_path = Path(cargo_dir)
+        if not cargo_dir_path.is_absolute():
+            cargo_dir_path = (repo_root / cargo_dir_path).resolve()
+        else:
+            cargo_dir_path = cargo_dir_path.resolve()
+        if not cargo_dir_path.is_dir():
+            raise RuntimeError(f"provided cargo dir is not a directory: {cargo_dir}")
+        if not (cargo_dir_path / "Cargo.toml").is_file():
+            raise RuntimeError(f"provided cargo dir does not contain Cargo.toml: {cargo_dir}")
+        crate_dirs = [cargo_dir_path]
+    else:
+        crate_dirs = _find_crates(crates_dir)
 
     for crate_dir in crate_dirs:
-        crate_name = crate_dir.name or "unknown"
-        crate_dir_relative = crate_dir.relative_to(repo_root).as_posix()
-        out_path = crates_dir / f"{crate_name}.json"
-        preserved_rule_tasks = _load_existing_rule_tasks(out_path)
-
-        print(f"syncing crate {crate_name} with rustc={mirscan_rustc}")
-
-        report_path = crate_dir / "report.json"
-        _compile_crate(crate_dir, mirscan_rustc, report_path)
-
-        try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"report.json is not valid JSON for crate {crate_name} at {report_path}"
-            ) from exc
-
-        if not isinstance(report, dict):
-            raise RuntimeError(f"report.json must be a JSON object for crate {crate_name} at {report_path}")
-
-        transformed_report = _transform_report(
-            crate_name,
-            report,
-            rules_by_path,
-            allowed_rule_ids,
-            preserved_rule_tasks,
-            operators,
-            operator_document,
-            repo_root,
+        _sync_single_crate(
+            repo_root=repo_root,
+            crate_dir=crate_dir,
+            allowed_rule_ids=allowed_rule_ids,
+            rules_by_path=rules_by_path,
+            operators=operators,
+            operator_document=operator_document,
+            mirscan_rustc=mirscan_rustc,
         )
-        report_path.write_text(
-            json.dumps(transformed_report, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-
-        cargo_toml_path = crate_dir / "Cargo.toml"
-        cargo_toml_content = cargo_toml_path.read_text(encoding="utf-8")
-        parsed_name, parsed_description = _parse_package_name_and_description(cargo_toml_content)
-
-        out = {
-            "crate_dir": crate_dir_relative,
-            "crate_name": parsed_name,
-            "description": parsed_description,
-            "report": transformed_report,
-        }
-
-        out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     return 0

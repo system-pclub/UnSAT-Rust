@@ -1,5 +1,5 @@
 import argparse
-
+import logging
 def _run_view(args: argparse.Namespace) -> int:
     from cli.cmd.view import run
 
@@ -65,6 +65,10 @@ def _run_summary(args: argparse.Namespace) -> int:
 
     return run(args)
 
+def _run_llvmir(args: argparse.Namespace) -> int:
+    from cli.cmd.llvmir import run
+
+    return run(args)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -86,21 +90,57 @@ def build_parser() -> argparse.ArgumentParser:
 
     compare_parser = subparsers.add_parser(
         "compare",
-        help="Compare whether two rule JSON files have equivalent buggy_violation constraints.",
+        help="Compare task1 constraints between a crate meta JSON and another result JSON.",
     )
     compare_parser.add_argument(
-        "json_a",
-        help="Path to first rule JSON file.",
+        "cargo_dir",
+        help="Path to the Rust crate directory (for ensuring crates/<crate>.json and LLVM IR).",
     )
     compare_parser.add_argument(
-        "json_b",
-        help="Path to second rule JSON file.",
+        "--other",
+        required=True,
+        help="Path to another JSON file (e.g., eval/<crate>.json) containing task1 results.",
     )
     compare_parser.add_argument(
-        "--no-context",
+        "--studied-rules",
+        default="studied_rules",
+        help="Path to studied_rules used when compare needs to sync metadata.",
+    )
+    compare_parser.add_argument(
+        "--ir-output-dir",
+        default=".local/irs",
+        help="Directory where linked LLVM IR is expected/written (default: .local/irs).",
+    )
+    compare_parser.add_argument(
+        "--work-dir",
+        default=".local/compare",
+        help="Directory to write intermediate SMT2 files (default: .local/compare).",
+    )
+    compare_parser.add_argument(
+        "--output",
+        default=".local/compare/report.json",
+        help="Path to JSON compare report output.",
+    )
+    compare_parser.add_argument(
+        "--klee-bin",
+        default="klee",
+        help="KLEE executable to use (default: klee).",
+    )
+    compare_parser.add_argument(
+        "--rustc",
+        help="Optional custom rustc for llvmir generation.",
+    )
+    compare_parser.add_argument(
+        "--test",
         action="store_true",
-        help="Compare buggy_violation globally, without preconditions and operation_semantics.",
+        help="Compile tests for llvmir generation instead of the main crate.",
     )
+    compare_parser.add_argument(
+        "--build-std",
+        action="store_true",
+        help="Pass -Zbuild-std while generating llvmir for compare.",
+    )
+    
     compare_parser.set_defaults(func=_run_compare)
     
     generate_parser = subparsers.add_parser(
@@ -177,6 +217,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="studied_rules",
         help="Path to file listing allowed rule ids (one per line). Defaults to studied_rules.",
     )
+    sync_parser.add_argument(
+        "--cargo-dir",
+        help="Path to only one Rust crate to sync. If not provided, all crates in crates/ will be synced.",
+    )
     sync_parser.set_defaults(func=_run_sync)
 
     merge_rules_parser = subparsers.add_parser(
@@ -216,11 +260,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show crate/target/task summary counts from crates/*.json.",
     )
     summary_parser.set_defaults(func=_run_summary)
+    
+    llvmir_parser = subparsers.add_parser(
+        "llvmir",
+        help="Compile a Rust crate with --emit=llvm-ir and collect the emitted .ll files.",
+    )
+    llvmir_parser.add_argument(
+        "cargo_dir",
+        help="Path to the Rust crate to compile.",
+    )
+    llvmir_parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Compile tests instead of the main crate.",
+    )
+    llvmir_parser.add_argument(
+        "--output-dir",
+        help="Directory to copy the collected .ll files to.",
+    )
+    llvmir_parser.add_argument(
+        "--rustc",
+        help="Path to a custom rustc executable to use for compilation.",
+    )
+    llvmir_parser.add_argument(
+        "--build-std",
+        action="store_true",
+        help="Pass -Zbuild-std=core,alloc,std to cargo so that std crates also emit LLVM IR.",
+    )
+    llvmir_parser.set_defaults(func=_run_llvmir)
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = build_parser()
     args = parser.parse_args(argv)
 
