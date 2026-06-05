@@ -13,6 +13,7 @@ from dsl import (
     UnaryExpression,
     parse_dsl,
 )
+from dsl.simplifier import SimplifiedVariable, simplify_variables
 
 from cli.cmd.llvmir import ensure_linked_llvm_ir_file
 from cli.cmd.sync import ensure_crate_metadata_file
@@ -148,6 +149,8 @@ def _build_meta_task1_index(meta_like: dict[str, object]) -> tuple[dict[tuple[st
 
 
 def _expr_to_ext_ast(expr: object) -> dict[str, object]:
+    if isinstance(expr, SimplifiedVariable):
+        return {"type": "simplified_var", "name": expr.name}
     if isinstance(expr, Literal):
         return {"type": "literal", "value": expr.value}
     if isinstance(expr, SourceRef):
@@ -174,6 +177,71 @@ def _expr_to_ext_ast(expr: object) -> dict[str, object]:
             "right": _expr_to_ext_ast(expr.right),
         }
     raise RuntimeError(f"unsupported DSL node: {type(expr).__name__}")
+
+
+def _smt_symbol(name: str) -> str:
+    escaped = name.replace("\\", "\\\\").replace("|", "\\|")
+    return f"|{escaped}|"
+
+
+def _simplified_expr_to_smt2(expr: object) -> str:
+    if isinstance(expr, SimplifiedVariable):
+        return _smt_symbol(expr.name)
+    if isinstance(expr, Literal):
+        if isinstance(expr.value, bool):
+            return "true" if expr.value else "false"
+        if isinstance(expr.value, int):
+            return str(expr.value)
+        if expr.value is None:
+            return "0"
+        raise RuntimeError(f"cannot dump string literal to simplified SMT-LIB: {expr.value!r}")
+    if isinstance(expr, UnaryExpression):
+        operand = _simplified_expr_to_smt2(expr.operand)
+        if expr.operator == "!":
+            return f"(not {operand})"
+        if expr.operator == "-":
+            return f"(- {operand})"
+        raise RuntimeError(f"unsupported unary operator in simplified SMT-LIB: {expr.operator!r}")
+    if isinstance(expr, BinaryExpression):
+        left = _simplified_expr_to_smt2(expr.left)
+        right = _simplified_expr_to_smt2(expr.right)
+        op = expr.operator
+        if op == "&&":
+            return f"(and {left} {right})"
+        if op == "||":
+            return f"(or {left} {right})"
+        if op == "==":
+            return f"(= {left} {right})"
+        if op == "!=":
+            return f"(not (= {left} {right}))"
+        if op == "/":
+            return f"(div {left} {right})"
+        if op == "%":
+            return f"(mod {left} {right})"
+        if op in {"<", "<=", ">", ">=", "+", "-", "*"}:
+            return f"({op} {left} {right})"
+        raise RuntimeError(f"unsupported binary operator in simplified SMT-LIB: {op!r}")
+    raise RuntimeError(f"unsupported simplified DSL node: {type(expr).__name__}")
+
+
+def _collect_simplified_variables(expr: object) -> set[str]:
+    if isinstance(expr, SimplifiedVariable):
+        return {expr.name}
+    if isinstance(expr, UnaryExpression):
+        return _collect_simplified_variables(expr.operand)
+    if isinstance(expr, BinaryExpression):
+        return _collect_simplified_variables(expr.left) | _collect_simplified_variables(expr.right)
+    return set()
+
+
+def _write_simplified_smt2(expr: object, output_path: Path) -> None:
+    names = sorted(_collect_simplified_variables(expr))
+    lines = ["(set-logic ALL)"]
+    lines.extend(f"(declare-const {_smt_symbol(name)} Int)" for name in names)
+    lines.append(f"(assert {_simplified_expr_to_smt2(expr)})")
+    lines.append("(check-sat)")
+    lines.append("(exit)")
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _run_klee_for_constraint(
@@ -470,28 +538,48 @@ def run(args: argparse.Namespace) -> int:
 
             left_ast = parse_dsl(left_dsl, operators, allow_unknown_operators=True)
             right_ast = parse_dsl(right_dsl, operators, allow_unknown_operators=True)
+            left_simplified = simplify_variables(left_ast)
+            right_simplified = simplify_variables(right_ast)
 
-            left_ast_json = json.dumps(_expr_to_ext_ast(left_ast), separators=(",", ":"), ensure_ascii=False)
-            right_ast_json = json.dumps(_expr_to_ext_ast(right_ast), separators=(",", ":"), ensure_ascii=False)
+            left_ast_json = json.dumps(
+                {
+                    "simplified": _expr_to_ext_ast(left_simplified.simplified),
+                    "original": _expr_to_ext_ast(left_ast),
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            right_ast_json = json.dumps(
+                {
+                    "simplified": _expr_to_ext_ast(right_simplified.simplified),
+                    "original": _expr_to_ext_ast(right_ast),
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
 
             left_smt = work_dir / f"{callsite_id}-{rule_id}-task1.smt2"
             right_smt = work_dir / f"{callsite_id}-{rule_id}-task1.eval.smt2"
 
             try:
-                _run_klee_for_constraint(
-                    ll_path=ll_path,
-                    callsite_id=callsite_id,
-                    ast_json=left_ast_json,
-                    output_path=left_smt,
-                    klee_bin=klee_bin,
-                )
-                _run_klee_for_constraint(
-                    ll_path=ll_path,
-                    callsite_id=callsite_id,
-                    ast_json=right_ast_json,
-                    output_path=right_smt,
-                    klee_bin=klee_bin,
-                )
+                if left_simplified.variables.keys() == right_simplified.variables.keys():
+                    _write_simplified_smt2(left_simplified.simplified, left_smt)
+                    _write_simplified_smt2(right_simplified.simplified, right_smt)
+                else:
+                    _run_klee_for_constraint(
+                        ll_path=ll_path,
+                        callsite_id=callsite_id,
+                        ast_json=left_ast_json,
+                        output_path=left_smt,
+                        klee_bin=klee_bin,
+                    )
+                    _run_klee_for_constraint(
+                        ll_path=ll_path,
+                        callsite_id=callsite_id,
+                        ast_json=right_ast_json,
+                        output_path=right_smt,
+                        klee_bin=klee_bin,
+                    )
 
                 equivalent, z3_status = _check_smt_equivalence(left_smt, right_smt, z3_bin)
             except Exception as exc:
