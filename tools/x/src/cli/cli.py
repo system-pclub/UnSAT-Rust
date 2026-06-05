@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     compare_parser = subparsers.add_parser(
         "compare",
-        help="Compare task1 constraints between a crate meta JSON and another result JSON.",
+        help="Compare task1 constraints between crate metadata and another JSON or task folder.",
     )
     compare_parser.add_argument(
         "cargo_dir",
@@ -99,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument(
         "--other",
         required=True,
-        help="Path to another JSON file (e.g., eval/<crate>.json) containing task1 results.",
+        help="Path to another JSON file or task folder (callsite/rule/task1) containing task1 results.",
     )
     compare_parser.add_argument(
         "--studied-rules",
@@ -224,7 +224,17 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument(
         "--strict",
         action="store_true",
-        help="When writing human/<crate>.json, remove old callsites/rules that are not present in current sync output.",
+        help="When writing human/<crate>/, remove old callsites/rules that are not present in current sync output.",
+    )
+    sync_parser.add_argument(
+        "--autoinj-output-dir",
+        default="crates_inj",
+        help="Directory where injected crates are written (default: crates_inj).",
+    )
+    sync_parser.add_argument(
+        "--skip-autoinj",
+        action="store_true",
+        help="Do not generate injected crates during sync.",
     )
     sync_parser.set_defaults(func=_run_sync)
 

@@ -21,6 +21,7 @@ from cli.cmd.sync import ensure_crate_metadata_file
 
 PLACEHOLDER = "<placeholder>"
 HUMAN_PLACEHOLDER = "placeholder"
+TASK_NAMES = ("task1", "task2", "task3")
 
 
 def _find_repo_root() -> Path:
@@ -46,6 +47,44 @@ def _load_json(path: Path) -> dict[str, object]:
     if not isinstance(data, dict):
         raise RuntimeError(f"expected JSON object in {path}")
     return data
+
+
+def _load_task_folder(path: Path) -> dict[str, object]:
+    if not path.is_dir():
+        raise RuntimeError(f"expected task folder: {path}")
+
+    loaded: dict[str, object] = {}
+    for callsite_dir in sorted(child for child in path.iterdir() if child.is_dir()):
+        rules: dict[str, object] = {}
+        for rule_dir in sorted(child for child in callsite_dir.iterdir() if child.is_dir()):
+            tasks: dict[str, object] = {}
+            for task_name in TASK_NAMES:
+                task_path = rule_dir / task_name
+                if not task_path.is_file():
+                    continue
+                text = task_path.read_text(encoding="utf-8").rstrip("\n")
+                if task_name == "task3":
+                    stripped = text.strip()
+                    if stripped.startswith("[") or stripped.startswith("{"):
+                        try:
+                            tasks[task_name] = json.loads(stripped)
+                            continue
+                        except json.JSONDecodeError:
+                            pass
+                tasks[task_name] = text
+            if tasks:
+                rules[rule_dir.name] = tasks
+        if rules:
+            loaded[callsite_dir.name] = rules
+    return loaded
+
+
+def _load_meta_like(path: Path) -> dict[str, object]:
+    if path.is_dir():
+        return _load_task_folder(path)
+    if path.is_file():
+        return _load_json(path)
+    raise RuntimeError(f"metadata input does not exist: {path}")
 
 
 def _load_operator_entries(repo_root: Path) -> list[dict[str, object]]:
@@ -113,6 +152,12 @@ def _build_meta_task1_index(meta_like: dict[str, object]) -> tuple[dict[tuple[st
             if not isinstance(raw_target, dict):
                 continue
             callsite_key = _target_callsite_key(raw_target, index)
+            callsite_id = str(index)
+            callsite = raw_target.get("callsite")
+            if isinstance(callsite, dict):
+                callsite_id_raw = callsite.get("id")
+                if isinstance(callsite_id_raw, str) and callsite_id_raw:
+                    callsite_id = callsite_id_raw
             rules = raw_target.get("rules")
             if not isinstance(rules, dict):
                 continue
@@ -121,7 +166,9 @@ def _build_meta_task1_index(meta_like: dict[str, object]) -> tuple[dict[tuple[st
                     continue
                 task1 = _task1_text(tasks)
                 if isinstance(task1, str):
-                    by_callsite_rule[(callsite_key, rule_id)] = task1
+                    by_callsite_rule[(callsite_id, rule_id)] = task1
+                    if callsite_key != callsite_id:
+                        by_callsite_rule[(callsite_key, rule_id)] = task1
                     by_rule.setdefault(rule_id, task1)
         return by_callsite_rule, by_rule
 
@@ -444,8 +491,8 @@ def run(args: argparse.Namespace) -> int:
         other_path = (repo_root / other_path).resolve()
     else:
         other_path = other_path.resolve()
-    if not other_path.is_file():
-        raise RuntimeError(f"other JSON file does not exist: {other_path}")
+    if not other_path.is_file() and not other_path.is_dir():
+        raise RuntimeError(f"other metadata input does not exist: {other_path}")
 
     studied_rules = Path(args.studied_rules)
     if not studied_rules.is_absolute():
@@ -475,14 +522,17 @@ def run(args: argparse.Namespace) -> int:
     )
 
     current_meta = _load_json(meta_path)
+    human_dir = (repo_root / "human" / meta_path.stem).resolve()
     human_path = (repo_root / "human" / meta_path.name).resolve()
-    if human_path.is_file():
+    if human_dir.is_dir():
+        current_human = _load_task_folder(human_dir)
+    elif human_path.is_file():
         current_human = _load_json(human_path)
     else:
         # Backward compatibility for older synced metadata that still stores rules in report.targets.
         current_human = current_meta
 
-    other_meta = _load_json(other_path)
+    other_meta = _load_meta_like(other_path)
     operators = _load_operator_entries(repo_root)
 
     report = current_meta.get("report")

@@ -104,6 +104,103 @@ def _resolve_mirscan_rustc(repo_root: Path) -> str:
     )
 
 
+def _build_local_autoinj(repo_root: Path) -> None:
+    autoinj_manifest = repo_root / "tools" / "autoinj" / "Cargo.toml"
+    if not autoinj_manifest.is_file():
+        raise RuntimeError(f"could not find autoinj manifest: {autoinj_manifest}")
+
+    result = subprocess.run(
+        ["cargo", "build", "--manifest-path", str(autoinj_manifest)],
+        cwd=repo_root,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "building local autoinj failed "
+            f"(manifest: {autoinj_manifest}, exit: {result.returncode})"
+        )
+
+
+def _resolve_autoinj_binary(repo_root: Path) -> str:
+    configured = os.environ.get("AUTOINJ_BIN")
+    if configured:
+        return configured
+
+    local_candidates = [
+        repo_root / "tools" / "autoinj" / "target" / "release" / "autoinj",
+        repo_root / "tools" / "autoinj" / "target" / "debug" / "autoinj",
+    ]
+    for candidate in local_candidates:
+        if candidate.is_file():
+            return str(candidate)
+        candidate_exe = candidate.with_suffix(".exe")
+        if candidate_exe.is_file():
+            return str(candidate_exe)
+
+    path_autoinj = shutil.which("autoinj")
+    if path_autoinj:
+        return path_autoinj
+
+    _build_local_autoinj(repo_root)
+    for candidate in local_candidates:
+        if candidate.is_file():
+            return str(candidate)
+        candidate_exe = candidate.with_suffix(".exe")
+        if candidate_exe.is_file():
+            return str(candidate_exe)
+
+    raise RuntimeError(
+        "could not find autoinj binary; set AUTOINJ_BIN or build tools/autoinj "
+        "(expected tools/autoinj/target/{release,debug}/autoinj)"
+    )
+
+
+def _looks_like_autoinj_output(dest_dir: Path) -> bool:
+    if (dest_dir / "generated-meta.json").is_file():
+        return True
+    manifest = dest_dir / "Cargo.toml"
+    if not manifest.is_file():
+        return False
+    return "klee-ext-bind" in manifest.read_text(encoding="utf-8", errors="replace")
+
+
+def _prepare_autoinj_destination(dest_dir: Path) -> None:
+    if not dest_dir.exists():
+        return
+    if not dest_dir.is_dir():
+        raise RuntimeError(f"autoinj destination exists and is not a directory: {dest_dir}")
+    if not _looks_like_autoinj_output(dest_dir):
+        raise RuntimeError(
+            f"autoinj destination already exists and does not look generated: {dest_dir}"
+        )
+    shutil.rmtree(dest_dir)
+
+
+def _run_autoinj_for_crate(
+    *,
+    repo_root: Path,
+    crate_dir: Path,
+    meta_path: Path,
+    dest_root: Path,
+    autoinj_bin: str,
+) -> Path:
+    dest_dir = dest_root / crate_dir.name
+    _prepare_autoinj_destination(dest_dir)
+    dest_root.mkdir(parents=True, exist_ok=True)
+
+    result = subprocess.run(
+        [autoinj_bin, str(crate_dir), str(meta_path), str(dest_dir)],
+        cwd=repo_root,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"autoinj failed for crate {crate_dir.name} -> {dest_dir} "
+            f"(exit: {result.returncode})"
+        )
+    return dest_dir
+
+
 def _compile_crate(crate_dir: Path, mirscan_rustc: str, report_path: Path) -> None:
     if report_path.exists():
         report_path.unlink()
@@ -147,6 +244,25 @@ def _normalize_to_rust_relative(path_value: str) -> str:
     if path.startswith("rust/"):
         return path
     return path
+
+
+def _callsite_id_from_target(target: dict[str, object], fallback_index: int) -> str:
+    caller = target.get("caller")
+    if not isinstance(caller, dict):
+        caller = target.get("target_fn")
+
+    callsite = target.get("callsite")
+    if not isinstance(caller, dict) or not isinstance(callsite, dict):
+        return str(fallback_index)
+
+    path = caller.get("path")
+    line = callsite.get("line")
+    col = callsite.get("col")
+    if not isinstance(path, str) or not isinstance(line, int) or not isinstance(col, int):
+        return str(fallback_index)
+
+    normalized_path = path.replace("\\", "-").replace("/", "-").replace(".", "-")
+    return f"{normalized_path}-{line}-{col}"
 
 
 def _parse_rule_path(path_with_line: str) -> tuple[str, int] | None:
@@ -490,13 +606,12 @@ def _transform_report(
             continue
 
         target = _normalize_target_schema(raw_target)
-        callsite_id = str(target_index)
+        callsite_id = _callsite_id_from_target(target, target_index)
         callsite = target.get("callsite")
         if isinstance(callsite, dict):
             callsite_with_id = dict(callsite)
-            callsite_with_id["id"] = str(target_index)
+            callsite_with_id["id"] = callsite_id
             target["callsite"] = callsite_with_id
-            callsite_id = callsite_with_id["id"]
         matched_rules = _match_rules_for_target(target, rules_by_path, allowed_rule_ids)
         preserved_rules = preserved_rule_tasks.get(_target_identity(target), {})
         merged_rules = _merge_rule_tasks(
@@ -528,15 +643,7 @@ def _resolve_studied_rules_path(repo_root: Path, studied_rules: str | Path) -> P
     return studied_rules_path
 
 
-def _load_existing_human_report(report_path: Path) -> dict[str, dict[str, object]]:
-    if not report_path.is_file():
-        return {}
-
-    try:
-        loaded = json.loads(report_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-
+def _normalize_loaded_human_report(loaded: object) -> dict[str, dict[str, object]]:
     if not isinstance(loaded, dict):
         return {}
 
@@ -550,6 +657,48 @@ def _load_existing_human_report(report_path: Path) -> dict[str, dict[str, object
                 existing_rules[rule_id] = task
         existing[callsite_id] = existing_rules
     return existing
+
+
+def _load_existing_human_report(report_path: Path) -> dict[str, dict[str, object]]:
+    if not report_path.is_file():
+        return {}
+
+    try:
+        loaded = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+    return _normalize_loaded_human_report(loaded)
+
+
+def _load_existing_human_folder(report_dir: Path) -> dict[str, dict[str, object]]:
+    if not report_dir.is_dir():
+        return {}
+
+    loaded: dict[str, object] = {}
+    for callsite_dir in sorted(child for child in report_dir.iterdir() if child.is_dir()):
+        rules: dict[str, object] = {}
+        for rule_dir in sorted(child for child in callsite_dir.iterdir() if child.is_dir()):
+            tasks: dict[str, object] = {}
+            for task_name in TASK_NAMES:
+                task_path = rule_dir / task_name
+                if not task_path.is_file():
+                    continue
+                text = task_path.read_text(encoding="utf-8").rstrip("\n")
+                if task_name == "task3":
+                    stripped = text.strip()
+                    if stripped.startswith("[") or stripped.startswith("{"):
+                        try:
+                            tasks[task_name] = json.loads(stripped)
+                            continue
+                        except json.JSONDecodeError:
+                            pass
+                tasks[task_name] = text
+            if tasks:
+                rules[rule_dir.name] = tasks
+        if rules:
+            loaded[callsite_dir.name] = rules
+    return _normalize_loaded_human_report(loaded)
 
 
 def _normalize_human_rule_tasks(task_value: object) -> dict[str, object]:
@@ -647,6 +796,50 @@ def _merge_human_report(
     return merged
 
 
+def _write_task_file(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, indent=2, ensure_ascii=False)
+    else:
+        text = str(value)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def _prune_human_folder(report_dir: Path, merged: dict[str, dict[str, object]]) -> None:
+    if not report_dir.is_dir():
+        return
+
+    for callsite_dir in [child for child in report_dir.iterdir() if child.is_dir()]:
+        expected_rules = merged.get(callsite_dir.name, {})
+        for rule_dir in [child for child in callsite_dir.iterdir() if child.is_dir()]:
+            expected_task = expected_rules.get(rule_dir.name)
+            expected_task_names = set(TASK_NAMES) if isinstance(expected_task, dict) else set()
+            for task_file in [child for child in rule_dir.iterdir() if child.is_file()]:
+                if task_file.name not in expected_task_names:
+                    task_file.unlink()
+            if not expected_task_names and not any(rule_dir.iterdir()):
+                rule_dir.rmdir()
+        if not expected_rules and not any(callsite_dir.iterdir()):
+            callsite_dir.rmdir()
+
+
+def _write_human_folder(
+    report_dir: Path,
+    merged: dict[str, dict[str, object]],
+    *,
+    strict: bool,
+) -> None:
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if strict:
+        _prune_human_folder(report_dir, merged)
+
+    for callsite_id, rules in merged.items():
+        for rule_id, task in rules.items():
+            normalized = _normalize_human_rule_tasks(task)
+            for task_name in TASK_NAMES:
+                _write_task_file(report_dir / callsite_id / rule_id / task_name, normalized[task_name])
+
+
 def _sync_human_report(
     *,
     repo_root: Path,
@@ -657,15 +850,14 @@ def _sync_human_report(
     human_dir = repo_root / "human"
     human_dir.mkdir(parents=True, exist_ok=True)
     human_report_path = human_dir / report_name
+    human_report_dir = human_dir / Path(report_name).stem
 
     existing = _load_existing_human_report(human_report_path)
+    existing.update(_load_existing_human_folder(human_report_dir))
     merged = _merge_human_report(existing, incoming, strict=strict)
 
-    human_report_path.write_text(
-        json.dumps(merged, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    return human_report_path
+    _write_human_folder(human_report_dir, merged, strict=strict)
+    return human_report_dir
 
 
 def _sync_single_crate(
@@ -678,6 +870,8 @@ def _sync_single_crate(
     operator_document: dict[str, object] | None,
     mirscan_rustc: str,
     strict: bool,
+    autoinj_output_dir: Path | None,
+    autoinj_bin: str | None,
 ) -> Path:
     crate_name = crate_dir.name or "unknown"
     crates_dir = repo_root / "crates"
@@ -732,6 +926,15 @@ def _sync_single_crate(
         incoming=human_placeholders,
         strict=strict,
     )
+    if autoinj_output_dir is not None and autoinj_bin is not None:
+        injected_dir = _run_autoinj_for_crate(
+            repo_root=repo_root,
+            crate_dir=crate_dir,
+            meta_path=out_path,
+            dest_root=autoinj_output_dir,
+            autoinj_bin=autoinj_bin,
+        )
+        print(f"wrote injected crate to {injected_dir}")
     return out_path
 
 
@@ -779,6 +982,8 @@ def ensure_crate_metadata_file(
         operator_document=operator_document,
         mirscan_rustc=mirscan_rustc,
         strict=strict,
+        autoinj_output_dir=None,
+        autoinj_bin=None,
     )
 
 
@@ -793,6 +998,13 @@ def run(args: argparse.Namespace) -> int:
     operator_document, operators = _load_operator_entries(repo_root)
     mirscan_rustc = _resolve_mirscan_rustc(repo_root)
     strict = bool(getattr(args, "strict", False))
+    skip_autoinj = bool(getattr(args, "skip_autoinj", False))
+    autoinj_output_dir = Path(getattr(args, "autoinj_output_dir", "crates_inj"))
+    if not autoinj_output_dir.is_absolute():
+        autoinj_output_dir = (repo_root / autoinj_output_dir).resolve()
+    else:
+        autoinj_output_dir = autoinj_output_dir.resolve()
+    autoinj_bin = None if skip_autoinj else _resolve_autoinj_binary(repo_root)
 
     if cargo_dir:
         cargo_dir_path = Path(cargo_dir)
@@ -818,6 +1030,8 @@ def run(args: argparse.Namespace) -> int:
             operator_document=operator_document,
             mirscan_rustc=mirscan_rustc,
             strict=strict,
+            autoinj_output_dir=None if skip_autoinj else autoinj_output_dir,
+            autoinj_bin=autoinj_bin,
         )
 
     return 0
