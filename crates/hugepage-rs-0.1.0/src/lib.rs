@@ -3,6 +3,9 @@
 extern crate lazy_static;
 
 #[cfg(target_os = "linux")]
+extern crate klee_ext_bind;
+
+#[cfg(target_os = "linux")]
 use std::alloc::{GlobalAlloc, Layout};
 
 #[cfg(target_os = "linux")]
@@ -66,5 +69,10 @@ pub fn alloc(layout: Layout) -> *mut u8 {
 /// - layout must be the same layout that was used to allocate that block of memory.
 #[cfg(target_os = "linux")]
 pub fn dealloc(p: *mut u8, layout: Layout) {
-    unsafe { HUGEPAGE_ALLOCATOR.dealloc(p, layout) }
+    klee_ext_bind::bind!(&p, "p");
+    klee_ext_bind::bind!(&layout, "layout");
+    unsafe { 
+        klee_ext_bind::callsite!("4");
+        HUGEPAGE_ALLOCATOR.dealloc(p, layout) 
+    }
 }
