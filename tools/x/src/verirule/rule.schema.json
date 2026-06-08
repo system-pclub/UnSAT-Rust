@@ -1,0 +1,466 @@
+ {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/smt-rule-template.schema.json",
+  "title": "SMT Rule Template",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rule",
+    "function",
+    "abstracts",
+    "variables",
+    "require",
+    "ensure"
+  ],
+  "properties": {
+    "rule": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "function": {
+      "$ref": "#/$defs/function"
+    },
+    "abstracts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/abstract"
+      },
+      "uniqueItems": true
+    },
+    "fundamental_abstracts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fundamentalAbstract"
+      },
+      "uniqueItems": true
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/variable"
+      },
+      "uniqueItems": true
+    },   
+    "require": {
+      "$ref": "#/$defs/expr"
+    },
+    "ensure": {
+      "$ref": "#/$defs/expr"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+    },
+    "sort": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "Int",
+        "Bool",
+        "Pointer",
+        "Usize"
+      ]
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "arguments"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "arguments": {
+          "type": "array",
+          "minItems": 0,
+          "items": {
+            "$ref": "#/$defs/functionArgument"
+          }
+        },
+        "result": {
+          "$ref": "#/$defs/functionResult"
+        }
+      }
+    },
+    "functionArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sort": {
+          "$ref": "#/$defs/sort"
+        }
+      }
+    },
+    "functionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sort": {
+          "$ref": "#/$defs/sort"
+        }
+      }
+    },
+    "abstract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "parameters",
+        "returns"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/abstractParameter"
+          }
+        },
+        "returns": {
+          "$ref": "#/$defs/abstractReturn"
+        },
+        "meaning": {
+          "type": "string"
+        }
+      }
+    },
+    "fundamentalAbstract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sort",
+        "selector"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sort": {
+          "$ref": "#/$defs/sort"
+        },
+        "selector": {
+          "$ref": "#/$defs/sourceSelector"
+        },
+        "meaning": {
+          "type": "string"
+        }
+      }
+    },
+    "sourceSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line",
+        "column"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_column": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "abstractParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sort"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sort": {
+          "$ref": "#/$defs/sort"
+        }
+      }
+    },
+    "abstractReturn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sort"
+      ],
+      "properties": {
+        "sort": {
+          "$ref": "#/$defs/sort"
+        }
+      }
+    },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sort",
+        "selector"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sort": {
+          "$ref": "#/$defs/sort"
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "meaning": {
+          "type": "string"
+        }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apply",
+        "args"
+      ],
+      "properties": {
+        "apply": {
+          "$ref": "#/$defs/identifier"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/selectorArg"
+          }
+        }
+      }
+    },
+    "selectorArg": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argument": {
+          "$ref": "#/$defs/identifier"
+        },
+        "result": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "argument"
+          ]
+        },
+        {
+          "required": [
+            "result"
+          ]
+        }
+      ]
+    },
+    "expr": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/varExpr"
+        },
+        {
+          "$ref": "#/$defs/intExpr"
+        },
+        {
+          "$ref": "#/$defs/boolExpr"
+        },
+        {
+          "$ref": "#/$defs/stringExpr"
+        },
+        {
+          "$ref": "#/$defs/opExpr"
+        }
+      ]
+    },
+    "varExpr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "var"
+      ],
+      "properties": {
+        "var": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "intExpr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "int"
+      ],
+      "properties": {
+        "int": {
+          "type": "integer"
+        }
+      }
+    },
+    "boolExpr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bool"
+      ],
+      "properties": {
+        "bool": {
+          "type": "boolean"
+        }
+      }
+    },
+    "stringExpr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "string"
+      ],
+      "properties": {
+        "string": {
+          "type": "string"
+        }
+      }
+    },
+    "opExpr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "args"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "=",
+            "!=",
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "+",
+            "-",
+            "*",
+            "/",
+            "and",
+            "or",
+            "not",
+            "=>"
+          ]
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expr"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "enum": [
+                  "=",
+                  "!=",
+                  ">",
+                  ">=",
+                  "<",
+                  "<=",
+                  "+",
+                  "-",
+                  "*",
+                  "/",
+                  "=>"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "args": {
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "not"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "args": {
+                "minItems": 1,
+                "maxItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "enum": [
+                  "and",
+                  "or"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "args": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
