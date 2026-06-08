@@ -1,30 +1,24 @@
 #[cfg(target_os = "linux")]
 #[macro_use]
 extern crate lazy_static;
-
 #[cfg(target_os = "linux")]
 use std::alloc::{GlobalAlloc, Layout};
-
 #[cfg(target_os = "linux")]
 mod allocator;
 #[cfg(target_os = "linux")]
 use allocator::HugePageAllocator;
-
 #[cfg(target_os = "linux")]
 mod boxed;
 #[cfg(target_os = "linux")]
 pub use boxed::Box;
-
 #[cfg(target_os = "linux")]
 lazy_static! {
-    static ref HUGEPAGE_ALLOCATOR: HugePageAllocator = HugePageAllocator;
+    static ref HUGEPAGE_ALLOCATOR : HugePageAllocator = HugePageAllocator;
 }
-
 #[cfg(target_os = "linux")]
 pub(crate) fn default_allocator() -> &'static HugePageAllocator {
     &HUGEPAGE_ALLOCATOR
 }
-
 /// Allocate memory with the hugepage allocator.
 ///
 /// This function forwards calls to the HugePageAllocator.alloc() function.
@@ -51,9 +45,12 @@ pub(crate) fn default_allocator() -> &'static HugePageAllocator {
 /// ```
 #[cfg(target_os = "linux")]
 pub fn alloc(layout: Layout) -> *mut u8 {
-    unsafe { HUGEPAGE_ALLOCATOR.alloc(layout) }
+    unsafe {
+        klee_ext_bind::bind!(& layout, "layout");
+        klee_ext_bind::callsite!("src-lib-rs-54-14");
+        HUGEPAGE_ALLOCATOR.alloc(layout)
+    }
 }
-
 /// Deallocate memory with the hugepage allocator.
 ///
 /// This function forwards calls to the HugePageAllocator.dealloc() function.
@@ -66,7 +63,10 @@ pub fn alloc(layout: Layout) -> *mut u8 {
 /// - layout must be the same layout that was used to allocate that block of memory.
 #[cfg(target_os = "linux")]
 pub fn dealloc(p: *mut u8, layout: Layout) {
-    unsafe { 
-        HUGEPAGE_ALLOCATOR.dealloc(p, layout) 
+    unsafe {
+        klee_ext_bind::bind!(& p, "p");
+        klee_ext_bind::bind!(& layout, "layout");
+        klee_ext_bind::callsite!("src-lib-rs-70-9");
+        HUGEPAGE_ALLOCATOR.dealloc(p, layout)
     }
 }

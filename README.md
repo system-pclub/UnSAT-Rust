@@ -4,6 +4,12 @@
 - ./rust:   std and core library from Rust compiler
 - ./tools:  Helper tools for using this dataset
 
+## Setup
+```bash
+# Initialize submodule 
+$ git submodule update --init --recursive
+```
+
 ## Instructions
 
 ### Task 1
@@ -139,3 +145,46 @@ Example output:
 Current sync relationship:
 - Sync currently validates Task 1 and Task 2 DSL fields stored in crate metadata
 - Task 3 is not currently DSL-validated by sync
+
+
+
+./x sync --cargo-dir crates/hugepage-rs-0.1.0
+./x llvmir crates/hugepage-rs-0.1.0 --output-dir irs1
+
+klee --ext.callsite="4" \
+--ext.dsl='{"type":"binary","op":"==","left":{"type":"source_ref","selector":"p@69:41"},"right":{"type":"source_ref","selector":"layout@69:44"}}' \
+--dump-constraints-to-file=constraint.smt2  \
+irs2/hugepage_rs.ll
+
+
+
+
+
+./x compare crates/hugepage-rs-0.1.0 --other eval/huagepage.json
+
+
+
+
+- It will first make sure crates/hugepage-rs-0.1.0.json exists (directly use function from ./x sync, do not use subprocess to call, if there is no single function to this job, refactor there to have single function to do this job, and use here also there as well)
+- Then make sure .local/irs/hugepage_rs.ll exists (directly use function from ./x llvmir, do not use subprocess to call, refactor there to have single function to do this job, and use here also there as well) 
+.local/irs is the default ir output directly (configurable, but if no, defualt is this)
+
+- Read the hugepage-rs-0.1.0.json
+- For each targets
+  0. translate task1 dsl to ast
+  1. run ```
+  klee --ext.callsite="1" \
+--ext.dsl='<ast>' \
+--dump-constraints-to-file=1-task1.smt2  \
+<llir file>
+  ```
+  2. translate eval's corresponsding callsite's task1 dsl  to ast
+  3. run ```
+  klee --ext.callsite="1" \
+--ext.dsl='<ast>' \
+--dump-constraints-to-file=1-task1.eval.smt2  \
+<llir file>
+  ```
+  1, 3 can share a same function, since it both just translate dsl to smtlib format
+  4. python read the two smtlib, find are they equvilance 
+
