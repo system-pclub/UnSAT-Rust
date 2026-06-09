@@ -12,6 +12,12 @@ def _run_compare(args: argparse.Namespace) -> int:
     return run(args)
 
 
+def _run_verify(args: argparse.Namespace) -> int:
+    from cli.cmd.verify import run
+
+    return run(args)
+
+
 def _run_generate(args: argparse.Namespace) -> int:
     from cli.cmd.generate import run
 
@@ -142,6 +148,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     
     compare_parser.set_defaults(func=_run_compare)
+
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Run KLEE compose verification for one crate callsite/rule task1.",
+    )
+    verify_parser.add_argument(
+        "cargo_dir",
+        help="Path to the Rust crate directory.",
+    )
+    verify_parser.add_argument(
+        "--callsite",
+        required=True,
+        help="Callsite id to verify.",
+    )
+    verify_parser.add_argument(
+        "--rule",
+        required=True,
+        help="Rule id to verify.",
+    )
+    verify_parser.add_argument(
+        "--rule-dir",
+        default="human",
+        help="Path to human rule task folder or JSON (default: human).",
+    )
+    verify_parser.add_argument(
+        "--studied-rules",
+        default="studied_rules",
+        help="Path to studied_rules used when verify needs to sync metadata.",
+    )
+    verify_parser.add_argument(
+        "--ir-output-dir",
+        default=".local/irs",
+        help="Directory where linked LLVM IR is expected/written (default: .local/irs).",
+    )
+    verify_parser.add_argument(
+        "--klee-bin",
+        default="klee",
+        help="KLEE executable to use (default: klee).",
+    )
+    verify_parser.add_argument(
+        "--rustc",
+        help="Optional custom rustc for llvmir generation.",
+    )
+    verify_parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Compile tests for llvmir generation instead of the main crate.",
+    )
+    verify_parser.set_defaults(func=_run_verify)
     
     generate_parser = subparsers.add_parser(
         "generate",
