@@ -1,0 +1,585 @@
+use crate::std::errors::Result;
+use crate::std::lazy::sync::Lazy;
+use crate::std::time::format::{LONG_DAY_NAMES, LONG_MONTH_NAMES};
+use crate::std::time::sys::Timespec;
+use serde::de::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Deref, Sub};
+use std::str::FromStr;
+use time::{format_description, OffsetDateTime};
+
+pub use time::UtcOffset;
+
+/// "Mon, 02 Jan 2006 15:04:05 GMT"
+pub const TIME_FORMAT: &'static str =
+    "[weekday repr:short], [day] [month repr:short] [year] [hour]:[minute]:[second] GMT";
+/// "2006-01-02T15:04:05"
+pub const RFC3339_SECOND: &'static str = "[year]-[month]-[day]T[hour]:[minute]:[second]";
+/// "2006-01-02T15:04:05Z07:00"
+pub const RFC3339: &'static str =
+    "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]";
+///"2006-01-02T15:04:05.999999999Z07:00"
+pub const RFC3339_NANO: &'static str = "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]";
+///"Mon, 02 Jan 2006 15:04:05 MST"
+pub const RFC1123: &'static str =
+    "[weekday repr:short], [day] [month repr:short] [year] [hour]:[minute]:[second] MST";
+
+/// Obtain the offset of Utc time and Local time in seconds, using Lazy only once to improve performance
+pub static GLOBAL_OFFSET: Lazy<UtcOffset> =
+    Lazy::new(|| UtcOffset::from_whole_seconds(Timespec::now().local().tm_utcoff).unwrap());
+
+/// a time wrapper just like golang
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
+pub struct Time {
+    pub inner: OffsetDateTime,
+}
+
+impl Time {
+    /// convert self to utc time
+    pub fn utc(&self) -> Self {
+        Self {
+            inner: self.inner.to_offset(UtcOffset::UTC),
+        }
+    }
+
+    /// convert self to utc time
+    pub fn local(&self) -> Self {
+        Self {
+            inner: self.inner.to_offset(GLOBAL_OFFSET.deref().clone()),
+        }
+    }
+
+    /// return new offset
+    pub fn to_offset(self, offset: UtcOffset) -> Time {
+        Self {
+            inner: self.inner.to_offset(offset),
+        }
+    }
+
+    pub fn unix_timestamp(&self) -> i64 {
+        self.inner.unix_timestamp()
+    }
+
+    pub fn unix_timestamp_nano(&self) -> i64 {
+        self.inner.unix_timestamp_nanos() as i64
+    }
+
+    // unix_sec returns the time's seconds since Jan 1 1970 (Unix time).
+    pub fn unix(&self) -> i64 {
+        self.inner.unix_timestamp()
+    }
+
+    // unix_sec returns the time's seconds since Jan 1 1970 (Unix time).
+    pub fn unix_nano(&self) -> i64 {
+        self.inner.unix_timestamp_nanos() as i64
+    }
+
+    pub fn add(mut self, d: std::time::Duration) -> Self {
+        self.inner = self.inner.add(d);
+        self
+    }
+
+    pub fn sub(mut self, d: std::time::Duration) -> Self {
+        self.inner = self.inner.sub(d);
+        self
+    }
+
+    // add_sec adds d seconds to the time.
+    pub fn add_sec(mut self, d: i64) -> Self {
+        self.inner = self.inner.add(time::Duration::seconds(d));
+        self
+    }
+
+    /// set_loc sets the location associated with the time.
+    pub fn set_loc(mut self, loc: time::UtcOffset) -> Self {
+        self.inner = self.inner.to_offset(loc);
+        self
+    }
+
+    /// after reports whether the time instant t is after u.
+    pub fn after(&self, u: &Time) -> bool {
+        self.inner.sub(u.inner).is_positive()
+    }
+
+    /// before reports whether the time instant t is before u.
+    pub fn before(&self, u: &Time) -> bool {
+        u.inner.sub(self.inner).is_positive()
+    }
+
+    /// equal reports whether t and u represent the same time instanself.
+    /// Two times can be equal even if they are in different locations.
+    /// For example, 6:00 +0200 and 4:00 UTC are equal.
+    /// See the documentation on the Time type for the pitfalls of using == with
+    /// Time values; most code should use equal instead.
+    pub fn equal(&self, u: &Time) -> bool {
+        self.inner.eq(&u.inner)
+    }
+
+    /// is_zero reports whether t represents the zero time instant,
+    /// January 1, year 1, 00:00:00 UTC.
+    pub fn is_zero(&self) -> bool {
+        return self.nanosecond() == 0;
+    }
+
+    /// date returns the (year, month,  day) in which t occurs.
+    pub fn date(&self) -> (i32, Month, i32) {
+        let d = self.inner.date();
+        return (d.year(), d.month().into(), d.day() as i32);
+    }
+
+    /// year
+    pub fn year(&self) -> i32 {
+        self.inner.date().year()
+    }
+
+    /// month
+    pub fn month(&self) -> Month {
+        self.inner.month().into()
+    }
+
+    /// day
+    pub fn day(&self) -> i32 {
+        self.inner.day() as i32
+    }
+
+    /// weekday
+    pub fn weekday(&self) -> Weekday {
+        self.inner.weekday().into()
+    }
+    /// iso_week
+    pub fn iso_week(&self) -> (i32, i32) {
+        (self.inner.year(), self.inner.iso_week() as i32)
+    }
+    /// hour
+    pub fn hour(&self) -> i32 {
+        self.inner.hour().into()
+    }
+
+    /// minute
+    pub fn minute(&self) -> i32 {
+        self.inner.minute().into()
+    }
+
+    /// minute
+    pub fn second(&self) -> i32 {
+        self.inner.second().into()
+    }
+
+    /// millisecond
+    pub fn millisecond(&self) -> i32 {
+        self.inner.millisecond() as i32
+    }
+
+    /// microsecond
+    pub fn microsecond(&self) -> i32 {
+        self.inner.microsecond() as i32
+    }
+
+    /// nanosecond
+    pub fn nanosecond(&self) -> i32 {
+        self.inner.nanosecond() as i32
+    }
+
+    /// format a time to string
+    /// [year]
+    /// [month]
+    /// [ordinal]
+    /// [weekday]
+    /// [week_number]
+    /// [day]
+    /// [hour]
+    /// [minute]
+    /// [period]
+    /// [second]
+    /// [subsecond]
+    /// [offset_hour sign:mandatory]
+    /// [offset_minute]
+    /// [offset_second]
+    ///
+    /// for example:
+    /// ```rust
+    ///     use mco::std::time::Time;
+    ///
+    ///     let mut t = Time::now();
+    ///     let formatted = t.format(
+    ///     "[year]-[month] [ordinal] [weekday] [week_number]-[day] [hour]:[minute] [period]:[second].[subsecond] [offset_hour sign:mandatory]:[offset_minute]:[offset_second]"
+    ///     );
+    ///     println!("formatted: {}", formatted);
+    /// ```
+    pub fn format(&self, layout: &str) -> String {
+        let f = {
+            match format_description::parse(layout) {
+                Ok(v) => v,
+                Err(_) => {
+                    vec![]
+                }
+            }
+        };
+        if f.is_empty() {
+            return String::new();
+        }
+        self.inner.format(&f).unwrap_or_default()
+    }
+
+    /// parse a string value to Time。
+    /// [year]
+    /// [month]
+    /// [ordinal]
+    /// [weekday]
+    /// [week_number]
+    /// [day]
+    /// [hour]
+    /// [minute]
+    /// [period]
+    /// [second]
+    /// [subsecond]
+    /// [offset_hour sign:mandatory]
+    /// [offset_minute]
+    /// [offset_second]
+    ///
+    /// for example:
+    /// ```rust
+    ///     use mco::std::time::{RFC3339_NANO,Time};
+    ///
+    ///     let parsed = Time::parse("[year]-[month] [ordinal] [weekday] [week_number]-[day] [hour]:[minute] [period]:[second].[subsecond] [offset_hour sign:mandatory]:[offset_minute]:[offset_second]","2022-02 033 Wednesday 05-02 01:49 AM:22.1210536 +08:00:00").unwrap();
+    ///
+    ///     let parsed = Time::parse(RFC3339_NANO, "2022-02-03T01:51:00.9335458+08:00").unwrap();
+    /// ```
+    pub fn parse(layout: &str, value: &str) -> Result<Self> {
+        match format_description::parse(layout) {
+            Ok(v) => Ok(Self {
+                inner: time::OffsetDateTime::parse(value, &v)?,
+            }),
+            Err(e) => {
+                return Err(e.into());
+            }
+        }
+    }
+
+    /// now returns the current local time.
+    pub fn now() -> Time {
+        let mut now = time::OffsetDateTime::now_utc();
+        now = now.to_offset(GLOBAL_OFFSET.clone());
+        return Time { inner: now };
+    }
+
+    /// current utc time
+    pub fn now_utc() -> Time {
+        let now = time::OffsetDateTime::now_utc();
+        return Time { inner: now };
+    }
+}
+
+impl Debug for Time {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Time")
+            .field(&self.format(RFC3339_NANO))
+            .finish()
+    }
+}
+
+impl Display for Time {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.format(RFC3339_NANO), f)
+    }
+}
+
+impl Default for Time {
+    fn default() -> Self {
+        Self::parse(RFC3339_NANO, "0001-01-01T00:00:00.000000+00:00").unwrap()
+    }
+}
+
+impl serde::Serialize for Time {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.format(RFC3339_NANO))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Time {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Time::parse(RFC3339_NANO, &String::deserialize(deserializer)?) {
+            Ok(v) => Ok(v),
+            Err(e) => Err(D::Error::custom(e.to_string())),
+        }
+    }
+}
+
+impl FromStr for Time {
+    type Err = crate::std::errors::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Time::parse(RFC3339_NANO, s)
+    }
+}
+
+// A month specifies a month of the year (January = 1, ...).
+#[derive(Eq, PartialEq, Debug, PartialOrd)]
+pub enum Month {
+    January = 1,
+    February = 2,
+    March = 3,
+    April = 4,
+    May = 5,
+    June = 6,
+    July = 7,
+    August = 8,
+    September = 9,
+    October = 10,
+    November = 11,
+    December = 12,
+}
+
+impl From<time::Month> for Month {
+    fn from(arg: time::Month) -> Self {
+        match arg {
+            time::Month::January => Month::January,
+            time::Month::February => Month::February,
+            time::Month::March => Month::March,
+            time::Month::April => Month::April,
+            time::Month::May => Month::May,
+            time::Month::June => Month::June,
+            time::Month::July => Month::July,
+            time::Month::August => Month::August,
+            time::Month::September => Month::September,
+            time::Month::October => Month::October,
+            time::Month::November => Month::November,
+            time::Month::December => Month::December,
+        }
+    }
+}
+
+impl From<i64> for Month {
+    fn from(arg: i64) -> Self {
+        match arg {
+            1 => {
+                return Month::January;
+            }
+            2 => {
+                return Month::February;
+            }
+            3 => {
+                return Month::March;
+            }
+            4 => {
+                return Month::April;
+            }
+            5 => {
+                return Month::May;
+            }
+            6 => {
+                return Month::June;
+            }
+            7 => {
+                return Month::July;
+            }
+            8 => {
+                return Month::August;
+            }
+            9 => {
+                return Month::September;
+            }
+            10 => {
+                return Month::October;
+            }
+            11 => {
+                return Month::November;
+            }
+            12 => {
+                return Month::December;
+            }
+            _ => {}
+        }
+        Month::January
+    }
+}
+
+impl From<Month> for i64 {
+    fn from(arg: Month) -> Self {
+        match arg {
+            Month::January => 1,
+            Month::February => 2,
+            Month::March => 3,
+            Month::April => 4,
+            Month::May => 5,
+            Month::June => 6,
+            Month::July => 7,
+            Month::August => 8,
+            Month::September => 9,
+            Month::October => 10,
+            Month::November => 11,
+            Month::December => 23,
+        }
+    }
+}
+
+impl From<&Month> for i64 {
+    fn from(arg: &Month) -> Self {
+        match arg {
+            Month::January => 1,
+            Month::February => 2,
+            Month::March => 3,
+            Month::April => 4,
+            Month::May => 5,
+            Month::June => 6,
+            Month::July => 7,
+            Month::August => 8,
+            Month::September => 9,
+            Month::October => 10,
+            Month::November => 11,
+            Month::December => 23,
+        }
+    }
+}
+
+impl Month {
+    pub fn i64(&self) -> i64 {
+        self.into()
+    }
+    // string returns the English name of the month ("January", "February", ...).
+    pub fn string(&self) -> String {
+        if Month::January <= *self && *self <= Month::December {
+            return LONG_MONTH_NAMES[(self.i64() - 1) as usize].to_string();
+        }
+        let mut buf = Vec::with_capacity(20);
+        for _ in 0..20 {
+            buf.push(0);
+        }
+        let n = fmt_int(&mut buf, self.i64() as u64) as usize;
+        return "%!month(".to_string()
+            + &String::from_utf8(buf[n..].to_vec()).unwrap_or_default()
+            + ")";
+    }
+}
+
+// fmt_int formats v into the tail of buf.
+// It returns the index where the output begins.
+fn fmt_int(buf: &mut Vec<u8>, mut v: u64) -> i64 {
+    let mut w = buf.len();
+    if v == 0 {
+        w -= 1;
+        buf[w] = '0' as u8;
+    } else {
+        while v > 0 {
+            w -= 1;
+            buf[w] = (v % 10) as u8 + '0' as u8;
+            v /= 10
+        }
+    }
+    return w as i64;
+}
+
+#[derive(Eq, PartialEq, Debug, PartialOrd)]
+pub enum Weekday {
+    Sunday = 0,
+    Monday = 1,
+    Tuesday = 2,
+    Wednesday = 3,
+    Thursday = 4,
+    Friday = 5,
+    Saturday = 6,
+}
+
+impl From<time::Weekday> for Weekday {
+    fn from(arg: time::Weekday) -> Self {
+        match arg {
+            time::Weekday::Monday => Weekday::Monday,
+            time::Weekday::Tuesday => Weekday::Tuesday,
+            time::Weekday::Wednesday => Weekday::Wednesday,
+            time::Weekday::Thursday => Weekday::Thursday,
+            time::Weekday::Friday => Weekday::Friday,
+            time::Weekday::Saturday => Weekday::Saturday,
+            time::Weekday::Sunday => Weekday::Sunday,
+        }
+    }
+}
+
+impl Weekday {
+    pub fn i64(&self) -> i64 {
+        match self {
+            Weekday::Sunday => 0,
+            Weekday::Monday => 1,
+            Weekday::Tuesday => 2,
+            Weekday::Wednesday => 3,
+            Weekday::Thursday => 4,
+            Weekday::Friday => 5,
+            Weekday::Saturday => 6,
+        }
+    }
+    pub fn string(&self) -> String {
+        if Weekday::Sunday <= *self && *self <= Weekday::Saturday {
+            return LONG_DAY_NAMES[self.i64() as usize].to_string();
+        }
+        let mut buf = Vec::with_capacity(20);
+        for _ in 0..20 {
+            buf.push(0u8);
+        }
+        let n = fmt_int(&mut buf, self.i64() as u64);
+        return format!(
+            "%!weekday({})",
+            String::from_utf8(buf[n as usize..].to_vec()).unwrap_or_default()
+        );
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::coroutine::sleep;
+    use crate::std::time::time::{Month, Time, RFC3339, RFC3339_NANO, TIME_FORMAT};
+    use std::time::Duration;
+
+    #[test]
+    fn test_mon() {
+        let m = Month::May;
+        println!("{}", m.string());
+        assert_eq!("May", m.string());
+    }
+
+    #[test]
+    fn test_parse() {
+        let now = Time::now();
+        println!("{}", now.format(TIME_FORMAT));
+        println!("{}", now.format(RFC3339));
+        println!("{}", now.format(RFC3339_NANO));
+        assert_eq!(
+            now,
+            Time::parse(RFC3339_NANO, &now.format(RFC3339_NANO)).unwrap()
+        )
+    }
+
+    #[test]
+    fn test_eq() {
+        let now = Time::now();
+        sleep(Duration::from_secs(1));
+        println!("{}", now.format(RFC3339_NANO));
+        assert_eq!(true, now.before(&Time::now()));
+    }
+
+    #[test]
+    fn test_smoke() {
+        let mut now = Time::now();
+        //is before?
+        sleep(Duration::from_secs(1));
+        assert_eq!(true, now.before(&Time::now()));
+        //is after?
+        sleep(Duration::from_secs(1));
+        assert_eq!(true, Time::now().after(&now));
+        //parse from str
+        let parsed = Time::parse(RFC3339_NANO, &now.to_string()).unwrap();
+        assert_eq!(now, parsed);
+        let formatted = now.utc();
+        println!("to utc: {}", formatted);
+        assert_eq!(now, formatted.local());
+        let formatted = now.local();
+        println!("to local: {}", formatted);
+        assert_eq!(now, formatted);
+        println!("default(): {}", Time::default());
+        assert_eq!(true, Time::default().is_zero());
+    }
+}

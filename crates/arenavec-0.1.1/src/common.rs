@@ -52,6 +52,8 @@ pub trait AllocHandle {
     fn allocate_or_extend<T>(&self, ptr: NonNull<T>, old_count: usize, count: usize) -> NonNull<T>;
 }
 
+
+
 /// An arena allocated, fixed-size sequence of objects.
 pub struct Slice<T, H> {
     ptr: NonNull<T>,
@@ -126,7 +128,7 @@ impl<T: fmt::Debug, H> fmt::Debug for Slice<T, H> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.deref().fmt(fmt)
     }
-}
+} 
 
 impl<T, H> Deref for Slice<T, H> {
     type Target = [T];

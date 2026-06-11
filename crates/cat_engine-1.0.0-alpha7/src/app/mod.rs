@@ -1,0 +1,30 @@
+mod mono_windowing;
+
+#[cfg(any(target_os="windows"))]
+pub use mono_windowing::windows::{
+    App,
+    AppAttributes,
+    AppWindowProcedure,
+    Window,
+    CursorIcon,
+    SystemCursor,
+    Background,
+    Fullscreen,
+    Monitor,
+    WindowAttributes,
+    WindowClassAttributes,
+    Event,
+    EventLoop,
+    LoopControl,
+    MouseButton,
+    ProcessEvent,
+    WindowEvent,
+    VirtualKeyCode,
+    EventLoopAttributes,
+    OpenGLRenderContext,
+    OpenGLRenderContextAttributes,
+    EventInterval,
+    WinError,
+    WindowResizeType,
+    quit,
+};
