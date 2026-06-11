@@ -183,6 +183,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory where linked LLVM IR is expected/written (default: .local/irs).",
     )
     verify_parser.add_argument(
+        "--report-json",
+        help="Path to mirscan report.json for KLEE compose orchestration (default: <cargo_dir>/report.json).",
+    )
+    verify_parser.add_argument(
         "--klee-bin",
         default="klee",
         help="KLEE executable to use (default: klee).",

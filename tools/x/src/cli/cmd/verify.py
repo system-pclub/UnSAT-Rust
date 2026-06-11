@@ -124,6 +124,7 @@ def _run_klee_compose_verify(
     ll_path: Path,
     callsite_id: str,
     ast_json: str,
+    report_json: Path | None,
     klee_bin: str,
 ) -> int:
     cmd = [
@@ -131,8 +132,10 @@ def _run_klee_compose_verify(
         f"--ext.callsite={callsite_id}",
         f"--ext.dsl={ast_json}",
         "--compose-verify",
-        str(ll_path),
     ]
+    if report_json is not None:
+        cmd.append(f"--report-json={report_json}")
+    cmd.append(str(ll_path))
     print(f"[verify] running: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False)
     return result.returncode
@@ -189,13 +192,19 @@ def run(args: argparse.Namespace) -> int:
 
     operators = _load_operator_entries(repo_root)
     ast_json = _task1_to_ext_ast_json(task1, operators)
+    report_json = _resolve_path(repo_root, args.report_json, str(cargo_dir / "report.json"))
+    if not report_json.is_file():
+        report_json = None
 
     print(f"[verify] crate={cargo_dir}")
     print(f"[verify] llvm-ir={ll_path}")
+    if report_json is not None:
+        print(f"[verify] report-json={report_json}")
     print(f"[verify] callsite={resolved_callsite_id} rule={args.rule}")
     return _run_klee_compose_verify(
         ll_path=ll_path,
         callsite_id=resolved_callsite_id,
         ast_json=ast_json,
+        report_json=report_json,
         klee_bin=args.klee_bin,
     )

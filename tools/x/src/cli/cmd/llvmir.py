@@ -50,7 +50,11 @@ def compile_test_with_emit_llvm(cargo_dir: Path, custom_rustc: str = None, build
     env["CARGO_INCREMENTAL"] = "0" 
     if custom_rustc:
         env["RUSTC"] = custom_rustc
-    env["RUSTFLAGS"] = "-Zinline-mir=no --emit=llvm-ir -Cllvm-args=--inline-threshold=0 -Copt-level=0 -Ccodegen-units=1"
+    env["RUSTFLAGS"] = (
+        "-Zinline-mir=no --emit=llvm-ir -Cllvm-args=--inline-threshold=0 "
+        "-Copt-level=0 -Ccodegen-units=1 "
+        # "-Clink-arg=-Wl,--unresolved-symbols=ignore-all"
+    )
 
     cmd = ["cargo", "test", "--no-run"]
     if build_std:
@@ -128,10 +132,14 @@ def _get_crate_name_or_workspace_members(cargo_dir: Path) -> list[tuple[str, Pat
 
 
 def _find_llvm_ir(deps_dir: Path, crate_name: str) -> Path:
-    """Find the .ll file for *crate_name* inside *deps_dir*."""
-    for entry in deps_dir.iterdir():
-        if entry.suffix == ".ll" and entry.name.startswith(crate_name + "-"):
-            return entry
+    """Find the newest .ll file for *crate_name* inside *deps_dir*."""
+    matches = [
+        entry
+        for entry in deps_dir.iterdir()
+        if entry.suffix == ".ll" and entry.name.startswith(crate_name + "-")
+    ]
+    if matches:
+        return max(matches, key=lambda path: path.stat().st_mtime)
     raise FileNotFoundError(f"LLVM IR file not found for crate '{crate_name}' in {deps_dir}")
 
 def _link_llvm_irs(llvm_ir_paths: list[Path], output_path: Path, bitcode: bool = False) -> None:

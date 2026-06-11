@@ -28,6 +28,9 @@
 //! generation (`./x llvmir`); the symbols are not available in normal builds.
 #![no_std]
 
+
+mod stubs;
+
 use core::ffi::{c_char, c_void};
 
 extern "C" {

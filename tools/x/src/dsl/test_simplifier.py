@@ -67,11 +67,25 @@ def test_simplify_preserves_unary_and_binary_shape() -> None:
     )
 
 
-def test_simplify_rejects_unknown_call_stringification() -> None:
+def test_simplify_unknown_call_stringification_is_stable() -> None:
     ast = parse_dsl("offset_in_alloc(get_var(\"p\"))", OPERATORS_PATH)
+    result = simplify_variables(ast)
 
-    with pytest.raises(DSLValidationError, match="unsupported call expression"):
-        simplify_variables(ast)
+    assert set(result.variables) == {"offset_in_alloc(p)"}
+    assert result.simplified == SimplifiedVariable("offset_in_alloc(p)")
+
+
+def test_simplify_get_result_and_get_receiver() -> None:
+    ast = parse_dsl("get_alloc(get_result()) == get_alloc(get_receiver())", OPERATORS_PATH)
+
+    result = simplify_variables(ast)
+
+    assert set(result.variables) == {"result.alloc", "receiver.alloc"}
+    assert result.simplified == BinaryExpression(
+        operator="==",
+        left=SimplifiedVariable("result.alloc"),
+        right=SimplifiedVariable("receiver.alloc"),
+    )
 
 
 def test_simplify_rejects_non_call_leaf() -> None:

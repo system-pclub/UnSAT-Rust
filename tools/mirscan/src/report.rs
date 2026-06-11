@@ -8,6 +8,7 @@ use std::vec;
 use serde::{Serialize, Deserialize};
 use rustc_span::Pos;
 use rustc_span::sym;
+use walkdir::WalkDir;
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FnInfo {
     /// <mod>::<type>::<fn>
@@ -16,6 +17,10 @@ pub struct FnInfo {
     pub line_start: usize,  // signature line number
     pub line_end: usize,    // signature line number
     pub body_end: usize,    // line number of the closing brace of the function body
+    #[serde(default)]
+    pub require_template: bool,
+    #[serde(default)]
+    pub has_template_in_test: bool,
     #[serde(skip)]
     pub call_chains: Vec<String>, // e.g. ["fn_a -> fn_b "], only for mutators across multiple struct functions
 }
@@ -63,8 +68,18 @@ pub struct Suspect {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeInteractionInfo {
+    #[serde(rename = "type")]
+    pub ty: StructInfo,
+    pub constructors: Vec<FnInfo>,
+    pub mutators: Vec<FnInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub targets: Vec<Suspect>,
+    #[serde(default)]
+    pub types: Vec<TypeInteractionInfo>,
 }
 
 fn normalize_to_rust_relative(path: &str) -> String {
@@ -749,6 +764,15 @@ fn get_doc_line_start_from_source(file_path: &str, signature_line: usize) -> Opt
 }
 
 fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
+    get_fn_info_with_template_flags(tcx, def_id, false, false)
+}
+
+fn get_fn_info_with_template_flags<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    require_template: bool,
+    has_template_in_test: bool,
+) -> FnInfo {
     let span = tcx.def_span(def_id);
     let source_map = tcx.sess.source_map();
     let loc = source_map.lookup_char_pos(span.lo());
@@ -770,8 +794,112 @@ fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
         line_start,
         line_end: end_loc.line,
         body_end: body_end_loc.line,
+        require_template,
+        has_template_in_test,
         call_chains: vec![],
     }
+}
+
+fn strip_generics(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut depth: i32 = 0;
+    for ch in text.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                if depth > 0 {
+                    depth -= 1;
+                }
+            }
+            _ if depth == 0 => out.push(ch),
+            _ => {}
+        }
+    }
+    out.replace(":::", "::")
+}
+
+fn collect_test_sources() -> Vec<String> {
+    let Ok(crate_root) = std::env::current_dir() else {
+        return Vec::new();
+    };
+
+    let mut sources = Vec::new();
+    for entry in WalkDir::new(&crate_root).into_iter().filter_map(Result::ok) {
+        let path = entry.path();
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let rel = match path.strip_prefix(&crate_root) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if rel.components().any(|c| c.as_os_str() == "target") {
+            continue;
+        }
+        if !rel.starts_with("tests") && !rel.starts_with("src") {
+            continue;
+        }
+        if let Ok(content) = std::fs::read_to_string(path) {
+            sources.push(content);
+        }
+    }
+
+    sources
+}
+
+fn requires_template<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    caller_def_id: DefId,
+    caller_parent_def_id: Option<DefId>,
+) -> bool {
+    if !tcx.generics_of(caller_def_id).own_params.is_empty() {
+        return true;
+    }
+    if let Some(parent_def_id) = caller_parent_def_id {
+        if !tcx.generics_of(parent_def_id).own_params.is_empty() {
+            return true;
+        }
+    }
+    false
+}
+
+fn has_template_instantiation_in_tests(
+    caller_name: &str,
+    caller_parent_name: Option<&str>,
+    test_sources: &[String],
+) -> bool {
+    let normalized_caller = strip_generics(caller_name);
+    let caller_parts: Vec<&str> = normalized_caller.split("::").filter(|s| !s.is_empty()).collect();
+
+    let mut symbols = Vec::new();
+    if let Some(last) = caller_parts.last() {
+        symbols.push((*last).to_string());
+    }
+    if caller_parts.len() >= 2 {
+        symbols.push(caller_parts[caller_parts.len() - 2].to_string());
+    }
+
+    if let Some(parent) = caller_parent_name {
+        let normalized_parent = strip_generics(parent);
+        if let Some(seg) = normalized_parent.split("::").filter(|s| !s.is_empty()).last() {
+            symbols.push(seg.to_string());
+        }
+    }
+
+    symbols.sort();
+    symbols.dedup();
+
+    for source in test_sources {
+        for symbol in &symbols {
+            if source.contains(&format!("{symbol}::<")) || source.contains(&format!("{symbol}<")) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn get_struct_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> StructInfo {
@@ -860,6 +988,9 @@ fn collect_constructors<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId) -> Vec<Fn
             }
             
             let fn_def_id = item.def_id;
+            if is_fn_unsafe(tcx, fn_def_id) || !tcx.visibility(fn_def_id).is_public() {
+                continue;
+            }
             
             if is_constructor(tcx, fn_def_id, Some(struct_def_id)) {
                 constructors.push(get_fn_info(tcx, fn_def_id));
@@ -867,6 +998,113 @@ fn collect_constructors<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId) -> Vec<Fn
         }
     }
     constructors
+}
+
+fn has_mut_self_receiver<'tcx>(tcx: TyCtxt<'tcx>, fn_def_id: DefId, struct_def_id: DefId) -> bool {
+    let fn_sig = tcx.fn_sig(fn_def_id).skip_binder();
+    let inputs = fn_sig.inputs().skip_binder();
+    let Some(first_input) = inputs.get(0) else {
+        return false;
+    };
+
+    let struct_ty = tcx.type_of(struct_def_id).skip_binder();
+    matches!(
+        first_input.kind(),
+        rustc_middle::ty::TyKind::Ref(_, ty, rustc_middle::mir::Mutability::Mut)
+            if ty == &struct_ty
+    )
+}
+
+fn collect_all_field_indices<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId) -> HashSet<String> {
+    let mut fields = HashSet::new();
+    if let Some(adt_def) = tcx.type_of(struct_def_id).skip_binder().ty_adt_def() {
+        for variant in adt_def.variants() {
+            for (index, _field) in variant.fields.iter().enumerate() {
+                fields.insert(index.to_string());
+            }
+        }
+    }
+    fields
+}
+
+fn dedup_fn_infos(items: Vec<FnInfo>) -> Vec<FnInfo> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+    for item in items {
+        let key = (item.name.clone(), item.path.clone(), item.line_start);
+        if seen.insert(key) {
+            deduped.push(item);
+        }
+    }
+    deduped
+}
+
+fn collect_public_type_mutators<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId) -> Vec<FnInfo> {
+    let mut mutators = Vec::new();
+    let all_fields = collect_all_field_indices(tcx, struct_def_id);
+    let impl_def_ids = tcx.inherent_impls(struct_def_id);
+
+    for &impl_def_id in impl_def_ids.iter() {
+        let impl_items = tcx.associated_items(impl_def_id);
+
+        for item in impl_items.in_definition_order() {
+            if item.kind != rustc_middle::ty::AssocKind::Fn {
+                continue;
+            }
+
+            let fn_def_id = item.def_id;
+            if is_fn_unsafe(tcx, fn_def_id) || !tcx.visibility(fn_def_id).is_public() {
+                continue;
+            }
+
+            if has_mut_self_receiver(tcx, fn_def_id, struct_def_id) {
+                mutators.push(get_fn_info(tcx, fn_def_id));
+            }
+        }
+    }
+
+    if !all_fields.is_empty() {
+        mutators.extend(collect_fields_setters(tcx, struct_def_id, all_fields.clone()));
+        mutators.extend(collect_escaped_mut_refs(tcx, struct_def_id, all_fields.clone()));
+        mutators.extend(collect_escaped_mut_refs_in_aggregates(
+            tcx,
+            struct_def_id,
+            all_fields,
+            vec![],
+        ));
+    }
+
+    dedup_fn_infos(mutators)
+}
+
+fn collect_public_type_infos<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<TypeInteractionInfo> {
+    let mut types = Vec::new();
+
+    for local_def_id in tcx.hir_crate_items(()).definitions() {
+        let def_id = local_def_id.to_def_id();
+
+        if !matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::Struct) {
+            continue;
+        }
+        if !tcx.visibility(def_id).is_public() {
+            continue;
+        }
+
+        let Some(adt_def) = tcx.type_of(def_id).skip_binder().ty_adt_def() else {
+            continue;
+        };
+        if !adt_def.is_struct() {
+            continue;
+        }
+
+        types.push(TypeInteractionInfo {
+            ty: get_struct_info(tcx, def_id),
+            constructors: collect_constructors(tcx, def_id),
+            mutators: collect_public_type_mutators(tcx, def_id),
+        });
+    }
+
+    types
 }
 
 fn collect_fields_setters<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId, fields: HashSet<String>) -> Vec<FnInfo> {
@@ -1040,6 +1278,9 @@ fn collect_escaped_mut_refs_in_aggregates<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id
 
 pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
     let mut targets = Vec::new();
+    let types = collect_public_type_infos(tcx);
+    let test_sources = collect_test_sources();
+    let mut template_presence_cache: HashMap<(DefId, Option<DefId>), bool> = HashMap::new();
     
     // Find all ADTs (structs/enums)
     for local_def_id in tcx.hir_crate_items(()).definitions() {
@@ -1089,7 +1330,27 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                     continue;
                 }
                 
-                let fn_info = get_fn_info(tcx, fn_def_id);
+                let require_template = requires_template(tcx, fn_def_id, Some(def_id));
+                let has_template_in_test = if !require_template {
+                    false
+                } else if let Some(cached) = template_presence_cache.get(&(fn_def_id, Some(def_id))) {
+                    *cached
+                } else {
+                    let found = has_template_instantiation_in_tests(
+                        &tcx.def_path_str(fn_def_id),
+                        Some(&tcx.def_path_str(def_id)),
+                        &test_sources,
+                    );
+                    template_presence_cache.insert((fn_def_id, Some(def_id)), found);
+                    found
+                };
+
+                let fn_info = get_fn_info_with_template_flags(
+                    tcx,
+                    fn_def_id,
+                    require_template,
+                    has_template_in_test,
+                );
                 
                 
                 // Analyze the function body for unsafe calls
@@ -1251,7 +1512,23 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
             continue;
         }
 
-        let fn_info = get_fn_info(tcx, def_id);
+        let require_template = requires_template(tcx, def_id, None);
+        let has_template_in_test = if !require_template {
+            false
+        } else if let Some(cached) = template_presence_cache.get(&(def_id, None)) {
+            *cached
+        } else {
+            let found = has_template_instantiation_in_tests(&tcx.def_path_str(def_id), None, &test_sources);
+            template_presence_cache.insert((def_id, None), found);
+            found
+        };
+
+        let fn_info = get_fn_info_with_template_flags(
+            tcx,
+            def_id,
+            require_template,
+            has_template_in_test,
+        );
 
         if let Some(local_fn_def_id) = def_id.as_local() {
             let body = tcx.optimized_mir(local_fn_def_id);
@@ -1294,7 +1571,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
         }
     }
     
-    Report { targets }
+    Report { targets, types }
 }
 
 

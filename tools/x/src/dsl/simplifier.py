@@ -1,6 +1,14 @@
 from dataclasses import dataclass
 
-from dsl.ast import BinaryExpression, CallExpression, Expression, Literal, UnaryExpression
+from dsl.ast import (
+    BinaryExpression,
+    CallExpression,
+    Expression,
+    Identifier,
+    Literal,
+    SourceRef,
+    UnaryExpression,
+)
 from dsl.errors import DSLValidationError
 
 
@@ -9,7 +17,7 @@ class SimplifiedVariable:
     name: str
 
 
-SimplifiedExpression = SimplifiedVariable | UnaryExpression | BinaryExpression
+SimplifiedExpression = SimplifiedVariable | Literal | UnaryExpression | BinaryExpression
 
 
 @dataclass(frozen=True)
@@ -32,6 +40,9 @@ def _simplify_expression(
         variable_name = _call_to_variable_name(ast)
         variables[variable_name] = ast
         return SimplifiedVariable(variable_name)
+
+    if isinstance(ast, Literal):
+        return ast
 
     if isinstance(ast, UnaryExpression):
         return UnaryExpression(
@@ -59,6 +70,14 @@ def _call_to_variable_parts(ast: CallExpression) -> list[str]:
     if ast.name == "get_var":
         return [_literal_string_arg(ast, 0)]
 
+    if ast.name == "get_result":
+        _expect_arg_count(ast, 0)
+        return ["result"]
+
+    if ast.name == "get_receiver":
+        _expect_arg_count(ast, 0)
+        return ["receiver"]
+
     if ast.name == "get_alloc":
         _expect_arg_count(ast, 1)
         return ["alloc", *_call_arg_to_variable_parts(ast, 0)]
@@ -67,7 +86,31 @@ def _call_to_variable_parts(ast: CallExpression) -> list[str]:
         _expect_arg_count(ast, 2)
         return [_literal_string_arg(ast, 1), *_call_arg_to_variable_parts(ast, 0)]
 
-    raise DSLValidationError(f"Cannot stringify unsupported call expression: {ast.name!r}")
+    if ast.name == "load":
+        _expect_arg_count(ast, 1)
+        return ["load", *_call_arg_to_variable_parts(ast, 0)]
+
+    # Keep unknown operators verifiable by giving them a stable symbolic key.
+    args = ",".join(_expr_to_variable_atom(arg) for arg in ast.args)
+    return [f"{ast.name}({args})"]
+
+
+def _expr_to_variable_atom(expr: Expression) -> str:
+    if isinstance(expr, CallExpression):
+        return _call_to_variable_name(expr)
+    if isinstance(expr, Literal):
+        return repr(expr.value)
+    if isinstance(expr, Identifier):
+        return expr.name
+    if isinstance(expr, SourceRef):
+        return f"{expr.name}@{expr.line}:{expr.column}"
+    if isinstance(expr, UnaryExpression):
+        return f"{expr.operator}{_expr_to_variable_atom(expr.operand)}"
+    if isinstance(expr, BinaryExpression):
+        left = _expr_to_variable_atom(expr.left)
+        right = _expr_to_variable_atom(expr.right)
+        return f"({left}{expr.operator}{right})"
+    raise DSLValidationError(f"Cannot stringify unsupported expression: {expr!r}")
 
 
 def _call_arg_to_variable_parts(ast: CallExpression, arg_index: int) -> list[str]:

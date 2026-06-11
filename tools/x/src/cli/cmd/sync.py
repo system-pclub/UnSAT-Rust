@@ -156,8 +156,6 @@ def _resolve_autoinj_binary(repo_root: Path) -> str:
 
 
 def _looks_like_autoinj_output(dest_dir: Path) -> bool:
-    if (dest_dir / "generated-meta.json").is_file():
-        return True
     manifest = dest_dir / "Cargo.toml"
     if not manifest.is_file():
         return False
@@ -633,7 +631,11 @@ def _transform_report(
         # Keep crate metadata report free of rule/task payloads; those live in human/<crate>.json.
         target.pop("rules", None)
         targets.append(target)
-    return {"targets": targets}, human_placeholders
+    transformed: dict[str, object] = {"targets": targets}
+    types = report.get("types")
+    if isinstance(types, list):
+        transformed["types"] = types
+    return transformed, human_placeholders
 
 
 def _resolve_studied_rules_path(repo_root: Path, studied_rules: str | Path) -> Path:
