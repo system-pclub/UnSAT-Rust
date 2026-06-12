@@ -230,7 +230,7 @@ def ensure_linked_llvm_ir_file(
     main_ir = _find_llvm_ir(all_deps_dir, crate_name)
     lls.append(main_ir)
     if build_std:
-        for link in ("core", "alloc", "std"):
+        for link in ("core", "alloc", "std", "compiler_builtins"):
             try:
                 link_path = _find_llvm_ir(all_deps_dir, link)
                 lls.append(link_path)

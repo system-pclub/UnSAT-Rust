@@ -15,8 +15,10 @@ where
 {
     pub fn next_unchecked(&mut self) -> &'static T {
         unsafe {
+            let __klee_arg0 = self.curr - 1;
+            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
             klee_ext_bind::callsite!("src-iter-rs-20-20");
-            &*self.data.add(self.curr - 1)
+            &*self.data.add(__klee_arg0)
         }
     }
 }
@@ -50,8 +52,10 @@ where
 {
     pub fn next_unchecked(&mut self) -> &'static mut T {
         unsafe {
+            let __klee_arg0 = self.curr - 1;
+            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
             klee_ext_bind::callsite!("src-iter-rs-59-24");
-            &mut *self.data.add(self.curr - 1)
+            &mut *self.data.add(__klee_arg0)
         }
     }
 }

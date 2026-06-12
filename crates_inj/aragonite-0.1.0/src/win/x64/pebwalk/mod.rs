@@ -66,11 +66,12 @@ pub fn get_module_by_name(module_name: &str) -> Option<HINSTANCE> {
     let mut p_list_entry = &ldr.InMemoryOrderModuleList as *const LIST_ENTRY;
     loop {
         let dll_name = unsafe {
+            let __klee_arg0 = (*p_ldr_data_table_entry).FullDllName.Buffer;
+            let __klee_arg1 = (*p_ldr_data_table_entry).FullDllName.Length as usize / 2;
+            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
+            klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
             klee_ext_bind::callsite!("src-win-x64-pebwalk-mod-rs-82-13");
-            core::slice::from_raw_parts(
-                (*p_ldr_data_table_entry).FullDllName.Buffer,
-                (*p_ldr_data_table_entry).FullDllName.Length as usize / 2,
-            )
+            core::slice::from_raw_parts(__klee_arg0, __klee_arg1)
         };
         if cmp_utf16_ascii_caseinsensitive(dll_name, module_name) {
             let module_base: HINSTANCE = unsafe { *p_ldr_data_table_entry }.Reserved2[0]
@@ -108,19 +109,22 @@ pub fn get_proc_address<T>(module_handle: HINSTANCE, func_name: &str) -> Option<
         let name_offset = unsafe { *(name_array as *const u32) };
         let curr_func_name = (module_handle + name_offset as u64) as *const u8;
         let curr_func_name = unsafe {
+            let __klee_arg1 = c_strlen(curr_func_name);
             klee_ext_bind::bind!(& curr_func_name, "curr_func_name");
+            klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
             klee_ext_bind::callsite!("src-win-x64-pebwalk-mod-rs-121-22");
-            core::slice::from_raw_parts(curr_func_name, c_strlen(curr_func_name))
+            core::slice::from_raw_parts(curr_func_name, __klee_arg1)
         };
         if slicecmp(curr_func_name, func_name.as_bytes()) {
             let address_array = address_array
                 + (unsafe { *(name_ordinals as *const u16) } as u64
                     * (core::mem::size_of::<u32>() as u64));
             let func_addr: T = unsafe {
+                let __klee_arg0 = &(module_handle
+                    + *(address_array as *const u32) as u64);
+                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
                 klee_ext_bind::callsite!("src-win-x64-pebwalk-mod-rs-127-17");
-                core::mem::transmute_copy(
-                    &(module_handle + *(address_array as *const u32) as u64),
-                )
+                core::mem::transmute_copy(__klee_arg0)
             };
             return Some(func_addr);
         }

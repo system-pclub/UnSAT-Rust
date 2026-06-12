@@ -21,3 +21,14 @@ $ ./x sync --cargo-dir <crate folder>
 
 # Step 2: fill the <placeholder> for task1/2/3 
 ```
+
+
+
+
+
+
+
+## How to verify a rule
+```bash
+$ ./x verify crates_inj/arenavec-0.1.1 --callsite src-common-rs-86-28 --rule rule-446 --report-json crates_inj/arenavec-0.1.1/report.json --test
+```

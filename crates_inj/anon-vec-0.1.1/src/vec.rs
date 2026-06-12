@@ -252,6 +252,7 @@ impl AnonVec {
         let v = &val as *const T as *const u8;
         for i in 0..self.size {
             unsafe {
+                klee_ext_bind::bind!(& i, "i");
                 klee_ext_bind::callsite!("src-vec-rs-275-34");
                 self.inner.push(*(v.add(i)))
             }
@@ -272,7 +273,7 @@ impl AnonVec {
         let index = index * self.size;
         for i in (0..self.size).rev() {
             unsafe {
-                klee_ext_bind::bind!(& index, "index");
+                klee_ext_bind::bind!(& i, "i");
                 klee_ext_bind::callsite!("src-vec-rs-297-43");
                 self.inner.insert(index, *(v.add(i)))
             }

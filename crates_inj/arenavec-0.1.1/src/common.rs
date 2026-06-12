@@ -77,14 +77,18 @@ impl<T, H: AllocHandle> Slice<T, H> {
         res.len = len;
         for i in 0..len {
             unsafe {
-                klee_ext_bind::bind!(& i, "i");
-                klee_ext_bind::callsite!("src-common-rs-84-28");
-                let __klee_arg0 = res.ptr.as_ptr().add(i);
-                let __klee_arg1 = T::default();
+                let __klee_arg0 = res.ptr.as_ptr();
                 klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
+                klee_ext_bind::bind!(& i, "i");
+                klee_ext_bind::callsite!("src-common-rs-86-28");
+                let __klee_ret = __klee_arg0.add(i);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                let __klee_arg1 = T::default();
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
-                klee_ext_bind::callsite!("src-common-rs-84-17");
-                ptr::write(__klee_arg0, __klee_arg1);
+                klee_ext_bind::callsite!("src-common-rs-86-17");
+                let __klee_ret = ptr::write(__klee_ret, __klee_arg1);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
         }
         res
@@ -97,6 +101,24 @@ impl<T, H: AllocHandle> Slice<T, H> {
             handle.allocate(real_len)
         };
         Slice { ptr, len: 0, handle }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ArenaBacking, Slice};
+    use crate::rc::Arena;
+
+    const DEFAULT_CAPACITY: usize = 4096 << 16;
+
+    #[test]
+    fn slice_new() {
+        let arena = Arena::init_capacity(ArenaBacking::SystemAllocation, DEFAULT_CAPACITY).unwrap();
+
+        let slice: Slice<usize, _> = Slice::new(arena.inner(), 3);
+
+        assert_eq!(slice.len(), 3);
+        assert_eq!(&*slice, &[0, 0, 0]);
     }
 }
 impl<T: Clone, H: AllocHandle + Clone> Clone for Slice<T, H> {
@@ -218,14 +240,19 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             .allocate_or_extend(ptr, self.capacity, new_capacity);
         if ptr != new_ptr {
             unsafe {
-                let __klee_arg0 = ptr.as_ptr();
-                let __klee_arg1 = new_ptr.as_ptr();
-                let __klee_arg2 = self.slice.len();
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
+                let __klee_arg2 = ptr.as_ptr();
+                let __klee_arg3 = new_ptr.as_ptr();
+                let __klee_arg4 = self.slice.len();
                 klee_ext_bind::bind!(& __klee_arg2, "__klee_arg2");
-                klee_ext_bind::callsite!("src-common-rs-274-17");
-                ptr::copy_nonoverlapping(__klee_arg0, __klee_arg1, __klee_arg2);
+                klee_ext_bind::bind!(& __klee_arg3, "__klee_arg3");
+                klee_ext_bind::bind!(& __klee_arg4, "__klee_arg4");
+                klee_ext_bind::callsite!("src-common-rs-276-17");
+                let __klee_ret = ptr::copy_nonoverlapping(
+                    __klee_arg2,
+                    __klee_arg3,
+                    __klee_arg4,
+                );
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
             self.slice.ptr = new_ptr;
         }
@@ -238,10 +265,11 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         let old_len = self.slice.len;
         if len < old_len {
             unsafe {
-                let __klee_arg0 = &mut self.slice[len..old_len];
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::callsite!("src-common-rs-295-17");
-                ptr::drop_in_place(__klee_arg0);
+                let __klee_arg5 = &mut self.slice[len..old_len];
+                klee_ext_bind::bind!(& __klee_arg5, "__klee_arg5");
+                klee_ext_bind::callsite!("src-common-rs-297-17");
+                let __klee_ret = ptr::drop_in_place(__klee_arg5);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
             self.slice.len = len;
         }
@@ -254,17 +282,24 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         let hole: *mut T = &mut self[index];
         self.slice.len -= 1;
         unsafe {
-            let __klee_arg0 = self.slice.len;
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::callsite!("src-common-rs-311-34");
-            let __klee_arg0 = self.slice.ptr.as_ptr().add(__klee_arg0);
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::callsite!("src-common-rs-311-24");
-            let last = ptr::read(__klee_arg0);
+            let __klee_arg6 = self.slice.ptr.as_ptr();
+            let __klee_arg7 = self.slice.len;
+            klee_ext_bind::bind!(& __klee_arg6, "__klee_arg6");
+            klee_ext_bind::bind!(& __klee_arg7, "__klee_arg7");
+            klee_ext_bind::callsite!("src-common-rs-313-34");
+            let __klee_ret = __klee_arg6.add(__klee_arg7);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            klee_ext_bind::callsite!("src-common-rs-313-24");
+            let __klee_ret = ptr::read(__klee_ret);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            let last = __klee_ret;
             klee_ext_bind::bind!(& hole, "hole");
             klee_ext_bind::bind!(& last, "last");
-            klee_ext_bind::callsite!("src-common-rs-312-13");
-            ptr::replace(hole, last)
+            klee_ext_bind::callsite!("src-common-rs-314-13");
+            let __klee_ret = ptr::replace(hole, last);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            __klee_ret
         }
     }
     /// Push an element into the vector.
@@ -274,14 +309,18 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             self.reserve(new_capacity - self.capacity);
         }
         unsafe {
-            let __klee_arg0 = self.slice.len();
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::callsite!("src-common-rs-339-24");
-            let __klee_arg0 = self.slice.ptr.as_ptr().add(__klee_arg0);
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
+            let __klee_arg8 = self.slice.ptr.as_ptr();
+            let __klee_arg9 = self.slice.len();
+            klee_ext_bind::bind!(& __klee_arg8, "__klee_arg8");
+            klee_ext_bind::bind!(& __klee_arg9, "__klee_arg9");
+            klee_ext_bind::callsite!("src-common-rs-341-24");
+            let __klee_ret = __klee_arg8.add(__klee_arg9);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& elem, "elem");
-            klee_ext_bind::callsite!("src-common-rs-339-13");
-            ptr::write(__klee_arg0, elem);
+            klee_ext_bind::callsite!("src-common-rs-341-13");
+            let __klee_ret = ptr::write(__klee_ret, elem);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
         self.slice.len = self.slice.len() + 1;
     }
@@ -292,13 +331,18 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         }
         unsafe {
             self.slice.len -= 1;
-            let __klee_arg0 = self.slice.len;
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::callsite!("src-common-rs-353-28");
-            let __klee_arg0 = self.slice.ptr.as_ptr().add(__klee_arg0);
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::callsite!("src-common-rs-353-18");
-            Some(ptr::read(__klee_arg0))
+            let __klee_arg10 = self.slice.ptr.as_ptr();
+            let __klee_arg11 = self.slice.len;
+            klee_ext_bind::bind!(& __klee_arg10, "__klee_arg10");
+            klee_ext_bind::bind!(& __klee_arg11, "__klee_arg11");
+            klee_ext_bind::callsite!("src-common-rs-355-28");
+            let __klee_ret = __klee_arg10.add(__klee_arg11);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            klee_ext_bind::callsite!("src-common-rs-355-18");
+            let __klee_ret = ptr::read(__klee_ret);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            Some(__klee_ret)
         }
     }
     /// Move all elements of `other` into `self`, leaving `other` empty.
@@ -307,25 +351,30 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         self.reserve(count);
         let len = self.len();
         unsafe {
+            let __klee_arg12 = self.slice.ptr.as_ptr();
+            klee_ext_bind::bind!(& __klee_arg12, "__klee_arg12");
             klee_ext_bind::bind!(& len, "len");
-            klee_ext_bind::callsite!("src-common-rs-366-17");
-            let __klee_arg0 = other.slice.ptr.as_ptr();
-            let __klee_arg1 = self.slice.ptr.as_ptr().add(len);
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
+            klee_ext_bind::callsite!("src-common-rs-368-17");
+            let __klee_ret = __klee_arg12.add(len);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            let __klee_arg13 = other.slice.ptr.as_ptr();
+            klee_ext_bind::bind!(& __klee_arg13, "__klee_arg13");
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& count, "count");
-            klee_ext_bind::callsite!("src-common-rs-364-13");
-            ptr::copy_nonoverlapping(__klee_arg0, __klee_arg1, count);
+            klee_ext_bind::callsite!("src-common-rs-366-13");
+            let __klee_ret = ptr::copy_nonoverlapping(__klee_arg13, __klee_ret, count);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
         other.slice.len = 0;
     }
     /// Clear the vector.
     pub fn clear(&mut self) {
         unsafe {
-            let __klee_arg0 = &mut self.slice[..];
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::callsite!("src-common-rs-378-13");
-            ptr::drop_in_place(__klee_arg0);
+            let __klee_arg14 = &mut self.slice[..];
+            klee_ext_bind::bind!(& __klee_arg14, "__klee_arg14");
+            klee_ext_bind::callsite!("src-common-rs-380-13");
+            let __klee_ret = ptr::drop_in_place(__klee_arg14);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
         self.slice.len = 0;
     }
@@ -353,16 +402,24 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         );
         ret.slice.len = self.slice.len - at;
         unsafe {
+            let __klee_arg15 = self.slice.ptr.as_ptr();
+            klee_ext_bind::bind!(& __klee_arg15, "__klee_arg15");
             klee_ext_bind::bind!(& at, "at");
-            klee_ext_bind::callsite!("src-common-rs-409-17");
-            let __klee_arg0 = self.slice.ptr.as_ptr().add(at);
-            let __klee_arg1 = ret.slice.ptr.as_ptr();
-            let __klee_arg2 = ret.len();
-            klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-            klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
-            klee_ext_bind::bind!(& __klee_arg2, "__klee_arg2");
-            klee_ext_bind::callsite!("src-common-rs-408-13");
-            ptr::copy_nonoverlapping(__klee_arg0, __klee_arg1, __klee_arg2);
+            klee_ext_bind::callsite!("src-common-rs-411-17");
+            let __klee_ret = __klee_arg15.add(at);
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            let __klee_arg16 = ret.slice.ptr.as_ptr();
+            let __klee_arg17 = ret.len();
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+            klee_ext_bind::bind!(& __klee_arg16, "__klee_arg16");
+            klee_ext_bind::bind!(& __klee_arg17, "__klee_arg17");
+            klee_ext_bind::callsite!("src-common-rs-410-13");
+            let __klee_ret = ptr::copy_nonoverlapping(
+                __klee_ret,
+                __klee_arg16,
+                __klee_arg17,
+            );
+            klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
         ret
     }
@@ -377,34 +434,44 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         }
         for i in old_len..len.saturating_sub(1) {
             unsafe {
+                let __klee_arg18 = self.slice.ptr.as_ptr();
+                klee_ext_bind::bind!(& __klee_arg18, "__klee_arg18");
                 klee_ext_bind::bind!(& i, "i");
-                klee_ext_bind::callsite!("src-common-rs-429-33");
-                let __klee_arg0 = self.slice.ptr.as_ptr().add(i);
-                let __klee_arg1 = f();
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
-                klee_ext_bind::callsite!("src-common-rs-429-22");
-                ptr::write(__klee_arg0, __klee_arg1)
+                klee_ext_bind::callsite!("src-common-rs-431-33");
+                let __klee_ret = __klee_arg18.add(i);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                let __klee_arg19 = f();
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                klee_ext_bind::bind!(& __klee_arg19, "__klee_arg19");
+                klee_ext_bind::callsite!("src-common-rs-431-22");
+                let __klee_ret = ptr::write(__klee_ret, __klee_arg19);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                __klee_ret
             }
         }
         if len > old_len {
             unsafe {
-                let __klee_arg0 = len - 1;
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::callsite!("src-common-rs-434-28");
-                let __klee_arg0 = self.slice.ptr.as_ptr().add(__klee_arg0);
-                let __klee_arg1 = f();
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
-                klee_ext_bind::callsite!("src-common-rs-434-17");
-                ptr::write(__klee_arg0, __klee_arg1);
+                let __klee_arg20 = self.slice.ptr.as_ptr();
+                let __klee_arg21 = len - 1;
+                klee_ext_bind::bind!(& __klee_arg20, "__klee_arg20");
+                klee_ext_bind::bind!(& __klee_arg21, "__klee_arg21");
+                klee_ext_bind::callsite!("src-common-rs-436-28");
+                let __klee_ret = __klee_arg20.add(__klee_arg21);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                let __klee_arg22 = f();
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                klee_ext_bind::bind!(& __klee_arg22, "__klee_arg22");
+                klee_ext_bind::callsite!("src-common-rs-436-17");
+                let __klee_ret = ptr::write(__klee_ret, __klee_arg22);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
         } else if len < old_len {
             unsafe {
-                let __klee_arg0 = &mut self.slice[len..old_len];
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::callsite!("src-common-rs-438-17");
-                ptr::drop_in_place(__klee_arg0);
+                let __klee_arg23 = &mut self.slice[len..old_len];
+                klee_ext_bind::bind!(& __klee_arg23, "__klee_arg23");
+                klee_ext_bind::callsite!("src-common-rs-440-17");
+                let __klee_ret = ptr::drop_in_place(__klee_arg23);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
         }
         self.slice.len = len;
@@ -420,33 +487,43 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         }
         for i in old_len..len.saturating_sub(1) {
             unsafe {
+                let __klee_arg24 = self.slice.ptr.as_ptr();
+                klee_ext_bind::bind!(& __klee_arg24, "__klee_arg24");
                 klee_ext_bind::bind!(& i, "i");
-                klee_ext_bind::callsite!("src-common-rs-457-33");
-                let __klee_arg0 = self.slice.ptr.as_ptr().add(i);
-                let __klee_arg1 = value.clone();
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::bind!(& __klee_arg1, "__klee_arg1");
-                klee_ext_bind::callsite!("src-common-rs-457-22");
-                ptr::write(__klee_arg0, __klee_arg1)
+                klee_ext_bind::callsite!("src-common-rs-459-33");
+                let __klee_ret = __klee_arg24.add(i);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                let __klee_arg25 = value.clone();
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                klee_ext_bind::bind!(& __klee_arg25, "__klee_arg25");
+                klee_ext_bind::callsite!("src-common-rs-459-22");
+                let __klee_ret = ptr::write(__klee_ret, __klee_arg25);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                __klee_ret
             }
         }
         if len > old_len {
             unsafe {
-                let __klee_arg0 = len - 1;
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::callsite!("src-common-rs-462-28");
-                let __klee_arg0 = self.slice.ptr.as_ptr().add(__klee_arg0);
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
+                let __klee_arg26 = self.slice.ptr.as_ptr();
+                let __klee_arg27 = len - 1;
+                klee_ext_bind::bind!(& __klee_arg26, "__klee_arg26");
+                klee_ext_bind::bind!(& __klee_arg27, "__klee_arg27");
+                klee_ext_bind::callsite!("src-common-rs-464-28");
+                let __klee_ret = __klee_arg26.add(__klee_arg27);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& value, "value");
-                klee_ext_bind::callsite!("src-common-rs-462-17");
-                ptr::write(__klee_arg0, value);
+                klee_ext_bind::callsite!("src-common-rs-464-17");
+                let __klee_ret = ptr::write(__klee_ret, value);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
         } else if len < old_len {
             unsafe {
-                let __klee_arg0 = &mut self.slice[len..old_len];
-                klee_ext_bind::bind!(& __klee_arg0, "__klee_arg0");
-                klee_ext_bind::callsite!("src-common-rs-466-17");
-                ptr::drop_in_place(__klee_arg0);
+                let __klee_arg28 = &mut self.slice[len..old_len];
+                klee_ext_bind::bind!(& __klee_arg28, "__klee_arg28");
+                klee_ext_bind::callsite!("src-common-rs-468-17");
+                let __klee_ret = ptr::drop_in_place(__klee_arg28);
+                klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
         }
         self.slice.len = len;

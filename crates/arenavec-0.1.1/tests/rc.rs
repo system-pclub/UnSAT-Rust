@@ -1,7 +1,17 @@
-use arenavec::rc::{Arena, SliceVec};
+use arenavec::rc::{Arena, Slice, SliceVec};
 use arenavec::ArenaBacking;
 
 const DEFAULT_CAPACITY: usize = 4096 << 16;
+
+#[test]
+fn slice_new() {
+    let arena = Arena::init_capacity(ArenaBacking::SystemAllocation, DEFAULT_CAPACITY).unwrap();
+
+    let slice: Slice<usize> = Slice::new(arena.inner(), 3);
+
+    assert_eq!(slice.len(), 3);
+    assert_eq!(&*slice, &[0, 0, 0]);
+}
 
 #[test]
 fn init_empty() {

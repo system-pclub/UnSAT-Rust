@@ -106,6 +106,24 @@ impl<T, H: AllocHandle> Slice<T, H> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{ArenaBacking, Slice};
+    use crate::rc::Arena;
+
+    const DEFAULT_CAPACITY: usize = 4096 << 16;
+
+    #[test]
+    fn slice_new() {
+        let arena = Arena::init_capacity(ArenaBacking::SystemAllocation, DEFAULT_CAPACITY).unwrap();
+
+        let slice: Slice<usize, _> = Slice::new(arena.inner(), 3);
+
+        assert_eq!(slice.len(), 3);
+        assert_eq!(&*slice, &[0, 0, 0]);
+    }
+}
+
 impl<T: Clone, H: AllocHandle + Clone> Clone for Slice<T, H> {
     fn clone(&self) -> Self {
         let ptr: NonNull<T> = self.handle.allocate(self.len);
