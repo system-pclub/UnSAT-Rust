@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 from pathlib import Path
@@ -7,7 +8,37 @@ import tomllib
 
 logger = logging.getLogger(__name__)
 
-def compile_with_emit_llvm(cargo_dir: Path, custom_rustc: str = None, build_std: bool = False) -> None:
+def _emit_llvm_rustflags(
+    *,
+    panic_abort: bool = False,
+    panic_abort_tests: bool = False,
+) -> str:
+    flags = [
+        "-Zinline-mir=no",
+        "--emit=llvm-ir",
+        "-Cllvm-args=--inline-threshold=0",
+        "-Copt-level=0",
+        "-Ccodegen-units=1",
+    ]
+    if panic_abort:
+        flags.append("-Cpanic=abort")
+    if panic_abort_tests:
+        flags.append("-Zpanic_abort_tests")
+    return " ".join(flags)
+
+
+def _build_std_args(*, test: bool = False, panic_abort: bool = False) -> list[str]:
+    if test and panic_abort:
+        return ["-Zbuild-std=std,panic_abort,test"]
+    return ["-Zbuild-std"]
+
+
+def compile_with_emit_llvm(
+    cargo_dir: Path,
+    custom_rustc: str = None,
+    build_std: bool = False,
+    panic_abort: bool = False,
+) -> None:
     """Compile the crate at *cargo_dir* and emit LLVM IR (.ll) files.
     """
     import platform
@@ -15,11 +46,11 @@ def compile_with_emit_llvm(cargo_dir: Path, custom_rustc: str = None, build_std:
     env["CARGO_INCREMENTAL"] = "0" 
     if custom_rustc:
         env["RUSTC"] = custom_rustc
-    env["RUSTFLAGS"] = "-Zinline-mir=no --emit=llvm-ir -Cllvm-args=--inline-threshold=0 -Copt-level=0 -Ccodegen-units=1"
+    env["RUSTFLAGS"] = _emit_llvm_rustflags(panic_abort=panic_abort)
 
     cmd = ["cargo", "build"]
     if build_std:
-        cmd += ["-Zbuild-std"]
+        cmd += _build_std_args(test=False, panic_abort=panic_abort)
         # cargo -Zbuild-std requires an explicit --target
         machine = platform.machine().lower()
         arch = "x86_64" if machine in ("x86_64", "amd64") else machine
@@ -42,7 +73,12 @@ def compile_with_emit_llvm(cargo_dir: Path, custom_rustc: str = None, build_std:
             f"stderr: {result.stderr}"
         )
 
-def compile_test_with_emit_llvm(cargo_dir: Path, custom_rustc: str = None, build_std: bool = False) -> None:
+def compile_test_with_emit_llvm(
+    cargo_dir: Path,
+    custom_rustc: str = None,
+    build_std: bool = False,
+    panic_abort: bool = False,
+) -> None:
     """Compile the test in the crate at *cargo_dir* and emit LLVM IR (.ll) files.
     """
     import platform
@@ -50,15 +86,16 @@ def compile_test_with_emit_llvm(cargo_dir: Path, custom_rustc: str = None, build
     env["CARGO_INCREMENTAL"] = "0" 
     if custom_rustc:
         env["RUSTC"] = custom_rustc
-    env["RUSTFLAGS"] = (
-        "-Zinline-mir=no --emit=llvm-ir -Cllvm-args=--inline-threshold=0 "
-        "-Copt-level=0 -Ccodegen-units=1 "
-        # "-Clink-arg=-Wl,--unresolved-symbols=ignore-all"
+    env["RUSTFLAGS"] = _emit_llvm_rustflags(
+        panic_abort=panic_abort,
+        panic_abort_tests=panic_abort,
     )
 
     cmd = ["cargo", "test", "--no-run"]
+    if panic_abort:
+        cmd.append("-Zpanic-abort-tests")
     if build_std:
-        cmd += ["-Zbuild-std"]
+        cmd += _build_std_args(test=True, panic_abort=panic_abort)
         machine = platform.machine().lower()
         arch = "x86_64" if machine in ("x86_64", "amd64") else machine
         target = f"{arch}-unknown-linux-gnu"
@@ -200,6 +237,7 @@ def ensure_linked_llvm_ir_file(
     rustc: str | None = None,
     test: bool = False,
     build_std: bool = True,
+    panic_abort: bool = False,
     force: bool = False,
 ) -> Path:
     cargo_dir = cargo_dir.resolve()
@@ -211,15 +249,47 @@ def ensure_linked_llvm_ir_file(
         raise RuntimeError(f"Could not determine crate name(s) from {cargo_dir}")
     crate_name = members[0][0].replace("-", "_")
     output_path = output_dir / f"{crate_name}.ll"
+    build_config = {
+        "rustflags": _emit_llvm_rustflags(
+            panic_abort=panic_abort,
+            panic_abort_tests=test and panic_abort,
+        ),
+        "rustc": rustc,
+        "test": test,
+        "build_std": build_std,
+        "build_std_args": _build_std_args(test=test, panic_abort=panic_abort)
+        if build_std
+        else [],
+        "panic_abort_tests": test and panic_abort,
+    }
+    metadata_path = output_dir / f"{crate_name}.ll.meta.json"
     if output_path.is_file() and not force:
+        try:
+            cached_config = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cached_config = None
+        if cached_config == build_config:
+            return output_path
+
+    if output_path.is_file() and not force and not panic_abort:
         return output_path
 
     target_triple = _resolve_target_triple(build_std)
 
     if test:
-        compile_test_with_emit_llvm(cargo_dir, custom_rustc=rustc, build_std=build_std)
+        compile_test_with_emit_llvm(
+            cargo_dir,
+            custom_rustc=rustc,
+            build_std=build_std,
+            panic_abort=panic_abort,
+        )
     else:
-        compile_with_emit_llvm(cargo_dir, custom_rustc=rustc, build_std=build_std)
+        compile_with_emit_llvm(
+            cargo_dir,
+            custom_rustc=rustc,
+            build_std=build_std,
+            panic_abort=panic_abort,
+        )
 
     if target_triple:
         all_deps_dir = cargo_dir / "target" / target_triple / "debug" / "deps"
@@ -238,6 +308,7 @@ def ensure_linked_llvm_ir_file(
                 logger.warning(f"Could not find LLVM IR for '{link}' in {all_deps_dir}, skipping it.")
 
     _link_llvm_irs(lls, output_path)
+    metadata_path.write_text(json.dumps(build_config, sort_keys=True), encoding="utf-8")
     return output_path
 
 def run(args: argparse.Namespace) -> int:

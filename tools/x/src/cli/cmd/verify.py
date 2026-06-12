@@ -126,12 +126,14 @@ def _run_klee_compose_verify(
     ast_json: str,
     report_json: Path | None,
     klee_bin: str,
+    compose_loop_bound: int,
 ) -> int:
     cmd = [
         klee_bin,
         f"--ext.callsite={callsite_id}",
         f"--ext.dsl={ast_json}",
         "--compose-verify",
+        f"--compose-verify-symbolic-loop-bound={compose_loop_bound}",
     ]
     if report_json is not None:
         cmd.append(f"--report-json={report_json}")
@@ -143,6 +145,8 @@ def _run_klee_compose_verify(
 
 def run(args: argparse.Namespace) -> int:
     repo_root = _find_repo_root()
+    if args.compose_loop_bound < 0:
+        raise RuntimeError("--compose-loop-bound must be non-negative")
 
     cargo_dir = Path(args.cargo_dir)
     if not cargo_dir.is_absolute():
@@ -168,6 +172,7 @@ def run(args: argparse.Namespace) -> int:
         rustc=args.rustc,
         test=args.test,
         build_std=True,
+        panic_abort=True,
         force=False,
     )
 
@@ -207,4 +212,5 @@ def run(args: argparse.Namespace) -> int:
         ast_json=ast_json,
         report_json=report_json,
         klee_bin=args.klee_bin,
+        compose_loop_bound=args.compose_loop_bound,
     )

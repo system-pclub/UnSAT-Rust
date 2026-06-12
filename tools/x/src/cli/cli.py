@@ -192,6 +192,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="KLEE executable to use (default: klee).",
     )
     verify_parser.add_argument(
+        "--compose-loop-bound",
+        type=int,
+        default=1,
+        help="Max symbolic loop backedges before compose-verify forces a loop exit (default: 1).",
+    )
+    verify_parser.add_argument(
         "--rustc",
         help="Optional custom rustc for llvmir generation.",
     )
