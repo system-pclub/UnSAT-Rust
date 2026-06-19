@@ -117,31 +117,6 @@ impl<'tcx> UnsafeCallVisitor<'tcx> {
     }
 }
 
-struct CallVisitor {
-    calls: Vec<(DefId, Span)>,
-}
-
-impl CallVisitor {
-    fn new() -> Self {
-        Self { calls: Vec::new() }
-    }
-}
-
-impl<'tcx> Visitor<'tcx> for CallVisitor {
-    fn visit_terminator(
-        &mut self,
-        terminator: &rustc_middle::mir::Terminator<'tcx>,
-        location: Location,
-    ) {
-        if let TerminatorKind::Call { func, .. } = &terminator.kind {
-            if let Some((def_id, _substs)) = func.const_fn_def() {
-                self.calls.push((def_id, terminator.source_info.span));
-            }
-        }
-        self.super_terminator(terminator, location);
-    }
-}
-
 fn is_fn_unsafe(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     let sig = tcx.fn_sig(def_id).skip_binder().skip_binder();
     sig.safety == rustc_hir::Safety::Unsafe
@@ -189,17 +164,7 @@ fn collect_reachable_unsafe_calls<'tcx>(
                     arg_places,
                     depth,
                 });
-            }
-        }
-
-        if depth >= max_call_depth {
-            continue;
-        }
-
-        let mut call_visitor = CallVisitor::new();
-        call_visitor.visit_body(body);
-        for (callee_def_id, _span) in call_visitor.calls {
-            if callee_def_id.as_local().is_some() {
+            } else if depth < max_call_depth && callee_def_id.as_local().is_some() {
                 queue.push_back((callee_def_id, depth + 1));
             }
         }
@@ -2334,10 +2299,12 @@ mod tests {
 
             impl Buffer {
                 pub fn read(&self, index: usize) -> u8 {
-                    self.read_inner(index)
+                    unsafe {
+                        self.read_inner(index)
+                    }
                 }
 
-                fn read_inner(&self, index: usize) -> u8 {
+                unsafe fn read_inner(&self, index: usize) -> u8 {
                     unsafe {
                         *self.data.add(index)
                     }
@@ -2361,10 +2328,12 @@ mod tests {
     fn test_audit_one_layer_deeper_free_function() {
         let src = r#"
             pub fn read(ptr: *const u8, index: usize) -> u8 {
-                read_inner(ptr, index)
+                unsafe {
+                    read_inner(ptr, index)
+                }
             }
 
-            fn read_inner(ptr: *const u8, index: usize) -> u8 {
+            unsafe fn read_inner(ptr: *const u8, index: usize) -> u8 {
                 unsafe {
                     *ptr.add(index)
                 }
@@ -2383,6 +2352,28 @@ mod tests {
                         .name
                         .starts_with("std::ptr::const_ptr::<impl *const T>::add")),
             "Should report unsafe core/std call reached through a private free function"
+        );
+    }
+
+    #[test]
+    fn test_audit_does_not_expand_safe_helper() {
+        let src = r#"
+            pub fn read(ptr: *const u8, index: usize) -> u8 {
+                read_inner(ptr, index)
+            }
+
+            fn read_inner(ptr: *const u8, index: usize) -> u8 {
+                unsafe {
+                    *ptr.add(index)
+                }
+            }
+        "#;
+
+        let report = run_audit(src);
+
+        assert!(
+            report.targets.is_empty(),
+            "Should not expand through safe helper functions"
         );
     }
 }

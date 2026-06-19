@@ -4,6 +4,7 @@
 ##
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import tarfile
 from urllib.error import HTTPError, URLError
@@ -65,8 +66,9 @@ def main():
     download_parser = subparsers.add_parser('download', help='Download crates from crates.io')
     download_parser.add_argument('--top-n', type=int, default=1000, help='Number of top crates to download')
     download_parser.add_argument('--category', type=str, help='Category of crates to download')
-    download_parser.add_argument('--temp-dir', type=str, default='.local/crates', help='Temporary directory for downloading and extracting crates')
-    download_parser.add_argument('--output-dir', type=str, default='crates', help='Directory to save downloaded crates')
+    download_parser.add_argument('--temp-dir', type=str, default='.local/rawcrates', help='Temporary directory for downloading and extracting crates')
+    download_parser.add_argument('--output-dir', type=str, default='.local/crates', help='Directory to save downloaded crates')
+    download_parser.add_argument('--max-threads', type=int, default=8, help='Maximum parallel crate downloads')
     download_parser.set_defaults(func=command_download)
     args = parser.parse_args()
 
@@ -75,18 +77,33 @@ def main():
 
 def command_download(args: argparse.Namespace) -> None:
     crates = get_crates_from_db_dump(args.db_dump_dir, top_n=args.top_n, category=args.category)
+    seen_crates = set()
+    unique_crates = []
+    for crate in crates:
+        crate_key = (crate.name, crate.version)
+        if crate_key in seen_crates:
+            continue
+        seen_crates.add(crate_key)
+        unique_crates.append(crate)
+    crates = unique_crates
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_dir = Path(args.temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
+    max_threads = max(1, args.max_threads)
 
-    for crate in crates:
-        try:
-            dst = download_crate(crate, temp_dir)
-            extract_tar_gz(dst, output_dir)
-        except Exception as e:
-            print(f"Error downloading {crate.name} v{crate.version}: {e}")
+    def download_and_extract(crate: Crate) -> None:
+        dst = download_crate(crate, temp_dir)
+        extract_tar_gz(dst, output_dir)
 
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        future_to_crate = {executor.submit(download_and_extract, crate): crate for crate in crates}
+        for future in as_completed(future_to_crate):
+            crate = future_to_crate[future]
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Error downloading {crate.name} v{crate.version}: {e}")
 
 def command_download_db_dump(args: argparse.Namespace) -> None:
     archive_path = Path(args.archive_path)
@@ -134,8 +151,8 @@ def safe_extract_tar_gz(file_path: Path, output_directory: Path) -> None:
 def download_crate(crate: Crate, output_dir: Path) -> Path:
     import requests
 
-    download_url = f"https://crates.io/api/v1/crates/{crate.name}/{crate.version}/download"
-    dst = output_dir / f"{crate.name}_{crate.version}.crate"
+    download_url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
+    dst = output_dir / f"{crate.name}-{crate.version}.crate"
     if dst.exists():
         return dst
     response = requests.get(download_url)
