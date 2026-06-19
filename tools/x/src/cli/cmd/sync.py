@@ -874,6 +874,7 @@ def _sync_single_crate(
     strict: bool,
     autoinj_output_dir: Path | None,
     autoinj_bin: str | None,
+    autoinj_failures: list[str] | None = None,
 ) -> Path:
     crate_name = crate_dir.name or "unknown"
     crates_dir = repo_root / "crates"
@@ -929,14 +930,21 @@ def _sync_single_crate(
         strict=strict,
     )
     if autoinj_output_dir is not None and autoinj_bin is not None:
-        injected_dir = _run_autoinj_for_crate(
-            repo_root=repo_root,
-            crate_dir=crate_dir,
-            meta_path=out_path,
-            dest_root=autoinj_output_dir,
-            autoinj_bin=autoinj_bin,
-        )
-        print(f"wrote injected crate to {injected_dir}")
+        try:
+            injected_dir = _run_autoinj_for_crate(
+                repo_root=repo_root,
+                crate_dir=crate_dir,
+                meta_path=out_path,
+                dest_root=autoinj_output_dir,
+                autoinj_bin=autoinj_bin,
+            )
+        except RuntimeError as exc:
+            message = f"{crate_name}: {exc}"
+            if autoinj_failures is not None:
+                autoinj_failures.append(message)
+            print(f"warning: ignored autoinj failure for crate {crate_name}: {exc}")
+        else:
+            print(f"wrote injected crate to {injected_dir}")
     return out_path
 
 
@@ -986,6 +994,7 @@ def ensure_crate_metadata_file(
         strict=strict,
         autoinj_output_dir=None,
         autoinj_bin=None,
+        autoinj_failures=None,
     )
 
 
@@ -1007,6 +1016,7 @@ def run(args: argparse.Namespace) -> int:
     else:
         autoinj_output_dir = autoinj_output_dir.resolve()
     autoinj_bin = None if skip_autoinj else _resolve_autoinj_binary(repo_root)
+    autoinj_failures: list[str] = []
 
     if cargo_dir:
         cargo_dir_path = Path(cargo_dir)
@@ -1022,18 +1032,38 @@ def run(args: argparse.Namespace) -> int:
     else:
         crate_dirs = _find_crates(crates_dir)
 
+    sync_failures: list[str] = []
     for crate_dir in crate_dirs:
-        _sync_single_crate(
-            repo_root=repo_root,
-            crate_dir=crate_dir,
-            allowed_rule_ids=allowed_rule_ids,
-            rules_by_path=rules_by_path,
-            operators=operators,
-            operator_document=operator_document,
-            mirscan_rustc=mirscan_rustc,
-            strict=strict,
-            autoinj_output_dir=None if skip_autoinj else autoinj_output_dir,
-            autoinj_bin=autoinj_bin,
-        )
+        try:
+            _sync_single_crate(
+                repo_root=repo_root,
+                crate_dir=crate_dir,
+                allowed_rule_ids=allowed_rule_ids,
+                rules_by_path=rules_by_path,
+                operators=operators,
+                operator_document=operator_document,
+                mirscan_rustc=mirscan_rustc,
+                strict=strict,
+                autoinj_output_dir=None if skip_autoinj else autoinj_output_dir,
+                autoinj_bin=autoinj_bin,
+                autoinj_failures=autoinj_failures,
+            )
+        except RuntimeError as exc:
+            message = f"{crate_dir.name}: {exc}"
+            sync_failures.append(message)
+            print(f"warning: ignored sync failure for crate {crate_dir.name}: {exc}")
+
+    if autoinj_failures:
+        print()
+        print("autoinj failures ignored during sync:")
+        for failure in autoinj_failures:
+            print(f"  - {failure}")
+
+    if sync_failures:
+        print()
+        print("sync failures encountered:")
+        for failure in sync_failures:
+            print(f"  - {failure}")
+        return 1
 
     return 0
