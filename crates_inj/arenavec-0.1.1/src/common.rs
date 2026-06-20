@@ -103,22 +103,21 @@ impl<T, H: AllocHandle> Slice<T, H> {
         Slice { ptr, len: 0, handle }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::{ArenaBacking, Slice};
     use crate::rc::Arena;
-
     const DEFAULT_CAPACITY: usize = 4096 << 16;
-
     #[test]
     fn slice_new() {
-        let arena = Arena::init_capacity(ArenaBacking::SystemAllocation, DEFAULT_CAPACITY).unwrap();
-
+        let arena = Arena::init_capacity(
+                ArenaBacking::SystemAllocation,
+                DEFAULT_CAPACITY,
+            )
+            .unwrap();
         let slice: Slice<usize, _> = Slice::new(arena.inner(), 3);
-
         assert_eq!(slice.len(), 3);
-        assert_eq!(&*slice, &[0, 0, 0]);
+        assert_eq!(&* slice, & [0, 0, 0]);
     }
 }
 impl<T: Clone, H: AllocHandle + Clone> Clone for Slice<T, H> {
@@ -246,7 +245,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
                 klee_ext_bind::bind!(& __klee_arg2, "__klee_arg2");
                 klee_ext_bind::bind!(& __klee_arg3, "__klee_arg3");
                 klee_ext_bind::bind!(& __klee_arg4, "__klee_arg4");
-                klee_ext_bind::callsite!("src-common-rs-276-17");
+                klee_ext_bind::callsite!("src-common-rs-294-17");
                 let __klee_ret = ptr::copy_nonoverlapping(
                     __klee_arg2,
                     __klee_arg3,
@@ -267,7 +266,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             unsafe {
                 let __klee_arg5 = &mut self.slice[len..old_len];
                 klee_ext_bind::bind!(& __klee_arg5, "__klee_arg5");
-                klee_ext_bind::callsite!("src-common-rs-297-17");
+                klee_ext_bind::callsite!("src-common-rs-315-17");
                 let __klee_ret = ptr::drop_in_place(__klee_arg5);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
@@ -286,17 +285,17 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             let __klee_arg7 = self.slice.len;
             klee_ext_bind::bind!(& __klee_arg6, "__klee_arg6");
             klee_ext_bind::bind!(& __klee_arg7, "__klee_arg7");
-            klee_ext_bind::callsite!("src-common-rs-313-34");
+            klee_ext_bind::callsite!("src-common-rs-331-34");
             let __klee_ret = __klee_arg6.add(__klee_arg7);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
-            klee_ext_bind::callsite!("src-common-rs-313-24");
+            klee_ext_bind::callsite!("src-common-rs-331-24");
             let __klee_ret = ptr::read(__klee_ret);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             let last = __klee_ret;
             klee_ext_bind::bind!(& hole, "hole");
             klee_ext_bind::bind!(& last, "last");
-            klee_ext_bind::callsite!("src-common-rs-314-13");
+            klee_ext_bind::callsite!("src-common-rs-332-13");
             let __klee_ret = ptr::replace(hole, last);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             __klee_ret
@@ -313,12 +312,12 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             let __klee_arg9 = self.slice.len();
             klee_ext_bind::bind!(& __klee_arg8, "__klee_arg8");
             klee_ext_bind::bind!(& __klee_arg9, "__klee_arg9");
-            klee_ext_bind::callsite!("src-common-rs-341-24");
+            klee_ext_bind::callsite!("src-common-rs-359-24");
             let __klee_ret = __klee_arg8.add(__klee_arg9);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& elem, "elem");
-            klee_ext_bind::callsite!("src-common-rs-341-13");
+            klee_ext_bind::callsite!("src-common-rs-359-13");
             let __klee_ret = ptr::write(__klee_ret, elem);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
@@ -335,11 +334,11 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             let __klee_arg11 = self.slice.len;
             klee_ext_bind::bind!(& __klee_arg10, "__klee_arg10");
             klee_ext_bind::bind!(& __klee_arg11, "__klee_arg11");
-            klee_ext_bind::callsite!("src-common-rs-355-28");
+            klee_ext_bind::callsite!("src-common-rs-373-28");
             let __klee_ret = __klee_arg10.add(__klee_arg11);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
-            klee_ext_bind::callsite!("src-common-rs-355-18");
+            klee_ext_bind::callsite!("src-common-rs-373-18");
             let __klee_ret = ptr::read(__klee_ret);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             Some(__klee_ret)
@@ -354,14 +353,14 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             let __klee_arg12 = self.slice.ptr.as_ptr();
             klee_ext_bind::bind!(& __klee_arg12, "__klee_arg12");
             klee_ext_bind::bind!(& len, "len");
-            klee_ext_bind::callsite!("src-common-rs-368-17");
+            klee_ext_bind::callsite!("src-common-rs-386-17");
             let __klee_ret = __klee_arg12.add(len);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             let __klee_arg13 = other.slice.ptr.as_ptr();
             klee_ext_bind::bind!(& __klee_arg13, "__klee_arg13");
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& count, "count");
-            klee_ext_bind::callsite!("src-common-rs-366-13");
+            klee_ext_bind::callsite!("src-common-rs-384-13");
             let __klee_ret = ptr::copy_nonoverlapping(__klee_arg13, __klee_ret, count);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
@@ -372,7 +371,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
         unsafe {
             let __klee_arg14 = &mut self.slice[..];
             klee_ext_bind::bind!(& __klee_arg14, "__klee_arg14");
-            klee_ext_bind::callsite!("src-common-rs-380-13");
+            klee_ext_bind::callsite!("src-common-rs-398-13");
             let __klee_ret = ptr::drop_in_place(__klee_arg14);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
         }
@@ -405,7 +404,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             let __klee_arg15 = self.slice.ptr.as_ptr();
             klee_ext_bind::bind!(& __klee_arg15, "__klee_arg15");
             klee_ext_bind::bind!(& at, "at");
-            klee_ext_bind::callsite!("src-common-rs-411-17");
+            klee_ext_bind::callsite!("src-common-rs-429-17");
             let __klee_ret = __klee_arg15.add(at);
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             let __klee_arg16 = ret.slice.ptr.as_ptr();
@@ -413,7 +412,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             klee_ext_bind::bind!(& __klee_arg16, "__klee_arg16");
             klee_ext_bind::bind!(& __klee_arg17, "__klee_arg17");
-            klee_ext_bind::callsite!("src-common-rs-410-13");
+            klee_ext_bind::callsite!("src-common-rs-428-13");
             let __klee_ret = ptr::copy_nonoverlapping(
                 __klee_ret,
                 __klee_arg16,
@@ -437,13 +436,13 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
                 let __klee_arg18 = self.slice.ptr.as_ptr();
                 klee_ext_bind::bind!(& __klee_arg18, "__klee_arg18");
                 klee_ext_bind::bind!(& i, "i");
-                klee_ext_bind::callsite!("src-common-rs-431-33");
+                klee_ext_bind::callsite!("src-common-rs-449-33");
                 let __klee_ret = __klee_arg18.add(i);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 let __klee_arg19 = f();
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& __klee_arg19, "__klee_arg19");
-                klee_ext_bind::callsite!("src-common-rs-431-22");
+                klee_ext_bind::callsite!("src-common-rs-449-22");
                 let __klee_ret = ptr::write(__klee_ret, __klee_arg19);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 __klee_ret
@@ -455,13 +454,13 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
                 let __klee_arg21 = len - 1;
                 klee_ext_bind::bind!(& __klee_arg20, "__klee_arg20");
                 klee_ext_bind::bind!(& __klee_arg21, "__klee_arg21");
-                klee_ext_bind::callsite!("src-common-rs-436-28");
+                klee_ext_bind::callsite!("src-common-rs-454-28");
                 let __klee_ret = __klee_arg20.add(__klee_arg21);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 let __klee_arg22 = f();
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& __klee_arg22, "__klee_arg22");
-                klee_ext_bind::callsite!("src-common-rs-436-17");
+                klee_ext_bind::callsite!("src-common-rs-454-17");
                 let __klee_ret = ptr::write(__klee_ret, __klee_arg22);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
@@ -469,7 +468,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             unsafe {
                 let __klee_arg23 = &mut self.slice[len..old_len];
                 klee_ext_bind::bind!(& __klee_arg23, "__klee_arg23");
-                klee_ext_bind::callsite!("src-common-rs-440-17");
+                klee_ext_bind::callsite!("src-common-rs-458-17");
                 let __klee_ret = ptr::drop_in_place(__klee_arg23);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
@@ -490,13 +489,13 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
                 let __klee_arg24 = self.slice.ptr.as_ptr();
                 klee_ext_bind::bind!(& __klee_arg24, "__klee_arg24");
                 klee_ext_bind::bind!(& i, "i");
-                klee_ext_bind::callsite!("src-common-rs-459-33");
+                klee_ext_bind::callsite!("src-common-rs-477-33");
                 let __klee_ret = __klee_arg24.add(i);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 let __klee_arg25 = value.clone();
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& __klee_arg25, "__klee_arg25");
-                klee_ext_bind::callsite!("src-common-rs-459-22");
+                klee_ext_bind::callsite!("src-common-rs-477-22");
                 let __klee_ret = ptr::write(__klee_ret, __klee_arg25);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 __klee_ret
@@ -508,12 +507,12 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
                 let __klee_arg27 = len - 1;
                 klee_ext_bind::bind!(& __klee_arg26, "__klee_arg26");
                 klee_ext_bind::bind!(& __klee_arg27, "__klee_arg27");
-                klee_ext_bind::callsite!("src-common-rs-464-28");
+                klee_ext_bind::callsite!("src-common-rs-482-28");
                 let __klee_ret = __klee_arg26.add(__klee_arg27);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
                 klee_ext_bind::bind!(& value, "value");
-                klee_ext_bind::callsite!("src-common-rs-464-17");
+                klee_ext_bind::callsite!("src-common-rs-482-17");
                 let __klee_ret = ptr::write(__klee_ret, value);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
@@ -521,7 +520,7 @@ impl<T, H: AllocHandle> SliceVec<T, H> {
             unsafe {
                 let __klee_arg28 = &mut self.slice[len..old_len];
                 klee_ext_bind::bind!(& __klee_arg28, "__klee_arg28");
-                klee_ext_bind::callsite!("src-common-rs-468-17");
+                klee_ext_bind::callsite!("src-common-rs-486-17");
                 let __klee_ret = ptr::drop_in_place(__klee_arg28);
                 klee_ext_bind::bind!(& __klee_ret, "__klee_ret");
             }
