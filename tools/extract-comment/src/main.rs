@@ -33,7 +33,9 @@ async fn main() -> Result<()> {
         bail!("Output file must have .json extension");
     }
 
-    let mut units = extract_units( cli.dirs).await?;
+    let mut units = extract_units( cli.dirs, vec![
+        "intrinsics/"
+    ]).await?;
     keep_only_unsafe_fn_and_unsafe_trait(&mut units);
 
     // Output to json
@@ -97,7 +99,7 @@ pub fn keep_only_unsafe_fn_and_unsafe_trait(units: &mut Units) {
 /// Step 2: For each source file, use syn to parse the Units:
 /// A Unit can be either a function (can associate with a struct or a trait), a struct, a trait.
 /// Step 3: For each Unit, extract the associated comments above them (doc comments).
-pub async fn extract_units(dirs: Vec<PathBuf>) -> Result<Units> {
+pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<Units> {
     let mut files_map: HashMap<String, Vec<Unit>> = HashMap::new();
     // Step 1: Collect all Rust source files from the target directories
     let mut rust_files = Vec::new();
@@ -109,6 +111,10 @@ pub async fn extract_units(dirs: Vec<PathBuf>) -> Result<Units> {
         {
             let path = entry.path();
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                let path_str = path.display().to_string();
+                if blacklist.iter().any(|b| path_str.contains(b)) {
+                    continue;
+                }
                 rust_files.push(path.to_path_buf());
             }
         }

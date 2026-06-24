@@ -8,34 +8,30 @@
     rustc::untranslatable_diagnostic
 )]
 
-extern crate tracing;
 extern crate rustc_abi;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_hir;
 extern crate rustc_hir_analysis;
+extern crate rustc_hir_pretty;
 extern crate rustc_interface;
 extern crate rustc_log;
 extern crate rustc_metadata;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
-extern crate rustc_hir_pretty;
+extern crate tracing;
 
-
-use std::path::{Path, PathBuf};
-
+use std::path::PathBuf;
 
 use rustc_driver::Compilation;
 use rustc_hir::def_id::LOCAL_CRATE;
-use rustc_middle::ty::{ TyCtxt};
-use rustc_session::config::{ErrorOutputType};
-use rustc_session::{EarlyDiagCtxt};
+use rustc_middle::ty::TyCtxt;
+use rustc_session::EarlyDiagCtxt;
+use rustc_session::config::ErrorOutputType;
 pub mod report;
 // pub mod invariants;
 struct CompilerCalls {}
-
-
 
 impl CompilerCalls {
     fn new() -> Self {
@@ -50,7 +46,8 @@ impl rustc_driver::Callbacks for CompilerCalls {
         tcx: TyCtxt<'tcx>,
     ) -> Compilation {
         if tcx.sess.dcx().has_errors_or_delayed_bugs().is_some() {
-            tcx.dcx().fatal("raudit cannot be run on programs that fail compilation");
+            tcx.dcx()
+                .fatal("raudit cannot be run on programs that fail compilation");
         }
 
         let crate_fspath = match compiler.sess.io.output_dir {
@@ -61,8 +58,8 @@ impl rustc_driver::Callbacks for CompilerCalls {
                 pp.pop();
                 pp.pop();
                 pp
-            },
-            None => return Compilation::Stop
+            }
+            None => return Compilation::Stop,
         };
         let current_pwd = std::env::current_dir().unwrap_or_else(|e| {
             eprintln!("Failed to get current working directory: {}", e);
@@ -70,7 +67,6 @@ impl rustc_driver::Callbacks for CompilerCalls {
         });
 
         if crate_fspath != current_pwd {
-            
             return Compilation::Continue;
         }
 
@@ -80,13 +76,16 @@ impl rustc_driver::Callbacks for CompilerCalls {
             return Compilation::Continue;
         }
         let report_output = PathBuf::from(report_output.unwrap());
-        
-        eprintln!("Running analysis");  
+
+        eprintln!("Running analysis");
         if let Some(parent) = report_output.parent() {
             match std::fs::create_dir_all(&parent) {
                 Ok(_) => (),
                 Err(e) => {
-                    eprintln!("Failed to create report output directory {:?}: {}", parent, e);
+                    eprintln!(
+                        "Failed to create report output directory {:?}: {}",
+                        parent, e
+                    );
                     return Compilation::Stop;
                 }
             }
@@ -102,15 +101,16 @@ impl rustc_driver::Callbacks for CompilerCalls {
                 }
             }
             Err(e) => {
-                eprintln!("Failed to write report output file {:?}: {}", report_output, e);
+                eprintln!(
+                    "Failed to write report output file {:?}: {}",
+                    report_output, e
+                );
             }
         }
-        
 
         Compilation::Stop
     }
 }
-
 
 /// Execute a compiler with the given CLI arguments and callbacks.
 fn run_compiler_and_exit(
@@ -123,16 +123,35 @@ fn run_compiler_and_exit(
     std::process::exit(exit_code)
 }
 
-
-
 pub const DEFAULT_ARGS: &[&str] = &[
     "-Zalways-encode-mir",
     "-Zextra-const-ub-checks",
+    "-Zinline-mir=no",
     "-Zmir-emit-retag",
     "-Zmir-opt-level=0",
     "-Zdeduplicate-diagnostics=no",
 ];
 
+fn has_explicit_sysroot(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg == "--sysroot" || arg.starts_with("--sysroot="))
+}
+
+fn add_env_sysroot(args: &mut Vec<String>) {
+    if has_explicit_sysroot(args) {
+        return;
+    }
+
+    let Ok(sysroot) = std::env::var("MIRSCAN_SYSROOT") else {
+        return;
+    };
+    if sysroot.trim().is_empty() {
+        return;
+    }
+
+    args.push("--sysroot".to_string());
+    args.push(sysroot);
+}
 
 fn main() {
     let early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
@@ -148,13 +167,11 @@ fn main() {
     // MIRI_BE_RUSTC is set.
     rustc_driver::install_ctrlc_handler();
 
-
     // Add an ICE bug report hook.
     // rustc_driver::install_ice_hook("https://github.com/rust-lang/miri/issues/new", |_| ());
 
     // Init loggers the Miri way.
     // init_early_loggers(&early_dcx);
-
 
     let mut rustc_args = vec![];
 
@@ -173,12 +190,9 @@ fn main() {
         }
     }
 
+    add_env_sysroot(&mut rustc_args);
+
     // eprintln!("rustc arguments: {:?}", rustc_args);
 
-    run_compiler_and_exit(
-        &rustc_args,
-        &mut CompilerCalls::new(),
-    )
+    run_compiler_and_exit(&rustc_args, &mut CompilerCalls::new())
 }
-
-

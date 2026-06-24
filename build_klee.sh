@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-pushd klee
+pushd tools/klee
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     -DENABLE_SOLVER_Z3=true \
     -DENABLE_UNIT_TESTS=OFF \

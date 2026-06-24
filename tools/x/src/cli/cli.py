@@ -170,7 +170,12 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--rule-dir",
         default="human",
-        help="Path to human rule task folder or JSON (default: human).",
+        help="Deprecated: path to human rule task folder or JSON.",
+    )
+    verify_parser.add_argument(
+        "--rule-dsl",
+        default="ptr_rule_dsl.json",
+        help="Path to shared rule-id -> DSL JSON (default: ptr_rule_dsl.json).",
     )
     verify_parser.add_argument(
         "--studied-rules",

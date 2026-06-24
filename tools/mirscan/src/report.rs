@@ -1,7 +1,7 @@
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{BasicBlock, Body, Location, Place, Rvalue, StatementKind, TerminatorKind};
-use rustc_middle::ty::{Ty, TyCtxt};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::Pos;
 use rustc_span::Span;
 use rustc_span::sym;
@@ -21,6 +21,12 @@ pub struct FnInfo {
     pub require_template: bool,
     #[serde(default)]
     pub has_template_in_test: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trait_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_ty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol_match_hint: Option<String>,
     #[serde(skip)]
     pub call_chains: Vec<String>, // e.g. ["fn_a -> fn_b "], only for mutators across multiple struct functions
 }
@@ -76,10 +82,20 @@ pub struct TypeInteractionInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolicTraitMethodInfo {
+    pub trait_name: String,
+    pub method_name: String,
+    pub return_ty: String,
+    pub symbol_match_hint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub targets: Vec<Suspect>,
     #[serde(default)]
     pub types: Vec<TypeInteractionInfo>,
+    #[serde(default)]
+    pub symbolic_trait_methods: Vec<SymbolicTraitMethodInfo>,
 }
 
 fn normalize_to_rust_relative(path: &str) -> String {
@@ -134,6 +150,28 @@ fn configured_max_call_depth() -> usize {
         .unwrap_or(1)
 }
 
+fn local_body_owner<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<LocalDefId> {
+    let local_def_id = def_id.as_local()?;
+    tcx.hir_maybe_body_owned_by(local_def_id)?;
+    Some(local_def_id)
+}
+
+fn optimized_mir_if_available<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+) -> Option<&'tcx Body<'tcx>> {
+    local_body_owner(tcx, def_id).map(|local_def_id| tcx.optimized_mir(local_def_id))
+}
+
+fn span_with_body_if_available<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, span: Span) -> Span {
+    local_body_owner(tcx, def_id)
+        .map(|local_def_id| {
+            tcx.hir()
+                .span_with_body(tcx.local_def_id_to_hir_id(local_def_id))
+        })
+        .unwrap_or(span)
+}
+
 fn collect_reachable_unsafe_calls<'tcx>(
     tcx: TyCtxt<'tcx>,
     root_def_id: DefId,
@@ -148,10 +186,9 @@ fn collect_reachable_unsafe_calls<'tcx>(
             continue;
         }
 
-        let Some(local_def_id) = current_def_id.as_local() else {
+        let Some(body) = optimized_mir_if_available(tcx, current_def_id) else {
             continue;
         };
-        let body = tcx.optimized_mir(local_def_id);
 
         let mut unsafe_visitor = UnsafeCallVisitor::new(tcx);
         unsafe_visitor.visit_body(body);
@@ -947,6 +984,80 @@ fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
     get_fn_info_with_template_flags(tcx, def_id, false, false)
 }
 
+fn trait_name_for_assoc_fn<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
+    let item = tcx.opt_associated_item(def_id)?;
+    if item.kind != ty::AssocKind::Fn {
+        return None;
+    }
+
+    match item.container {
+        ty::AssocItemContainer::Trait => Some(tcx.def_path_str(item.container_id(tcx))),
+        ty::AssocItemContainer::Impl => item
+            .trait_item_def_id
+            .map(|trait_item_def_id| tcx.def_path_str(tcx.parent(trait_item_def_id)))
+            .or_else(|| {
+                tcx.trait_id_of_impl(item.container_id(tcx))
+                    .map(|trait_def_id| tcx.def_path_str(trait_def_id))
+            }),
+    }
+}
+
+fn return_ty_for_fn<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
+    if !matches!(
+        tcx.def_kind(def_id),
+        rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn
+    ) {
+        return None;
+    }
+    let fn_sig = tcx.fn_sig(def_id).skip_binder();
+    Some(fn_sig.output().skip_binder().to_string())
+}
+
+fn symbol_match_hint(trait_name: &str, method_name: &str) -> String {
+    let trait_leaf = trait_name.rsplit("::").next().unwrap_or(trait_name);
+    format!("{trait_leaf}::{method_name}")
+}
+
+fn is_symbolic_trait_boundary(trait_name: &str) -> bool {
+    trait_name.rsplit("::").next() == Some("AllocHandle")
+}
+
+fn collect_symbolic_trait_methods<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<SymbolicTraitMethodInfo> {
+    let mut seen = HashSet::new();
+    let mut methods = Vec::new();
+
+    for local_def_id in tcx.hir_crate_items(()).definitions() {
+        let def_id = local_def_id.to_def_id();
+        if !matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::AssocFn) {
+            continue;
+        }
+
+        let Some(trait_name) = trait_name_for_assoc_fn(tcx, def_id) else {
+            continue;
+        };
+        if !is_symbolic_trait_boundary(&trait_name) {
+            continue;
+        }
+
+        let name = tcx.def_path_str(def_id);
+        let method_name = name.rsplit("::").next().unwrap_or(&name).to_string();
+        let return_ty = return_ty_for_fn(tcx, def_id).unwrap_or_else(|| "()".to_string());
+        let symbol_match_hint = symbol_match_hint(&trait_name, &method_name);
+        if !seen.insert((trait_name.clone(), method_name.clone())) {
+            continue;
+        }
+
+        methods.push(SymbolicTraitMethodInfo {
+            trait_name,
+            method_name,
+            return_ty,
+            symbol_match_hint,
+        });
+    }
+
+    methods
+}
+
 fn get_fn_info_with_template_flags<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_id: DefId,
@@ -957,15 +1068,15 @@ fn get_fn_info_with_template_flags<'tcx>(
     let source_map = tcx.sess.source_map();
     let loc = source_map.lookup_char_pos(span.lo());
     let end_loc = source_map.lookup_char_pos(span.hi());
-    let body_span = def_id
-        .as_local()
-        .map(|local_id| {
-            tcx.hir()
-                .span_with_body(tcx.local_def_id_to_hir_id(local_id))
-        })
-        .unwrap_or(span);
+    let body_span = span_with_body_if_available(tcx, def_id, span);
     let body_end_loc = source_map.lookup_char_pos(body_span.hi());
     let name = tcx.def_path_str(def_id);
+    let method_name = name.rsplit("::").next().unwrap_or(&name).to_string();
+    let trait_name = trait_name_for_assoc_fn(tcx, def_id);
+    let return_ty = return_ty_for_fn(tcx, def_id);
+    let symbol_match_hint = trait_name
+        .as_ref()
+        .map(|trait_name| symbol_match_hint(trait_name, &method_name));
     let file_path = loc.file.name.prefer_local().to_string();
     let path = normalize_to_rust_relative(&file_path);
     let line_start = get_doc_line_start(tcx, def_id)
@@ -980,6 +1091,9 @@ fn get_fn_info_with_template_flags<'tcx>(
         body_end: body_end_loc.line,
         require_template,
         has_template_in_test,
+        trait_name,
+        return_ty,
+        symbol_match_hint,
         call_chains: vec![],
     }
 }
@@ -1097,13 +1211,7 @@ fn get_struct_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> StructInfo {
     let span = tcx.def_span(def_id);
     let source_map = tcx.sess.source_map();
     let loc = source_map.lookup_char_pos(span.lo());
-    let body_span = def_id
-        .as_local()
-        .map(|local_id| {
-            tcx.hir()
-                .span_with_body(tcx.local_def_id_to_hir_id(local_id))
-        })
-        .unwrap_or(span);
+    let body_span = span_with_body_if_available(tcx, def_id, span);
     let end_loc = source_map.lookup_char_pos(body_span.hi());
     let name = tcx.def_path_str(def_id);
     let path = normalize_to_rust_relative(&loc.file.name.prefer_local().to_string());
@@ -1334,8 +1442,7 @@ fn collect_fields_setters<'tcx>(
             }
 
             // Analyze function body to see if it writes to any of the target fields
-            if let Some(local_fn_def_id) = fn_def_id.as_local() {
-                let body = tcx.optimized_mir(local_fn_def_id);
+            if let Some(body) = optimized_mir_if_available(tcx, fn_def_id) {
                 let self_local = rustc_middle::mir::Local::from_usize(1);
                 let mut setter_visitor = FieldSetterVisitor::new(tcx, fields.clone(), self_local);
                 setter_visitor.visit_body(body);
@@ -1375,8 +1482,7 @@ fn collect_escaped_mut_refs<'tcx>(
             }
 
             // Analyze function body to see if it returns &mut to any of the target fields
-            if let Some(local_fn_def_id) = fn_def_id.as_local() {
-                let body = tcx.optimized_mir(local_fn_def_id);
+            if let Some(body) = optimized_mir_if_available(tcx, fn_def_id) {
                 let self_local = rustc_middle::mir::Local::from_usize(1);
                 let mut mutator_visitor =
                     MutRefReturnVisitor::new(tcx, fields.clone(), self_local, body);
@@ -1444,8 +1550,7 @@ fn collect_escaped_mut_refs_in_aggregates<'tcx>(
                     tcx.def_path_str(current_type_def_id)
                 );
 
-                if let Some(local_fn_def_id) = fn_def_id.as_local() {
-                    let body = tcx.optimized_mir(local_fn_def_id);
+                if let Some(body) = optimized_mir_if_available(tcx, fn_def_id) {
                     let self_local = rustc_middle::mir::Local::from_usize(1);
 
                     // Check if this function returns aggregate with &mut references
@@ -1598,8 +1703,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                     );
 
                     // Analyze the function body for unsafe calls
-                    if let Some(local_fn_def_id) = fn_def_id.as_local() {
-                        let body = tcx.optimized_mir(local_fn_def_id);
+                    if let Some(body) = optimized_mir_if_available(tcx, fn_def_id) {
 
                         // Get the self local (first argument, which is _1 in MIR)
                         // _0 is the return value, _1 is the first argument (self)
@@ -1844,7 +1948,13 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
         }
     }
 
-    Report { targets, types }
+    let symbolic_trait_methods = collect_symbolic_trait_methods(tcx);
+
+    Report {
+        targets,
+        types,
+        symbolic_trait_methods,
+    }
 }
 
 #[cfg(test)]

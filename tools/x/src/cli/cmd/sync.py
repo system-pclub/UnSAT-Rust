@@ -210,7 +210,7 @@ def _compile_crate(crate_dir: Path, mirscan_rustc: str, report_path: Path) -> No
     env = os.environ.copy()
     env["RUSTC"] = mirscan_rustc
     env["ANALYSIS_OUT"] = str(report_path)
-    check_result = subprocess.run(["cargo", "check"], cwd=crate_dir, env=env, check=False)
+    check_result = subprocess.run(["cargo", "check", "--lib"], cwd=crate_dir, env=env, check=False)
     if check_result.returncode != 0:
         raise RuntimeError(
             f"cargo check failed in {crate_dir} with RUSTC={mirscan_rustc} "
@@ -923,12 +923,15 @@ def _sync_single_crate(
         "report": transformed_report,
     }
     out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    _sync_human_report(
-        repo_root=repo_root,
-        report_name=out_path.name,
-        incoming=human_placeholders,
-        strict=strict,
-    )
+    ##
+    ## Temporary disable human report sync, focus on verifying now
+    ##
+    # _sync_human_report(
+    #     repo_root=repo_root,
+    #     report_name=out_path.name,
+    #     incoming=human_placeholders,
+    #     strict=strict,
+    # )
     if autoinj_output_dir is not None and autoinj_bin is not None:
         try:
             injected_dir = _run_autoinj_for_crate(

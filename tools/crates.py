@@ -6,6 +6,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+import shutil
 import tarfile
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -70,6 +71,12 @@ def main():
     download_parser.add_argument('--output-dir', type=str, default='.local/crates', help='Directory to save downloaded crates')
     download_parser.add_argument('--max-threads', type=int, default=8, help='Maximum parallel crate downloads')
     download_parser.set_defaults(func=command_download)
+    extract_raw_parser = subparsers.add_parser('extract-raw', help='Extract existing .crate archives')
+    extract_raw_parser.add_argument('--raw-dir', type=str, default='.local/rawcrates', help='Directory containing .crate archives')
+    extract_raw_parser.add_argument('--output-dir', type=str, default='.local/crates', help='Directory to extract crates into')
+    extract_raw_parser.add_argument('--max-threads', type=int, default=8, help='Maximum parallel extractions')
+    extract_raw_parser.add_argument('--force', action='store_true', help='Re-extract crates even if the target directory exists')
+    extract_raw_parser.set_defaults(func=command_extract_raw)
     args = parser.parse_args()
 
     args.func(args)
@@ -104,6 +111,48 @@ def command_download(args: argparse.Namespace) -> None:
                 future.result()
             except Exception as e:
                 print(f"Error downloading {crate.name} v{crate.version}: {e}")
+
+def command_extract_raw(args: argparse.Namespace) -> None:
+    raw_dir = Path(args.raw_dir)
+    output_dir = Path(args.output_dir)
+    max_threads = max(1, args.max_threads)
+    archives = sorted(raw_dir.glob('*.crate'))
+    if not raw_dir.is_dir():
+        raise Exception(f"raw crate directory does not exist: {raw_dir}")
+    if not archives:
+        print(f"No .crate archives found in {raw_dir}")
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    extracted = 0
+    skipped = 0
+    failed = 0
+
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        future_to_archive = {
+            executor.submit(extract_crate_archive, archive, output_dir, args.force): archive
+            for archive in archives
+        }
+        for index, future in enumerate(as_completed(future_to_archive), start=1):
+            archive = future_to_archive[future]
+            try:
+                did_extract = future.result()
+                if did_extract:
+                    extracted += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                failed += 1
+                print(f"Failed to extract {archive}: {e}")
+            if index % 250 == 0 or index == len(archives):
+                print(
+                    f"Processed {index}/{len(archives)} "
+                    f"(extracted={extracted}, skipped={skipped}, failed={failed})"
+                )
+
+    if failed:
+        raise Exception(f"failed to extract {failed} crate archives")
+    print(f"Done. Extracted {extracted}, skipped {skipped}. Output: {output_dir}")
 
 def command_download_db_dump(args: argparse.Namespace) -> None:
     archive_path = Path(args.archive_path)
@@ -166,19 +215,44 @@ def download_crate(crate: Crate, output_dir: Path) -> Path:
     
 def extract_tar_gz(file_path: Path, output_directory: Path) -> None:
     try:
-        with tarfile.open(file_path, 'r:gz') as file:
-            members = file.getmembers()
-            if members:
-                top_folder_name = members[0].name.split('/')[0]
-                dst = output_directory / top_folder_name
-                if dst.exists():
-                    # print(f"skip {file_path} since {dst} existed")
-                    return
-            else:
-                print("The tar file is empty.")
-            file.extractall(path=output_directory)
+        extract_crate_archive(file_path, output_directory)
     except Exception as e:
         print(f"Failed to extract {file_path}. Error: {e}")
+
+def extract_crate_archive(file_path: Path, output_directory: Path, force: bool = False) -> bool:
+    output_directory.mkdir(parents=True, exist_ok=True)
+    output_directory = output_directory.resolve()
+
+    with tarfile.open(file_path, 'r:gz') as file:
+        members = file.getmembers()
+        if not members:
+            raise Exception("archive is empty")
+        top_folder_name = members[0].name.split('/')[0]
+        if not top_folder_name or top_folder_name in {'.', '..'}:
+            raise Exception(f"invalid top-level folder: {top_folder_name!r}")
+
+        dst = (output_directory / top_folder_name).resolve()
+        if output_directory != dst and output_directory not in dst.parents:
+            raise Exception(f"refusing to extract outside {output_directory}: {top_folder_name}")
+        if dst.exists():
+            if not force:
+                return False
+            if not dst.is_dir():
+                raise Exception(f"target exists and is not a directory: {dst}")
+            shutil.rmtree(dst)
+
+        for member in members:
+            member_path = (output_directory / member.name).resolve()
+            if output_directory != member_path and output_directory not in member_path.parents:
+                raise Exception(f"refusing to extract path outside {output_directory}: {member.name}")
+            member_top = member.name.split('/')[0]
+            if member_top != top_folder_name:
+                raise Exception(
+                    f"archive contains multiple top-level entries: {top_folder_name}, {member_top}"
+                )
+
+        file.extractall(path=output_directory)
+        return True
 
 if __name__ == "__main__":
     main()

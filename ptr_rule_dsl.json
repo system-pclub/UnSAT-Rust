@@ -1,0 +1,1787 @@
+{
+  "description": "Shared DSL for rust/library/core/src/ptr/** rules. KLEE checks the negation of each DSL as the violation query.",
+  "rules": {
+    "rule-249": {
+      "path": "rust/library/core/src/ptr/alignment.rs:66",
+      "name": "const unsafe fn new_unchecked",
+      "rule": "`align` must be `1 << exp` for some `exp` in `0..usize::BITS`.",
+      "dsl": "is_power_of_two(get_arg(0))"
+    },
+    "rule-250": {
+      "path": "rust/library/core/src/ptr/alignment.rs:66",
+      "name": "const unsafe fn new_unchecked",
+      "rule": "`align` must be a power of two.",
+      "dsl": "is_power_of_two(get_arg(0))"
+    },
+    "rule-251": {
+      "path": "rust/library/core/src/ptr/alignment.rs:66",
+      "name": "const unsafe fn new_unchecked",
+      "rule": "`align` must not be zero.",
+      "dsl": "(get_arg(0) != 0)"
+    },
+    "rule-252": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1257",
+      "name": "const unsafe fn read",
+      "rule": "`src` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-253": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1257",
+      "name": "const unsafe fn read",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-254": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1257",
+      "name": "const unsafe fn read",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-255": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
+      "name": "unsafe fn read_volatile",
+      "rule": "A race between a read_volatile and any write operation to the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_read_no_race\")"
+    },
+    "rule-256": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
+      "name": "unsafe fn read_volatile",
+      "rule": "Even if T has size 0, src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-257": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-258": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-259": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must point to a properly initialized value of type T.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-260": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1296",
+      "name": "const unsafe fn read_unaligned",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-261": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1296",
+      "name": "const unsafe fn read_unaligned",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-262": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1316",
+      "name": "const unsafe fn copy_to",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-263": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1316",
+      "name": "const unsafe fn copy_to",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-264": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1316",
+      "name": "const unsafe fn copy_to",
+      "rule": "`dst` must remain valid even when `src` is read for `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\"))"
+    },
+    "rule-265": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1316",
+      "name": "const unsafe fn copy_to",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-266": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-267": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-268": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "The source and destination may not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-269": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "The source and destination must not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-270": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-271": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-272": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1556",
+      "name": "unsafe fn get_unchecked < I >",
+      "rule": "Calling this method when `self` is not dereferenceable is undefined behavior, even if the resulting pointer is not used.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-273": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1556",
+      "name": "unsafe fn get_unchecked < I >",
+      "rule": "Calling this method with an out-of-bounds index is undefined behavior, even if the resulting pointer is not used.",
+      "dsl": "is_valid_for(memory_range(get_result(), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-274": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The entire memory range of this slice must be contained within a single allocated object.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\") >= get_field(get_field(get_arg(0), \"allocation\"), \"start\") && get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+    },
+    "rule-275": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be aligned even for zero-length slices.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-276": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be properly aligned.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-277": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be valid for reads for `ptr.len() * size_of::<T>()` many bytes.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"read\"))"
+    },
+    "rule-278": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-279": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or all of the following is true.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-279\")"
+    },
+    "rule-280": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "While this reference exists, the memory the pointer points to must not get mutated, except inside `UnsafeCell`.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"shared_borrow\")"
+    },
+    "rule-281": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "You must enforce Rust's aliasing rules.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"shared_borrow\")"
+    },
+    "rule-282": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:248",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "If the value may be uninitialized, `as_uninit_ref` must be used instead.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-283": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:248",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or the pointer is convertible to a reference.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+    },
+    "rule-284": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:301",
+      "name": "const unsafe fn as_ref_unchecked < 'a >",
+      "rule": "If the pointer may be null but the value is known to have been initialized, `as_ref` must be used instead.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-285": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:301",
+      "name": "const unsafe fn as_ref_unchecked < 'a >",
+      "rule": "If the pointer may be null or the value may be uninitialized, `as_uninit_ref` must be used instead.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-286": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:301",
+      "name": "const unsafe fn as_ref_unchecked < 'a >",
+      "rule": "The pointer must be convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-287": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:332",
+      "name": "const unsafe fn as_uninit_ref < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-288": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-289": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-290": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, then the memory range between `self` and the result must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-291": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+      "name": "const unsafe fn offset",
+      "rule": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers without wrapping around, must fit in an `isize`.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-292": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:597",
+      "name": "const unsafe fn offset_from",
+      "rule": "The distance between the pointers, in bytes, must be an exact multiple of the size of `T`.",
+      "dsl": "((get_field(get_arg(0), \"address\") - get_field(get_arg(1), \"address\")) % get_field(pointee_type(), \"size\") == 0)"
+    },
+    "rule-293": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:597",
+      "name": "const unsafe fn offset_from",
+      "rule": "This function panics if `T` is a Zero-Sized Type (\"ZST\").",
+      "dsl": "!get_field(pointee_type(), \"is_zst\")"
+    },
+    "rule-294": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:597",
+      "name": "const unsafe fn offset_from",
+      "rule": "`self` and `origin` must either point to the same address or both be derived from a pointer to the same allocated object, and the memory range between the two pointers must be in bounds of that object.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-295": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:692",
+      "name": "const unsafe fn byte_offset_from < U : ? Sized >",
+      "rule": "The two pointers must be within the same allocation.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-296": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:710",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "All the safety conditions of `offset_from` apply to this method as well.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-296\")"
+    },
+    "rule-297": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:710",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "The distance between the pointers must be non-negative (`self >= origin`).",
+      "dsl": "(get_field(get_arg(0), \"address\") >= get_field(get_arg(1), \"address\"))"
+    },
+    "rule-298": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:802",
+      "name": "const unsafe fn byte_offset_from_unsigned < U : ? Sized >",
+      "rule": "It must be known that self is equal to or greater than origin.",
+      "dsl": "(get_field(get_arg(0), \"address\") >= get_field(get_arg(1), \"address\"))"
+    },
+    "rule-299": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:802",
+      "name": "const unsafe fn byte_offset_from_unsigned < U : ? Sized >",
+      "rule": "The pointers must be within the same allocation.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-300": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:881",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-301": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:881",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-302": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:881",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, then the range between `self` and the result must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-303": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:881",
+      "name": "const unsafe fn add",
+      "rule": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers without wrapping around, must fit in an `isize`.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-304": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:987",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-305": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:987",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-306": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:987",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, then the memory range between `self` and the result must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-307": {
+      "path": "rust/library/core/src/ptr/const_ptr.rs:987",
+      "name": "const unsafe fn sub",
+      "rule": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers without wrapping around, must fit in an `isize`.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-308": {
+      "path": "rust/library/core/src/ptr/mod.rs:1026",
+      "name": "const unsafe fn swap_nonoverlapping < T >",
+      "rule": "Both `x` and `y` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-309": {
+      "path": "rust/library/core/src/ptr/mod.rs:1026",
+      "name": "const unsafe fn swap_nonoverlapping < T >",
+      "rule": "Both `x` and `y` must be valid for both reads and writes of `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-310": {
+      "path": "rust/library/core/src/ptr/mod.rs:1026",
+      "name": "const unsafe fn swap_nonoverlapping < T >",
+      "rule": "Even if the effectively copied size (`count * size_of::<T>()`) is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-311": {
+      "path": "rust/library/core/src/ptr/mod.rs:1026",
+      "name": "const unsafe fn swap_nonoverlapping < T >",
+      "rule": "The region of memory beginning at `x` with a size of `count * size_of::<T>()` bytes must not overlap with the region of memory beginning at `y` with the same size.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-312": {
+      "path": "rust/library/core/src/ptr/mod.rs:1134",
+      "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
+      "rule": "Both `x` and `y` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-313": {
+      "path": "rust/library/core/src/ptr/mod.rs:1134",
+      "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
+      "rule": "Both `x` and `y` must be valid for both reads and writes of `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-314": {
+      "path": "rust/library/core/src/ptr/mod.rs:1134",
+      "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
+      "rule": "Even if the effectively copied size (`count * size_of::<T>()`) is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-315": {
+      "path": "rust/library/core/src/ptr/mod.rs:1134",
+      "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
+      "rule": "The region of memory beginning at `x` with a size of `count * size_of::<T>()` bytes must not overlap with the region of memory beginning at `y` with the same size.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-316": {
+      "path": "rust/library/core/src/ptr/mod.rs:1170",
+      "name": "const unsafe fn replace < T >",
+      "rule": "Even if `T` has size `0`, `dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-317": {
+      "path": "rust/library/core/src/ptr/mod.rs:1170",
+      "name": "const unsafe fn replace < T >",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-318": {
+      "path": "rust/library/core/src/ptr/mod.rs:1170",
+      "name": "const unsafe fn replace < T >",
+      "rule": "`dst` must be valid for both reads and writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-319": {
+      "path": "rust/library/core/src/ptr/mod.rs:1170",
+      "name": "const unsafe fn replace < T >",
+      "rule": "`dst` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-320": {
+      "path": "rust/library/core/src/ptr/mod.rs:1231",
+      "name": "const unsafe fn read < T >",
+      "rule": "`src` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-321": {
+      "path": "rust/library/core/src/ptr/mod.rs:1231",
+      "name": "const unsafe fn read < T >",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-322": {
+      "path": "rust/library/core/src/ptr/mod.rs:1231",
+      "name": "const unsafe fn read < T >",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-323": {
+      "path": "rust/library/core/src/ptr/mod.rs:1384",
+      "name": "const unsafe fn read_unaligned < T >",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-324": {
+      "path": "rust/library/core/src/ptr/mod.rs:1384",
+      "name": "const unsafe fn read_unaligned < T >",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-325": {
+      "path": "rust/library/core/src/ptr/mod.rs:1473",
+      "name": "const unsafe fn write < T >",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-326": {
+      "path": "rust/library/core/src/ptr/mod.rs:1473",
+      "name": "const unsafe fn write < T >",
+      "rule": "`dst` must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-327": {
+      "path": "rust/library/core/src/ptr/mod.rs:1584",
+      "name": "const unsafe fn write_unaligned < T >",
+      "rule": "dst must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-328": {
+      "path": "rust/library/core/src/ptr/mod.rs:1672",
+      "name": "unsafe fn read_volatile < T >",
+      "rule": "A race between a read_volatile and any write operation to the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_read_no_race\")"
+    },
+    "rule-329": {
+      "path": "rust/library/core/src/ptr/mod.rs:1672",
+      "name": "unsafe fn read_volatile < T >",
+      "rule": "Even if T has size 0, src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-330": {
+      "path": "rust/library/core/src/ptr/mod.rs:1672",
+      "name": "unsafe fn read_volatile < T >",
+      "rule": "src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-331": {
+      "path": "rust/library/core/src/ptr/mod.rs:1672",
+      "name": "unsafe fn read_volatile < T >",
+      "rule": "src must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-332": {
+      "path": "rust/library/core/src/ptr/mod.rs:1672",
+      "name": "unsafe fn read_volatile < T >",
+      "rule": "src must point to a properly initialized value of type T.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-333": {
+      "path": "rust/library/core/src/ptr/mod.rs:1752",
+      "name": "unsafe fn write_volatile < T >",
+      "rule": "A race between `write_volatile` and any other operation on the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_write_no_race\")"
+    },
+    "rule-334": {
+      "path": "rust/library/core/src/ptr/mod.rs:1752",
+      "name": "unsafe fn write_volatile < T >",
+      "rule": "If `T` has size `0`, `dst` must still be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-335": {
+      "path": "rust/library/core/src/ptr/mod.rs:1752",
+      "name": "unsafe fn write_volatile < T >",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-336": {
+      "path": "rust/library/core/src/ptr/mod.rs:1752",
+      "name": "unsafe fn write_volatile < T >",
+      "rule": "`dst` must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-337": {
+      "path": "rust/library/core/src/ptr/mod.rs:1832",
+      "name": "unsafe fn align_offset < T : Sized >",
+      "rule": "`a` must be a power of two.",
+      "dsl": "is_power_of_two(get_arg(1))"
+    },
+    "rule-338": {
+      "path": "rust/library/core/src/ptr/mod.rs:432",
+      "name": "unsafe fn drop_in_place < T : ? Sized >",
+      "rule": "If `T` is not `Copy`, using the pointed-to value after calling `drop_in_place` can cause undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"drop\")"
+    },
+    "rule-339": {
+      "path": "rust/library/core/src/ptr/mod.rs:432",
+      "name": "unsafe fn drop_in_place < T : ? Sized >",
+      "rule": "The value `to_drop` points to must be valid for dropping, which may mean it must uphold additional invariants.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-340": {
+      "path": "rust/library/core/src/ptr/mod.rs:432",
+      "name": "unsafe fn drop_in_place < T : ? Sized >",
+      "rule": "While `drop_in_place` is executing, the only way to access parts of `to_drop` is through the `&mut self` references supplied to the `Drop::drop` methods that `drop_in_place` invokes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"drop\")"
+    },
+    "rule-341": {
+      "path": "rust/library/core/src/ptr/mod.rs:432",
+      "name": "unsafe fn drop_in_place < T : ? Sized >",
+      "rule": "`to_drop` must be nonnull, even if `T` has size 0.",
+      "dsl": "!get_field(get_arg(0), \"is_null\")"
+    },
+    "rule-342": {
+      "path": "rust/library/core/src/ptr/mod.rs:432",
+      "name": "unsafe fn drop_in_place < T : ? Sized >",
+      "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-343": {
+      "path": "rust/library/core/src/ptr/mod.rs:432",
+      "name": "unsafe fn drop_in_place < T : ? Sized >",
+      "rule": "`to_drop` must be valid for both reads and writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-344": {
+      "path": "rust/library/core/src/ptr/mod.rs:934",
+      "name": "const unsafe fn swap < T >",
+      "rule": "Both `x` and `y` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-345": {
+      "path": "rust/library/core/src/ptr/mod.rs:934",
+      "name": "const unsafe fn swap < T >",
+      "rule": "Both `x` and `y` must be valid for both reads and writes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-346": {
+      "path": "rust/library/core/src/ptr/mod.rs:934",
+      "name": "const unsafe fn swap < T >",
+      "rule": "Both `x` and `y` must remain valid even when the other pointer is written.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-347": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-348": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, that memory range must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-349": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-350": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
+      "name": "const unsafe fn sub",
+      "rule": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers without wrapping around, must fit in an `isize`.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-351": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1341",
+      "name": "const unsafe fn read",
+      "rule": "`src` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-352": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1341",
+      "name": "const unsafe fn read",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-353": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1341",
+      "name": "const unsafe fn read",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-354": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
+      "name": "unsafe fn read_volatile",
+      "rule": "A race between a read_volatile and any write operation to the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_read_no_race\")"
+    },
+    "rule-355": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
+      "name": "unsafe fn read_volatile",
+      "rule": "Even if T has size 0, src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-356": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
+      "name": "unsafe fn read_volatile",
+      "rule": "The pointer must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-357": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-358": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-359": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must point to a properly initialized value of type T.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-360": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1380",
+      "name": "const unsafe fn read_unaligned",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-361": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1380",
+      "name": "const unsafe fn read_unaligned",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-362": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1400",
+      "name": "const unsafe fn copy_to",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-363": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1400",
+      "name": "const unsafe fn copy_to",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-364": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1400",
+      "name": "const unsafe fn copy_to",
+      "rule": "`dst` must remain valid even when `src` is read for `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\"))"
+    },
+    "rule-365": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1400",
+      "name": "const unsafe fn copy_to",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-366": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-367": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-368": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "The source and destination may not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-369": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "The source and destination must not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-370": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-371": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-372": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1440",
+      "name": "const unsafe fn copy_from",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(1), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-373": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1440",
+      "name": "const unsafe fn copy_from",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-374": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1440",
+      "name": "const unsafe fn copy_from",
+      "rule": "`dst` must remain valid even when `src` is read for `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\") && is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\"))"
+    },
+    "rule-375": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1440",
+      "name": "const unsafe fn copy_from",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-376": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(1), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-377": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(1), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-378": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "The source and destination may not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-379": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "The source and destination must not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-380": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-381": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-382": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
+      "name": "unsafe fn drop_in_place",
+      "rule": "If `T` is not `Copy`, using the pointed-to value after calling `drop_in_place` can cause undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"drop\")"
+    },
+    "rule-383": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
+      "name": "unsafe fn drop_in_place",
+      "rule": "The value `to_drop` points to must be valid for dropping, which may mean it must uphold additional invariants.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-384": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
+      "name": "unsafe fn drop_in_place",
+      "rule": "While `drop_in_place` is executing, the only way to access parts of `to_drop` is through the `&mut self` references supplied to the `Drop::drop` methods that `drop_in_place` invokes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"drop\")"
+    },
+    "rule-385": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
+      "name": "unsafe fn drop_in_place",
+      "rule": "`to_drop` must be nonnull, even if `T` has size 0.",
+      "dsl": "!get_field(get_arg(0), \"is_null\")"
+    },
+    "rule-386": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
+      "name": "unsafe fn drop_in_place",
+      "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-387": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
+      "name": "unsafe fn drop_in_place",
+      "rule": "`to_drop` must be valid for both reads and writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-388": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1492",
+      "name": "const unsafe fn write",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-389": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1492",
+      "name": "const unsafe fn write",
+      "rule": "`dst` must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-390": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
+      "name": "unsafe fn write_volatile",
+      "rule": "A race between `write_volatile` and any other operation on the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_write_no_race\")"
+    },
+    "rule-391": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
+      "name": "unsafe fn write_volatile",
+      "rule": "If `T` has size `0`, `dst` must still be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-392": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
+      "name": "unsafe fn write_volatile",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-393": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
+      "name": "unsafe fn write_volatile",
+      "rule": "`dst` must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-394": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1550",
+      "name": "const unsafe fn write_unaligned",
+      "rule": "dst must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-395": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
+      "name": "unsafe fn replace",
+      "rule": "Even if `T` has size `0`, `dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-396": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
+      "name": "unsafe fn replace",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-397": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
+      "name": "unsafe fn replace",
+      "rule": "`dst` must be valid for both reads and writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-398": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
+      "name": "unsafe fn replace",
+      "rule": "`dst` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-399": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
+      "name": "unsafe fn split_at_mut",
+      "rule": "`mid` must be in-bounds of the underlying allocated object.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-399\")"
+    },
+    "rule-400": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
+      "name": "unsafe fn split_at_mut",
+      "rule": "`self` must be dereferenceable.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-400\")"
+    },
+    "rule-401": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
+      "name": "unsafe fn split_at_mut",
+      "rule": "`self` must span a single allocation that is at least `mid * size_of::<T>()` bytes long.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-401\")"
+    },
+    "rule-402": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
+      "name": "unsafe fn split_at_mut",
+      "rule": "mid must be in-bounds of the underlying allocated object.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-402\")"
+    },
+    "rule-403": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
+      "name": "unsafe fn split_at_mut",
+      "rule": "self must be dereferenceable.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-403\")"
+    },
+    "rule-404": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
+      "name": "unsafe fn split_at_mut",
+      "rule": "self must span a single allocation that is at least mid * size_of::<T>() bytes long.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-404\")"
+    },
+    "rule-405": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1840",
+      "name": "unsafe fn split_at_mut_unchecked",
+      "rule": "`mid` must be in-bounds of the underlying allocated object.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-405\")"
+    },
+    "rule-406": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1840",
+      "name": "unsafe fn split_at_mut_unchecked",
+      "rule": "`self` must be dereferenceable.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-406\")"
+    },
+    "rule-407": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1840",
+      "name": "unsafe fn split_at_mut_unchecked",
+      "rule": "`self` must span a single allocation that is at least `mid * size_of::<T>()` bytes long.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-407\")"
+    },
+    "rule-408": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1907",
+      "name": "unsafe fn get_unchecked_mut < I >",
+      "rule": "Calling this method when `self` is not dereferenceable is undefined behavior, even if the resulting pointer is not used.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-409": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1907",
+      "name": "unsafe fn get_unchecked_mut < I >",
+      "rule": "Calling this method with an out-of-bounds index is undefined behavior, even if the resulting pointer is not used.",
+      "dsl": "is_valid_for(memory_range(get_result(), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-410": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The entire memory range of this slice must be contained within a single allocated object.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\") >= get_field(get_field(get_arg(0), \"allocation\"), \"start\") && get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+    },
+    "rule-411": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be aligned even for zero-length slices.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-412": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be properly aligned.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-413": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be valid for reads for `ptr.len() * size_of::<T>()` many bytes.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"read\"))"
+    },
+    "rule-414": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-415": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or all of the following is true.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-415\")"
+    },
+    "rule-416": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "While this reference exists, the memory the pointer points to must not get mutated except inside `UnsafeCell`.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"shared_borrow\")"
+    },
+    "rule-417": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "You must enforce Rust's aliasing rules.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"shared_borrow\")"
+    },
+    "rule-418": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The entire memory range of this slice must be contained within a single allocated object.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\") >= get_field(get_field(get_arg(0), \"allocation\"), \"start\") && get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+    },
+    "rule-419": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The pointer must be aligned even for zero-length slices.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-420": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The pointer must be properly aligned.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-421": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The pointer must be valid for reads and writes for `ptr.len() * size_of::<T>()` many bytes.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-422": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-423": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or all of the following is true.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"rule-423\")"
+    },
+    "rule-424": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "While this reference exists, the memory the pointer points to must not get accessed through any other pointer.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"unique_borrow\")"
+    },
+    "rule-425": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "You must enforce Rust's aliasing rules.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"unique_borrow\")"
+    },
+    "rule-426": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:235",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "If the value may be uninitialized, `as_uninit_mut` must be used instead.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-427": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:235",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "The pointer must be null or convertible to a reference.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+    },
+    "rule-428": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:235",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or the pointer is convertible to a reference.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+    },
+    "rule-429": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:291",
+      "name": "const unsafe fn as_ref_unchecked < 'a >",
+      "rule": "When calling this method, you have to ensure that the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-430": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:324",
+      "name": "const unsafe fn as_uninit_ref < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-431": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, self must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-432": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, the entire memory range between self and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-433": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, the range between self and the result must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-434": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+      "name": "const unsafe fn offset",
+      "rule": "The offset in bytes, count * size_of::<T>(), computed on mathematical integers without wrapping around, must fit in an isize.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-435": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:595",
+      "name": "const unsafe fn as_mut < 'a >",
+      "rule": "If the value may be uninitialized, `as_uninit_mut` must be used instead.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-436": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:595",
+      "name": "const unsafe fn as_mut < 'a >",
+      "rule": "The pointer must be null or convertible to a reference.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+    },
+    "rule-437": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:651",
+      "name": "const unsafe fn as_mut_unchecked < 'a >",
+      "rule": "The pointer must be convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-438": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:651",
+      "name": "const unsafe fn as_mut_unchecked < 'a >",
+      "rule": "When calling this method, you have to ensure that the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-439": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:686",
+      "name": "const unsafe fn as_uninit_mut < 'a >",
+      "rule": "When calling this method, you have to ensure that either the pointer is null or the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-440": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:771",
+      "name": "const unsafe fn offset_from",
+      "rule": "Self and origin must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-441": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:771",
+      "name": "const unsafe fn offset_from",
+      "rule": "The distance between the pointers, in bytes, must be an exact multiple of the size of T.",
+      "dsl": "((get_field(get_arg(0), \"address\") - get_field(get_arg(1), \"address\")) % get_field(pointee_type(), \"size\") == 0)"
+    },
+    "rule-442": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:882",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "Self and origin must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-443": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:882",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "The distance between the pointers must be non-negative, with self greater than or equal to origin.",
+      "dsl": "(get_field(get_arg(0), \"address\") >= get_field(get_arg(1), \"address\"))"
+    },
+    "rule-444": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:882",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "The distance between the pointers, in bytes, must be an exact multiple of the size of T.",
+      "dsl": "((get_field(get_arg(0), \"address\") - get_field(get_arg(1), \"address\")) % get_field(pointee_type(), \"size\") == 0)"
+    },
+    "rule-445": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:952",
+      "name": "const unsafe fn byte_offset_from_unsigned < U : ? Sized >",
+      "rule": "`self` must be equal to or greater than `origin`.",
+      "dsl": "(get_field(get_arg(0), \"address\") >= get_field(get_arg(1), \"address\"))"
+    },
+    "rule-446": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-447": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-448": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, the range between `self` and the result must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-449": {
+      "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
+      "name": "const unsafe fn add",
+      "rule": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers without wrapping around, must fit in an `isize`.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-450": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1011",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-451": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1011",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-452": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1011",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "The source and destination may not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-453": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1011",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "The source and destination must not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-454": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1011",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-455": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1011",
+      "name": "const unsafe fn copy_to_nonoverlapping",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-456": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1031",
+      "name": "const unsafe fn copy_from",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(1), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-457": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1031",
+      "name": "const unsafe fn copy_from",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-458": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1031",
+      "name": "const unsafe fn copy_from",
+      "rule": "`dst` must remain valid even when `src` is read for `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\") && is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\"))"
+    },
+    "rule-459": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1031",
+      "name": "const unsafe fn copy_from",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-460": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1051",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(1), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-461": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1051",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(1), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-462": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1051",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "The source and destination may not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-463": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1051",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "The source and destination must not overlap.",
+      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))))"
+    },
+    "rule-464": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1051",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-465": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1051",
+      "name": "const unsafe fn copy_from_nonoverlapping",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-466": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1071",
+      "name": "unsafe fn drop_in_place",
+      "rule": "If `T` is not `Copy`, using the pointed-to value after calling `drop_in_place` can cause undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"drop\")"
+    },
+    "rule-467": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1071",
+      "name": "unsafe fn drop_in_place",
+      "rule": "The value `to_drop` points to must be valid for dropping, which may mean it must uphold additional invariants.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-468": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1071",
+      "name": "unsafe fn drop_in_place",
+      "rule": "While `drop_in_place` is executing, the only way to access parts of `to_drop` is through the `&mut self` references supplied to the `Drop::drop` methods that `drop_in_place` invokes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"drop\")"
+    },
+    "rule-469": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1071",
+      "name": "unsafe fn drop_in_place",
+      "rule": "`to_drop` must be nonnull, even if `T` has size 0.",
+      "dsl": "!get_field(get_arg(0), \"is_null\")"
+    },
+    "rule-470": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1071",
+      "name": "unsafe fn drop_in_place",
+      "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-471": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1071",
+      "name": "unsafe fn drop_in_place",
+      "rule": "`to_drop` must be valid for both reads and writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-472": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1083",
+      "name": "const unsafe fn write",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-473": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1083",
+      "name": "const unsafe fn write",
+      "rule": "`dst` must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-474": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1120",
+      "name": "unsafe fn write_volatile",
+      "rule": "A race between `write_volatile` and any other operation on the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_write_no_race\")"
+    },
+    "rule-475": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1120",
+      "name": "unsafe fn write_volatile",
+      "rule": "If `T` has size `0`, `dst` must still be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-476": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1120",
+      "name": "unsafe fn write_volatile",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-477": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1120",
+      "name": "unsafe fn write_volatile",
+      "rule": "`dst` must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-478": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1141",
+      "name": "const unsafe fn write_unaligned",
+      "rule": "dst must be valid for writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"write\")"
+    },
+    "rule-479": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1161",
+      "name": "unsafe fn replace",
+      "rule": "Even if `T` has size `0`, `dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-480": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1161",
+      "name": "unsafe fn replace",
+      "rule": "`dst` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-481": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1161",
+      "name": "unsafe fn replace",
+      "rule": "`dst` must be valid for both reads and writes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read_write\")"
+    },
+    "rule-482": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1161",
+      "name": "unsafe fn replace",
+      "rule": "`dst` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-483": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1177",
+      "name": "const unsafe fn swap",
+      "rule": "Both `x` and `y` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-484": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1177",
+      "name": "const unsafe fn swap",
+      "rule": "Both `x` and `y` must be valid for both reads and writes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-485": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1177",
+      "name": "const unsafe fn swap",
+      "rule": "Both `x` and `y` must remain valid even when the other pointer is written.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-486": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The entire memory range of this slice must be contained within a single allocated object.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\") >= get_field(get_field(get_arg(0), \"allocation\"), \"start\") && get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+    },
+    "rule-487": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be aligned even for zero-length slices.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-488": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be properly aligned.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-489": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The pointer must be valid for reads for `ptr.len() * size_of::<T>()` many bytes.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"read\"))"
+    },
+    "rule-490": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-491": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "While this reference exists, the memory the pointer points to must not get mutated, except inside `UnsafeCell`.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"shared_borrow\")"
+    },
+    "rule-492": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1432",
+      "name": "const unsafe fn as_uninit_slice < 'a >",
+      "rule": "You must enforce Rust's aliasing rules.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"shared_borrow\")"
+    },
+    "rule-493": {
+      "path": "rust/library/core/src/ptr/non_null.rs:145",
+      "name": "const unsafe fn as_uninit_ref < 'a >",
+      "rule": "When calling this method, you have to ensure that the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-494": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The entire memory range of this slice must be contained within a single allocated object.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\") >= get_field(get_field(get_arg(0), \"allocation\"), \"start\") && get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+    },
+    "rule-495": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The pointer must be aligned even for zero-length slices.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-496": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The pointer must be properly aligned.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_aligned(get_arg(0), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-497": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The pointer must be valid for reads and writes for `ptr.len() * size_of::<T>()` many bytes.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"read_write\"))"
+    },
+    "rule-498": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-499": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "While the returned reference exists, the memory the pointer points to must not get accessed through any other pointer.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"unique_borrow\")"
+    },
+    "rule-500": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1477",
+      "name": "const unsafe fn as_uninit_slice_mut < 'a >",
+      "rule": "You must enforce Rust's aliasing rules.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"unique_borrow\")"
+    },
+    "rule-501": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1541",
+      "name": "unsafe fn get_unchecked_mut < I >",
+      "rule": "Calling this method when `self` is not dereferenceable is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-502": {
+      "path": "rust/library/core/src/ptr/non_null.rs:1541",
+      "name": "unsafe fn get_unchecked_mut < I >",
+      "rule": "Calling this method with an out-of-bounds index is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_result(), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-503": {
+      "path": "rust/library/core/src/ptr/non_null.rs:168",
+      "name": "const unsafe fn as_uninit_mut < 'a >",
+      "rule": "When calling this method, you have to ensure that the pointer is convertible to a reference.",
+      "dsl": "is_convertible_to_ref(get_arg(0))"
+    },
+    "rule-504": {
+      "path": "rust/library/core/src/ptr/non_null.rs:193",
+      "name": "const unsafe fn new_unchecked",
+      "rule": "`ptr` must be non-null.",
+      "dsl": "!get_field(get_arg(0), \"is_null\")"
+    },
+    "rule-505": {
+      "path": "rust/library/core/src/ptr/non_null.rs:394",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "The pointer must be convertible to a reference.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+    },
+    "rule-506": {
+      "path": "rust/library/core/src/ptr/non_null.rs:394",
+      "name": "const unsafe fn as_ref < 'a >",
+      "rule": "The value must not be uninitialized.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-507": {
+      "path": "rust/library/core/src/ptr/non_null.rs:431",
+      "name": "const unsafe fn as_mut < 'a >",
+      "rule": "The pointer must be convertible to a reference.",
+      "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+    },
+    "rule-508": {
+      "path": "rust/library/core/src/ptr/non_null.rs:491",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-509": {
+      "path": "rust/library/core/src/ptr/non_null.rs:491",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, then that memory range must not \"wrap around\" the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-510": {
+      "path": "rust/library/core/src/ptr/non_null.rs:491",
+      "name": "const unsafe fn offset",
+      "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-511": {
+      "path": "rust/library/core/src/ptr/non_null.rs:491",
+      "name": "const unsafe fn offset",
+      "rule": "The computed offset, `count * size_of::<T>()` bytes, must not overflow `isize`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-512": {
+      "path": "rust/library/core/src/ptr/non_null.rs:567",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, then self must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-513": {
+      "path": "rust/library/core/src/ptr/non_null.rs:567",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, then the entire memory range between self and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-514": {
+      "path": "rust/library/core/src/ptr/non_null.rs:567",
+      "name": "const unsafe fn add",
+      "rule": "If the computed offset is non-zero, then the entire memory range between self and the result must not \"wrap around\" the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-515": {
+      "path": "rust/library/core/src/ptr/non_null.rs:567",
+      "name": "const unsafe fn add",
+      "rule": "The computed offset, count * size_of::<T>() bytes, must not overflow isize.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-516": {
+      "path": "rust/library/core/src/ptr/non_null.rs:643",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-517": {
+      "path": "rust/library/core/src/ptr/non_null.rs:643",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || (get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")))"
+    },
+    "rule-518": {
+      "path": "rust/library/core/src/ptr/non_null.rs:643",
+      "name": "const unsafe fn sub",
+      "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must not wrap around the edge of the address space.",
+      "dsl": "(!((get_arg(1) * get_field(pointee_type(), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(pointee_type(), \"size\"))), \"start\"))"
+    },
+    "rule-519": {
+      "path": "rust/library/core/src/ptr/non_null.rs:643",
+      "name": "const unsafe fn sub",
+      "rule": "The computed offset, `count * size_of::<T>()` bytes, must not overflow `isize`.",
+      "dsl": "((get_arg(1) * get_field(pointee_type(), \"size\")) <= 9223372036854775807)"
+    },
+    "rule-520": {
+      "path": "rust/library/core/src/ptr/non_null.rs:725",
+      "name": "const unsafe fn offset_from",
+      "rule": "The `self` and `origin` pointers must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-521": {
+      "path": "rust/library/core/src/ptr/non_null.rs:725",
+      "name": "const unsafe fn offset_from",
+      "rule": "The distance between the pointers, in bytes, must be an exact multiple of the size of `T`.",
+      "dsl": "((get_field(get_arg(0), \"address\") - get_field(get_arg(1), \"address\")) % get_field(pointee_type(), \"size\") == 0)"
+    },
+    "rule-522": {
+      "path": "rust/library/core/src/ptr/non_null.rs:725",
+      "name": "const unsafe fn offset_from",
+      "rule": "This function panics if `T` is a Zero-Sized Type (\"ZST\").",
+      "dsl": "!get_field(pointee_type(), \"is_zst\")"
+    },
+    "rule-523": {
+      "path": "rust/library/core/src/ptr/non_null.rs:822",
+      "name": "const unsafe fn byte_offset_from < U : ? Sized >",
+      "rule": "The two pointers must be within the same allocation.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-524": {
+      "path": "rust/library/core/src/ptr/non_null.rs:842",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "It is not permitted to pass pointers which differ by more than `isize::MAX` bytes.",
+      "dsl": "((get_field(get_arg(0), \"address\") - get_field(get_arg(1), \"address\")) <= 9223372036854775807)"
+    },
+    "rule-525": {
+      "path": "rust/library/core/src/ptr/non_null.rs:842",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "The `self` and `origin` pointers must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-526": {
+      "path": "rust/library/core/src/ptr/non_null.rs:842",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "The distance between the pointers must be non-negative (`self >= origin`).",
+      "dsl": "(get_field(get_arg(0), \"address\") >= get_field(get_arg(1), \"address\"))"
+    },
+    "rule-527": {
+      "path": "rust/library/core/src/ptr/non_null.rs:842",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "The distance between the pointers, in bytes, must be an exact multiple of the size of `T`.",
+      "dsl": "((get_field(get_arg(0), \"address\") - get_field(get_arg(1), \"address\")) % get_field(pointee_type(), \"size\") == 0)"
+    },
+    "rule-528": {
+      "path": "rust/library/core/src/ptr/non_null.rs:842",
+      "name": "const unsafe fn offset_from_unsigned",
+      "rule": "This function panics if `T` is a Zero-Sized Type (\"ZST\").",
+      "dsl": "!get_field(pointee_type(), \"is_zst\")"
+    },
+    "rule-529": {
+      "path": "rust/library/core/src/ptr/non_null.rs:913",
+      "name": "const unsafe fn byte_offset_from_unsigned < U : ? Sized >",
+      "rule": "`self` must be equal to or greater than `origin`.",
+      "dsl": "(get_field(get_arg(0), \"address\") >= get_field(get_arg(1), \"address\"))"
+    },
+    "rule-530": {
+      "path": "rust/library/core/src/ptr/non_null.rs:913",
+      "name": "const unsafe fn byte_offset_from_unsigned < U : ? Sized >",
+      "rule": "`self` must be within the same allocation as `origin`.",
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\")))"
+    },
+    "rule-531": {
+      "path": "rust/library/core/src/ptr/non_null.rs:932",
+      "name": "const unsafe fn read",
+      "rule": "`src` must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-532": {
+      "path": "rust/library/core/src/ptr/non_null.rs:932",
+      "name": "const unsafe fn read",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-533": {
+      "path": "rust/library/core/src/ptr/non_null.rs:932",
+      "name": "const unsafe fn read",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-534": {
+      "path": "rust/library/core/src/ptr/non_null.rs:950",
+      "name": "unsafe fn read_volatile",
+      "rule": "A race between a read_volatile and any write operation to the same location is undefined behavior.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"volatile_read_no_race\")"
+    },
+    "rule-535": {
+      "path": "rust/library/core/src/ptr/non_null.rs:950",
+      "name": "unsafe fn read_volatile",
+      "rule": "Even if T has size 0, src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-536": {
+      "path": "rust/library/core/src/ptr/non_null.rs:950",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must be properly aligned.",
+      "dsl": "is_aligned(get_arg(0), get_field(pointee_type(), \"align\"))"
+    },
+    "rule-537": {
+      "path": "rust/library/core/src/ptr/non_null.rs:950",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-538": {
+      "path": "rust/library/core/src/ptr/non_null.rs:950",
+      "name": "unsafe fn read_volatile",
+      "rule": "src must point to a properly initialized value of type T.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-539": {
+      "path": "rust/library/core/src/ptr/non_null.rs:971",
+      "name": "const unsafe fn read_unaligned",
+      "rule": "`src` must be valid for reads.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), get_field(pointee_type(), \"size\")), \"read\")"
+    },
+    "rule-540": {
+      "path": "rust/library/core/src/ptr/non_null.rs:971",
+      "name": "const unsafe fn read_unaligned",
+      "rule": "`src` must point to a properly initialized value of type `T`.",
+      "dsl": "is_initialized(memory_range(get_arg(0), get_field(pointee_type(), \"size\")))"
+    },
+    "rule-541": {
+      "path": "rust/library/core/src/ptr/non_null.rs:991",
+      "name": "const unsafe fn copy_to",
+      "rule": "Both `src` and `dst` must be properly aligned.",
+      "dsl": "(is_aligned(get_arg(0), get_field(pointee_type(), \"align\")) && is_aligned(get_arg(1), get_field(pointee_type(), \"align\")))"
+    },
+    "rule-542": {
+      "path": "rust/library/core/src/ptr/non_null.rs:991",
+      "name": "const unsafe fn copy_to",
+      "rule": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\")"
+    },
+    "rule-543": {
+      "path": "rust/library/core/src/ptr/non_null.rs:991",
+      "name": "const unsafe fn copy_to",
+      "rule": "`dst` must remain valid even when `src` is read for `count * size_of::<T>()` bytes.",
+      "dsl": "(is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\") && is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"write\"))"
+    },
+    "rule-544": {
+      "path": "rust/library/core/src/ptr/non_null.rs:991",
+      "name": "const unsafe fn copy_to",
+      "rule": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+      "dsl": "is_valid_for(memory_range(get_arg(0), (get_arg(2) * get_field(pointee_type(), \"size\"))), \"read\")"
+    },
+    "rule-545": {
+      "path": "rust/library/core/src/ptr/unique.rs:82",
+      "name": "const unsafe fn new_unchecked",
+      "rule": "`ptr` must be non-null.",
+      "dsl": "!get_field(get_arg(0), \"is_null\")"
+    }
+  }
+}

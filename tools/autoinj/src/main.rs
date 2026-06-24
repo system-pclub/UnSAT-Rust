@@ -262,7 +262,8 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     let source = fs::read_to_string(path)?;
     let mut ast = syn::parse_file(&source)?;
     let mut next_temp_index = 0usize;
-    for injection in injections {
+    let ordered_injections = order_injections_for_source(&source, injections);
+    for injection in &ordered_injections {
         let mut injector = Injector {
             injection,
             inserted: false,
@@ -283,6 +284,49 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     cleaner.visit_file_mut(&mut ast);
     fs::write(path, prettyplease::unparse(&ast))?;
     Ok(())
+}
+
+fn order_injections_for_source(source: &str, injections: &[Injection]) -> Vec<Injection> {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut ordered = injections
+        .iter()
+        .cloned()
+        .enumerate()
+        .collect::<Vec<(usize, Injection)>>();
+
+    ordered.sort_by(|(left_index, left), (right_index, right)| {
+        if left.line == right.line && left.col == right.col {
+            let left_pos = callee_position_on_line(&lines, left);
+            let right_pos = callee_position_on_line(&lines, right);
+            right_pos
+                .cmp(&left_pos)
+                .then_with(|| left_index.cmp(right_index))
+        } else {
+            left_index.cmp(right_index)
+        }
+    });
+
+    ordered
+        .into_iter()
+        .map(|(_, injection)| injection)
+        .collect()
+}
+
+fn callee_position_on_line(lines: &[&str], injection: &Injection) -> usize {
+    let Some(callee_name) = injection.callee_name.as_deref() else {
+        return 0;
+    };
+    let Some(callee_leaf) = callee_leaf(callee_name) else {
+        return 0;
+    };
+    let Some(line) = lines.get(injection.line.saturating_sub(1)) else {
+        return 0;
+    };
+    let search_start = injection.col.saturating_sub(1).min(line.len());
+    line[search_start..]
+        .find(callee_leaf)
+        .map(|offset| search_start + offset)
+        .unwrap_or(0)
 }
 
 struct DiscardedRetStmtCleaner;
@@ -457,11 +501,13 @@ fn method_call_matches_callee(node: &syn::ExprMethodCall, callee_name: Option<&s
 }
 
 fn callee_leaf_matches(callee_name: &str, expr_leaf: &str) -> bool {
-    callee_name
-        .rsplit("::")
-        .next()
+    callee_leaf(callee_name)
         .map(|callee_leaf| callee_leaf == expr_leaf)
         .unwrap_or(true)
+}
+
+fn callee_leaf(callee_name: &str) -> Option<&str> {
+    callee_name.rsplit("::").next()
 }
 
 fn make_return_stmts(call_expr: syn::Expr) -> Vec<syn::Stmt> {
@@ -813,6 +859,50 @@ fn make_value() -> u8 { 0 }
         assert!(compact.contains("let__klee_ret=ptr.add(index);"));
         assert!(compact.contains("klee_ext_bind::bind!(&__klee_ret,\"__klee_ret\");"));
         assert!(compact.contains("core::ptr::write(__klee_ret,make_value())"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_handles_same_span_chained_method_calls() -> Result<()> {
+        let tmp = TempDir::new("same-span-chain")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub fn init(ptr: *mut u8, index: usize) {
+    unsafe {
+        let dst = ptr.add(index).as_mut().unwrap();
+        consume(dst);
+    }
+}
+
+fn consume(_: &mut u8) {}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[
+                Injection {
+                    id: "src-lib-rs-3-19".to_string(),
+                    line: 3,
+                    col: 19,
+                    callee_name: Some("std::ptr::mut_ptr::<impl *mut T>::add".to_string()),
+                },
+                Injection {
+                    id: "src-lib-rs-3-19".to_string(),
+                    line: 3,
+                    col: 19,
+                    callee_name: Some("std::ptr::mut_ptr::<impl *mut T>::as_mut".to_string()),
+                },
+            ],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("let__klee_arg0=__klee_ret;"));
+        assert!(compact.contains("let__klee_ret=__klee_arg0.as_mut();"));
+        assert!(compact.contains("let__klee_ret=ptr.add(index);"));
+        assert!(compact.contains("letdst=__klee_ret.unwrap();"));
         Ok(())
     }
 

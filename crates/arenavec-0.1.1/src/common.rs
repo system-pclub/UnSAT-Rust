@@ -108,7 +108,7 @@ impl<T, H: AllocHandle> Slice<T, H> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ArenaBacking, Slice};
+    use super::{ArenaBacking, Slice, SliceVec};
     use crate::rc::Arena;
 
     const DEFAULT_CAPACITY: usize = 4096 << 16;
@@ -121,6 +121,23 @@ mod tests {
 
         assert_eq!(slice.len(), 3);
         assert_eq!(&*slice, &[0, 0, 0]);
+    }
+
+    #[test]
+    fn slice_vec_new() {
+        let arena = Arena::init_capacity(ArenaBacking::SystemAllocation, DEFAULT_CAPACITY).unwrap();
+
+        let mut vec: SliceVec<usize, _> = SliceVec::new(arena.inner());
+
+        assert_eq!(vec.len(), 0);
+        assert_eq!(vec.capacity(), 0);
+        assert!(vec.is_empty());
+
+        vec.push(1);
+
+        assert_eq!(vec.len(), 1);
+        assert_eq!(vec.capacity(), 4);
+        assert_eq!(&*vec, &[1]);
     }
 }
 

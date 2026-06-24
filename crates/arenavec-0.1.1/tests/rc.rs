@@ -14,6 +14,17 @@ fn slice_new() {
 }
 
 #[test]
+fn slice_vec_new() {
+    let arena = Arena::init_capacity(ArenaBacking::SystemAllocation, DEFAULT_CAPACITY).unwrap();
+
+    let vec: SliceVec<usize> = SliceVec::new(arena.inner());
+
+    assert_eq!(vec.len(), 0);
+    assert_eq!(vec.capacity(), 0);
+    assert!(vec.is_empty());
+}
+
+#[test]
 fn init_empty() {
     if cfg!(not(miri)) {
         let arena = Arena::init_capacity(ArenaBacking::MemoryMap, DEFAULT_CAPACITY).unwrap();

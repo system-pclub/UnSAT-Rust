@@ -106,6 +106,28 @@ def _load_rule_task1(
     raise RuntimeError(f"could not find non-placeholder task1 for {searched} in {rule_dir}")
 
 
+def _load_rule_dsl(rule_dsl_path: Path, rule_id: str) -> str:
+    if not rule_dsl_path.is_file():
+        raise RuntimeError(f"rule DSL file does not exist: {rule_dsl_path}")
+
+    data = _load_json(rule_dsl_path)
+    if isinstance(data, dict) and isinstance(data.get("rules"), dict):
+        data = data["rules"]
+
+    if not isinstance(data, dict):
+        raise RuntimeError(f"rule DSL file must be an object: {rule_dsl_path}")
+
+    entry = data.get(rule_id)
+    if isinstance(entry, str) and entry.strip():
+        return entry
+    if isinstance(entry, dict):
+        dsl = entry.get("dsl")
+        if isinstance(dsl, str) and dsl.strip():
+            return dsl
+
+    raise RuntimeError(f"could not find DSL for {rule_id} in {rule_dsl_path}")
+
+
 def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> str:
     ast = parse_dsl(task1, operators, allow_unknown_operators=True)
     simplified = simplify_variables(ast)
@@ -186,14 +208,8 @@ def run(args: argparse.Namespace) -> int:
 
     target, resolved_callsite_id = _find_target(targets, args.callsite)
     callsite_key = _target_callsite_key(target, 0) if target is not None else None
-    task1 = _load_rule_task1(
-        repo_root=repo_root,
-        meta_path=meta_path,
-        rule_dir=_resolve_path(repo_root, args.rule_dir, "human"),
-        callsite_id=resolved_callsite_id,
-        callsite_key=callsite_key,
-        rule_id=args.rule,
-    )
+    rule_dsl_path = _resolve_path(repo_root, args.rule_dsl, "ptr_rule_dsl.json")
+    task1 = _load_rule_dsl(rule_dsl_path, args.rule)
 
     operators = _load_operator_entries(repo_root)
     ast_json = _task1_to_ext_ast_json(task1, operators)
@@ -206,6 +222,7 @@ def run(args: argparse.Namespace) -> int:
     if report_json is not None:
         print(f"[verify] report-json={report_json}")
     print(f"[verify] callsite={resolved_callsite_id} rule={args.rule}")
+    print(f"[verify] rule-dsl={rule_dsl_path}")
     return _run_klee_compose_verify(
         ll_path=ll_path,
         callsite_id=resolved_callsite_id,
