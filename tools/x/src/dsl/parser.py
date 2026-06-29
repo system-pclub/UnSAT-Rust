@@ -11,7 +11,10 @@ from dsl.errors import DSLParseError, DSLValidationError
 _GRAMMAR = r"""
 ?start: expr
 
-?expr: or_expr
+?expr: implication_expr
+
+?implication_expr: or_expr
+    | or_expr "=>" implication_expr   -> implies_expr_bin
 
 ?or_expr: and_expr
     | or_expr "||" and_expr   -> or_expr_bin
@@ -123,6 +126,9 @@ class _TreeToAst(Transformer[Token, Expression]):
 
     def or_expr_bin(self, children: list[Expression]) -> BinaryExpression:
         return self._binary("||", children)
+
+    def implies_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("=>", children)
 
     def and_expr_bin(self, children: list[Expression]) -> BinaryExpression:
         return self._binary("&&", children)

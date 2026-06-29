@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dsl import BinaryExpression, CallExpression, DSLValidationError, UnaryExpression, parse_dsl  # noqa: E402
+from dsl import BinaryExpression, CallExpression, DSLValidationError, Literal, UnaryExpression, parse_dsl  # noqa: E402
 from dsl.simplifier import SimplifiedVariable, simplify_variables  # noqa: E402
 
 
@@ -85,6 +85,26 @@ def test_simplify_get_result_and_get_receiver() -> None:
         operator="==",
         left=SimplifiedVariable("result.alloc"),
         right=SimplifiedVariable("receiver.alloc"),
+    )
+
+
+def test_simplify_preserves_implication_shape() -> None:
+    ast = parse_dsl("get_arg(0) != 0 => get_result() < get_arg(1)", OPERATORS_PATH)
+
+    result = simplify_variables(ast)
+
+    assert result.simplified == BinaryExpression(
+        operator="=>",
+        left=BinaryExpression(
+            operator="!=",
+            left=SimplifiedVariable("get_arg(0)"),
+            right=Literal(0),
+        ),
+        right=BinaryExpression(
+            operator="<",
+            left=SimplifiedVariable("result"),
+            right=SimplifiedVariable("get_arg(1)"),
+        ),
     )
 
 

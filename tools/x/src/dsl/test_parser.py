@@ -89,3 +89,14 @@ def test_parse_quoted_string_literal_argument() -> None:
     ast = parse_dsl('get_field(get_allocation(get_arg(0)), "layout") == get_arg(1)', OPERATORS_PATH)
 
     assert isinstance(ast, BinaryExpression)
+
+
+def test_parse_implication_as_lowest_precedence_right_associative_binary() -> None:
+    ast = parse_dsl("get_arg(0) != 0 => get_arg(1) < get_arg(2) && get_arg(2) < get_arg(3)", OPERATORS_PATH)
+
+    assert isinstance(ast, BinaryExpression)
+    assert ast.operator == "=>"
+    assert isinstance(ast.left, BinaryExpression)
+    assert ast.left.operator == "!="
+    assert isinstance(ast.right, BinaryExpression)
+    assert ast.right.operator == "&&"

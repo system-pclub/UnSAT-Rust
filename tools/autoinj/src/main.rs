@@ -53,6 +53,8 @@ struct Callsite {
     line: usize,
     col: usize,
     #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
     id: Option<String>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
@@ -64,6 +66,7 @@ struct Injection {
     line: usize,
     col: usize,
     callee_name: Option<String>,
+    source_line: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -201,11 +204,7 @@ fn relative_path(from_dir: &Path, to: &Path) -> Result<String> {
 
 fn normalize_callsite_ids(meta: &mut Meta) {
     for target in &mut meta.report.targets {
-        let path = target
-            .caller
-            .as_ref()
-            .and_then(|caller| caller.path.as_deref())
-            .unwrap_or("unknown");
+        let path = target_path(target).unwrap_or("unknown");
         target.callsite.id = Some(callsite_id(path, target.callsite.line, target.callsite.col));
     }
 }
@@ -218,12 +217,8 @@ fn callsite_id(path: &str, line: usize, col: usize) -> String {
 fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
     let mut files = BTreeSet::new();
     for target in &meta.report.targets {
-        if let Some(path) = target
-            .caller
-            .as_ref()
-            .and_then(|caller| caller.path.as_ref())
-        {
-            files.insert(path.clone());
+        if let Some(path) = target_path(target) {
+            files.insert(path.to_string());
         }
     }
 
@@ -234,11 +229,7 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
             .targets
             .iter()
             .filter(|target| {
-                target
-                    .caller
-                    .as_ref()
-                    .and_then(|caller| caller.path.as_ref())
-                    == Some(&rel_file)
+                target_path(target) == Some(rel_file.as_str())
             })
             .map(|target| Injection {
                 id: target.callsite.id.clone().unwrap_or_else(|| {
@@ -250,6 +241,7 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
                     .callee
                     .as_ref()
                     .and_then(|callee| callee.name.clone()),
+                source_line: None,
             })
             .collect::<Vec<_>>();
         inject_file(&path, &injections)
@@ -258,14 +250,23 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
     Ok(())
 }
 
+fn target_path(target: &Target) -> Option<&str> {
+    target
+        .callsite
+        .path
+        .as_deref()
+        .or_else(|| target.caller.as_ref().and_then(|caller| caller.path.as_deref()))
+}
+
 fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     let source = fs::read_to_string(path)?;
     let mut ast = syn::parse_file(&source)?;
     let mut next_temp_index = 0usize;
     let ordered_injections = order_injections_for_source(&source, injections);
     for injection in &ordered_injections {
+        let injection = injection.with_source_line(&source);
         let mut injector = Injector {
-            injection,
+            injection: &injection,
             inserted: false,
             next_temp_index,
         };
@@ -284,6 +285,17 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     cleaner.visit_file_mut(&mut ast);
     fs::write(path, prettyplease::unparse(&ast))?;
     Ok(())
+}
+
+impl Injection {
+    fn with_source_line(&self, source: &str) -> Self {
+        let mut injection = self.clone();
+        injection.source_line = source
+            .lines()
+            .nth(self.line.saturating_sub(1))
+            .map(ToString::to_string);
+        injection
+    }
 }
 
 fn order_injections_for_source(source: &str, injections: &[Injection]) -> Vec<Injection> {
@@ -451,7 +463,7 @@ impl VisitMut for CallRewriter<'_> {
         }
         match expr {
             syn::Expr::Call(node)
-                if span_matches(node.span(), self.injection)
+                if call_expr_matches_location(node.span(), self.injection)
                     && expr_call_matches_callee(node, self.injection.callee_name.as_deref()) =>
             {
                 let mut next_temp_index = self.next_temp_index;
@@ -466,7 +478,7 @@ impl VisitMut for CallRewriter<'_> {
                 *expr = parse_quote! { __klee_ret };
             }
             syn::Expr::MethodCall(node)
-                if span_matches(node.span(), self.injection)
+                if method_call_expr_matches_location(node, self.injection)
                     && method_call_matches_callee(
                         node,
                         self.injection.callee_name.as_deref(),
@@ -479,6 +491,49 @@ impl VisitMut for CallRewriter<'_> {
             _ => {}
         }
     }
+}
+
+fn call_expr_matches_location(span: Span, injection: &Injection) -> bool {
+    span_matches(span, injection) || source_line_starts_call_expr(injection)
+}
+
+fn method_call_expr_matches_location(node: &syn::ExprMethodCall, injection: &Injection) -> bool {
+    if span_matches(node.span(), injection) {
+        return true;
+    }
+
+    // rustc often reports the source location for an unsafe call in a
+    // multi-line method chain at the beginning of the chain, while syn's span
+    // for the specific method call can start at the later `.method(...)`.
+    // Treat that chain start as matching the method call if the target method
+    // appears in the same chain expression.
+    if !source_line_starts_call_expr(injection) {
+        return false;
+    }
+    let Some(callee_name) = injection.callee_name.as_deref() else {
+        return false;
+    };
+    method_call_matches_callee(node, Some(callee_name))
+}
+
+fn source_line_starts_call_expr(injection: &Injection) -> bool {
+    let Some(line) = injection.source_line.as_deref() else {
+        return false;
+    };
+    let Some(from_col) = injection.col.checked_sub(1) else {
+        return false;
+    };
+    let Some(tail) = line.get(from_col..) else {
+        return false;
+    };
+    let trimmed = tail.trim_start();
+    trimmed.starts_with("self.")
+        || trimmed.starts_with("Self::")
+        || trimmed
+            .chars()
+            .next()
+            .map(|ch| ch == '_' || ch.is_ascii_alphabetic())
+            .unwrap_or(false)
 }
 
 fn expr_call_matches_callee(node: &syn::ExprCall, callee_name: Option<&str>) -> bool {
@@ -709,6 +764,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 line: start.line,
                 col: start_col.saturating_sub(1),
                 callee_name: None,
+                source_line: None,
             }
         ));
         assert!(span_matches(
@@ -718,6 +774,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 line: start.line,
                 col: start_col + 1,
                 callee_name: None,
+                source_line: None,
             }
         ));
     }
@@ -778,6 +835,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 line: 3,
                 col: 9,
                 callee_name: Some("callee".to_string()),
+                source_line: None,
             }],
         )?;
 
@@ -813,6 +871,7 @@ fn make_value() -> u8 { 0 }
                 line: 3,
                 col: 9,
                 callee_name: Some("core::ptr::write".to_string()),
+                source_line: None,
             }],
         )?;
 
@@ -849,6 +908,7 @@ fn make_value() -> u8 { 0 }
                 line: 3,
                 col: 30,
                 callee_name: Some("std::ptr::mut_ptr::<impl *mut T>::add".to_string()),
+                source_line: None,
             }],
         )?;
 
@@ -887,12 +947,14 @@ fn consume(_: &mut u8) {}
                     line: 3,
                     col: 19,
                     callee_name: Some("std::ptr::mut_ptr::<impl *mut T>::add".to_string()),
+                    source_line: None,
                 },
                 Injection {
                     id: "src-lib-rs-3-19".to_string(),
                     line: 3,
                     col: 19,
                     callee_name: Some("std::ptr::mut_ptr::<impl *mut T>::as_mut".to_string()),
+                    source_line: None,
                 },
             ],
         )?;
@@ -903,6 +965,45 @@ fn consume(_: &mut u8) {}
         assert!(compact.contains("let__klee_ret=__klee_arg0.as_mut();"));
         assert!(compact.contains("let__klee_ret=ptr.add(index);"));
         assert!(compact.contains("letdst=__klee_ret.unwrap();"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_handles_multiline_chain_start_callsite() -> Result<()> {
+        let tmp = TempDir::new("multiline-chain-start")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub fn add(storage: &mut [u8], cursor: usize, component: u8) {
+    unsafe {
+        storage
+            .as_mut_ptr()
+            .add(cursor)
+            .cast::<u8>()
+            .write_unaligned(component);
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-3-9".to_string(),
+                line: 3,
+                col: 9,
+                callee_name: Some("core::ptr::mut_ptr::<impl *mut T>::add".to_string()),
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("let__klee_arg0=storage.as_mut_ptr();"));
+        assert!(compact.contains("klee_ext_bind::bind!(&cursor,\"cursor\");"));
+        assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
+        assert!(compact.contains("let__klee_ret=__klee_arg0.add(cursor);"));
+        assert!(compact.contains("__klee_ret.cast::<u8>().write_unaligned(component)"));
         Ok(())
     }
 

@@ -179,6 +179,118 @@ def _find_llvm_ir(deps_dir: Path, crate_name: str) -> Path:
         return max(matches, key=lambda path: path.stat().st_mtime)
     raise FileNotFoundError(f"LLVM IR file not found for crate '{crate_name}' in {deps_dir}")
 
+
+def _find_test_llvm_irs(deps_dir: Path, main_ir: Path, crate_name: str) -> list[Path]:
+    """Find integration/unit test harness IR files in *deps_dir*.
+
+    Cargo names integration test crates after the test target, not the package,
+    so package-name lookup misses them. Keep this conservative: include .ll
+    files that are newer than or as new as the selected package IR and are not
+    obvious dependency/runtime crates.
+    """
+    skip_prefixes = {
+        "alloc-",
+        "compiler_builtins-",
+        "core-",
+        "klee_ext_bind-",
+        "libc-",
+        "std-",
+        "test-",
+    }
+    found: list[Path] = []
+    main_mtime = main_ir.stat().st_mtime
+    for entry in deps_dir.iterdir():
+        if entry.suffix != ".ll" or entry == main_ir:
+            continue
+        if entry.name.startswith(crate_name + "-"):
+            continue
+        if any(entry.name.startswith(prefix) for prefix in skip_prefixes):
+            continue
+        if entry.stat().st_mtime + 1 < main_mtime:
+            continue
+        found.append(entry)
+    return sorted(found)
+
+def _llvm_ir_defines_main(path: Path) -> bool:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                stripped = line.lstrip()
+                if stripped.startswith("define ") and " @main(" in stripped:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _collect_test_link_llvm_irs(
+    deps_dir: Path,
+    *,
+    test_irs: list[Path],
+    main_ir: Path,
+    crate_name: str,
+    build_std: bool,
+) -> list[Path]:
+    """Collect IR needed by a test harness without linking duplicate mains.
+
+    Cargo emits the test harness as its own crate. It references the package
+    rlib and dependency crates, but the old test-mode linker only used the
+    harness plus std/core, which leaves dependency globals unresolved (for
+    example ahash's random-state OnceBox). Link the harness, the package lib
+    IR, and ordinary dependency IRs; skip alternate executable harnesses and
+    build-std support crates that duplicate panic/runtime symbols.
+    """
+    selected: list[Path] = []
+    selected_set: set[Path] = set()
+
+    def add(path: Path) -> None:
+        if path not in selected_set:
+            selected.append(path)
+            selected_set.add(path)
+
+    for path in test_irs:
+        add(path)
+
+    skip_prefixes = {
+        "addr2line-",
+        "adler2-",
+        "bencher-",
+        "getopts-",
+        "gimli-",
+        "memchr-",
+        "miniz_oxide-",
+        "object-",
+        "panic_abort-",
+        "panic_unwind-",
+        "proc_macro-",
+        "rustc_demangle-",
+        "rustc_std_workspace_",
+        "std_detect-",
+        "unicode_width-",
+        "unwind-",
+    }
+
+    for path in sorted(deps_dir.glob("*.ll")):
+        if path in selected_set:
+            continue
+        name = path.name
+        if any(name.startswith(prefix) for prefix in skip_prefixes):
+            continue
+        if not build_std and name.startswith(("alloc-", "compiler_builtins-", "core-", "std-", "test-")):
+            continue
+        if _llvm_ir_defines_main(path):
+            continue
+        add(path)
+
+    if main_ir not in selected_set and not _llvm_ir_defines_main(main_ir):
+        add(main_ir)
+
+    logger.info(
+        "Selected test LLVM IR paths: %s",
+        [path.name for path in selected],
+    )
+    return selected
+
 def _link_llvm_irs(llvm_ir_paths: list[Path], output_path: Path, bitcode: bool = False) -> None:
     """Link multiple LLVM IR files into one using llvm-link."""
     cmd = ["llvm-link-20", "-o", str(output_path)] + [str(p) for p in llvm_ir_paths]
@@ -298,12 +410,28 @@ def ensure_linked_llvm_ir_file(
 
     lls: list[Path] = []
     main_ir = _find_llvm_ir(all_deps_dir, crate_name)
-    lls.append(main_ir)
+    if test:
+        test_irs = _find_test_llvm_irs(all_deps_dir, main_ir, crate_name)
+        if test_irs:
+            lls.extend(
+                _collect_test_link_llvm_irs(
+                    all_deps_dir,
+                    test_irs=test_irs,
+                    main_ir=main_ir,
+                    crate_name=crate_name,
+                    build_std=build_std,
+                )
+            )
+        else:
+            lls.append(main_ir)
+    else:
+        lls.append(main_ir)
     if build_std:
         for link in ("core", "alloc", "std", "compiler_builtins"):
             try:
                 link_path = _find_llvm_ir(all_deps_dir, link)
-                lls.append(link_path)
+                if link_path not in lls:
+                    lls.append(link_path)
             except FileNotFoundError:
                 logger.warning(f"Could not find LLVM IR for '{link}' in {all_deps_dir}, skipping it.")
 

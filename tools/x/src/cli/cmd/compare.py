@@ -257,6 +257,8 @@ def _simplified_expr_to_smt2(expr: object) -> str:
             return f"(and {left} {right})"
         if op == "||":
             return f"(or {left} {right})"
+        if op == "=>":
+            return f"(=> {left} {right})"
         if op == "==":
             return f"(= {left} {right})"
         if op == "!=":
