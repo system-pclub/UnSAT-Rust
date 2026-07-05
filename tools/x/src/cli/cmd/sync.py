@@ -1001,6 +1001,30 @@ def ensure_crate_metadata_file(
     )
 
 
+def ensure_injected_crate(
+    repo_root: Path,
+    crate_dir: str | Path,
+    meta_path: str | Path,
+    *,
+    dest_root: str | Path = "crates_inj",
+) -> Path:
+    crate_dir_path = Path(crate_dir).resolve()
+    meta_path_obj = Path(meta_path).resolve()
+    dest_root_path = Path(dest_root)
+    if not dest_root_path.is_absolute():
+        dest_root_path = (repo_root / dest_root_path).resolve()
+    else:
+        dest_root_path = dest_root_path.resolve()
+
+    return _run_autoinj_for_crate(
+        repo_root=repo_root,
+        crate_dir=crate_dir_path,
+        meta_path=meta_path_obj,
+        dest_root=dest_root_path,
+        autoinj_bin=_resolve_autoinj_binary(repo_root),
+    )
+
+
 def run(args: argparse.Namespace) -> int:
     repo_root = _find_repo_root()
     crates_dir = repo_root / "crates"

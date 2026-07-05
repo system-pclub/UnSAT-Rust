@@ -1,7 +1,12 @@
 use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_abi::FieldIdx;
 use rustc_middle::mir::visit::Visitor;
-use rustc_middle::mir::{BasicBlock, Body, Location, Place, Rvalue, StatementKind, TerminatorKind};
+use rustc_middle::mir::{
+    BasicBlock, Body, Location, Operand, Place, PlaceTy, ProjectionElem, Rvalue, StatementKind,
+    TerminatorKind,
+};
 use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_middle::ty::TypeVisitableExt;
 use rustc_span::Pos;
 use rustc_span::Span;
 use rustc_span::sym;
@@ -19,6 +24,8 @@ pub struct FnInfo {
     pub body_end: usize,   // line number of the closing brace of the function body
     #[serde(default)]
     pub require_template: bool,
+    #[serde(default)]
+    pub is_unsafe: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trait_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,6 +64,10 @@ pub struct FieldLayoutInfo {
     pub index: String,
     pub name: String,
     pub ty: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub element_ty: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub element_is_template: bool,
     pub offset: u64,
     pub size: u64,
 }
@@ -70,6 +81,29 @@ pub struct CallsiteInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TypeLayoutControl {
+    Fixed,
+    External,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalleeTypeArgInfo {
+    /// Zero-based index among the callee's type parameters (lifetimes and
+    /// const parameters do not consume an index).
+    pub index: usize,
+    pub name: String,
+    /// Whether this parameter is declared by an enclosing impl/type or by the
+    /// function itself.
+    pub owner: String,
+    pub instantiated_ty: String,
+    pub layout_control: TypeLayoutControl,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub external_sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Suspect {
     #[serde(alias = "target_fn_parent")]
     pub caller_parent: Option<StructInfo>,
@@ -78,6 +112,8 @@ pub struct Suspect {
     #[serde(alias = "unsafe_call")]
     pub callee: FnInfo,
     pub callsite: CallsiteInfo,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub callee_type_args: Vec<CalleeTypeArgInfo>,
 
     #[serde(skip)]
     pub unsafe_call_used_fields: Vec<String>,
@@ -121,12 +157,39 @@ pub struct TraitMethodInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EscapedFieldInfo {
+    pub source_path: String,
+    pub wrapper_type: String,
+    pub wrapper_field: String,
+    pub target_type: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub target_is_template: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AffectedFieldsInfo {
+    pub name: String,
+    pub path: String,
+    pub line: usize,
+    #[serde(default)]
+    pub is_public: bool,
+    #[serde(default)]
+    pub is_unsafe: bool,
+    pub root_types: Vec<String>,
+    pub fields_written: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub escaped_fields: Vec<EscapedFieldInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub targets: Vec<Suspect>,
     #[serde(default)]
     pub types: Vec<TypeInteractionInfo>,
     #[serde(default)]
     pub trait_methods: Vec<TraitMethodInfo>,
+    #[serde(default)]
+    pub affected_fields: Vec<AffectedFieldsInfo>,
 }
 
 fn normalize_to_rust_relative(path: &str) -> String {
@@ -140,15 +203,512 @@ fn normalize_to_rust_relative(path: &str) -> String {
     normalized
 }
 
+fn source_relative_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    if let Ok(cwd) = std::env::current_dir() {
+        let cwd = cwd.to_string_lossy().replace('\\', "/");
+        if let Some(relative) = normalized.strip_prefix(&format!("{cwd}/")) {
+            return relative.to_string();
+        }
+    }
+    normalize_to_rust_relative(&normalized)
+}
+
+fn source_visible(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    let Some(local_def_id) = def_id.as_local() else {
+        return false;
+    };
+    match tcx.hir_node_by_def_id(local_def_id) {
+        rustc_hir::Node::Item(item) => source_span_is_public(tcx, item.span),
+        rustc_hir::Node::ImplItem(item) => {
+            if source_span_is_public(tcx, item.span) {
+                return true;
+            }
+            let trait_id =
+                tcx.trait_id_of_impl(tcx.associated_item(def_id).container_id(tcx));
+            trait_id.is_some_and(|trait_id| {
+                let path = tcx.def_path_str(trait_id);
+                path != "core::ops::drop::Drop" && !path.ends_with("::Drop")
+            })
+        }
+        // Trait methods cannot spell a visibility and are part of the trait's
+        // public interface.
+        rustc_hir::Node::TraitItem(_) => true,
+        _ => false,
+    }
+}
+
+fn source_span_is_public(tcx: TyCtxt<'_>, span: Span) -> bool {
+    tcx.sess
+        .source_map()
+        .span_to_snippet(span)
+        .ok()
+        .is_some_and(|source| {
+            let source = source.trim_start();
+            source.starts_with("pub ") || source.starts_with("pub(")
+        })
+}
+
+fn root_adt(ty: Ty<'_>) -> Option<(DefId, bool)> {
+    match ty.kind() {
+        ty::Adt(def, _) => Some((def.did(), false)),
+        ty::Ref(_, inner, _) | ty::RawPtr(inner, _) => match inner.kind() {
+            ty::Adt(def, _) => Some((def.did(), true)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn contains_mut_ref(ty: Ty<'_>) -> bool {
+    match ty.kind() {
+        ty::Ref(_, _, rustc_middle::mir::Mutability::Mut)
+        | ty::RawPtr(_, rustc_middle::mir::Mutability::Mut) => true,
+        ty::Adt(_, args) => args
+            .iter()
+            .filter_map(|arg| arg.as_type())
+            .any(contains_mut_ref),
+        ty::Tuple(types) => types.iter().any(contains_mut_ref),
+        _ => false,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AffectedPath {
+    root: String,
+    suffix: String,
+}
+
+impl AffectedPath {
+    fn rendered(&self) -> String {
+        format!("{}{}", self.root, self.suffix)
+    }
+}
+
+struct AffectedFieldsVisitor<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    body: &'tcx Body<'tcx>,
+    roots: HashMap<rustc_middle::mir::Local, AffectedPath>,
+    aliases: HashMap<rustc_middle::mir::Local, AffectedPath>,
+    written: HashSet<String>,
+}
+
+impl<'tcx> AffectedFieldsVisitor<'tcx> {
+    fn path_for_place(&self, place: Place<'tcx>) -> Option<AffectedPath> {
+        let mut path = self
+            .aliases
+            .get(&place.local)
+            .or_else(|| self.roots.get(&place.local))?
+            .clone();
+        let mut place_ty = PlaceTy::from_ty(self.body.local_decls[place.local].ty);
+
+        for elem in place.projection {
+            match elem {
+                ProjectionElem::Deref => {}
+                ProjectionElem::Field(field, _) => {
+                    let name = match place_ty.ty.kind() {
+                        ty::Adt(def, _) => {
+                            if let Some(index) = place_ty.variant_index {
+                                def.variant(index).fields[field].name.to_string()
+                            } else if !def.is_enum() {
+                                def.non_enum_variant().fields[field].name.to_string()
+                            } else {
+                                field.index().to_string()
+                            }
+                        }
+                        ty::Tuple(_) => field.index().to_string(),
+                        _ => field.index().to_string(),
+                    };
+                    path.suffix.push('.');
+                    path.suffix.push_str(&name);
+                }
+                ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
+                    path.suffix.push_str("[*]");
+                }
+                ProjectionElem::Subslice { .. } => path.suffix.push_str("[*]"),
+                ProjectionElem::Downcast(_, _) => {}
+                ProjectionElem::OpaqueCast(_)
+                | ProjectionElem::Subtype(_)
+                | ProjectionElem::UnwrapUnsafeBinder(_) => {}
+            }
+            place_ty = place_ty.projection_ty(self.tcx, elem);
+        }
+        Some(path)
+    }
+
+    fn path_for_operand(&self, operand: &Operand<'tcx>) -> Option<AffectedPath> {
+        operand.place().and_then(|place| self.path_for_place(place))
+    }
+
+    fn alias_from_rvalue(&self, rvalue: &Rvalue<'tcx>) -> Option<AffectedPath> {
+        match rvalue {
+            Rvalue::Ref(_, _, place) | Rvalue::RawPtr(_, place) => self.path_for_place(*place),
+            Rvalue::Use(operand) | Rvalue::Cast(_, operand, _) => self.path_for_operand(operand),
+            Rvalue::CopyForDeref(place) => self.path_for_place(*place),
+            _ => None,
+        }
+    }
+
+    fn record(&mut self, place: Place<'tcx>) {
+        if let Some(path) = self.path_for_place(place) {
+            self.written.insert(path.rendered());
+        }
+    }
+
+    fn collect_escaped_fields(&self) -> (Vec<EscapedFieldInfo>, HashSet<String>) {
+        let mut aggregate_sources: HashMap<
+            rustc_middle::mir::Local,
+            Vec<(usize, AffectedPath)>,
+        > = HashMap::new();
+
+        for _ in 0..16 {
+            let mut changed = false;
+            for block in self.body.basic_blocks.iter() {
+                for statement in &block.statements {
+                    let StatementKind::Assign(assign) = &statement.kind else {
+                        continue;
+                    };
+                    let (destination, rvalue) = &**assign;
+                    if !destination.projection.is_empty() {
+                        continue;
+                    }
+                    let sources = match rvalue {
+                        Rvalue::Aggregate(_, operands) => {
+                            let mut sources = Vec::new();
+                            for (index, operand) in operands.iter().enumerate() {
+                                let Some(place) = operand.place() else {
+                                    continue;
+                                };
+                                let is_mut_ref = matches!(
+                                    self.body.local_decls[place.local].ty.kind(),
+                                    ty::Ref(_, _, rustc_middle::mir::Mutability::Mut)
+                                        | ty::RawPtr(_, rustc_middle::mir::Mutability::Mut)
+                                );
+                                if !is_mut_ref {
+                                    continue;
+                                }
+                                if let Some(path) = self.path_for_operand(operand) {
+                                    sources.push((index, path));
+                                }
+                            }
+                            sources
+                        }
+                        Rvalue::Use(operand) => {
+                            let direct = operand.place().and_then(|place| {
+                                let is_mut_ref = matches!(
+                                    self.body.local_decls[place.local].ty.kind(),
+                                    ty::Ref(_, _, rustc_middle::mir::Mutability::Mut)
+                                        | ty::RawPtr(_, rustc_middle::mir::Mutability::Mut)
+                                );
+                                is_mut_ref
+                                    .then(|| self.path_for_operand(operand))
+                                    .flatten()
+                                    .map(|path| vec![(0, path)])
+                            });
+                            direct
+                                .or_else(|| {
+                                    operand.place().and_then(|place| {
+                                        aggregate_sources.get(&place.local).cloned()
+                                    })
+                                })
+                                .unwrap_or_default()
+                        }
+                        Rvalue::Ref(
+                            _,
+                            rustc_middle::mir::BorrowKind::Mut { .. },
+                            place,
+                        )
+                        | Rvalue::RawPtr(
+                            rustc_middle::mir::RawPtrKind::Mut,
+                            place,
+                        ) => self
+                            .path_for_place(*place)
+                            .map(|path| vec![(0, path)])
+                            .unwrap_or_default(),
+                        _ => Vec::new(),
+                    };
+                    if !sources.is_empty()
+                        && aggregate_sources.get(&destination.local) != Some(&sources)
+                    {
+                        aggregate_sources.insert(destination.local, sources);
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        let return_local = rustc_middle::mir::Local::from_usize(0);
+        let mut sources = aggregate_sources
+            .get(&return_local)
+            .cloned()
+            .unwrap_or_default();
+        if sources.is_empty()
+            && contains_mut_ref(self.body.local_decls[return_local].ty)
+        {
+            if let Some(path) = self.aliases.get(&return_local) {
+                sources.push((0, path.clone()));
+            }
+        }
+        if sources.is_empty() {
+            return (Vec::new(), HashSet::new());
+        }
+        let mut escaped_writes = HashSet::new();
+        for (_, source) in &sources {
+            let rendered = source.rendered();
+            let wildcard = rendered
+                .rfind("[*]")
+                .map(|end| format!("{}.*", &rendered[..end + 3]))
+                .unwrap_or_else(|| format!("{rendered}.*"));
+            escaped_writes.insert(wildcard);
+        }
+        let return_ty = self.body.local_decls[return_local].ty;
+        if let ty::Ref(_, inner, rustc_middle::mir::Mutability::Mut)
+        | ty::RawPtr(inner, rustc_middle::mir::Mutability::Mut) = return_ty.kind()
+        {
+            let escaped = sources
+                .into_iter()
+                .map(|(_, source)| EscapedFieldInfo {
+                    source_path: source.rendered(),
+                    wrapper_type: String::new(),
+                    wrapper_field: String::new(),
+                    target_type: inner.to_string(),
+                    target_is_template: inner.has_param(),
+                })
+                .collect();
+            return (escaped, HashSet::new());
+        }
+        let ty::Adt(wrapper_def, wrapper_args) = return_ty.kind() else {
+            return (Vec::new(), escaped_writes);
+        };
+        if !wrapper_def.is_struct() {
+            return (Vec::new(), escaped_writes);
+        }
+        let wrapper_name = self.tcx.item_name(wrapper_def.did()).to_string();
+        let fields = &wrapper_def.non_enum_variant().fields;
+        let mut escaped = Vec::new();
+        for (index, source) in &sources {
+            if *index >= fields.len() {
+                continue;
+            }
+            let field = &fields[FieldIdx::from_usize(*index)];
+            let field_ty = field.ty(self.tcx, wrapper_args);
+            let target = match field_ty.kind() {
+                ty::Ref(_, inner, rustc_middle::mir::Mutability::Mut)
+                | ty::RawPtr(inner, rustc_middle::mir::Mutability::Mut) => match inner.kind() {
+                    ty::Adt(def, _) => Some((def.did(), *inner)),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let Some((_target_def_id, target_ty)) = target else {
+                continue;
+            };
+            escaped.push(EscapedFieldInfo {
+                source_path: source.rendered(),
+                wrapper_type: wrapper_name.clone(),
+                wrapper_field: field.name.to_string(),
+                target_type: target_ty.to_string(),
+                target_is_template: target_ty.has_param(),
+            });
+        }
+        escaped.sort_by(|left, right| {
+            (
+                &left.source_path,
+                &left.wrapper_type,
+                &left.wrapper_field,
+                &left.target_type,
+            )
+                .cmp(&(
+                    &right.source_path,
+                    &right.wrapper_type,
+                    &right.wrapper_field,
+                    &right.target_type,
+                ))
+        });
+        escaped.dedup_by(|left, right| {
+            left.source_path == right.source_path
+                && left.wrapper_type == right.wrapper_type
+                && left.wrapper_field == right.wrapper_field
+                && left.target_type == right.target_type
+        });
+        (escaped, HashSet::new())
+    }
+
+    fn analyze(mut self) -> (HashSet<String>, Vec<EscapedFieldInfo>) {
+        // Build simple local aliases to a fixed point before collecting writes,
+        // since MIR block order need not be execution order.
+        for _ in 0..16 {
+            let mut changed = false;
+            for block in self.body.basic_blocks.iter() {
+                for statement in &block.statements {
+                    if let StatementKind::Assign(assign) = &statement.kind {
+                        let (destination, rvalue) = &**assign;
+                        if destination.projection.is_empty() {
+                            if let Some(path) = self.alias_from_rvalue(rvalue) {
+                                if self.aliases.get(&destination.local) != Some(&path) {
+                                    self.aliases.insert(destination.local, path);
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if let TerminatorKind::Call {
+                    func,
+                    args,
+                    destination,
+                    ..
+                } = &block.terminator().kind
+                {
+                    let Some((callee, _)) = func.const_fn_def() else {
+                        continue;
+                    };
+                    let callee_name = self.tcx.def_path_str(callee);
+                    let returns_element =
+                        callee_name.contains("IndexMut") || callee_name.ends_with("::get_mut");
+                    if returns_element {
+                        if let Some(mut path) = args
+                            .first()
+                            .and_then(|arg| self.path_for_operand(&arg.node))
+                        {
+                            path.suffix.push_str("[*]");
+                            if self.aliases.get(&destination.local) != Some(&path) {
+                                self.aliases.insert(destination.local, path);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        for block in self.body.basic_blocks.iter() {
+            for statement in &block.statements {
+                match &statement.kind {
+                    StatementKind::Assign(assign)
+                        if !(assign.0.projection.is_empty()
+                            && self.alias_from_rvalue(&assign.1).is_some()) =>
+                    {
+                        self.record(assign.0)
+                    }
+                    StatementKind::Deinit(place) => self.record(**place),
+                    StatementKind::SetDiscriminant { place, .. } => self.record(**place),
+                    _ => {}
+                }
+            }
+            if let TerminatorKind::Call { func, args, .. } = &block.terminator().kind {
+                let Some((callee, _)) = func.const_fn_def() else {
+                    continue;
+                };
+                let inputs = self.tcx.fn_sig(callee).skip_binder().skip_binder().inputs();
+                if matches!(
+                    inputs.first().map(|ty| ty.kind()),
+                    Some(ty::Ref(_, _, rustc_middle::mir::Mutability::Mut))
+                        | Some(ty::RawPtr(_, rustc_middle::mir::Mutability::Mut))
+                ) {
+                    if let Some(receiver) = args
+                        .first()
+                        .and_then(|arg| self.path_for_operand(&arg.node))
+                    {
+                        self.written.insert(receiver.rendered());
+                    }
+                }
+            }
+        }
+        let (escaped, escaped_writes) = self.collect_escaped_fields();
+        self.written.extend(escaped_writes);
+        (self.written, escaped)
+    }
+}
+
+fn collect_affected_fields<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<AffectedFieldsInfo> {
+    let mut result = Vec::new();
+    for local_def_id in tcx.hir_body_owners() {
+        let def_id = local_def_id.to_def_id();
+        if !matches!(
+            tcx.def_kind(def_id),
+            rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn
+        ) || !source_visible(tcx, def_id)
+        {
+            continue;
+        }
+        let Some(body) = optimized_mir_if_available(tcx, def_id) else {
+            continue;
+        };
+        let sig = tcx.fn_sig(def_id).skip_binder().skip_binder();
+        let returned_adt = root_adt(sig.output()).map(|(def_id, _)| def_id);
+        let mut roots = HashMap::new();
+        let mut root_types = Vec::new();
+        for (index, input) in sig.inputs().iter().enumerate() {
+            let Some((adt_def_id, indirect)) = root_adt(*input) else {
+                continue;
+            };
+            if !indirect && returned_adt != Some(adt_def_id) {
+                continue;
+            }
+            let name = tcx.item_name(adt_def_id).to_string();
+            root_types.push(name.clone());
+            roots.insert(
+                rustc_middle::mir::Local::from_usize(index + 1),
+                AffectedPath {
+                    root: name,
+                    suffix: String::new(),
+                },
+            );
+        }
+        root_types.sort();
+        root_types.dedup();
+        if roots.is_empty() {
+            continue;
+        }
+        let (written, escaped_fields) = AffectedFieldsVisitor {
+            tcx,
+            body,
+            roots,
+            aliases: HashMap::new(),
+            written: HashSet::new(),
+        }
+        .analyze();
+        let mut fields_written: Vec<_> = written.into_iter().collect();
+        fields_written.sort();
+        if fields_written.is_empty() && escaped_fields.is_empty() {
+            continue;
+        }
+        let span = tcx.def_span(def_id);
+        let loc = tcx.sess.source_map().lookup_char_pos(span.lo());
+        let name = tcx.def_path_str(def_id);
+        result.push(AffectedFieldsInfo {
+            name,
+            path: source_relative_path(&loc.file.name.prefer_local().to_string()),
+            line: loc.line,
+            is_public: tcx.visibility(def_id).is_public(),
+            is_unsafe: is_fn_unsafe(tcx, def_id),
+            root_types,
+            fields_written,
+            escaped_fields,
+        });
+    }
+    result.sort_by(|left, right| left.name.cmp(&right.name));
+    result
+}
+
 // Visitor to find all unsafe function calls in a function body
 struct UnsafeCallVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
-    unsafe_calls: Vec<(DefId, Span, Location, Vec<Place<'tcx>>)>, // (callee_def_id, span, mir_location, args)
+    unsafe_calls:
+        Vec<(DefId, ty::GenericArgsRef<'tcx>, Span, Location, Vec<Place<'tcx>>)>,
 }
 
 #[derive(Clone)]
 struct UnsafeCallSite<'tcx> {
     callee_def_id: DefId,
+    callee_args: ty::GenericArgsRef<'tcx>,
     callsite_span: Span,
     location: Location,
     arg_places: Vec<Place<'tcx>>,
@@ -182,6 +742,13 @@ fn configured_max_call_depth() -> usize {
 }
 
 fn local_body_owner<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<LocalDefId> {
+    // Some required trait methods have a HIR node that appears body-like due
+    // to desugared signature constructs (for example `impl Trait` arguments),
+    // but rustc deliberately has no MIR body for the method itself. Asking
+    // `optimized_mir` for such a definition triggers an ICE in rustc.
+    if !tcx.is_mir_available(def_id) {
+        return None;
+    }
     let local_def_id = def_id.as_local()?;
     tcx.hir_maybe_body_owned_by(local_def_id)?;
     Some(local_def_id)
@@ -206,11 +773,17 @@ fn collect_reachable_unsafe_calls<'tcx>(
     max_call_depth: usize,
 ) -> Vec<UnsafeCallSite<'tcx>> {
     let mut results = Vec::new();
-    let mut queue = VecDeque::from([(root_def_id, 0usize)]);
+    let root_args = ty::GenericArgs::identity_for_item(tcx, root_def_id);
+    let mut queue = VecDeque::from([(root_def_id, root_args, 0usize)]);
     let mut visited = HashSet::new();
 
-    while let Some((current_def_id, depth)) = queue.pop_front() {
-        if !visited.insert((current_def_id, depth)) {
+    while let Some((current_def_id, current_args, depth)) = queue.pop_front() {
+        let args_key = current_args
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        if !visited.insert((current_def_id, args_key, depth)) {
             continue;
         }
 
@@ -220,17 +793,22 @@ fn collect_reachable_unsafe_calls<'tcx>(
 
         let mut unsafe_visitor = UnsafeCallVisitor::new(tcx);
         unsafe_visitor.visit_body(body);
-        for (callee_def_id, callsite_span, location, arg_places) in unsafe_visitor.unsafe_calls {
+        for (callee_def_id, callee_args, callsite_span, location, arg_places) in
+            unsafe_visitor.unsafe_calls
+        {
+            let callee_args =
+                ty::EarlyBinder::bind(callee_args).instantiate(tcx, current_args);
             if is_core_or_std_fn(tcx, callee_def_id) {
                 results.push(UnsafeCallSite {
                     callee_def_id,
+                    callee_args,
                     callsite_span,
                     location,
                     arg_places,
                     depth,
                 });
             } else if depth < max_call_depth && callee_def_id.as_local().is_some() {
-                queue.push_back((callee_def_id, depth + 1));
+                queue.push_back((callee_def_id, callee_args, depth + 1));
             }
         }
     }
@@ -246,7 +824,7 @@ impl<'tcx> Visitor<'tcx> for UnsafeCallVisitor<'tcx> {
     ) {
         if let TerminatorKind::Call { func, args, .. } = &terminator.kind {
             // Extract the called function's DefId
-            if let Some((def_id, _substs)) = func.const_fn_def() {
+            if let Some((def_id, substs)) = func.const_fn_def() {
                 // Check if the function is unsafe
                 if is_fn_unsafe(self.tcx, def_id) {
                     // Extract all argument places (including receiver for method calls)
@@ -265,6 +843,7 @@ impl<'tcx> Visitor<'tcx> for UnsafeCallVisitor<'tcx> {
 
                     self.unsafe_calls.push((
                         def_id,
+                        substs,
                         terminator.source_info.span,
                         location,
                         arg_places,
@@ -1156,6 +1735,90 @@ fn collect_trait_methods<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<TraitMethodInfo> {
     methods
 }
 
+fn collect_callee_type_args<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    callee_def_id: DefId,
+    callee_args: ty::GenericArgsRef<'tcx>,
+) -> Vec<CalleeTypeArgInfo> {
+    fn append_params<'tcx>(
+        tcx: TyCtxt<'tcx>,
+        owner: DefId,
+        out: &mut Vec<(DefId, ty::GenericParamDef)>,
+    ) {
+        let generics = tcx.generics_of(owner);
+        if let Some(parent) = generics.parent {
+            append_params(tcx, parent, out);
+        }
+        out.extend(
+            generics
+                .own_params
+                .iter()
+                .cloned()
+                .map(|param| (owner, param)),
+        );
+    }
+
+    let mut params = Vec::new();
+    append_params(tcx, callee_def_id, &mut params);
+    let mut result = Vec::new();
+
+    for (owner_def_id, param) in params {
+        if !matches!(param.kind, ty::GenericParamDefKind::Type { .. }) {
+            continue;
+        }
+
+        let index = result.len();
+        let owner = if owner_def_id == callee_def_id {
+            "function"
+        } else {
+            "impl"
+        };
+        let Some(arg) = callee_args.get(param.index as usize) else {
+            result.push(CalleeTypeArgInfo {
+                index,
+                name: param.name.to_string(),
+                owner: owner.to_string(),
+                instantiated_ty: "<unknown>".to_string(),
+                layout_control: TypeLayoutControl::Unknown,
+                external_sources: Vec::new(),
+            });
+            continue;
+        };
+        let Some(instantiated_ty) = arg.as_type() else {
+            result.push(CalleeTypeArgInfo {
+                index,
+                name: param.name.to_string(),
+                owner: owner.to_string(),
+                instantiated_ty: "<non-type argument>".to_string(),
+                layout_control: TypeLayoutControl::Unknown,
+                external_sources: Vec::new(),
+            });
+            continue;
+        };
+
+        let rendered = instantiated_ty.to_string();
+        let is_external = instantiated_ty.has_param();
+        result.push(CalleeTypeArgInfo {
+            index,
+            name: param.name.to_string(),
+            owner: owner.to_string(),
+            instantiated_ty: rendered.clone(),
+            layout_control: if is_external {
+                TypeLayoutControl::External
+            } else {
+                TypeLayoutControl::Fixed
+            },
+            external_sources: if is_external {
+                vec![rendered]
+            } else {
+                Vec::new()
+            },
+        });
+    }
+
+    result
+}
+
 fn get_fn_info_with_template_flag<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_id: DefId,
@@ -1187,6 +1850,7 @@ fn get_fn_info_with_template_flag<'tcx>(
         line_end: end_loc.line,
         body_end: body_end_loc.line,
         require_template,
+        is_unsafe: is_fn_unsafe(tcx, def_id),
         trait_name,
         return_ty,
         symbol_match_hint,
@@ -1381,10 +2045,26 @@ fn collect_field_layouts<'tcx>(
         else {
             continue;
         };
+        let element_ty = match field_ty.kind() {
+            ty::Adt(def, args) => {
+                let name = tcx.item_name(def.did()).to_string();
+                let type_index = if name == "Vec" {
+                    Some(0)
+                } else if name == "HashMap" || name == "BTreeMap" {
+                    Some(1)
+                } else {
+                    None
+                };
+                type_index.and_then(|i| args.get(i)).and_then(|arg| arg.as_type())
+            }
+            _ => None,
+        };
         fields.push(FieldLayoutInfo {
             index: index.to_string(),
             name: field.name.to_string(),
             ty: field_ty.to_string(),
+            element_ty: element_ty.map(|ty| ty.to_string()),
+            element_is_template: element_ty.is_some_and(|ty| ty.has_param()),
             offset: layout.fields.offset(index).bytes(),
             size: field_layout.size.bytes(),
         });
@@ -1885,6 +2565,7 @@ fn collect_escaped_mut_refs_in_aggregates<'tcx>(
 pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
     let mut targets = Vec::new();
     let types = collect_public_type_infos(tcx);
+    let affected_fields = collect_affected_fields(tcx);
     let max_call_depth = configured_max_call_depth();
 
     // Find all ADTs (structs/enums)
@@ -1987,6 +2668,11 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                                     caller: fn_info.clone(),
                                     callsite: callsite_info.clone(),
                                     callee: get_fn_info(tcx, callee_def_id),
+                                    callee_type_args: collect_callee_type_args(
+                                        tcx,
+                                        callee_def_id,
+                                        unsafe_call.callee_args,
+                                    ),
                                     unsafe_call_used_fields: vec![],
                                     unsafe_call_used_params: vec![],
                                     unsafe_call_used_globals: vec![],
@@ -2103,6 +2789,11 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                                 caller: fn_info.clone(),
                                 callsite: callsite_info,
                                 callee: get_fn_info(tcx, callee_def_id),
+                                callee_type_args: collect_callee_type_args(
+                                    tcx,
+                                    callee_def_id,
+                                    unsafe_call.callee_args,
+                                ),
                                 unsafe_call_used_fields: used_fields,
                                 unsafe_call_used_params: used_params,
                                 unsafe_call_used_globals: used_globals,
@@ -2160,6 +2851,11 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                     caller: fn_info.clone(),
                     callsite: callsite_info,
                     callee: get_fn_info(tcx, unsafe_call.callee_def_id),
+                    callee_type_args: collect_callee_type_args(
+                        tcx,
+                        unsafe_call.callee_def_id,
+                        unsafe_call.callee_args,
+                    ),
                     unsafe_call_used_fields: vec![],
                     unsafe_call_used_params: vec![],
                     unsafe_call_used_globals: vec![],
@@ -2181,6 +2877,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
         targets,
         types,
         trait_methods,
+        affected_fields,
     }
 }
 
@@ -2744,5 +3441,267 @@ mod tests {
         assert!(method.trait_name.ends_with("Source"));
         assert!(method.implementor_type.ends_with("Counter"));
         assert_eq!(method.return_ty, "usize");
+    }
+
+    #[test]
+    fn test_reports_callee_type_argument_layout_control() {
+        let report = run_audit(
+            r#"
+                pub fn generic<T>(ptr: *mut T) {
+                    unsafe { let _ = ptr.add(1); }
+                }
+
+                pub fn fixed(ptr: *mut u64) {
+                    unsafe { let _ = ptr.add(1); }
+                }
+
+                #[inline(never)]
+                unsafe fn helper<T>(ptr: *mut T) -> *mut T {
+                    ptr.add(1)
+                }
+
+                pub fn fixed_through_helper(ptr: *mut u32) -> *mut u32 {
+                    unsafe { helper::<u32>(ptr) }
+                }
+
+                pub fn multiple<T>(left: *const T, right: *const u8) -> isize {
+                    unsafe { left.byte_offset_from(right) }
+                }
+            "#,
+        );
+
+        let generic = report
+            .targets
+            .iter()
+            .find(|target| target.caller.name.ends_with("generic"))
+            .expect("generic pointer call should be reported");
+        assert!(matches!(
+            generic.callee_type_args[0].layout_control,
+            TypeLayoutControl::External
+        ));
+        assert_eq!(generic.callee_type_args[0].name, "T");
+
+        let fixed = report
+            .targets
+            .iter()
+            .find(|target| target.caller.name.ends_with("fixed"))
+            .expect("fixed pointer call should be reported");
+        assert!(matches!(
+            fixed.callee_type_args[0].layout_control,
+            TypeLayoutControl::Fixed
+        ));
+        assert_eq!(fixed.callee_type_args[0].instantiated_ty, "u64");
+
+        let through_helper = report
+            .targets
+            .iter()
+            .find(|target| target.caller.name.ends_with("fixed_through_helper"))
+            .expect("nested fixed pointer call should be reported");
+        assert!(matches!(
+            through_helper.callee_type_args[0].layout_control,
+            TypeLayoutControl::Fixed
+        ));
+        assert_eq!(
+            through_helper.callee_type_args[0].instantiated_ty,
+            "u32"
+        );
+
+        let multiple = report
+            .targets
+            .iter()
+            .find(|target| target.caller.name.ends_with("multiple"))
+            .expect("multi-type pointer call should be reported");
+        assert_eq!(multiple.callee_type_args.len(), 2);
+        assert!(matches!(
+            multiple.callee_type_args[0].layout_control,
+            TypeLayoutControl::External
+        ));
+        assert!(matches!(
+            multiple.callee_type_args[1].layout_control,
+            TypeLayoutControl::Fixed
+        ));
+        assert_eq!(multiple.callee_type_args[1].instantiated_ty, "u8");
+    }
+
+    #[test]
+    fn test_required_trait_method_without_mir_is_skipped() {
+        let report = run_audit(
+            r#"
+                pub trait DynamicBundle {
+                    unsafe fn put(
+                        self,
+                        callback: impl FnMut(*mut u8),
+                    );
+                }
+
+                pub fn invoke<B: DynamicBundle>(bundle: B) {
+                    unsafe { bundle.put(|_| {}); }
+                }
+            "#,
+        );
+
+        assert!(
+            report.targets.is_empty(),
+            "a required local trait method has no MIR body to traverse"
+        );
+    }
+
+    #[test]
+    fn test_affected_fields_nested_index_alias_and_collection_call() {
+        let report = run_audit(
+            r#"
+                pub struct Leaf { pub x: usize }
+                pub struct Root {
+                    pub leaf: Leaf,
+                    pub array: [Leaf; 2],
+                    pub items: Vec<Leaf>,
+                }
+
+                impl Root {
+                    pub(crate) fn mutate(&mut self) {
+                        self.leaf.x = 1;
+                        self.array[0].x = 2;
+                        let alias = &mut self.leaf;
+                        alias.x = 3;
+                        self.items.push(Leaf { x: 4 });
+                        self.items[0].x = 5;
+                    }
+
+                    fn private_mutate(&mut self) {
+                        self.leaf.x = 5;
+                    }
+                }
+            "#,
+        );
+
+        let affected = report
+            .affected_fields
+            .iter()
+            .find(|item| item.name.ends_with("Root::mutate"))
+            .expect("publicly visible mutator should be reported");
+        assert_eq!(affected.root_types, ["Root"]);
+        assert!(affected.fields_written.contains(&"Root.leaf.x".to_string()));
+        assert!(
+            affected
+                .fields_written
+                .contains(&"Root.array[*].x".to_string())
+        );
+        assert!(affected.fields_written.contains(&"Root.items".to_string()));
+        assert!(
+            affected
+                .fields_written
+                .contains(&"Root.items[*].x".to_string())
+        );
+        assert!(
+            !report
+                .affected_fields
+                .iter()
+                .any(|item| item.name.ends_with("private_mutate"))
+        );
+    }
+
+    #[test]
+    fn test_affected_fields_by_value_requires_same_return_type() {
+        let report = run_audit(
+            r#"
+                pub struct Root { pub x: usize }
+
+                pub fn returned(mut root: Root) -> Root {
+                    root.x = 1;
+                    root
+                }
+
+                pub fn consumed(mut root: Root) {
+                    root.x = 2;
+                }
+            "#,
+        );
+
+        let returned = report
+            .affected_fields
+            .iter()
+            .find(|item| item.name.ends_with("returned"))
+            .expect("returned by-value ADT should be a root");
+        assert_eq!(returned.fields_written, ["Root.x"]);
+        assert!(
+            !report
+                .affected_fields
+                .iter()
+                .any(|item| item.name.ends_with("consumed"))
+        );
+    }
+
+    #[test]
+    fn test_affected_fields_reports_aggregate_mut_escape_and_trait_writes() {
+        let report = run_audit(
+            r#"
+                pub struct Item { pub x: usize }
+                pub struct Store { pub items: Vec<Item> }
+                pub struct Root { store: Store }
+                pub struct Wrapper<'a> { store: &'a mut Store }
+
+                impl Root {
+                    pub fn escape(&mut self) -> Wrapper<'_> {
+                        Wrapper { store: &mut self.store }
+                    }
+
+                    pub fn store_mut(&mut self) -> &mut Store {
+                        &mut self.store
+                    }
+                }
+
+                impl Iterator for Wrapper<'_> {
+                    type Item = ();
+
+                    fn next(&mut self) -> Option<()> {
+                        self.store.items[0].x = 1;
+                        Some(())
+                    }
+                }
+            "#,
+        );
+
+        let escape = report
+            .affected_fields
+            .iter()
+            .find(|item| item.name.ends_with("Root::escape"))
+            .expect("aggregate mutable-reference escape should be reported");
+        assert_eq!(escape.escaped_fields.len(), 1);
+        assert_eq!(escape.escaped_fields[0].source_path, "Root.store");
+        assert_eq!(escape.escaped_fields[0].wrapper_type, "Wrapper");
+        assert_eq!(escape.escaped_fields[0].wrapper_field, "store");
+        assert_eq!(escape.escaped_fields[0].target_type, "Store");
+        assert!(!escape.escaped_fields[0].target_is_template);
+
+        let direct = report
+            .affected_fields
+            .iter()
+            .find(|item| item.name.ends_with("Root::store_mut"))
+            .expect("direct mutable-reference escape should be reported");
+        assert!(direct.is_public);
+        assert_eq!(direct.escaped_fields.len(), 1);
+        assert_eq!(direct.escaped_fields[0].source_path, "Root.store");
+        assert!(direct.escaped_fields[0].wrapper_type.is_empty());
+        assert!(direct.escaped_fields[0].wrapper_field.is_empty());
+        assert_eq!(direct.escaped_fields[0].target_type, "Store");
+
+        let next = report
+            .affected_fields
+            .iter()
+            .find(|item| item.name.ends_with("::next"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "public trait implementation method should be reported: {:?}",
+                    report
+                        .affected_fields
+                        .iter()
+                        .map(|item| &item.name)
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            next.fields_written
+                .contains(&"Wrapper.store.items[*].x".to_string())
+        );
     }
 }

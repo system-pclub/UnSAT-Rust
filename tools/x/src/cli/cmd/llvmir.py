@@ -49,6 +49,8 @@ def compile_with_emit_llvm(
     env["RUSTFLAGS"] = _emit_llvm_rustflags(panic_abort=panic_abort)
 
     cmd = ["cargo", "build"]
+    if (cargo_dir / "src" / "lib.rs").is_file():
+        cmd.append("--lib")
     if build_std:
         cmd += _build_std_args(test=False, panic_abort=panic_abort)
         # cargo -Zbuild-std requires an explicit --target
@@ -362,6 +364,7 @@ def ensure_linked_llvm_ir_file(
     crate_name = members[0][0].replace("-", "_")
     output_path = output_dir / f"{crate_name}.ll"
     build_config = {
+        "cargo_dir": str(cargo_dir),
         "rustflags": _emit_llvm_rustflags(
             panic_abort=panic_abort,
             panic_abort_tests=test and panic_abort,

@@ -159,13 +159,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify_parser.add_argument(
         "--callsite",
-        required=True,
-        help="Callsite id to verify.",
+        help="Callsite id to verify (required unless --skip-klee is used).",
     )
     verify_parser.add_argument(
         "--rule",
-        required=True,
-        help="Rule id to verify.",
+        help="Rule id to verify (required unless --skip-klee is used).",
+    )
+    verify_parser.add_argument(
+        "--skip-klee",
+        action="store_true",
+        help="Stop after mirscan, autoinj, and linked LLVM IR generation succeed.",
     )
     verify_parser.add_argument(
         "--rule-dir",

@@ -218,12 +218,15 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
     let mut files = BTreeSet::new();
     for target in &meta.report.targets {
         if let Some(path) = target_path(target) {
-            files.insert(path.to_string());
+            if crate_dir.join(path).is_file() {
+                files.insert(path.to_string());
+            }
         }
     }
 
     for rel_file in files {
         let path = crate_dir.join(&rel_file);
+        let mut seen_callsites = BTreeSet::new();
         let injections = meta
             .report
             .targets
@@ -231,17 +234,26 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
             .filter(|target| {
                 target_path(target) == Some(rel_file.as_str())
             })
-            .map(|target| Injection {
-                id: target.callsite.id.clone().unwrap_or_else(|| {
+            .filter_map(|target| {
+                let id = target.callsite.id.clone().unwrap_or_else(|| {
                     callsite_id(&rel_file, target.callsite.line, target.callsite.col)
-                }),
-                line: target.callsite.line,
-                col: target.callsite.col,
-                callee_name: target
+                });
+                let callee_name = target
                     .callee
                     .as_ref()
-                    .and_then(|callee| callee.name.clone()),
-                source_line: None,
+                    .and_then(|callee| callee.name.clone());
+                let key = (
+                    target.callsite.line,
+                    target.callsite.col,
+                    callee_name.clone(),
+                );
+                seen_callsites.insert(key).then(|| Injection {
+                    id,
+                    line: target.callsite.line,
+                    col: target.callsite.col,
+                    callee_name,
+                    source_line: None,
+                })
             })
             .collect::<Vec<_>>();
         inject_file(&path, &injections)
@@ -262,7 +274,67 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     let source = fs::read_to_string(path)?;
     let mut ast = syn::parse_file(&source)?;
     let mut next_temp_index = 0usize;
-    let ordered_injections = order_injections_for_source(&source, injections);
+    let macro_ranges = ast
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Macro(item_macro) => {
+                let span = item_macro.span();
+                Some((span.start().line, span.end().line))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let const_ranges = ast
+        .items
+        .iter()
+        .flat_map(|item| match item {
+            syn::Item::Fn(item_fn) if item_fn.sig.constness.is_some() => {
+                let span = item_fn.span();
+                vec![(span.start().line, span.end().line)]
+            }
+            syn::Item::Impl(item_impl) => item_impl
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    syn::ImplItem::Fn(method) if method.sig.constness.is_some() => {
+                        let span = method.span();
+                        Some((span.start().line, span.end().line))
+                    }
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    let ordered_injections = order_injections_for_source(&source, injections)
+        .into_iter()
+        .filter(|injection| {
+            let in_macro = macro_ranges
+                .iter()
+                .any(|(start, end)| injection.line >= *start && injection.line <= *end);
+            if in_macro {
+                eprintln!(
+                    "warning: skipping callsite {} at {}:{} because it is inside a macro definition",
+                    injection.id,
+                    path.display(),
+                    injection.line,
+                );
+            }
+            let in_const = const_ranges
+                .iter()
+                .any(|(start, end)| injection.line >= *start && injection.line <= *end);
+            if in_const {
+                eprintln!(
+                    "warning: skipping callsite {} at {}:{} because it is inside a const function",
+                    injection.id,
+                    path.display(),
+                    injection.line,
+                );
+            }
+            !in_macro && !in_const
+        })
+        .collect::<Vec<_>>();
     for injection in &ordered_injections {
         let injection = injection.with_source_line(&source);
         let mut injector = Injector {
@@ -412,7 +484,9 @@ fn is_discarded_klee_ret_stmt(stmt: &syn::Stmt) -> bool {
             matches!(
                 expr,
                 syn::Expr::Path(path)
-                    if path.path.is_ident("__klee_ret")
+                    if path.path.segments.last().is_some_and(|segment| {
+                        segment.ident.to_string().starts_with("__klee_ret_")
+                    })
             )
         }
         _ => false,
@@ -469,13 +543,17 @@ impl VisitMut for CallRewriter<'_> {
                 let mut next_temp_index = self.next_temp_index;
                 let (args, lift_stmts) = lift_call_args_only(&mut node.args, &mut next_temp_index);
                 let call_expr = syn::Expr::Call(node.clone());
+                let ret_ident = callsite_ret_ident(
+                    &self.injection.id,
+                    self.injection.callee_name.as_deref(),
+                );
                 self.rewrite = Some(CallRewrite {
                     args,
                     lift_stmts,
-                    ret_stmts: make_return_stmts(call_expr),
+                    ret_stmts: make_return_stmts(call_expr, &ret_ident),
                     next_temp_index,
                 });
-                *expr = parse_quote! { __klee_ret };
+                *expr = parse_quote! { #ret_ident };
             }
             syn::Expr::MethodCall(node)
                 if method_call_expr_matches_location(node, self.injection)
@@ -485,8 +563,26 @@ impl VisitMut for CallRewriter<'_> {
                     ) =>
             {
                 let mut next_temp_index = self.next_temp_index;
-                self.rewrite = Some(lift_method_call_parts(node, &mut next_temp_index));
-                *expr = parse_quote! { __klee_ret };
+                let callee_method = self
+                    .injection
+                    .callee_name
+                    .as_deref()
+                    .and_then(callee_leaf)
+                    .unwrap_or("");
+                let mutable_receiver = callee_method.ends_with("_mut");
+                let bind_receiver_in_place = callee_method == "set_len";
+                let ret_ident = callsite_ret_ident(
+                    &self.injection.id,
+                    self.injection.callee_name.as_deref(),
+                );
+                self.rewrite = Some(lift_method_call_parts(
+                    node,
+                    &mut next_temp_index,
+                    mutable_receiver,
+                    bind_receiver_in_place,
+                    &ret_ident,
+                ));
+                *expr = parse_quote! { #ret_ident };
             }
             _ => {}
         }
@@ -508,6 +604,10 @@ fn method_call_expr_matches_location(node: &syn::ExprMethodCall, injection: &Inj
     // Treat that chain start as matching the method call if the target method
     // appears in the same chain expression.
     if !source_line_starts_call_expr(injection) {
+        return false;
+    }
+    let span = node.span();
+    if injection.line < span.start().line || injection.line > span.end().line {
         return false;
     }
     let Some(callee_name) = injection.callee_name.as_deref() else {
@@ -565,12 +665,21 @@ fn callee_leaf(callee_name: &str) -> Option<&str> {
     callee_name.rsplit("::").next()
 }
 
-fn make_return_stmts(call_expr: syn::Expr) -> Vec<syn::Stmt> {
+fn callsite_ret_ident(callsite_id: &str, callee_name: Option<&str>) -> syn::Ident {
+    let raw = format!("{callsite_id}_{}", callee_name.and_then(callee_leaf).unwrap_or("call"));
+    let suffix = raw
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect::<String>();
+    syn::Ident::new(&format!("__klee_ret_{suffix}"), Span::call_site())
+}
+
+fn make_return_stmts(call_expr: syn::Expr, ret_ident: &syn::Ident) -> Vec<syn::Stmt> {
     let ret_stmt: syn::Stmt = parse_quote! {
-        let __klee_ret = #call_expr;
+        let #ret_ident = #call_expr;
     };
     let ret_bind_stmt: syn::Stmt = parse_quote! {
-        klee_ext_bind::bind!(&__klee_ret, "__klee_ret");
+        klee_ext_bind::bind!(&#ret_ident, "__klee_ret");
     };
     vec![ret_stmt, ret_bind_stmt]
 }
@@ -607,20 +716,40 @@ fn lift_call_args_only(
 fn lift_method_call_parts(
     node: &mut syn::ExprMethodCall,
     next_temp_index: &mut usize,
+    mutable_receiver: bool,
+    bind_receiver_in_place: bool,
+    ret_ident: &syn::Ident,
 ) -> CallRewrite {
     let mut arg_names = Vec::new();
     let mut lift_stmts = Vec::new();
 
-    if let Some(name) = simple_ident_name(&node.receiver) {
+    if bind_receiver_in_place {
+        let name = format!("__klee_arg{}", *next_temp_index);
+        *next_temp_index += 1;
+        let original = (*node.receiver).clone();
+        let name_literal = syn::LitStr::new(&name, Span::call_site());
+        lift_stmts.push(parse_quote! {
+            klee_ext_bind::bind!(&#original, #name_literal);
+        });
+    } else if let Some(name) = simple_ident_name(&node.receiver) {
         arg_names.push(name);
     } else {
         let name = format!("__klee_arg{}", *next_temp_index);
         *next_temp_index += 1;
         let ident = syn::Ident::new(&name, Span::call_site());
         let original = (*node.receiver).clone();
-        let lift_stmt: syn::Stmt = parse_quote! {
-            let #ident = #original;
-        };
+        // A field receiver is a place expression. Moving it into a temporary can
+        // make a valid auto-borrowed method call invalid (for example moving a
+        // Box out of &self before calling slice::get_unchecked). Borrow the place
+        // so method-call autoderef/autoref keeps the original ownership.
+        let lift_stmt: syn::Stmt =
+            if matches!(original, syn::Expr::Field(_)) && mutable_receiver {
+                parse_quote! { let #ident = &mut #original; }
+            } else if matches!(original, syn::Expr::Field(_)) {
+                parse_quote! { let #ident = &#original; }
+            } else {
+                parse_quote! { let #ident = #original; }
+            };
         node.receiver = Box::new(parse_quote! { #ident });
         lift_stmts.push(lift_stmt);
         arg_names.push(name);
@@ -635,7 +764,7 @@ fn lift_method_call_parts(
     CallRewrite {
         args: arg_names,
         lift_stmts,
-        ret_stmts: make_return_stmts(call_expr),
+        ret_stmts: make_return_stmts(call_expr, ret_ident),
         next_temp_index: *next_temp_index,
     }
 }
@@ -916,9 +1045,9 @@ fn make_value() -> u8 { 0 }
         let compact = injected.replace(char::is_whitespace, "");
         assert!(compact.contains("klee_ext_bind::bind!(&index,\"index\");"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-30\");"));
-        assert!(compact.contains("let__klee_ret=ptr.add(index);"));
-        assert!(compact.contains("klee_ext_bind::bind!(&__klee_ret,\"__klee_ret\");"));
-        assert!(compact.contains("core::ptr::write(__klee_ret,make_value())"));
+        assert!(compact.contains("=ptr.add(index);"));
+        assert!(compact.contains(",\"__klee_ret\");"));
+        assert!(compact.contains("core::ptr::write(__klee_ret_src_lib_rs_3_30_add,make_value())"));
         Ok(())
     }
 
@@ -961,10 +1090,10 @@ fn consume(_: &mut u8) {}
 
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
-        assert!(compact.contains("let__klee_arg0=__klee_ret;"));
-        assert!(compact.contains("let__klee_ret=__klee_arg0.as_mut();"));
-        assert!(compact.contains("let__klee_ret=ptr.add(index);"));
-        assert!(compact.contains("letdst=__klee_ret.unwrap();"));
+        assert!(compact.contains("let__klee_arg0=__klee_ret_src_lib_rs_3_19_add;"));
+        assert!(compact.contains("=__klee_arg0.as_mut();"));
+        assert!(compact.contains("=ptr.add(index);"));
+        assert!(compact.contains("__klee_ret_src_lib_rs_3_19_as_mut.unwrap()"));
         Ok(())
     }
 
@@ -1002,8 +1131,8 @@ fn consume(_: &mut u8) {}
         assert!(compact.contains("let__klee_arg0=storage.as_mut_ptr();"));
         assert!(compact.contains("klee_ext_bind::bind!(&cursor,\"cursor\");"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
-        assert!(compact.contains("let__klee_ret=__klee_arg0.add(cursor);"));
-        assert!(compact.contains("__klee_ret.cast::<u8>().write_unaligned(component)"));
+        assert!(compact.contains("=__klee_arg0.add(cursor);"));
+        assert!(compact.contains("__klee_ret_src_lib_rs_3_9_add.cast::<u8>().write_unaligned(component)"));
         Ok(())
     }
 

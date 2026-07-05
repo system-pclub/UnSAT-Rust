@@ -16,7 +16,7 @@ from cli.cmd.compare import (
     _target_callsite_key,
 )
 from cli.cmd.llvmir import ensure_linked_llvm_ir_file
-from cli.cmd.sync import ensure_crate_metadata_file
+from cli.cmd.sync import ensure_crate_metadata_file, ensure_injected_crate
 
 
 def _resolve_path(repo_root: Path, path_text: str | None, default: str) -> Path:
@@ -169,6 +169,8 @@ def run(args: argparse.Namespace) -> int:
     repo_root = _find_repo_root()
     if args.compose_loop_bound < 0:
         raise RuntimeError("--compose-loop-bound must be non-negative")
+    if not args.skip_klee and (not args.callsite or not args.rule):
+        raise RuntimeError("--callsite and --rule are required unless --skip-klee is used")
 
     cargo_dir = Path(args.cargo_dir)
     if not cargo_dir.is_absolute():
@@ -184,19 +186,27 @@ def run(args: argparse.Namespace) -> int:
         repo_root,
         cargo_dir,
         studied_rules=studied_rules,
-        force=False,
+        force=True,
     )
+    injected_dir = ensure_injected_crate(repo_root, cargo_dir, meta_path)
 
     ir_output_dir = _resolve_path(repo_root, args.ir_output_dir, ".local/irs")
     ll_path = ensure_linked_llvm_ir_file(
-        cargo_dir=cargo_dir,
+        cargo_dir=injected_dir,
         output_dir=ir_output_dir,
         rustc=args.rustc,
         test=args.test,
         build_std=True,
         panic_abort=True,
-        force=False,
+        force=True,
     )
+
+    if args.skip_klee:
+        print(f"[verify] crate={cargo_dir}")
+        print(f"[verify] injected-crate={injected_dir}")
+        print(f"[verify] llvm-ir={ll_path}")
+        print("[verify] mirscan, autoinj, and LLVM IR generation succeeded; skipping KLEE")
+        return 0
 
     current_meta = _load_json(meta_path)
     report = current_meta.get("report")
@@ -218,6 +228,7 @@ def run(args: argparse.Namespace) -> int:
         report_json = None
 
     print(f"[verify] crate={cargo_dir}")
+    print(f"[verify] injected-crate={injected_dir}")
     print(f"[verify] llvm-ir={ll_path}")
     if report_json is not None:
         print(f"[verify] report-json={report_json}")
