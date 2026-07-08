@@ -6,9 +6,6 @@
 use core::ffi::{c_char, c_void};
 
 #[no_mangle]
-pub unsafe extern "C" fn klee_ext_bind(_ptr: *const c_void, _var_id: *const c_char) {}
-
-#[no_mangle]
 pub unsafe extern "C" fn klee_ext_callsite(_site_id: *const c_char) {}
 
 /// Dumb stub: leaves the memory unchanged rather than making it symbolic.
@@ -19,3 +16,34 @@ pub unsafe extern "C" fn klee_make_symbolic(
     _name: *const c_char,
 ) {
 }
+
+/// No-op Miri runtime shims used only to let `--cfg=miri` test binaries link
+/// while emitting LLVM IR for KLEE. KLEE handles these as externals/no-ops when
+/// interpreting the linked IR.
+#[no_mangle]
+pub unsafe extern "C" fn miri_promise_symbolic_alignment(_ptr: *const c_void, _align: usize) {}
+
+#[no_mangle]
+pub unsafe extern "C" fn miri_resolve_frame(
+    _out: *mut c_void,
+    _ptr: *const c_void,
+    _flags: usize,
+) {
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn miri_resolve_frame_names(
+    _ptr: *const c_void,
+    _flags: usize,
+    _name: *mut c_void,
+    _filename: *mut c_void,
+) {
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn miri_backtrace_size(_flags: usize) -> usize {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn miri_get_backtrace(_flags: usize, _out: *mut c_void) {}

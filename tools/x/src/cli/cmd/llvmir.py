@@ -38,6 +38,8 @@ def compile_with_emit_llvm(
     custom_rustc: str = None,
     build_std: bool = False,
     panic_abort: bool = False,
+    features: list[str] | None = None,
+    log_path: Path | None = None,
 ) -> None:
     """Compile the crate at *cargo_dir* and emit LLVM IR (.ll) files.
     """
@@ -51,6 +53,8 @@ def compile_with_emit_llvm(
     cmd = ["cargo", "build"]
     if (cargo_dir / "src" / "lib.rs").is_file():
         cmd.append("--lib")
+    if features:
+        cmd += ["--features", ",".join(features)]
     if build_std:
         cmd += _build_std_args(test=False, panic_abort=panic_abort)
         # cargo -Zbuild-std requires an explicit --target
@@ -67,6 +71,13 @@ def compile_with_emit_llvm(
         capture_output=True,
         text=True,
     )
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            f"command: {cmd!r}\nreturncode: {result.returncode}\n"
+            f"\n[stdout]\n{result.stdout}\n[stderr]\n{result.stderr}",
+            encoding="utf-8",
+        )
 
     if result.returncode != 0:
         raise RuntimeError(
@@ -80,6 +91,8 @@ def compile_test_with_emit_llvm(
     custom_rustc: str = None,
     build_std: bool = False,
     panic_abort: bool = False,
+    features: list[str] | None = None,
+    log_path: Path | None = None,
 ) -> None:
     """Compile the test in the crate at *cargo_dir* and emit LLVM IR (.ll) files.
     """
@@ -94,6 +107,8 @@ def compile_test_with_emit_llvm(
     )
 
     cmd = ["cargo", "test", "--no-run"]
+    if features:
+        cmd += ["--features", ",".join(features)]
     if panic_abort:
         cmd.append("-Zpanic-abort-tests")
     if build_std:
@@ -111,6 +126,13 @@ def compile_test_with_emit_llvm(
         capture_output=True,
         text=True,
     )
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            f"command: {cmd!r}\nreturncode: {result.returncode}\n"
+            f"\n[stdout]\n{result.stdout}\n[stderr]\n{result.stderr}",
+            encoding="utf-8",
+        )
 
     if result.returncode != 0:
         raise RuntimeError(
@@ -257,6 +279,9 @@ def _collect_test_link_llvm_irs(
         "addr2line-",
         "adler2-",
         "bencher-",
+        "alloc-",
+        "compiler_builtins-",
+        "core-",
         "getopts-",
         "gimli-",
         "memchr-",
@@ -268,11 +293,19 @@ def _collect_test_link_llvm_irs(
         "rustc_demangle-",
         "rustc_std_workspace_",
         "std_detect-",
+        "std-",
         "unicode_width-",
         "unwind-",
     }
 
-    for path in sorted(deps_dir.glob("*.ll")):
+    newest_by_crate: dict[str, Path] = {}
+    for path in deps_dir.glob("*.ll"):
+        crate_prefix = path.stem.rsplit("-", 1)[0]
+        current = newest_by_crate.get(crate_prefix)
+        if current is None or path.stat().st_mtime > current.stat().st_mtime:
+            newest_by_crate[crate_prefix] = path
+
+    for path in sorted(newest_by_crate.values()):
         if path in selected_set:
             continue
         name = path.name
@@ -353,6 +386,8 @@ def ensure_linked_llvm_ir_file(
     build_std: bool = True,
     panic_abort: bool = False,
     force: bool = False,
+    features: list[str] | None = None,
+    build_log_path: Path | None = None,
 ) -> Path:
     cargo_dir = cargo_dir.resolve()
     output_dir = output_dir.resolve()
@@ -363,6 +398,7 @@ def ensure_linked_llvm_ir_file(
         raise RuntimeError(f"Could not determine crate name(s) from {cargo_dir}")
     crate_name = members[0][0].replace("-", "_")
     output_path = output_dir / f"{crate_name}.ll"
+    features = sorted(set(features or []))
     build_config = {
         "cargo_dir": str(cargo_dir),
         "rustflags": _emit_llvm_rustflags(
@@ -376,6 +412,7 @@ def ensure_linked_llvm_ir_file(
         if build_std
         else [],
         "panic_abort_tests": test and panic_abort,
+        "features": features,
     }
     metadata_path = output_dir / f"{crate_name}.ll.meta.json"
     if output_path.is_file() and not force:
@@ -397,6 +434,8 @@ def ensure_linked_llvm_ir_file(
             custom_rustc=rustc,
             build_std=build_std,
             panic_abort=panic_abort,
+            features=features,
+            log_path=build_log_path,
         )
     else:
         compile_with_emit_llvm(
@@ -404,6 +443,8 @@ def ensure_linked_llvm_ir_file(
             custom_rustc=rustc,
             build_std=build_std,
             panic_abort=panic_abort,
+            features=features,
+            log_path=build_log_path,
         )
 
     if target_triple:
@@ -414,21 +455,49 @@ def ensure_linked_llvm_ir_file(
     lls: list[Path] = []
     main_ir = _find_llvm_ir(all_deps_dir, crate_name)
     if test:
-        test_irs = _find_test_llvm_irs(all_deps_dir, main_ir, crate_name)
-        if test_irs:
+        # For library unit tests Cargo emits a package-named test harness IR
+        # (for example bevy_hecs-<hash>.ll) that itself defines main and
+        # contains monomorphizations from #[cfg(test)] modules. Prefer that
+        # harness when present; otherwise fall back to integration-test
+        # harnesses named after files under tests/.
+        if _llvm_ir_defines_main(main_ir):
             lls.extend(
                 _collect_test_link_llvm_irs(
                     all_deps_dir,
-                    test_irs=test_irs,
+                    test_irs=[main_ir],
                     main_ir=main_ir,
                     crate_name=crate_name,
                     build_std=build_std,
                 )
             )
         else:
-            lls.append(main_ir)
+            test_irs = _find_test_llvm_irs(all_deps_dir, main_ir, crate_name)
+            if test_irs:
+                lls.extend(
+                    _collect_test_link_llvm_irs(
+                        all_deps_dir,
+                        test_irs=test_irs,
+                        main_ir=main_ir,
+                        crate_name=crate_name,
+                        build_std=build_std,
+                    )
+                )
+            else:
+                lls.append(main_ir)
     else:
-        lls.append(main_ir)
+        # A library IR can contain calls to non-inlined dependency
+        # monomorphizations (for example hashbrown helpers). Linking only the
+        # package plus core/alloc/std leaves those as declarations and makes a
+        # concrete KLEE rerun stop before reaching the target callsite.
+        lls.extend(
+            _collect_test_link_llvm_irs(
+                all_deps_dir,
+                test_irs=[main_ir],
+                main_ir=main_ir,
+                crate_name=crate_name,
+                build_std=build_std,
+            )
+        )
     if build_std:
         for link in ("core", "alloc", "std", "compiler_builtins"):
             try:

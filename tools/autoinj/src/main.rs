@@ -380,8 +380,8 @@ fn order_injections_for_source(source: &str, injections: &[Injection]) -> Vec<In
 
     ordered.sort_by(|(left_index, left), (right_index, right)| {
         if left.line == right.line && left.col == right.col {
-            let left_pos = callee_position_on_line(&lines, left);
-            let right_pos = callee_position_on_line(&lines, right);
+            let left_pos = callee_position_in_chain(&lines, left);
+            let right_pos = callee_position_in_chain(&lines, right);
             right_pos
                 .cmp(&left_pos)
                 .then_with(|| left_index.cmp(right_index))
@@ -396,18 +396,24 @@ fn order_injections_for_source(source: &str, injections: &[Injection]) -> Vec<In
         .collect()
 }
 
-fn callee_position_on_line(lines: &[&str], injection: &Injection) -> usize {
+fn callee_position_in_chain(lines: &[&str], injection: &Injection) -> usize {
     let Some(callee_name) = injection.callee_name.as_deref() else {
         return 0;
     };
     let Some(callee_leaf) = callee_leaf(callee_name) else {
         return 0;
     };
-    let Some(line) = lines.get(injection.line.saturating_sub(1)) else {
+    let start_line = injection.line.saturating_sub(1);
+    let Some(line) = lines.get(start_line) else {
         return 0;
     };
     let search_start = injection.col.saturating_sub(1).min(line.len());
-    line[search_start..]
+    // rustc assigns every call in a multi-line method chain the location of
+    // the chain's first token. Search a small statement-sized window so outer
+    // calls (which must be rewritten first) sort after inner calls even when
+    // their method names occur on later lines.
+    let window = lines[start_line..lines.len().min(start_line + 32)].join("\n");
+    window[search_start..]
         .find(callee_leaf)
         .map(|offset| search_start + offset)
         .unwrap_or(0)
@@ -451,7 +457,6 @@ impl VisitMut for Injector<'_> {
             );
             if let Some(rewrite) = rewrite {
                 let mut stmts = rewrite.lift_stmts;
-                stmts.extend(bind_stmts(&rewrite.args));
                 stmts.push(callsite_stmt(&self.injection.id));
                 stmts.extend(rewrite.ret_stmts);
                 // Rewriting turns target call expressions into `__klee_ret`.
@@ -472,7 +477,6 @@ impl VisitMut for Injector<'_> {
 }
 
 struct CallRewrite {
-    args: Vec<String>,
     lift_stmts: Vec<syn::Stmt>,
     ret_stmts: Vec<syn::Stmt>,
     next_temp_index: usize,
@@ -494,15 +498,6 @@ fn is_discarded_klee_ret_stmt(stmt: &syn::Stmt) -> bool {
 }
 
 
-
-fn bind_stmts(args: &[String]) -> Vec<syn::Stmt> {
-    args.iter()
-        .filter_map(|arg| {
-            let ident = syn::parse_str::<syn::Ident>(arg).ok()?;
-            syn::parse_str(&format!("klee_ext_bind::bind!(&{}, {:?});", ident, arg)).ok()
-        })
-        .collect()
-}
 
 fn callsite_stmt(id: &str) -> syn::Stmt {
     let literal = syn::LitStr::new(id, Span::call_site());
@@ -541,14 +536,13 @@ impl VisitMut for CallRewriter<'_> {
                     && expr_call_matches_callee(node, self.injection.callee_name.as_deref()) =>
             {
                 let mut next_temp_index = self.next_temp_index;
-                let (args, lift_stmts) = lift_call_args_only(&mut node.args, &mut next_temp_index);
+                let (_, lift_stmts) = lift_call_args_only(&mut node.args, &mut next_temp_index);
                 let call_expr = syn::Expr::Call(node.clone());
                 let ret_ident = callsite_ret_ident(
                     &self.injection.id,
                     self.injection.callee_name.as_deref(),
                 );
                 self.rewrite = Some(CallRewrite {
-                    args,
                     lift_stmts,
                     ret_stmts: make_return_stmts(call_expr, &ret_ident),
                     next_temp_index,
@@ -678,10 +672,7 @@ fn make_return_stmts(call_expr: syn::Expr, ret_ident: &syn::Ident) -> Vec<syn::S
     let ret_stmt: syn::Stmt = parse_quote! {
         let #ret_ident = #call_expr;
     };
-    let ret_bind_stmt: syn::Stmt = parse_quote! {
-        klee_ext_bind::bind!(&#ret_ident, "__klee_ret");
-    };
-    vec![ret_stmt, ret_bind_stmt]
+    vec![ret_stmt]
 }
 
 fn lift_call_args_only(
@@ -720,19 +711,13 @@ fn lift_method_call_parts(
     bind_receiver_in_place: bool,
     ret_ident: &syn::Ident,
 ) -> CallRewrite {
-    let mut arg_names = Vec::new();
     let mut lift_stmts = Vec::new();
 
     if bind_receiver_in_place {
-        let name = format!("__klee_arg{}", *next_temp_index);
-        *next_temp_index += 1;
-        let original = (*node.receiver).clone();
-        let name_literal = syn::LitStr::new(&name, Span::call_site());
-        lift_stmts.push(parse_quote! {
-            klee_ext_bind::bind!(&#original, #name_literal);
-        });
-    } else if let Some(name) = simple_ident_name(&node.receiver) {
-        arg_names.push(name);
+        // set_len's receiver must remain an in-place expression. The executor
+        // captures the receiver directly from the target CallInst, so no
+        // temporary or explicit binding is needed.
+    } else if simple_ident_name(&node.receiver).is_some() {
     } else {
         let name = format!("__klee_arg{}", *next_temp_index);
         *next_temp_index += 1;
@@ -752,17 +737,14 @@ fn lift_method_call_parts(
             };
         node.receiver = Box::new(parse_quote! { #ident });
         lift_stmts.push(lift_stmt);
-        arg_names.push(name);
     }
 
-    let (mut tail_names, mut tail_stmts) = lift_call_args_only(&mut node.args, next_temp_index);
-    arg_names.append(&mut tail_names);
+    let (_, mut tail_stmts) = lift_call_args_only(&mut node.args, next_temp_index);
     lift_stmts.append(&mut tail_stmts);
 
     let call_expr = syn::Expr::MethodCall(node.clone());
 
     CallRewrite {
-        args: arg_names,
         lift_stmts,
         ret_stmts: make_return_stmts(call_expr, ret_ident),
         next_temp_index: *next_temp_index,
@@ -942,7 +924,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
     }
 
     #[test]
-    fn inject_file_inserts_binds_and_callsite_inside_unsafe_block() -> Result<()> {
+    fn inject_file_inserts_callsite_inside_unsafe_block() -> Result<()> {
         let tmp = TempDir::new("inject-file")?;
         let source = tmp.path().join("lib.rs");
         write(
@@ -970,15 +952,15 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
 
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
-        assert!(compact.contains("unsafe{klee_ext_bind::bind!(&p,\"p\");"));
-        assert!(compact.contains("klee_ext_bind::bind!(&layout,\"layout\");"));
+        assert!(!compact.contains("klee_ext_bind::bind!"));
+        assert!(compact.contains("unsafe{klee_ext_bind::callsite!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
         assert!(compact.contains("callee(p,layout)"));
         Ok(())
     }
 
     #[test]
-    fn inject_file_lifts_complex_call_arguments_before_binding() -> Result<()> {
+    fn inject_file_lifts_complex_call_arguments_before_callsite() -> Result<()> {
         let tmp = TempDir::new("lift-complex-args")?;
         let source = tmp.path().join("lib.rs");
         write(
@@ -1008,8 +990,8 @@ fn make_value() -> u8 { 0 }
         let compact = injected.replace(char::is_whitespace, "");
         assert!(compact.contains("let__klee_arg0=ptr.add(index);"));
         assert!(compact.contains("let__klee_arg1=make_value();"));
-        assert!(compact.contains("klee_ext_bind::bind!(&__klee_arg0,\"__klee_arg0\");"));
-        assert!(compact.contains("klee_ext_bind::bind!(&__klee_arg1,\"__klee_arg1\");"));
+        assert!(!compact.contains("klee_ext_bind::bind!"));
+        assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
         assert!(compact.contains("core::ptr::write(__klee_arg0,__klee_arg1)"));
         Ok(())
     }
@@ -1043,10 +1025,9 @@ fn make_value() -> u8 { 0 }
 
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
-        assert!(compact.contains("klee_ext_bind::bind!(&index,\"index\");"));
+        assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-30\");"));
         assert!(compact.contains("=ptr.add(index);"));
-        assert!(compact.contains(",\"__klee_ret\");"));
         assert!(compact.contains("core::ptr::write(__klee_ret_src_lib_rs_3_30_add,make_value())"));
         Ok(())
     }
@@ -1129,7 +1110,7 @@ fn consume(_: &mut u8) {}
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
         assert!(compact.contains("let__klee_arg0=storage.as_mut_ptr();"));
-        assert!(compact.contains("klee_ext_bind::bind!(&cursor,\"cursor\");"));
+        assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
         assert!(compact.contains("=__klee_arg0.add(cursor);"));
         assert!(compact.contains("__klee_ret_src_lib_rs_3_9_add.cast::<u8>().write_unaligned(component)"));
@@ -1154,8 +1135,7 @@ fn consume(_: &mut u8) {}
 
         let source = fs::read_to_string(dest_crate.join("src/lib.rs"))?;
         let compact = source.replace(char::is_whitespace, "");
-        assert!(compact.contains("klee_ext_bind::bind!(&p,\"p\");"));
-        assert!(compact.contains("klee_ext_bind::bind!(&layout,\"layout\");"));
+        assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
 
         Ok(())

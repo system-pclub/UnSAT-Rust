@@ -72,3 +72,48 @@ Rules:
 {safety_requirement}
 </safety requirement>
 """.strip()
+
+
+def build_testcase_prompt(
+    rust_context: str,
+    call_chain: str,
+    callsite: str,
+    safety_requirement: str,
+    function_name: str,
+    feature_name: str,
+) -> str:
+    return f"""
+Generate one small in-crate Rust testcase that concretely reproduces the
+soundness violation found by KLEE.
+
+Requirements:
+- Use only safe Rust. The token `unsafe` must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "{feature_name}")]`.
+- Define exactly `#[no_mangle] pub extern "C" fn {function_name}()` with no
+  arguments under that cfg. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+{call_chain}
+</certainty call chain>
+
+<target callsite metadata>
+{callsite}
+</target callsite metadata>
+
+<safety requirement>
+{safety_requirement}
+</safety requirement>
+
+{rust_context}
+""".strip()

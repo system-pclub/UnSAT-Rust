@@ -50,6 +50,8 @@ pub struct StructInfo {
     pub path: String,
     pub line_start: usize,
     pub body_end: usize,
+    #[serde(default)]
+    pub is_public: bool,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,9 +221,9 @@ fn source_visible(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
         return false;
     };
     match tcx.hir_node_by_def_id(local_def_id) {
-        rustc_hir::Node::Item(item) => source_span_is_public(tcx, item.span),
-        rustc_hir::Node::ImplItem(item) => {
-            if source_span_is_public(tcx, item.span) {
+        rustc_hir::Node::Item(item) => source_span_is_visible(tcx, item.span),
+        rustc_hir::Node::ImplItem(_) => {
+            if source_span_is_visible(tcx, tcx.def_span(def_id)) {
                 return true;
             }
             let trait_id =
@@ -238,14 +240,18 @@ fn source_visible(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     }
 }
 
-fn source_span_is_public(tcx: TyCtxt<'_>, span: Span) -> bool {
+fn source_span_is_visible(tcx: TyCtxt<'_>, span: Span) -> bool {
     tcx.sess
         .source_map()
         .span_to_snippet(span)
         .ok()
         .is_some_and(|source| {
-            let source = source.trim_start();
-            source.starts_with("pub ") || source.starts_with("pub(")
+            // Item spans can include doc comments and attributes. Inspect
+            // every line instead of requiring the snippet to begin with pub.
+            source.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("pub ") || line.starts_with("pub(")
+            })
         })
 }
 
@@ -483,36 +489,38 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
         let ty::Adt(wrapper_def, wrapper_args) = return_ty.kind() else {
             return (Vec::new(), escaped_writes);
         };
-        if !wrapper_def.is_struct() {
+        if !wrapper_def.is_struct() && !wrapper_def.is_enum() {
             return (Vec::new(), escaped_writes);
         }
         let wrapper_name = self.tcx.item_name(wrapper_def.did()).to_string();
-        let fields = &wrapper_def.non_enum_variant().fields;
         let mut escaped = Vec::new();
         for (index, source) in &sources {
-            if *index >= fields.len() {
-                continue;
-            }
-            let field = &fields[FieldIdx::from_usize(*index)];
-            let field_ty = field.ty(self.tcx, wrapper_args);
-            let target = match field_ty.kind() {
-                ty::Ref(_, inner, rustc_middle::mir::Mutability::Mut)
-                | ty::RawPtr(inner, rustc_middle::mir::Mutability::Mut) => match inner.kind() {
-                    ty::Adt(def, _) => Some((def.did(), *inner)),
+            for variant in wrapper_def.variants() {
+                if *index >= variant.fields.len() {
+                    continue;
+                }
+                let field = &variant.fields[FieldIdx::from_usize(*index)];
+                let field_ty = field.ty(self.tcx, wrapper_args);
+                let target_ty = match field_ty.kind() {
+                    ty::Ref(_, inner, rustc_middle::mir::Mutability::Mut)
+                    | ty::RawPtr(inner, rustc_middle::mir::Mutability::Mut)
+                        if matches!(inner.kind(), ty::Adt(_, _)) =>
+                    {
+                        Some(*inner)
+                    }
                     _ => None,
-                },
-                _ => None,
-            };
-            let Some((_target_def_id, target_ty)) = target else {
-                continue;
-            };
-            escaped.push(EscapedFieldInfo {
-                source_path: source.rendered(),
-                wrapper_type: wrapper_name.clone(),
-                wrapper_field: field.name.to_string(),
-                target_type: target_ty.to_string(),
-                target_is_template: target_ty.has_param(),
-            });
+                };
+                let Some(target_ty) = target_ty else {
+                    continue;
+                };
+                escaped.push(EscapedFieldInfo {
+                    source_path: source.rendered(),
+                    wrapper_type: wrapper_name.clone(),
+                    wrapper_field: field.name.to_string(),
+                    target_type: target_ty.to_string(),
+                    target_is_template: target_ty.has_param(),
+                });
+            }
         }
         escaped.sort_by(|left, right| {
             (
@@ -629,16 +637,32 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
 
 fn collect_affected_fields<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<AffectedFieldsInfo> {
     let mut result = Vec::new();
-    for local_def_id in tcx.hir_body_owners() {
+    // Iterate item definitions rather than hir_body_owners. On recent rustc,
+    // an associated function's body owner can map back to an expression HIR
+    // node, which makes source visibility checks discard every public method.
+    for local_def_id in tcx.hir_crate_items(()).definitions() {
         let def_id = local_def_id.to_def_id();
+        let debug_affected = std::env::var_os("MIRSCAN_DEBUG_AFFECTED").is_some();
+        let debug_name = tcx.def_path_str(def_id);
+        let debug_this = debug_affected
+            && (debug_name.ends_with("World::spawn_batch")
+                || debug_name.ends_with("Entities::get_mut"));
         if !matches!(
             tcx.def_kind(def_id),
             rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn
-        ) || !source_visible(tcx, def_id)
-        {
+        ) {
+            continue;
+        }
+        if !source_visible(tcx, def_id) {
+            if debug_this {
+                eprintln!("affected-debug: {debug_name}: not source-visible");
+            }
             continue;
         }
         let Some(body) = optimized_mir_if_available(tcx, def_id) else {
+            if debug_this {
+                eprintln!("affected-debug: {debug_name}: no MIR body");
+            }
             continue;
         };
         let sig = tcx.fn_sig(def_id).skip_binder().skip_binder();
@@ -665,6 +689,9 @@ fn collect_affected_fields<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<AffectedFieldsInfo> {
         root_types.sort();
         root_types.dedup();
         if roots.is_empty() {
+            if debug_this {
+                eprintln!("affected-debug: {debug_name}: no root ADTs");
+            }
             continue;
         }
         let (written, escaped_fields) = AffectedFieldsVisitor {
@@ -678,7 +705,15 @@ fn collect_affected_fields<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<AffectedFieldsInfo> {
         let mut fields_written: Vec<_> = written.into_iter().collect();
         fields_written.sort();
         if fields_written.is_empty() && escaped_fields.is_empty() {
+            if debug_this {
+                eprintln!("affected-debug: {debug_name}: no writes or escapes");
+            }
             continue;
+        }
+        if debug_this {
+            eprintln!(
+                "affected-debug: {debug_name}: writes={fields_written:?} escapes={escaped_fields:?}"
+            );
         }
         let span = tcx.def_span(def_id);
         let loc = tcx.sess.source_map().lookup_char_pos(span.lo());
@@ -1892,6 +1927,7 @@ fn get_struct_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> StructInfo {
         path,
         line_start: loc.line,
         body_end: end_loc.line,
+        is_public: tcx.visibility(def_id).is_public(),
     }
 }
 

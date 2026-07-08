@@ -76,6 +76,13 @@ def _run_llvmir(args: argparse.Namespace) -> int:
 
     return run(args)
 
+
+def _run_gen_exp(args: argparse.Namespace) -> int:
+    from cli.cmd.gen_exp import run
+
+    return run(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="x",
@@ -151,7 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Run KLEE compose verification for one crate callsite/rule task1.",
+        help="Run KLEE compose verification. Omitting --rule expands each callsite to rules matching its callee.",
     )
     verify_parser.add_argument(
         "cargo_dir",
@@ -159,11 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify_parser.add_argument(
         "--callsite",
-        help="Callsite id to verify (required unless --skip-klee is used).",
+        help="Callsite id to verify. Omit to verify all callsites.",
     )
     verify_parser.add_argument(
         "--rule",
-        help="Rule id to verify (required unless --skip-klee is used).",
+        help="Rule id to verify. Omit to verify rules whose DSL path:line matches each callsite callee.",
     )
     verify_parser.add_argument(
         "--skip-klee",
@@ -204,6 +211,44 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Max symbolic loop backedges before compose-verify forces a loop exit (default: 1).",
+    )
+    verify_parser.add_argument(
+        "--skip-llm-testcase",
+        action="store_true",
+        help="Stop after KLEE compose verification; do not generate LLM testcase PoCs.",
+    )
+    verify_parser.add_argument(
+        "--skip-rerun",
+        action="store_true",
+        help="Generate and inject LLM testcase PoCs, but skip compose-rerun.",
+    )
+    verify_parser.add_argument(
+        "--model",
+        default="gpt-5.4-mini",
+        help="Model used for concrete testcase generation (default: gpt-5.4-mini).",
+    )
+    verify_parser.add_argument(
+        "--artifacts-dir",
+        help="Per-run output directory (default: .local/verify/<crate>/<callsite>/<rule>).",
+    )
+    verify_parser.add_argument(
+        "--results-json",
+        help="Matrix result JSON path when verifying multiple callsites/rules (default: .local/verify/<crate>/full-matrix-results.json).",
+    )
+    verify_parser.add_argument(
+        "--logs-dir",
+        help="Matrix log directory when verifying multiple callsites/rules (default: .local/verify/<crate>/full-matrix-logs).",
+    )
+    verify_parser.add_argument(
+        "--timeout-sec",
+        type=int,
+        default=180,
+        help="Per KLEE run timeout for matrix mode (default: 180).",
+    )
+    verify_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume a matrix run by preserving existing rows in --results-json.",
     )
     verify_parser.add_argument(
         "--rustc",
@@ -376,6 +421,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pass -Zbuild-std=core,alloc,std to cargo so that std crates also emit LLVM IR.",
     )
     llvmir_parser.set_defaults(func=_run_llvmir)
+
+    gen_exp_parser = subparsers.add_parser(
+        "gen-exp",
+        help="Generate a runnable Rust example for one report callsite and safety rule.",
+    )
+    gen_exp_parser.add_argument(
+        "crate_dir",
+        help="Path to the Rust crate containing report.json.",
+    )
+    gen_exp_parser.add_argument(
+        "--callsite",
+        required=True,
+        help="Callsite id from report.json.",
+    )
+    gen_exp_parser.add_argument(
+        "--rule",
+        required=True,
+        help="Safety rule id, for example rule-446.",
+    )
+    gen_exp_parser.add_argument(
+        "--report-json",
+        help="Report path (default: <crate_dir>/report.json).",
+    )
+    gen_exp_parser.add_argument(
+        "--rule-dsl",
+        default="ptr_rule_dsl.json",
+        help="Rule metadata path (default: ptr_rule_dsl.json).",
+    )
+    gen_exp_parser.add_argument(
+        "--model",
+        default="gpt-5.4-mini",
+        help="OpenAI model to use (default: gpt-5.4-mini).",
+    )
+    gen_exp_parser.add_argument(
+        "--output",
+        help="Output Rust file (default: <crate_dir>/examples/<callsite>-<rule>.rs).",
+    )
+    gen_exp_parser.add_argument(
+        "--artifacts-dir",
+        default=".local/gen-exp",
+        help="Directory for raw prompts and responses (default: .local/gen-exp).",
+    )
+    gen_exp_parser.set_defaults(func=_run_gen_exp)
 
     return parser
 

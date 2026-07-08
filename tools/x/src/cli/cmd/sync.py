@@ -631,10 +631,13 @@ def _transform_report(
         # Keep crate metadata report free of rule/task payloads; those live in human/<crate>.json.
         target.pop("rules", None)
         targets.append(target)
-    transformed: dict[str, object] = {"targets": targets}
-    types = report.get("types")
-    if isinstance(types, list):
-        transformed["types"] = types
+    # Preserve mirscan's top-level orchestration metadata. Dropping
+    # affected_fields here silently removes the safe API chains that KLEE
+    # needs to prove how a private nested field becomes user-controlled.
+    transformed: dict[str, object] = {
+        key: value for key, value in report.items() if key != "targets"
+    }
+    transformed["targets"] = targets
     return transformed, human_placeholders
 
 
