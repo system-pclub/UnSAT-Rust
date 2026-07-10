@@ -228,6 +228,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Model used for concrete testcase generation (default: gpt-5.4-mini).",
     )
     verify_parser.add_argument(
+        "--llm-testcase-retries",
+        type=int,
+        default=3,
+        help="Total LLM testcase generation/build attempts before failing (default: 3).",
+    )
+    verify_parser.add_argument(
         "--artifacts-dir",
         help="Per-run output directory (default: .local/verify/<crate>/<callsite>/<rule>).",
     )

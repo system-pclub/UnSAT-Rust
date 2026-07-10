@@ -71,6 +71,13 @@ def main():
     download_parser.add_argument('--output-dir', type=str, default='.local/crates', help='Directory to save downloaded crates')
     download_parser.add_argument('--max-threads', type=int, default=8, help='Maximum parallel crate downloads')
     download_parser.set_defaults(func=command_download)
+    download_one_parser = subparsers.add_parser('download-one', help='Download one exact crate version from crates.io')
+    download_one_parser.add_argument('name', type=str, help='Crate name')
+    download_one_parser.add_argument('version', type=str, help='Crate version')
+    download_one_parser.add_argument('--temp-dir', type=str, default='.local/rawcrates', help='Temporary directory for downloading crates')
+    download_one_parser.add_argument('--output-dir', type=str, default='crates', help='Directory to extract the crate into')
+    download_one_parser.add_argument('--force', action='store_true', help='Re-extract even if the target directory exists')
+    download_one_parser.set_defaults(func=command_download_one)
     extract_raw_parser = subparsers.add_parser('extract-raw', help='Extract existing .crate archives')
     extract_raw_parser.add_argument('--raw-dir', type=str, default='.local/rawcrates', help='Directory containing .crate archives')
     extract_raw_parser.add_argument('--output-dir', type=str, default='.local/crates', help='Directory to extract crates into')
@@ -111,6 +118,17 @@ def command_download(args: argparse.Namespace) -> None:
                 future.result()
             except Exception as e:
                 print(f"Error downloading {crate.name} v{crate.version}: {e}")
+
+def command_download_one(args: argparse.Namespace) -> None:
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir = Path(args.temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    archive = download_crate(Crate(args.name, "", args.version), temp_dir)
+    did_extract = extract_crate_archive(archive, output_dir, args.force)
+    status = "Extracted" if did_extract else "Already exists"
+    print(f"{status}: {output_dir / f'{args.name}-{args.version}'}")
 
 def command_extract_raw(args: argparse.Namespace) -> None:
     raw_dir = Path(args.raw_dir)
@@ -198,19 +216,11 @@ def safe_extract_tar_gz(file_path: Path, output_directory: Path) -> None:
 
 
 def download_crate(crate: Crate, output_dir: Path) -> Path:
-    import requests
-
     download_url = f"https://static.crates.io/crates/{crate.name}/{crate.name}-{crate.version}.crate"
     dst = output_dir / f"{crate.name}-{crate.version}.crate"
     if dst.exists():
         return dst
-    response = requests.get(download_url)
-    if response.status_code == 200:
-        with open(dst, 'wb') as file:
-            file.write(response.content)
-        print(f"Downloaded: {dst}")
-    else:
-        raise Exception(f"status code: {response.status_code}, error: {response.text}")
+    download_file(download_url, dst)
     return dst
     
 def extract_tar_gz(file_path: Path, output_directory: Path) -> None:

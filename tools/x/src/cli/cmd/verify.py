@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -34,6 +35,9 @@ from cli.cmd.verify_poc import (
 
 logger = logging.getLogger(__name__)
 
+RAW_PTR_DEREF_RULE = "__raw_ptr_deref__"
+RAW_PTR_DEREF_CALLEE = "core::ptr::__raw_ptr_deref__"
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -44,6 +48,24 @@ def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     tmp.replace(path)
+
+
+def _safe_result_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "unknown"
+
+
+def _pair_result_filename(callsite_id: str, rule_id: str) -> str:
+    return f"{_safe_result_name(callsite_id)}__{_safe_result_name(rule_id)}.json"
+
+
+def _pair_result_path_for_matrix(result_path: Path, callsite_id: str, rule_id: str) -> Path:
+    return result_path.parent / _pair_result_filename(callsite_id, rule_id)
+
+
+def _pair_result_path_for_artifacts(artifact_dir: Path, callsite_id: str, rule_id: str) -> Path:
+    if artifact_dir.name == rule_id and artifact_dir.parent.name == callsite_id:
+        return artifact_dir.parent.parent / _pair_result_filename(callsite_id, rule_id)
+    return artifact_dir / _pair_result_filename(callsite_id, rule_id)
 
 
 def _clean_dir(path: Path) -> None:
@@ -245,6 +267,21 @@ def _load_rule_dsl(rule_dsl_path: Path, rule_id: str) -> str:
     raise RuntimeError(f"could not find DSL for {rule_id} in {rule_dsl_path}")
 
 
+def _load_rule_entry(rule_dsl_path: Path, rule_id: str) -> dict[str, Any]:
+    if not rule_dsl_path.is_file():
+        raise RuntimeError(f"rule DSL file does not exist: {rule_dsl_path}")
+    data = _load_json(rule_dsl_path)
+    rules = data.get("rules", data) if isinstance(data, dict) else {}
+    if not isinstance(rules, dict):
+        raise RuntimeError(f"rule DSL file must contain an object: {rule_dsl_path}")
+    entry = rules.get(rule_id)
+    if isinstance(entry, str):
+        return {"id": rule_id, "dsl": entry}
+    if isinstance(entry, dict):
+        return {"id": rule_id, **entry}
+    raise RuntimeError(f"could not find rule entry for {rule_id} in {rule_dsl_path}")
+
+
 def _load_rule_ids(rule_dsl_path: Path) -> list[str]:
     if not rule_dsl_path.is_file():
         raise RuntimeError(f"rule DSL file does not exist: {rule_dsl_path}")
@@ -325,6 +362,49 @@ def _compose_status_from_output(
     return "ok"
 
 
+def _analyze_rerun_output(
+    *, returncode: int | None, text: str, timed_out: bool, callsite_id: str
+) -> dict[str, Any]:
+    lowered = text.lower()
+    reported_callsite = f"[ext.dsl] at callsite '{callsite_id}'" in text
+    dsl_sat = "sat(constraints and not resolved constraint): sat" in lowered
+    has_certain_symbol = (
+        "[ext.dsl] resolved constraint uses certain symbol: true" in text
+        or "[ext.dsl] violation query uses certain symbol: true" in text
+        or "[ext.raw-ptr-deref] pointer uses certain symbol: true" in text
+        or "pointer uses certain symbol: true" in text
+    )
+    full_rerun_passed = (
+        returncode == 0
+        and not timed_out
+        and reported_callsite
+        and dsl_sat
+    )
+    if timed_out:
+        status = "timeout"
+    elif returncode is None:
+        status = "unknown"
+    elif full_rerun_passed:
+        status = "reported-sat"
+    elif returncode != 0:
+        status = "klee-error"
+    elif not reported_callsite:
+        status = "callsite-not-reported"
+    elif not dsl_sat:
+        status = "callsite-reported-non-sat"
+    else:
+        status = "reported-sat"
+    return {
+        "status": status,
+        "returncode": returncode,
+        "timed_out": timed_out,
+        "reported_callsite": reported_callsite,
+        "dsl_sat": dsl_sat,
+        "has_certain_symbol": has_certain_symbol,
+        "full_rerun_passed": full_rerun_passed,
+    }
+
+
 def _control_chain_has_certain_symbol(chain_path: Path) -> bool:
     if not chain_path.is_file():
         return False
@@ -369,6 +449,7 @@ def _run_klee_compose_verify(
     klee_bin: str,
     compose_loop_bound: int,
     output_dir: Path,
+    timeout_sec: int | None,
 ) -> tuple[int, str]:
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -386,35 +467,67 @@ def _run_klee_compose_verify(
         cmd.append(f"--report-json={report_json}")
     cmd.append(str(ll_path))
     print(f"[verify] running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    started = time.time()
+    timed_out = False
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            env={**os.environ, "RUST_BACKTRACE": os.environ.get("RUST_BACKTRACE", "0")},
+        )
+        returncode = result.returncode
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+    except subprocess.TimeoutExpired as exc:
+        timed_out = True
+        returncode = 124
+        stdout = (
+            exc.stdout.decode("utf-8", "replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
+        stderr = (
+            exc.stderr.decode("utf-8", "replace")
+            if isinstance(exc.stderr, bytes)
+            else (exc.stderr or "")
+        )
     log_path = output_dir.parent / "klee-compose.log"
     log_path.write_text(
         "command: " + repr(cmd) + "\n"
-        f"returncode: {result.returncode}\n\n"
-        "[stdout]\n" + result.stdout + "\n"
-        "[stderr]\n" + result.stderr,
+        f"returncode: {returncode}\n"
+        f"timeout: {str(timed_out).lower()}\n"
+        f"duration_sec: {time.time() - started:.3f}\n\n"
+        "[stdout]\n" + stdout + "\n"
+        "[stderr]\n" + stderr,
         encoding="utf-8",
     )
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="")
-    combined = result.stdout + result.stderr
+    if stdout:
+        print(stdout, end="")
+    if stderr:
+        print(stderr, end="")
+    if timed_out:
+        return returncode, "timeout"
+    combined = stdout + stderr
     if "SAT(constraints AND NOT resolved constraint): unsat" in combined:
-        return result.returncode, "verified"
+        return returncode, "verified"
     if (
         "SAT(constraints AND NOT resolved constraint): sat" in combined
         or "query solved" in combined
         or "query deferred for compose" in combined
     ):
-        return result.returncode, "candidate"
-    return result.returncode, "unknown"
+        return returncode, "candidate"
+    return returncode, "unknown"
 
 
 def _run_klee_compose_rerun(
     *, ll_path: Path, callsite_id: str, ast_json: str, klee_bin: str,
     output_dir: Path, entry_function: str, log_path: Path | None = None,
-) -> int:
+    timeout_sec: int | None = None, report_json: Path | None = None,
+    raw_ptr_deref: bool = False,
+) -> dict[str, Any]:
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -423,33 +536,79 @@ def _run_klee_compose_rerun(
         f"--output-dir={output_dir}",
         f"--entry-point={entry_function}",
         f"--ext.callsite={callsite_id}",
-        f"--ext.dsl={ast_json}",
         "--compose-rerun",
-        str(ll_path),
     ]
+    if raw_ptr_deref:
+        cmd.append("--ext.raw-ptr-deref")
+    else:
+        cmd.append(f"--ext.dsl={ast_json}")
+    if report_json is not None:
+        cmd.append(f"--report-json={report_json}")
+    cmd.append(str(ll_path))
     logger.info("[verify:rerun] running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    reached_callsite = f"[ext.dsl] at callsite '{callsite_id}'" in (
-        result.stdout + result.stderr
+    started = time.time()
+    timed_out = False
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            env={**os.environ, "RUST_BACKTRACE": os.environ.get("RUST_BACKTRACE", "0")},
+        )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        returncode = result.returncode
+    except subprocess.TimeoutExpired as exc:
+        timed_out = True
+        stdout = (
+            exc.stdout.decode("utf-8", "replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
+        stderr = (
+            exc.stderr.decode("utf-8", "replace")
+            if isinstance(exc.stderr, bytes)
+            else (exc.stderr or "")
+        )
+        returncode = 124
+    combined = stdout + stderr
+    analysis = _analyze_rerun_output(
+        returncode=returncode,
+        text=combined,
+        timed_out=timed_out,
+        callsite_id=callsite_id,
     )
-    returncode = result.returncode
-    if returncode == 0 and not reached_callsite:
+    if returncode == 0 and not analysis["reported_callsite"]:
         returncode = 2
+        analysis = _analyze_rerun_output(
+            returncode=returncode,
+            text=combined,
+            timed_out=timed_out,
+            callsite_id=callsite_id,
+        )
     if log_path is not None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text(
             "command: " + repr(cmd) + "\n"
             f"returncode: {returncode}\n"
-            f"target_callsite_reached: {str(reached_callsite).lower()}\n\n"
-            "[stdout]\n" + result.stdout + "\n"
-            "[stderr]\n" + result.stderr,
+            f"timeout: {str(timed_out).lower()}\n"
+            f"duration_sec: {time.time() - started:.3f}\n"
+            f"target_callsite_reported: {str(analysis['reported_callsite']).lower()}\n"
+            f"dsl_sat: {str(analysis['dsl_sat']).lower()}\n"
+            f"has_certain_symbol: {str(analysis['has_certain_symbol']).lower()}\n"
+            f"full_rerun_passed: {str(analysis['full_rerun_passed']).lower()}\n\n"
+            "[stdout]\n" + stdout + "\n"
+            "[stderr]\n" + stderr,
             encoding="utf-8",
         )
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="")
-    return returncode
+    if stdout:
+        print(stdout, end="")
+    if stderr:
+        print(stderr, end="")
+    analysis["duration_sec"] = round(time.time() - started, 3)
+    return analysis
 
 
 def _matrix_callsite_rows(
@@ -522,6 +681,9 @@ def _assign_matrix_rules_to_callsites(
 
     rules_by_callee = _load_rule_ids_by_callee(rule_dsl_path)
     for callsite in callsites:
+        if callsite.get("unsafe_callee") == RAW_PTR_DEREF_CALLEE:
+            callsite["rules"] = [RAW_PTR_DEREF_RULE]
+            continue
         callee_path = callsite.get("unsafe_callee_path")
         callee_line = callsite.get("unsafe_callee_line_start")
         rules: list[str] = []
@@ -558,6 +720,164 @@ def _matrix_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _callsite_summary_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "target_index": row.get("target_index"),
+        "id": row.get("callsite"),
+        "llvm_id": row.get("llvm_callsite"),
+        "path": row.get("path"),
+        "line": row.get("line"),
+        "col": row.get("col"),
+        "caller": row.get("caller"),
+        "unsafe_callee": row.get("unsafe_callee"),
+        "unsafe_callee_path": row.get("unsafe_callee_path"),
+        "unsafe_callee_line_start": row.get("unsafe_callee_line_start"),
+    }
+
+
+def _stage_paths_from_pipeline(pipeline: dict[str, Any]) -> dict[str, Any]:
+    attempts = pipeline.get("llm_testcase_attempts")
+    if not isinstance(attempts, list):
+        attempts = []
+    status = pipeline.get("status")
+    if status == "compose-verified-skip-testcase":
+        status = "skipped"
+    elif attempts:
+        last = attempts[-1]
+        status = last.get("status") if isinstance(last, dict) else None
+    if status is None and pipeline.get("source_path"):
+        status = "build-ok"
+    return {
+        "status": status,
+        "artifact_dir": pipeline.get("artifact_dir"),
+        "source_path": pipeline.get("source_path"),
+        "source_line": pipeline.get("source_line"),
+        "prompt": pipeline.get("testcase_prompt"),
+        "response": pipeline.get("testcase_response"),
+        "build_log": pipeline.get("build_log"),
+        "attempts": attempts,
+    }
+
+
+def _write_pair_result(
+    *,
+    path: Path,
+    crate_dir: Path,
+    injected_dir: Path,
+    meta_path: Path | None,
+    rule_dsl_path: Path,
+    callsite: dict[str, Any],
+    rule_id: str,
+    init: dict[str, Any] | None,
+    llm: dict[str, Any] | None = None,
+    rerun: dict[str, Any] | None = None,
+) -> None:
+    rule = _load_rule_entry(rule_dsl_path, rule_id) if rule_id != RAW_PTR_DEREF_RULE else {
+        "id": RAW_PTR_DEREF_RULE,
+        "path": None,
+        "name": RAW_PTR_DEREF_CALLEE,
+        "rule": "Raw pointer dereference is treated as a bug when the pointer expression uses a certain symbol.",
+        "dsl": None,
+    }
+    rerun = rerun or {}
+    result = {
+        "init_status": (init or {}).get("status"),
+        "llm_status": (llm or {}).get("status"),
+        "rerun_status": rerun.get("status"),
+        "rerun_returncode": rerun.get("returncode"),
+        "rerun_reported_callsite": bool(rerun.get("reported_callsite")),
+        "rerun_dsl_sat": bool(rerun.get("dsl_sat")),
+        "rerun_has_certain_symbol": bool(rerun.get("has_certain_symbol")),
+        "full_rerun_passed": bool(rerun.get("full_rerun_passed")),
+    }
+    _atomic_write_json(
+        path,
+        {
+            "schema_version": 2,
+            "updated_at": _utc_now(),
+            "crate": str(crate_dir),
+            "injected_crate": str(injected_dir),
+            "metadata": str(meta_path) if meta_path is not None else None,
+            "callsite": callsite,
+            "rule": rule,
+            "result": result,
+            "stages": {
+                "init": init or {},
+                "llm": llm or {},
+                "rerun": rerun,
+            },
+        },
+    )
+
+
+def _tail_text(text: str, *, max_chars: int = 12000) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def _read_failure_feedback(path: Path | None, fallback: BaseException) -> str:
+    parts = [str(fallback)]
+    if path is not None and path.is_file():
+        try:
+            parts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            pass
+    return _tail_text("\n\n".join(part for part in parts if part))
+
+
+def _build_klee_witness_text(
+    *,
+    callsite_id: str,
+    rule_id: str,
+    ast_json: str,
+    compose_output: Path,
+) -> str:
+    parts: list[str] = [
+        f"Target callsite id: {callsite_id}",
+        f"Rule id: {rule_id}",
+    ]
+    if ast_json.strip():
+        parts.append(
+            "Rule DSL AST. The testcase should make NOT(this rule) true at "
+            "the target unsafe call:\n" + ast_json.strip()
+        )
+
+    messages_path = compose_output / "messages.txt"
+    if messages_path.is_file():
+        messages = _tail_text(
+            messages_path.read_text(encoding="utf-8", errors="replace"),
+            max_chars=8000,
+        )
+        interesting: list[str] = []
+        for line in messages.splitlines():
+            if (
+                "[ext.call]" in line
+                or "[ext.dsl]" in line
+                or "SAT(" in line
+                or "uncertain value" in line
+                or "resolved constraint" in line
+            ):
+                interesting.append(line)
+        if interesting:
+            parts.append(
+                "KLEE witness excerpt. Use these unsafe-callee argument "
+                "values/relations as the concrete reproduction target:\n"
+                + _tail_text("\n".join(interesting), max_chars=6000)
+            )
+        else:
+            parts.append("KLEE messages tail:\n" + messages)
+
+    info_path = compose_output / "info"
+    if info_path.is_file():
+        parts.append(
+            "KLEE run info tail:\n"
+            + _tail_text(info_path.read_text(encoding="utf-8", errors="replace"),
+                         max_chars=2000)
+        )
+    return "\n\n".join(parts)
+
+
 def _run_llm_testcase_pipeline(
     *,
     args: argparse.Namespace,
@@ -571,7 +891,8 @@ def _run_llm_testcase_pipeline(
     ast_json: str,
     artifact_dir: Path,
     compose_output: Path,
-) -> int:
+    report_json: Path | None,
+) -> dict[str, Any]:
     chain = write_certainty_chain_json(
         info_path=compose_output / "info",
         output_path=artifact_dir / "certainty-chain.json",
@@ -580,13 +901,29 @@ def _run_llm_testcase_pipeline(
     )
     if args.skip_llm_testcase:
         logger.info("[verify] --skip-llm-testcase set; stopping before LLM testcase generation")
-        return 0
+        pipeline_state["status"] = "skipped"
+        pipeline_state["reason"] = "--skip-llm-testcase set"
+        (artifact_dir / "testcase-pipeline.json").write_text(
+            json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
+        )
+        return {"status": "skipped", "returncode": 0, "full_rerun_passed": False}
 
-    rule_doc = _load_json(rule_dsl_path)
-    rules = rule_doc.get("rules", rule_doc) if isinstance(rule_doc, dict) else {}
-    rule = rules.get(rule_id) if isinstance(rules, dict) else None
-    if not isinstance(rule, dict):
-        raise RuntimeError(f"testcase generation requires metadata for {rule_id}")
+    if rule_id == RAW_PTR_DEREF_RULE:
+        rule = {
+            "path": None,
+            "name": RAW_PTR_DEREF_CALLEE,
+            "rule": (
+                "Raw pointer dereference is considered buggy when the dereferenced "
+                "pointer expression is derived from a certain external symbol."
+            ),
+            "dsl": None,
+        }
+    else:
+        rule_doc = _load_json(rule_dsl_path)
+        rules = rule_doc.get("rules", rule_doc) if isinstance(rule_doc, dict) else {}
+        rule = rules.get(rule_id) if isinstance(rules, dict) else None
+        if not isinstance(rule, dict):
+            raise RuntimeError(f"testcase generation requires metadata for {rule_id}")
 
     injection = testcase_injection(callsite_id, rule_id)
     logger.info(
@@ -595,66 +932,151 @@ def _run_llm_testcase_pipeline(
         injection.feature,
         injection.function,
     )
-    testcase = generate_safe_testcase(
-        crate_dir=injected_dir,
-        target=target,
-        rule=rule,
-        chain=chain,
-        model=args.model,
-        artifacts_dir=artifact_dir,
-        injection=injection,
-    )
-    ensure_cargo_feature(injected_dir, injection.feature)
-    injection = inject_testcase_at_callsite(
-        crate_dir=injected_dir,
-        target=target,
-        testcase=testcase,
-        injection=injection,
-    )
-    logger.info(
-        "[verify:testcase] source=%s:%d state=%s",
-        injection.source_path,
-        injection.line,
-        injected_dir / ".unsat-test-injections.json",
-    )
-
     pipeline_state = {
         "schema_version": 1,
         "callsite": callsite_id,
         "rule": rule_id,
         "feature": injection.feature,
         "entry_function": injection.function,
-        "source_path": injection.source_path,
-        "source_line": injection.line,
+        "artifact_dir": str(artifact_dir),
         "klee_compose_dir": str(compose_output),
         "klee_compose_log": str(artifact_dir / "klee-compose.log"),
         "skip_rerun": bool(args.skip_rerun),
+        "llm_testcase_attempts": [],
     }
-    (artifact_dir / "testcase-pipeline.json").write_text(
-        json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
+    klee_witness = _build_klee_witness_text(
+        callsite_id=callsite_id,
+        rule_id=rule_id,
+        ast_json=ast_json,
+        compose_output=compose_output,
     )
-
-    if args.skip_rerun:
-        logger.info("[verify:testcase] --skip-rerun set; stopping after testcase injection")
-        return 0
-
-    rerun_ir_dir = artifact_dir / "rerun-ir"
-    _clean_dir(rerun_ir_dir)
-    rerun_ll = ensure_linked_llvm_ir_file(
-        cargo_dir=injected_dir,
-        output_dir=rerun_ir_dir,
-        rustc=args.rustc,
-        test=False,
-        build_std=True,
-        panic_abort=True,
-        force=True,
-        features=[injection.feature],
-        build_log_path=artifact_dir / "testcase-build.log",
+    (artifact_dir / "klee-witness.txt").write_text(
+        klee_witness + "\n", encoding="utf-8"
     )
+    pipeline_state["klee_witness"] = str(artifact_dir / "klee-witness.txt")
+
+    max_attempts = max(1, int(getattr(args, "llm_testcase_retries", 3)))
+    retry_feedback: str | None = None
+    rerun_ll: Path | None = None
+    build_log_path: Path | None = None
+    last_error: str | None = None
+    for attempt in range(1, max_attempts + 1):
+        attempt_state: dict[str, Any] = {"attempt": attempt}
+        build_log_path = artifact_dir / f"testcase-build-attempt-{attempt}.log"
+        try:
+            testcase = generate_safe_testcase(
+                crate_dir=injected_dir,
+                target=target,
+                rule=rule,
+                chain=chain,
+                model=args.model,
+                artifacts_dir=artifact_dir,
+                injection=injection,
+                klee_witness=klee_witness,
+                retry_feedback=retry_feedback,
+                attempt=attempt,
+            )
+            ensure_cargo_feature(injected_dir, injection.feature)
+            injection = inject_testcase_at_callsite(
+                crate_dir=injected_dir,
+                target=target,
+                testcase=testcase,
+                injection=injection,
+            )
+            attempt_state.update(
+                {
+                    "source_path": str(injection.source_path),
+                    "source_line": injection.line,
+                }
+            )
+            logger.info(
+                "[verify:testcase] attempt %d/%d source=%s:%d state=%s",
+                attempt,
+                max_attempts,
+                injection.source_path,
+                injection.line,
+                injected_dir / ".unsat-test-injections.json",
+            )
+
+            if args.skip_rerun:
+                attempt_state["status"] = "injected"
+                pipeline_state["source_path"] = str(injection.source_path)
+                pipeline_state["source_line"] = injection.line
+                pipeline_state["llm_testcase_attempts"].append(attempt_state)
+                (artifact_dir / "testcase-pipeline.json").write_text(
+                    json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
+                )
+                logger.info("[verify:testcase] --skip-rerun set; stopping after testcase injection")
+                return {
+                    "status": "injected",
+                    "returncode": 0,
+                    "reported_callsite": False,
+                    "dsl_sat": False,
+                    "has_certain_symbol": False,
+                    "full_rerun_passed": False,
+                }
+
+            rerun_ir_dir = artifact_dir / "rerun-ir"
+            _clean_dir(rerun_ir_dir)
+            rerun_ll = ensure_linked_llvm_ir_file(
+                cargo_dir=injected_dir,
+                output_dir=rerun_ir_dir,
+                rustc=args.rustc,
+                test=False,
+                build_std=True,
+                panic_abort=True,
+                force=True,
+                features=[injection.feature],
+                build_log_path=build_log_path,
+            )
+            shutil.copyfile(build_log_path, artifact_dir / "testcase-build.log")
+            attempt_state.update(
+                {
+                    "status": "build-ok",
+                    "build_log": str(build_log_path),
+                    "llvm_ir": str(rerun_ll),
+                }
+            )
+            pipeline_state["llm_testcase_attempts"].append(attempt_state)
+            break
+        except Exception as exc:
+            retry_feedback = _read_failure_feedback(build_log_path, exc)
+            last_error = retry_feedback
+            attempt_state.update(
+                {
+                    "status": "error",
+                    "error": str(exc),
+                    "feedback": retry_feedback,
+                }
+            )
+            if build_log_path is not None:
+                attempt_state["build_log"] = str(build_log_path)
+            pipeline_state["llm_testcase_attempts"].append(attempt_state)
+            (artifact_dir / "testcase-pipeline.json").write_text(
+                json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
+            )
+            if attempt >= max_attempts:
+                raise RuntimeError(
+                    f"testcase generation/build failed after {max_attempts} attempts:\n"
+                    f"{last_error or exc}"
+                ) from exc
+            logger.warning(
+                "[verify:testcase] attempt %d/%d failed; retrying with compiler feedback",
+                attempt,
+                max_attempts,
+            )
+
+    if rerun_ll is None:
+        raise RuntimeError("testcase build did not produce LLVM IR")
+
     pipeline_state.update(
         {
+            "source_path": str(injection.source_path),
+            "source_line": injection.line,
             "llvm_ir": str(rerun_ll),
             "build_log": str(artifact_dir / "testcase-build.log"),
+            "testcase_prompt": str(artifact_dir / "testcase-prompt.txt"),
+            "testcase_response": str(artifact_dir / "testcase-response.txt"),
             "klee_rerun_dir": str(artifact_dir / "klee-rerun"),
             "klee_rerun_log": str(artifact_dir / "klee-rerun.log"),
         }
@@ -662,7 +1084,7 @@ def _run_llm_testcase_pipeline(
     (artifact_dir / "testcase-pipeline.json").write_text(
         json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
     )
-    rerun_rc = _run_klee_compose_rerun(
+    rerun_result = _run_klee_compose_rerun(
         ll_path=rerun_ll,
         callsite_id=callsite_id,
         ast_json=ast_json,
@@ -670,12 +1092,16 @@ def _run_llm_testcase_pipeline(
         output_dir=artifact_dir / "klee-rerun",
         entry_function=injection.function,
         log_path=artifact_dir / "klee-rerun.log",
+        timeout_sec=args.timeout_sec,
+        report_json=report_json,
+        raw_ptr_deref=(rule_id == RAW_PTR_DEREF_RULE),
     )
-    pipeline_state["rerun_returncode"] = rerun_rc
+    pipeline_state["rerun_returncode"] = rerun_result.get("returncode")
+    pipeline_state["rerun"] = rerun_result
     (artifact_dir / "testcase-pipeline.json").write_text(
         json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
     )
-    return rerun_rc
+    return rerun_result
 
 
 def _run_verify_matrix(
@@ -834,6 +1260,10 @@ def _run_verify_matrix_locked(
                     "path": callsite.get("path"),
                     "line": callsite.get("line"),
                     "col": callsite.get("col"),
+                    "caller": callsite.get("caller"),
+                    "unsafe_callee": callsite.get("unsafe_callee"),
+                    "unsafe_callee_path": callsite.get("unsafe_callee_path"),
+                    "unsafe_callee_line_start": callsite.get("unsafe_callee_line_start"),
                     "rule": rule,
                     "status": "not-in-ir",
                     "returncode": None,
@@ -842,6 +1272,25 @@ def _run_verify_matrix_locked(
                     "log": None,
                     "klee_output_dir": None,
                 }
+                pair_path = _pair_result_path_for_matrix(result_path, callsite_id, str(rule))
+                _write_pair_result(
+                    path=pair_path,
+                    crate_dir=cargo_dir,
+                    injected_dir=injected_dir,
+                    meta_path=meta_path,
+                    rule_dsl_path=rule_dsl_path,
+                    callsite=_callsite_summary_from_row(row),
+                    rule_id=str(rule),
+                    init={
+                        "status": "not-in-ir",
+                        "returncode": None,
+                        "timed_out": False,
+                        "duration_sec": 0.0,
+                        "log": None,
+                        "klee_output_dir": None,
+                    },
+                )
+                row["pair_result_json"] = str(pair_path)
                 results.append(row)
                 completed += 1
                 counts["not-in-ir"] = counts.get("not-in-ir", 0) + 1
@@ -859,7 +1308,8 @@ def _run_verify_matrix_locked(
                 _atomic_write_json(result_path, state)
                 continue
 
-            if rule not in ast_cache:
+            raw_ptr_deref = rule == RAW_PTR_DEREF_RULE
+            if not raw_ptr_deref and rule not in ast_cache:
                 ast_cache[rule] = _task1_to_ext_ast_json(
                     _load_rule_dsl(rule_dsl_path, rule), operators
                 )
@@ -873,10 +1323,13 @@ def _run_verify_matrix_locked(
                 f"--output-dir={output_dir}",
                 f"--compose-verify-chain-json={output_dir.parent / 'klee-control-chains.json'}",
                 f"--ext.callsite={llvm_callsite_id}",
-                f"--ext.dsl={ast_cache[rule]}",
                 "--compose-verify",
                 f"--compose-verify-symbolic-loop-bound={args.compose_loop_bound}",
             ]
+            if raw_ptr_deref:
+                cmd.append("--ext.raw-ptr-deref")
+            else:
+                cmd.append(f"--ext.dsl={ast_cache[rule]}")
             if report_json is not None:
                 cmd.append(f"--report-json={report_json}")
             cmd.append(str(ll_path))
@@ -937,6 +1390,12 @@ def _run_verify_matrix_locked(
             status = _compose_status_from_output(returncode, combined, timed_out)
             chain_path = output_dir.parent / "klee-control-chains.json"
             has_certain_symbol = _control_chain_has_certain_symbol(chain_path)
+            if "[ext.dsl] resolved constraint uses certain symbol: true" in combined:
+                has_certain_symbol = True
+            if "[ext.dsl] violation query uses certain symbol: true" in combined:
+                has_certain_symbol = True
+            if raw_ptr_deref and "pointer uses certain symbol: true" in combined:
+                has_certain_symbol = True
             if status == "violation" and not has_certain_symbol:
                 status = "low-confidence-sat"
             row = {
@@ -946,6 +1405,10 @@ def _run_verify_matrix_locked(
                 "path": callsite.get("path"),
                 "line": callsite.get("line"),
                 "col": callsite.get("col"),
+                "caller": callsite.get("caller"),
+                "unsafe_callee": callsite.get("unsafe_callee"),
+                "unsafe_callee_path": callsite.get("unsafe_callee_path"),
+                "unsafe_callee_line_start": callsite.get("unsafe_callee_line_start"),
                 "rule": rule,
                 "status": status,
                 "returncode": returncode,
@@ -956,6 +1419,27 @@ def _run_verify_matrix_locked(
                 "certainty_chain": str(chain_path),
                 "has_certain_symbol": has_certain_symbol,
             }
+            pair_path = _pair_result_path_for_matrix(result_path, callsite_id, str(rule))
+            _write_pair_result(
+                path=pair_path,
+                crate_dir=cargo_dir,
+                injected_dir=injected_dir,
+                meta_path=meta_path,
+                rule_dsl_path=rule_dsl_path,
+                callsite=_callsite_summary_from_row(row),
+                rule_id=str(rule),
+                init={
+                    "status": status,
+                    "returncode": returncode,
+                    "timed_out": timed_out,
+                    "duration_sec": row["duration_sec"],
+                    "log": str(log_path),
+                    "klee_output_dir": str(output_dir),
+                    "certainty_chain": str(chain_path),
+                    "has_certain_symbol": has_certain_symbol,
+                },
+            )
+            row["pair_result_json"] = str(pair_path)
             results.append(row)
             completed += 1
             counts[status] = counts.get(status, 0) + 1
@@ -1007,7 +1491,8 @@ def _run_verify_matrix_locked(
             row["llm_testcase_error"] = "missing rule/callsite/klee output metadata"
             llm_failures += 1
             continue
-        if rule_id not in ast_cache:
+        raw_ptr_deref = rule_id == RAW_PTR_DEREF_RULE
+        if not raw_ptr_deref and rule_id not in ast_cache:
             ast_cache[rule_id] = _task1_to_ext_ast_json(
                 _load_rule_dsl(rule_dsl_path, rule_id), operators
             )
@@ -1018,7 +1503,7 @@ def _run_verify_matrix_locked(
             flush=True,
         )
         try:
-            rc = _run_llm_testcase_pipeline(
+            rerun_result = _run_llm_testcase_pipeline(
                 args=args,
                 repo_root=repo_root,
                 cargo_dir=cargo_dir,
@@ -1027,17 +1512,83 @@ def _run_verify_matrix_locked(
                 target=target,
                 callsite_id=callsite_id,
                 rule_id=rule_id,
-                ast_json=ast_cache[rule_id],
+                ast_json=ast_cache.get(rule_id, ""),
                 artifact_dir=artifact_dir,
                 compose_output=artifact_dir / "klee-out",
+                report_json=report_json,
             )
-            row["llm_testcase_status"] = "ok" if rc == 0 else "rerun-error"
-            row["llm_testcase_returncode"] = rc
-            if rc != 0:
+            pipeline_path = artifact_dir / "testcase-pipeline.json"
+            pipeline_state = _load_json(pipeline_path) if pipeline_path.is_file() else {}
+            pipeline_skipped = rerun_result.get("status") in {"skipped", "injected"}
+            row["llm_testcase_status"] = (
+                "ok" if rerun_result.get("full_rerun_passed")
+                else str(rerun_result.get("status")) if pipeline_skipped
+                else "rerun-error"
+            )
+            row["llm_testcase_returncode"] = rerun_result.get("returncode")
+            row["rerun_reported_callsite"] = bool(rerun_result.get("reported_callsite"))
+            row["rerun_dsl_sat"] = bool(rerun_result.get("dsl_sat"))
+            row["rerun_has_certain_symbol"] = bool(rerun_result.get("has_certain_symbol"))
+            row["full_rerun_passed"] = bool(rerun_result.get("full_rerun_passed"))
+            pair_path = _pair_result_path_for_matrix(
+                result_path, str(row.get("callsite") or callsite_id), rule_id
+            )
+            row["pair_result_json"] = str(pair_path)
+            _write_pair_result(
+                path=pair_path,
+                crate_dir=cargo_dir,
+                injected_dir=injected_dir,
+                meta_path=meta_path,
+                rule_dsl_path=rule_dsl_path,
+                callsite=_callsite_summary_from_row(row),
+                rule_id=rule_id,
+                init={
+                    "status": row.get("status"),
+                    "returncode": row.get("returncode"),
+                    "timed_out": row.get("timed_out"),
+                    "duration_sec": row.get("duration_sec"),
+                    "log": row.get("log"),
+                    "klee_output_dir": row.get("klee_output_dir"),
+                    "certainty_chain": row.get("certainty_chain"),
+                    "has_certain_symbol": row.get("has_certain_symbol"),
+                },
+                llm=_stage_paths_from_pipeline(pipeline_state if isinstance(pipeline_state, dict) else {}),
+                rerun={
+                    **rerun_result,
+                    "log": str(artifact_dir / "klee-rerun.log"),
+                    "klee_output_dir": str(artifact_dir / "klee-rerun"),
+                },
+            )
+            if not rerun_result.get("full_rerun_passed") and not pipeline_skipped:
                 llm_failures += 1
         except Exception as exc:
             row["llm_testcase_status"] = "error"
             row["llm_testcase_error"] = str(exc)
+            pair_path = _pair_result_path_for_matrix(
+                result_path, str(row.get("callsite") or callsite_id), str(row.get("rule") or "")
+            )
+            row["pair_result_json"] = str(pair_path)
+            _write_pair_result(
+                path=pair_path,
+                crate_dir=cargo_dir,
+                injected_dir=injected_dir,
+                meta_path=meta_path,
+                rule_dsl_path=rule_dsl_path,
+                callsite=_callsite_summary_from_row(row),
+                rule_id=rule_id if isinstance(rule_id, str) else str(row.get("rule") or ""),
+                init={
+                    "status": row.get("status"),
+                    "returncode": row.get("returncode"),
+                    "timed_out": row.get("timed_out"),
+                    "duration_sec": row.get("duration_sec"),
+                    "log": row.get("log"),
+                    "klee_output_dir": row.get("klee_output_dir"),
+                    "certainty_chain": row.get("certainty_chain"),
+                    "has_certain_symbol": row.get("has_certain_symbol"),
+                },
+                llm={"status": "error", "error": str(exc), "artifact_dir": str(artifact_dir)},
+                rerun={"status": "not-run", "full_rerun_passed": False},
+            )
             llm_failures += 1
         state.update(
             {
@@ -1066,6 +1617,8 @@ def run(args: argparse.Namespace) -> int:
         raise RuntimeError("--compose-loop-bound must be non-negative")
     if args.timeout_sec <= 0:
         raise RuntimeError("--timeout-sec must be positive")
+    if args.llm_testcase_retries <= 0:
+        raise RuntimeError("--llm-testcase-retries must be positive")
 
     cargo_dir = Path(args.cargo_dir)
     if not cargo_dir.is_absolute():
@@ -1170,6 +1723,7 @@ def run(args: argparse.Namespace) -> int:
         klee_bin=args.klee_bin,
         compose_loop_bound=args.compose_loop_bound,
         output_dir=compose_output,
+        timeout_sec=args.timeout_sec,
     )
     if rc != 0:
         return rc
@@ -1186,12 +1740,42 @@ def run(args: argparse.Namespace) -> int:
         (artifact_dir / "testcase-pipeline.json").write_text(
             json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
         )
+        _write_pair_result(
+            path=_pair_result_path_for_artifacts(artifact_dir, resolved_callsite_id, args.rule),
+            crate_dir=cargo_dir,
+            injected_dir=injected_dir,
+            meta_path=meta_path,
+            rule_dsl_path=rule_dsl_path,
+            callsite={
+                "id": resolved_callsite_id,
+                "report_id": report_callsite_id,
+                **_callsite_summary_from_row(
+                    {
+                        "target_index": None,
+                        "callsite": resolved_callsite_id,
+                        "llvm_callsite": resolved_callsite_id,
+                        "path": (target.get("callsite") or {}).get("path") if isinstance(target.get("callsite"), dict) else None,
+                        "line": (target.get("callsite") or {}).get("line") if isinstance(target.get("callsite"), dict) else None,
+                        "col": (target.get("callsite") or {}).get("col") if isinstance(target.get("callsite"), dict) else None,
+                    }
+                ),
+            },
+            rule_id=args.rule,
+            init={
+                "status": "verified",
+                "returncode": rc,
+                "log": str(artifact_dir / "klee-compose.log"),
+                "klee_output_dir": str(compose_output),
+            },
+            llm={"status": "skipped"},
+            rerun={"status": "skipped", "full_rerun_passed": False},
+        )
         logger.info(
             "[verify] compose result is unsat for NOT(rule); skipping testcase generation/rerun"
         )
         return 0
 
-    return _run_llm_testcase_pipeline(
+    rerun_result = _run_llm_testcase_pipeline(
         args=args,
         repo_root=repo_root,
         cargo_dir=cargo_dir,
@@ -1203,4 +1787,50 @@ def run(args: argparse.Namespace) -> int:
         ast_json=ast_json,
         artifact_dir=artifact_dir,
         compose_output=compose_output,
+        report_json=report_json,
     )
+    pipeline_path = artifact_dir / "testcase-pipeline.json"
+    pipeline_state = _load_json(pipeline_path) if pipeline_path.is_file() else {}
+    callsite_obj = target.get("callsite") if isinstance(target.get("callsite"), dict) else {}
+    caller_obj = target.get("caller") if isinstance(target.get("caller"), dict) else {}
+    callee_obj = target.get("callee") if isinstance(target.get("callee"), dict) else {}
+    if not callee_obj and isinstance(target.get("unsafe_callee"), dict):
+        callee_obj = target.get("unsafe_callee")  # type: ignore[assignment]
+    _write_pair_result(
+        path=_pair_result_path_for_artifacts(artifact_dir, resolved_callsite_id, args.rule),
+        crate_dir=cargo_dir,
+        injected_dir=injected_dir,
+        meta_path=meta_path,
+        rule_dsl_path=rule_dsl_path,
+        callsite={
+            "id": resolved_callsite_id,
+            "report_id": report_callsite_id,
+            "llvm_id": resolved_callsite_id,
+            "path": callsite_obj.get("path"),
+            "line": callsite_obj.get("line"),
+            "col": callsite_obj.get("col"),
+            "caller": caller_obj.get("name"),
+            "unsafe_callee": callee_obj.get("name"),
+            "unsafe_callee_path": callee_obj.get("path"),
+            "unsafe_callee_line_start": callee_obj.get("line_start"),
+        },
+        rule_id=args.rule,
+        init={
+            "status": compose_status,
+            "returncode": rc,
+            "log": str(artifact_dir / "klee-compose.log"),
+            "klee_output_dir": str(compose_output),
+        },
+        llm=_stage_paths_from_pipeline(pipeline_state if isinstance(pipeline_state, dict) else {}),
+        rerun={
+            **rerun_result,
+            "log": str(artifact_dir / "klee-rerun.log"),
+            "klee_output_dir": str(artifact_dir / "klee-rerun"),
+        },
+    )
+    if rerun_result.get("full_rerun_passed") or rerun_result.get("status") in {"skipped", "injected"}:
+        return 0
+    returncode = rerun_result.get("returncode")
+    if isinstance(returncode, int) and returncode != 0:
+        return returncode
+    return 2

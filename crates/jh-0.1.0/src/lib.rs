@@ -145,3 +145,15 @@ pub type Jh256 = CoreWrapper<CtVariableCoreWrapper<JhCore, U32>>;
 pub type Jh384 = CoreWrapper<CtVariableCoreWrapper<JhCore, U48>>;
 /// Jh-512 hasher state
 pub type Jh512 = CoreWrapper<CtVariableCoreWrapper<JhCore, U64>>;
+
+#[cfg(test)]
+mod tests {
+    use super::{Digest, Jh256};
+
+    #[test]
+    fn instantiate_compressor_f8() {
+        let mut hasher = Jh256::new();
+        hasher.update(&[0u8; 64]);
+        let _ = hasher.finalize();
+    }
+}

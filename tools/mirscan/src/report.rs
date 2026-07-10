@@ -2,8 +2,7 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_abi::FieldIdx;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    BasicBlock, Body, Location, Operand, Place, PlaceTy, ProjectionElem, Rvalue, StatementKind,
-    TerminatorKind,
+    Body, Location, Operand, Place, PlaceTy, ProjectionElem, Rvalue, StatementKind, TerminatorKind,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::ty::TypeVisitableExt;
@@ -216,6 +215,20 @@ fn source_relative_path(path: &str) -> String {
     normalize_to_rust_relative(&normalized)
 }
 
+fn callsite_info(tcx: TyCtxt<'_>, span: Span) -> CallsiteInfo {
+    let loc = tcx
+        .sess
+        .source_map()
+        .lookup_char_pos(span.source_callsite().lo());
+    CallsiteInfo {
+        line: loc.line,
+        col: loc.col.to_usize() + 1,
+        path: Some(normalize_to_rust_relative(
+            &loc.file.name.prefer_local().to_string(),
+        )),
+    }
+}
+
 fn source_visible(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     let Some(local_def_id) = def_id.as_local() else {
         return false;
@@ -253,6 +266,14 @@ fn source_span_is_visible(tcx: TyCtxt<'_>, span: Span) -> bool {
                 line.starts_with("pub ") || line.starts_with("pub(")
             })
         })
+}
+
+fn fn_is_public_or_source_visible<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    tcx.visibility(def_id).is_public()
+        || source_span_is_visible(
+            tcx,
+            span_with_body_if_available(tcx, def_id, tcx.def_span(def_id)),
+        )
 }
 
 fn root_adt(ty: Ty<'_>) -> Option<(DefId, bool)> {
@@ -750,6 +771,14 @@ struct UnsafeCallSite<'tcx> {
     depth: usize,
 }
 
+#[derive(Clone)]
+struct RawPointerDerefSite<'tcx> {
+    callsite_span: Span,
+    location: Location,
+    place: Place<'tcx>,
+    depth: usize,
+}
+
 impl<'tcx> UnsafeCallVisitor<'tcx> {
     fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
@@ -809,10 +838,10 @@ fn collect_reachable_unsafe_calls<'tcx>(
 ) -> Vec<UnsafeCallSite<'tcx>> {
     let mut results = Vec::new();
     let root_args = ty::GenericArgs::identity_for_item(tcx, root_def_id);
-    let mut queue = VecDeque::from([(root_def_id, root_args, 0usize)]);
+    let mut queue = VecDeque::from([(root_def_id, root_args, 0usize, None::<Span>)]);
     let mut visited = HashSet::new();
 
-    while let Some((current_def_id, current_args, depth)) = queue.pop_front() {
+    while let Some((current_def_id, current_args, depth, root_callsite_span)) = queue.pop_front() {
         let args_key = current_args
             .iter()
             .map(|arg| arg.to_string())
@@ -837,13 +866,166 @@ fn collect_reachable_unsafe_calls<'tcx>(
                 results.push(UnsafeCallSite {
                     callee_def_id,
                     callee_args,
-                    callsite_span,
+                    callsite_span: root_callsite_span.unwrap_or(callsite_span),
                     location,
                     arg_places,
                     depth,
                 });
             } else if depth < max_call_depth && callee_def_id.as_local().is_some() {
-                queue.push_back((callee_def_id, callee_args, depth + 1));
+                let next_root_callsite = root_callsite_span.or(Some(callsite_span.source_callsite()));
+                queue.push_back((callee_def_id, callee_args, depth + 1, next_root_callsite));
+            }
+        }
+    }
+
+    results
+}
+
+fn place_has_raw_pointer_deref<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &'tcx Body<'tcx>,
+    place: Place<'tcx>,
+) -> bool {
+    let mut place_ty = PlaceTy::from_ty(body.local_decls[place.local].ty);
+    for elem in place.projection {
+        if matches!(elem, ProjectionElem::Deref)
+            && matches!(place_ty.ty.kind(), ty::RawPtr(_, _))
+        {
+            return true;
+        }
+        place_ty = place_ty.projection_ty(tcx, elem);
+    }
+    false
+}
+
+fn operand_raw_pointer_deref_place<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &'tcx Body<'tcx>,
+    operand: &Operand<'tcx>,
+) -> Option<Place<'tcx>> {
+    operand
+        .place()
+        .filter(|place| place_has_raw_pointer_deref(tcx, body, *place))
+}
+
+fn collect_raw_pointer_derefs_in_rvalue<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &'tcx Body<'tcx>,
+    rvalue: &Rvalue<'tcx>,
+    out: &mut Vec<Place<'tcx>>,
+) {
+    match rvalue {
+        Rvalue::Use(operand)
+        | Rvalue::Repeat(operand, _)
+        | Rvalue::Cast(_, operand, _)
+        | Rvalue::UnaryOp(_, operand) => {
+            if let Some(place) = operand_raw_pointer_deref_place(tcx, body, operand) {
+                out.push(place);
+            }
+        }
+        Rvalue::Ref(_, _, place)
+        | Rvalue::RawPtr(_, place)
+        | Rvalue::Len(place)
+        | Rvalue::CopyForDeref(place) => {
+            if place_has_raw_pointer_deref(tcx, body, *place) {
+                out.push(*place);
+            }
+        }
+        Rvalue::BinaryOp(_, operands) => {
+            if let Some(place) = operand_raw_pointer_deref_place(tcx, body, &operands.0) {
+                out.push(place);
+            }
+            if let Some(place) = operand_raw_pointer_deref_place(tcx, body, &operands.1) {
+                out.push(place);
+            }
+        }
+        Rvalue::Aggregate(_, operands) => {
+            for operand in operands.iter() {
+                if let Some(place) = operand_raw_pointer_deref_place(tcx, body, operand) {
+                    out.push(place);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_raw_pointer_derefs_in_body<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &'tcx Body<'tcx>,
+    depth: usize,
+) -> Vec<RawPointerDerefSite<'tcx>> {
+    let mut result = Vec::new();
+    for (bb, bb_data) in body.basic_blocks.iter_enumerated() {
+        for (statement_index, statement) in bb_data.statements.iter().enumerate() {
+            if let StatementKind::Assign(assign) = &statement.kind {
+                let (place, rvalue) = &**assign;
+                let mut places = Vec::new();
+                if place_has_raw_pointer_deref(tcx, body, *place) {
+                    places.push(*place);
+                }
+                collect_raw_pointer_derefs_in_rvalue(tcx, body, rvalue, &mut places);
+                for place in places {
+                    result.push(RawPointerDerefSite {
+                        callsite_span: statement.source_info.span,
+                        location: Location {
+                            block: bb,
+                            statement_index,
+                        },
+                        place,
+                        depth,
+                    });
+                }
+            }
+        }
+    }
+    result
+}
+
+fn collect_reachable_raw_pointer_derefs<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    root_def_id: DefId,
+    max_call_depth: usize,
+) -> Vec<RawPointerDerefSite<'tcx>> {
+    let mut results = Vec::new();
+    let root_args = ty::GenericArgs::identity_for_item(tcx, root_def_id);
+    let mut queue = VecDeque::from([(root_def_id, root_args, 0usize, None::<Span>)]);
+    let mut visited = HashSet::new();
+
+    while let Some((current_def_id, current_args, depth, root_callsite_span)) = queue.pop_front() {
+        let args_key = current_args
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        if !visited.insert((current_def_id, args_key, depth)) {
+            continue;
+        }
+
+        let Some(body) = optimized_mir_if_available(tcx, current_def_id) else {
+            continue;
+        };
+
+        let mut raw_derefs = collect_raw_pointer_derefs_in_body(tcx, body, depth);
+        if let Some(span) = root_callsite_span {
+            for raw_deref in &mut raw_derefs {
+                raw_deref.callsite_span = span;
+            }
+        }
+        results.extend(raw_derefs);
+
+        if depth >= max_call_depth {
+            continue;
+        }
+
+        let mut unsafe_visitor = UnsafeCallVisitor::new(tcx);
+        unsafe_visitor.visit_body(body);
+        for (callee_def_id, callee_args, callsite_span, _, _) in unsafe_visitor.unsafe_calls {
+            let callee_args =
+                ty::EarlyBinder::bind(callee_args).instantiate(tcx, current_args);
+            if !is_core_or_std_fn(tcx, callee_def_id) && callee_def_id.as_local().is_some() {
+                let next_root_callsite = root_callsite_span.or(Some(callsite_span.source_callsite()));
+                queue.push_back((callee_def_id, callee_args, depth + 1, next_root_callsite));
             }
         }
     }
@@ -1683,6 +1865,57 @@ fn get_doc_line_start_from_source(file_path: &str, signature_line: usize) -> Opt
 
 fn get_fn_info<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> FnInfo {
     get_fn_info_with_template_flag(tcx, def_id, false)
+}
+
+fn raw_pointer_deref_fn_info() -> FnInfo {
+    FnInfo {
+        name: "core::ptr::__raw_ptr_deref__".to_string(),
+        path: "core::ptr".to_string(),
+        line_start: 0,
+        line_end: 0,
+        body_end: 0,
+        require_template: false,
+        is_unsafe: true,
+        trait_name: None,
+        return_ty: None,
+        symbol_match_hint: Some("raw_pointer_deref".to_string()),
+        call_chains: vec![],
+        mut_ref_escape: None,
+        mut_ref_escape_fields: vec![],
+        written_fields: vec![],
+        return_self_fields: vec![],
+    }
+}
+
+fn raw_pointer_deref_suspect<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    caller_parent: Option<StructInfo>,
+    caller: FnInfo,
+    callsite_span: Span,
+    used_fields: Vec<String>,
+    used_params: Vec<usize>,
+    used_globals: Vec<String>,
+    control_fields: Vec<String>,
+    control_params: Vec<usize>,
+    control_globals: Vec<String>,
+    constructors: Vec<FnInfo>,
+    mutators: Vec<FnInfo>,
+) -> Suspect {
+    Suspect {
+        caller_parent,
+        caller,
+        callsite: callsite_info(tcx, callsite_span),
+        callee: raw_pointer_deref_fn_info(),
+        callee_type_args: vec![],
+        unsafe_call_used_fields: used_fields,
+        unsafe_call_used_params: used_params,
+        unsafe_call_used_globals: used_globals,
+        unsafe_call_control_fields: control_fields,
+        unsafe_call_control_params: control_params,
+        unsafe_call_control_globals: control_globals,
+        constructors,
+        mutators,
+    }
 }
 
 fn trait_name_for_assoc_fn<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
@@ -2644,8 +2877,8 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                         continue;
                     }
 
-                    // Check if it's public
-                    if !tcx.visibility(fn_def_id).is_public() {
+                    // Check if it is externally visible or crate-visible in source.
+                    if !fn_is_public_or_source_visible(tcx, fn_def_id) {
                         continue;
                     }
 
@@ -2661,26 +2894,18 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
 
                         let unsafe_calls =
                             collect_reachable_unsafe_calls(tcx, fn_def_id, max_call_depth);
+                        let raw_pointer_derefs =
+                            collect_reachable_raw_pointer_derefs(tcx, fn_def_id, max_call_depth);
 
-                        // skip if no unsafe calls found
+                        // skip if no unsafe calls or raw pointer derefs found
                         // since it cannot be a target
-                        if unsafe_calls.is_empty() {
+                        if unsafe_calls.is_empty() && raw_pointer_derefs.is_empty() {
                             continue;
                         }
 
                         // For each unsafe call, extract used fields
                         for unsafe_call in unsafe_calls {
-                            let callsite_loc = tcx
-                                .sess
-                                .source_map()
-                                .lookup_char_pos(unsafe_call.callsite_span.lo());
-                            let callsite_info = CallsiteInfo {
-                                line: callsite_loc.line,
-                                col: callsite_loc.col.to_usize() + 1,
-                                path: Some(normalize_to_rust_relative(
-                                    &callsite_loc.file.name.prefer_local().to_string(),
-                                )),
-                            };
+                            let callsite_info = callsite_info(tcx, unsafe_call.callsite_span);
 
                             let callee_def_id = unsafe_call.callee_def_id;
                             let callee_path = tcx.def_path_str(callee_def_id);
@@ -2842,6 +3067,105 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
 
                             targets.push(suspect);
                         }
+
+                        for raw_deref in raw_pointer_derefs {
+                            let mut data_visitor =
+                                DataDependencyVisitor::new(tcx, self_local, body);
+                            data_visitor.extract_dependencies_from_place(raw_deref.place);
+                            let used_fields: Vec<String> =
+                                data_visitor.self_fields.iter().cloned().collect();
+                            let used_params: Vec<usize> =
+                                data_visitor.params.iter().cloned().collect();
+                            let used_globals: Vec<String> = data_visitor
+                                .globals
+                                .iter()
+                                .map(|def_id| tcx.def_path_str(*def_id))
+                                .collect();
+
+                            let mut control_visitor = ControlDependencyVisitor::new(
+                                tcx,
+                                body,
+                                raw_deref.location,
+                                self_local,
+                            );
+                            control_visitor.analyze();
+                            let control_fields: Vec<String> = control_visitor
+                                .control_self_fields
+                                .iter()
+                                .cloned()
+                                .collect();
+                            let control_params: Vec<usize> =
+                                control_visitor.control_params.iter().cloned().collect();
+                            let control_globals: Vec<String> = control_visitor
+                                .control_globals
+                                .iter()
+                                .map(|def_id| tcx.def_path_str(*def_id))
+                                .collect();
+
+                            let target_fields: HashSet<String> =
+                                used_fields.iter().cloned().collect();
+                            let mut mutators =
+                                collect_fields_setters(tcx, def_id, target_fields.clone());
+                            mutators.extend(collect_escaped_mut_refs(
+                                tcx,
+                                def_id,
+                                target_fields.clone(),
+                            ));
+                            mutators.extend(collect_escaped_mut_refs_in_aggregates(
+                                tcx,
+                                def_id,
+                                target_fields,
+                                vec![],
+                            ));
+
+                            let (
+                                used_fields,
+                                used_params,
+                                used_globals,
+                                control_fields,
+                                control_params,
+                                control_globals,
+                                constructors,
+                                mutators,
+                            ) = if raw_deref.depth > 0 {
+                                (
+                                    vec![],
+                                    vec![],
+                                    vec![],
+                                    vec![],
+                                    vec![],
+                                    vec![],
+                                    vec![],
+                                    vec![],
+                                )
+                            } else {
+                                (
+                                    used_fields,
+                                    used_params,
+                                    used_globals,
+                                    control_fields,
+                                    control_params,
+                                    control_globals,
+                                    constructors.clone(),
+                                    mutators,
+                                )
+                            };
+
+                            targets.push(raw_pointer_deref_suspect(
+                                tcx,
+                                Some(get_struct_info(tcx, def_id)),
+                                fn_info.clone(),
+                                raw_deref.callsite_span,
+                                used_fields,
+                                used_params,
+                                used_globals,
+                                control_fields,
+                                control_params,
+                                control_globals,
+                                constructors,
+                                mutators,
+                            ));
+                        }
                     }
                 }
             }
@@ -2855,7 +3179,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
             continue;
         }
 
-        if is_fn_unsafe(tcx, def_id) || !tcx.visibility(def_id).is_public() {
+        if is_fn_unsafe(tcx, def_id) || !fn_is_public_or_source_visible(tcx, def_id) {
             continue;
         }
 
@@ -2864,23 +3188,15 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
 
         if def_id.as_local().is_some() {
             let unsafe_calls = collect_reachable_unsafe_calls(tcx, def_id, max_call_depth);
+            let raw_pointer_derefs =
+                collect_reachable_raw_pointer_derefs(tcx, def_id, max_call_depth);
 
-            if unsafe_calls.is_empty() {
+            if unsafe_calls.is_empty() && raw_pointer_derefs.is_empty() {
                 continue;
             }
 
             for unsafe_call in unsafe_calls {
-                let callsite_loc = tcx
-                    .sess
-                    .source_map()
-                    .lookup_char_pos(unsafe_call.callsite_span.lo());
-                let callsite_info = CallsiteInfo {
-                    line: callsite_loc.line,
-                    col: callsite_loc.col.to_usize() + 1,
-                    path: Some(normalize_to_rust_relative(
-                        &callsite_loc.file.name.prefer_local().to_string(),
-                    )),
-                };
+                let callsite_info = callsite_info(tcx, unsafe_call.callsite_span);
 
                 let suspect = Suspect {
                     caller_parent: None,
@@ -2903,6 +3219,68 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                 };
 
                 targets.push(suspect);
+            }
+
+            if let Some(body) = optimized_mir_if_available(tcx, def_id) {
+                let self_local = rustc_middle::mir::Local::from_usize(0);
+                for raw_deref in raw_pointer_derefs {
+                    let mut data_visitor = DataDependencyVisitor::new(tcx, self_local, body);
+                    data_visitor.extract_dependencies_from_place(raw_deref.place);
+                    let used_params: Vec<usize> =
+                        if raw_deref.depth > 0 {
+                            vec![]
+                        } else {
+                            data_visitor.params.iter().cloned().collect()
+                        };
+                    let used_globals: Vec<String> =
+                        if raw_deref.depth > 0 {
+                            vec![]
+                        } else {
+                            data_visitor
+                                .globals
+                                .iter()
+                                .map(|def_id| tcx.def_path_str(*def_id))
+                                .collect()
+                        };
+                    let mut control_visitor = ControlDependencyVisitor::new(
+                        tcx,
+                        body,
+                        raw_deref.location,
+                        self_local,
+                    );
+                    control_visitor.analyze();
+                    let control_params: Vec<usize> =
+                        if raw_deref.depth > 0 {
+                            vec![]
+                        } else {
+                            control_visitor.control_params.iter().cloned().collect()
+                        };
+                    let control_globals: Vec<String> =
+                        if raw_deref.depth > 0 {
+                            vec![]
+                        } else {
+                            control_visitor
+                                .control_globals
+                                .iter()
+                                .map(|def_id| tcx.def_path_str(*def_id))
+                                .collect()
+                        };
+
+                    targets.push(raw_pointer_deref_suspect(
+                        tcx,
+                        None,
+                        fn_info.clone(),
+                        raw_deref.callsite_span,
+                        vec![],
+                        used_params,
+                        used_globals,
+                        vec![],
+                        control_params,
+                        control_globals,
+                        vec![],
+                        vec![],
+                    ));
+                }
             }
         }
     }

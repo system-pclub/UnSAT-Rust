@@ -6,24 +6,77 @@
     },
     {
       "name": "uint",
-      "description": "Unsigned integer value."
+      "description": "Unsigned pointer-sized integer value."
     },
     {
       "name": "int",
-      "description": "Signed integer value."
+      "description": "Signed pointer-sized integer value."
     },
     {
       "name": "string",
       "description": "UTF-8 string literal value."
     },
     {
-      "name": "Pointer",
-      "description": "Rust raw pointer or reference value."
+      "name": "Value",
+      "description": "A typed value of any type.",
+      "fields": [
+        {
+          "name": "address",
+          "type": "uint",
+          "description": "The numeric address of the value."
+        },
+        {
+          "name": "value",
+          "type": "any",
+          "description": "The actual value, which may be a primitive or a structured object."
+        }
+      ]
     },
     {
-      "name": "#Allocation",
+      "name": "Pointer",
+      "description": "Rust raw pointer, reference, or NonNull-like pointer value.",
+      "fields": [
+        {
+          "name": "address",
+          "type": "uint",
+          "description": "The numeric address."
+        },
+        {
+          "name": "allocation",
+          "type": "Allocation",
+          "description": "The allocation/provenance object the pointer is derived from."
+        },
+        {
+          "name": "offset",
+          "type": "uint",
+          "description": "The byte offset from the start of its allocation."
+        },
+        {
+          "name": "is_null",
+          "type": "bool",
+          "description": "Whether the pointer address is zero."
+        }
+      ]
+    },
+    {
+      "name": "Allocation",
       "description": "Abstract allocation object maintained by the verifier.",
       "fields": [
+        {
+          "name": "start",
+          "type": "uint",
+          "description": "The allocation start address."
+        },
+        {
+          "name": "size",
+          "type": "uint",
+          "description": "The allocation size in bytes."
+        },
+        {
+          "name": "end",
+          "type": "uint",
+          "description": "The first address after the allocation."
+        },
         {
           "name": "layout",
           "type": "Layout",
@@ -33,6 +86,32 @@
           "name": "allocator",
           "type": "Allocator",
           "description": "The allocator identity that created this allocation."
+        }
+      ]
+    },
+    {
+      "name": "MemoryRange",
+      "description": "A half-open byte range [start, end) derived from a pointer and a size.",
+      "fields": [
+        {
+          "name": "start",
+          "type": "uint",
+          "description": "The first address in the range."
+        },
+        {
+          "name": "size",
+          "type": "uint",
+          "description": "The range size in bytes."
+        },
+        {
+          "name": "end",
+          "type": "uint",
+          "description": "The first address after the range."
+        },
+        {
+          "name": "allocation",
+          "type": "Allocation",
+          "description": "The allocation containing the range start."
         }
       ]
     },
@@ -55,53 +134,57 @@
     {
       "name": "Allocator",
       "description": "Rust allocator identity.",
-      "fields": []
+      "fields": [
+        {
+          "name": "id",
+          "type": "uint",
+          "description": "Stable verifier-local allocator id."
+        }
+      ]
+    },
+    {
+      "name": "TypeInfo",
+      "description": "Verifier view of a type argument at the target callsite.",
+      "fields": [
+        {
+          "name": "size",
+          "type": "uint",
+          "description": "size_of::<T>() when known, otherwise a symbolic value."
+        },
+        {
+          "name": "align",
+          "type": "uint",
+          "description": "align_of::<T>() when known, otherwise a symbolic value."
+        },
+        {
+          "name": "is_zst",
+          "type": "bool",
+          "description": "Whether the pointee type is zero-sized."
+        }
+      ]
     }
   ],
   "operators": [
     {
-      "name": "get_alloc",
+      "name": "get_arg",
       "input": [
         {
-          "name": "p",
-          "type": "Pointer"
+          "name": "index",
+          "type": "uint"
         }
-      ],
-      "output": {
-        "type": "#Allocation"
-      },
-      "description": "Returns the abstract allocation object that pointer p is derived from."
-    },
-    {
-      "name": "offset_in_alloc",
-      "input": [
-        {
-          "name": "p",
-          "type": "Pointer"
-        }
-      ],
-      "output": {
-        "type": "int"
-      },
-      "description": "Returns the offset of pointer p relative to the beginning of its allocation."
-    },
-    {
-      "name": "get_receiver",
-      "input": [
       ],
       "output": {
         "type": "Value"
       },
-      "description": "Returns the value of the callee's receiver."
+      "description": "Returns the target call argument by index, using the verifier's __klee_argN binding convention."
     },
     {
-      "name": "get_return",
-      "input": [
-      ],
+      "name": "get_result",
+      "input": [],
       "output": {
         "type": "Value"
       },
-      "description": "Returns the target call's return value."
+      "description": "Returns the target call's result. KLEE evaluates this after the callsite's target callee returns."
     },
     {
       "name": "get_field",
@@ -112,7 +195,7 @@
         },
         {
           "name": "field",
-          "type": "FieldName"
+          "type": "string"
         }
       ],
       "output": {
@@ -121,17 +204,34 @@
       "description": "Returns a typed field from an object. Valid fields and return types are defined in types."
     },
     {
-      "name": "get_var",
+      "name": "memory_range",
       "input": [
         {
-          "name": "var_id",
-          "type": "string"
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "size",
+          "type": "uint"
         }
       ],
       "output": {
-        "type": "Pointer"
+        "type": "MemoryRange"
       },
-      "description": "Returns a previously bound source variable by id from klee_ext_bind."
+      "description": "Constructs a half-open byte range [ptr.address, ptr.address + size)."
+    },
+    {
+      "name": "get_type_at_func",
+      "input": [
+        {
+          "name": "index",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "TypeInfo"
+      },
+      "description": "Returns metadata for the indexed type parameter of the target callee."
     },
     {
       "name": "is_power_of_two",
@@ -144,15 +244,87 @@
       "output": {
         "type": "bool"
       },
-      "description": "Returns whether x is a power of two."
+      "description": "Returns whether x is a non-zero power of two."
+    },
+    {
+      "name": "is_aligned",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "align",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether ptr.address is aligned to align."
+    },
+    {
+      "name": "is_valid_for",
+      "input": [
+        {
+          "name": "range",
+          "type": "MemoryRange"
+        },
+        {
+          "name": "access",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether the range is valid for reads, writes, or both. This is an atomic verifier predicate."
+    },
+    {
+      "name": "is_initialized",
+      "input": [
+        {
+          "name": "range",
+          "type": "MemoryRange"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether every byte in the range belongs to an initialized value."
+    },
+    {
+      "name": "is_convertible_to_ref",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Atomic predicate for Rust raw-pointer-to-reference convertibility."
+    },
+    {
+      "name": "not_overlapping",
+      "input": [
+        {
+          "name": "left",
+          "type": "MemoryRange"
+        },
+        {
+          "name": "right",
+          "type": "MemoryRange"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether two half-open byte ranges do not overlap."
     }
   ],
   "constants": [
-    {
-      "name": "Global",
-      "type": "Allocator",
-      "description": "The global Rust allocator."
-    },
     {
       "name": "ISIZE_MAX",
       "type": "int",

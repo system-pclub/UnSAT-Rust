@@ -8,6 +8,9 @@ use core::ffi::{c_char, c_void};
 #[no_mangle]
 pub unsafe extern "C" fn klee_ext_callsite(_site_id: *const c_char) {}
 
+#[no_mangle]
+pub unsafe extern "C" fn klee_ext_bind_arg_u64(_index: u64, _value: u64) {}
+
 /// Dumb stub: leaves the memory unchanged rather than making it symbolic.
 #[no_mangle]
 pub unsafe extern "C" fn klee_make_symbolic(

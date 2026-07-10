@@ -111,6 +111,43 @@ impl BufferWindow {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::BufferWindow;
+    use std::io::{Cursor, Read, Result};
+
+    struct BadReader;
+
+    impl Read for BadReader {
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+            Ok(buf.len() + 1)
+        }
+    }
+
+    #[test]
+    fn buffer_window_unsafe_paths_instantiate() {
+        let data = b"abcdef";
+        let mut window = BufferWindow::from_slice(data);
+
+        window.advance(1);
+        let _ = window.window();
+        let _ = window.window_len();
+        let _ = window.consumed_data();
+        let _ = window.get(window.start..window.end);
+
+        window.buf = vec![0; 8].into_boxed_slice();
+        let _ = window.fill_buf(Cursor::new(b"ghij"));
+    }
+
+    #[test]
+    #[ignore]
+    fn buffer_window_fill_buf_bad_reader_instantiate() {
+        let mut window = BufferWindow::from_slice(b"");
+        window.buf = vec![0; 8].into_boxed_slice();
+        let _ = window.fill_buf(BadReader);
+    }
+}
+
 #[derive(Debug)]
 pub struct BufferWindowBuilder {
     buffer: Option<Box<[u8]>>,

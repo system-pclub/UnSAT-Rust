@@ -22,6 +22,7 @@ use core::ffi::{c_char, c_void};
 
 extern "C" {
     fn klee_ext_callsite(site_id: *const c_char);
+    fn klee_ext_bind_arg_u64(index: u64, value: u64);
 
     /// KLEE special function: mark `[ptr, ptr+size)` as a symbolic value named
     /// `name`.
@@ -34,6 +35,11 @@ pub fn callsite_raw(site_id_nul: &'static [u8]) {
     // `site_id_nul`.  `site_id_nul` is a valid C string by the invariant above.
     let name_ptr = site_id_nul as *const [u8] as *const u8;
     unsafe { klee_ext_callsite(name_ptr as *const c_char) }
+}
+
+#[inline(always)]
+pub fn bind_arg_u64(index: u64, value: u64) {
+    unsafe { klee_ext_bind_arg_u64(index, value) }
 }
 
 #[macro_export]

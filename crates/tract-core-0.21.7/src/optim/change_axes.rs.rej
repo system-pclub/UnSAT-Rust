@@ -1,0 +1,22 @@
+--- core/src/optim/change_axes.rs
++++ core/src/optim/change_axes.rs
+@@ -74,6 +74,7 @@ pub fn change_axes(
+     bounds: &[TVec<OutletId>],
+ ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
+     debug!("  Considering change {:?}", change);
++    model.check_names()?;
+     let mut todo_changes = vec![(change.clone(), None)];
+     let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
+     let bound_outlets = |o: OutletId| -> TVec<OutletId> {
+@@ -216,10 +217,7 @@ pub fn change_axes(
+             interface_change.push((InOut::Out(ix), change.clone()));
+         }
+     }
+-    debug_assert!(
+-        patch.model.nodes.iter().map(|n| &n.name).collect::<std::collections::HashSet<_>>().len()
+-            == patch.model.nodes.len()
+-    );
++    patch.model.check_names()?;
+     debug!("Patch ready for {:?}", change);
+     Ok(Some((patch, interface_change)))
+ }

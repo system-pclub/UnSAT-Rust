@@ -1,0 +1,17 @@
+--- core/src/ops/nn/softmax/mod.rs
++++ core/src/ops/nn/softmax/mod.rs
+@@ -183,6 +187,14 @@ fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: Arra
+     view.mapv_inplace(|x| x / exp_sum);
+ }
+ 
++fn softmax_inner_slice<T: Float + Datum + std::iter::Sum>(slice: &mut [T]) {
++    let max =
++        *slice.iter().max_by(|i, j| i.partial_cmp(j).unwrap_or(std::cmp::Ordering::Less)).unwrap();
++    slice.iter_mut().for_each(|x| *x = (*x - max).exp());
++    let exp_sum_r = slice.iter().copied().sum::<T>().recip();
++    slice.iter_mut().for_each(|x| *x = *x * exp_sum_r);
++}
++
+ 
+ 
+ 

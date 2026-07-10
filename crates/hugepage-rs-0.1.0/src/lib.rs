@@ -70,3 +70,15 @@ pub fn dealloc(p: *mut u8, layout: Layout) {
         HUGEPAGE_ALLOCATOR.dealloc(p, layout) 
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::dealloc;
+    use std::alloc::Layout;
+    use std::ptr;
+
+    #[test]
+    fn dealloc_wrapper_instantiate_allocator_call() {
+        dealloc(ptr::null_mut(), Layout::new::<u8>());
+    }
+}

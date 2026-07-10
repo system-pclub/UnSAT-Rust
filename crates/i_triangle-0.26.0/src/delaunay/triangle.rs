@@ -123,6 +123,28 @@ impl DTriangle {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use i_overlay::i_float::point::IntPoint;
+
+    #[test]
+    fn order_accessors_instantiate_unchecked_paths() {
+        let triangle = DTriangle::abc_bc_ac_ab(
+            0,
+            DVertex::new(0, IntPoint::ZERO),
+            DVertex::new(1, IntPoint::ZERO),
+            DVertex::new(2, IntPoint::ZERO),
+            10,
+            11,
+            12,
+        );
+
+        assert_eq!(triangle.neighbor_by_order(1), 11);
+        assert_eq!(triangle.vertex_by_order(2).index, 2);
+    }
+}
+
 impl Default for DTriangle {
     fn default() -> Self {
         Self::new()

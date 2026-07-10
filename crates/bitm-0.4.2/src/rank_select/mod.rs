@@ -452,6 +452,12 @@ mod tests {
         test_array_with_rank::<RankSelect101111::<CombinedSampling, CombinedSampling>>();
     }
 
+    #[test]
+    fn array_with_rank_simple_instantiates_try_rank() {
+        let (a, _) = ArrayWithRankSimple::build(vec![0b1101, 0b110].into_boxed_slice());
+        assert_eq!(a.try_rank(67), Some(5));
+    }
+
     /*#[test]
     fn array_with_rank_simple() {
         test_array_with_rank::<ArrayWithRankSimple>();

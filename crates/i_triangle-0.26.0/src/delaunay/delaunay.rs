@@ -314,3 +314,22 @@ impl Delaunay {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_triangulation_instantiates_pointer_writes() {
+        let triangle = DTriangle::abc(
+            0,
+            DVertex::new(0, IntPoint::new(0, 0)),
+            DVertex::new(1, IntPoint::new(1, 0)),
+            DVertex::new(2, IntPoint::new(0, 1)),
+        );
+        let triangulation = Delaunay::new(vec![triangle]).to_triangulation(3);
+
+        assert_eq!(triangulation.indices, vec![3, 4, 5]);
+        assert_eq!(triangulation.points.len(), 3);
+    }
+}
