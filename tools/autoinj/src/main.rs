@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use syn::parse_quote;
 use syn::spanned::Spanned;
+use syn::visit::{self, Visit};
 use syn::visit_mut::{self, VisitMut};
 use toml_edit::{value, DocumentMut, Item, Table};
 use walkdir::WalkDir;
@@ -240,12 +241,11 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
                 let raw_pointer_deref = callee_name
                     .as_deref()
                     .is_some_and(|name| name == "core::ptr::__raw_ptr_deref__");
-                let key = (
-                    target.callsite.line,
-                    target.callsite.col,
-                    callee_name.clone(),
-                );
-                seen_callsites.insert(key).then(|| Injection {
+                // A MIR location can be reported once for an inlined unsafe
+                // operation and again for a raw-pointer dereference. Both map
+                // to the same source marker id, which must only be injected
+                // once.
+                seen_callsites.insert(id.clone()).then(|| Injection {
                     id,
                     line: target.callsite.line,
                     col: target.callsite.col,
@@ -274,17 +274,9 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     let source = fs::read_to_string(path)?;
     let mut ast = syn::parse_file(&source)?;
     let mut next_temp_index = 0usize;
-    let macro_ranges = ast
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            syn::Item::Macro(item_macro) => {
-                let span = item_macro.span();
-                Some((span.start().line, span.end().line))
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let mut macro_collector = MacroRangeCollector::default();
+    macro_collector.visit_file(&ast);
+    let macro_ranges = macro_collector.ranges;
     let const_ranges = ast
         .items
         .iter()
@@ -315,7 +307,7 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
                 .any(|(start, end)| injection.line >= *start && injection.line <= *end);
             if in_macro {
                 eprintln!(
-                    "warning: skipping callsite {} at {}:{} because it is inside a macro definition",
+                    "warning: skipping callsite {} at {}:{} because it is inside a macro",
                     injection.id,
                     path.display(),
                     injection.line,
@@ -359,13 +351,28 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     Ok(())
 }
 
+#[derive(Default)]
+struct MacroRangeCollector {
+    ranges: Vec<(usize, usize)>,
+}
+
+impl<'ast> Visit<'ast> for MacroRangeCollector {
+    fn visit_macro(&mut self, node: &'ast syn::Macro) {
+        let span = node.span();
+        self.ranges.push((span.start().line, span.end().line));
+        visit::visit_macro(self, node);
+    }
+}
+
 impl Injection {
     fn with_source_line(&self, source: &str) -> Self {
         let mut injection = self.clone();
         injection.source_line = source
             .lines()
-            .nth(self.line.saturating_sub(1))
-            .map(ToString::to_string);
+            .skip(self.line.saturating_sub(1))
+            .take(32)
+            .map(ToString::to_string)
+            .reduce(|window, line| window + "\n" + &line);
         injection
     }
 }
@@ -540,8 +547,11 @@ impl VisitMut for CallRewriter<'_> {
         }
         match expr {
             syn::Expr::Call(node)
-                if call_expr_matches_location(node.span(), self.injection)
-                    && expr_call_matches_callee(node, self.injection.callee_name.as_deref()) =>
+                if (call_expr_matches_location(node.span(), self.injection)
+                    || call_expr_matches_enclosing_source(node, self.injection))
+                    && (expr_call_matches_callee(node, self.injection.callee_name.as_deref())
+                        || (span_starts_at_location(node.span(), self.injection)
+                            && !source_statement_contains_callee(self.injection))) =>
             {
                 let mut next_temp_index = self.next_temp_index;
                 let (_, lift_stmts) = lift_call_args_only(&mut node.args, &mut next_temp_index);
@@ -557,7 +567,9 @@ impl VisitMut for CallRewriter<'_> {
             }
             syn::Expr::MethodCall(node)
                 if method_call_expr_matches_location(node, self.injection)
-                    && method_call_matches_callee(node, self.injection.callee_name.as_deref()) =>
+                    && (method_call_matches_callee(node, self.injection.callee_name.as_deref())
+                        || (span_starts_at_location(node.span(), self.injection)
+                            && !source_statement_contains_callee(self.injection))) =>
             {
                 let mut next_temp_index = self.next_temp_index;
                 let callee_method = self
@@ -566,8 +578,16 @@ impl VisitMut for CallRewriter<'_> {
                     .as_deref()
                     .and_then(callee_leaf)
                     .unwrap_or("");
-                let mutable_receiver = callee_method.ends_with("_mut");
-                let bind_receiver_in_place = callee_method == "set_len";
+                let source_method = node.method.to_string();
+                let effective_method = if callee_method == source_method {
+                    callee_method
+                } else {
+                    source_method.as_str()
+                };
+                let mutable_receiver = effective_method.ends_with("_mut")
+                    || effective_method.ends_with("_unsafe")
+                    || effective_method == "as_mut_ptr";
+                let bind_receiver_in_place = effective_method == "set_len";
                 let ret_ident =
                     callsite_ret_ident(&self.injection.id, self.injection.callee_name.as_deref());
                 self.rewrite = Some(lift_method_call_parts(
@@ -575,7 +595,7 @@ impl VisitMut for CallRewriter<'_> {
                     &mut next_temp_index,
                     mutable_receiver,
                     bind_receiver_in_place,
-                    callee_method,
+                    effective_method,
                     &ret_ident,
                 ));
                 *expr = parse_quote! { #ret_ident };
@@ -632,6 +652,26 @@ fn source_line_starts_call_expr(injection: &Injection) -> bool {
             .unwrap_or(false)
 }
 
+fn call_expr_matches_enclosing_source(node: &syn::ExprCall, injection: &Injection) -> bool {
+    let start = node.span().start();
+    source_line_starts_call_expr(injection)
+        && start.line >= injection.line
+        && start.line < injection.line.saturating_add(32)
+}
+
+fn source_statement_contains_callee(injection: &Injection) -> bool {
+    let Some(callee) = injection.callee_name.as_deref().and_then(callee_leaf) else {
+        return false;
+    };
+    let Some(source) = injection.source_line.as_deref() else {
+        return false;
+    };
+    let end = source
+        .find([';', '}'])
+        .unwrap_or(source.len());
+    source[..end].contains(callee)
+}
+
 fn expr_call_matches_callee(node: &syn::ExprCall, callee_name: Option<&str>) -> bool {
     let Some(callee_name) = callee_name else {
         return true;
@@ -675,7 +715,10 @@ fn callsite_ret_ident(callsite_id: &str, callee_name: Option<&str>) -> syn::Iden
 
 fn make_return_stmts(call_expr: syn::Expr, ret_ident: &syn::Ident) -> Vec<syn::Stmt> {
     let ret_stmt: syn::Stmt = parse_quote! {
-        let #ret_ident = #call_expr;
+        // The original call result may immediately be mutably borrowed by the
+        // surrounding expression (for example `&mut mem::zeroed()`). Keep the
+        // lifted temporary mutable so injection preserves that valid source.
+        let mut #ret_ident = #call_expr;
     };
     vec![ret_stmt]
 }
@@ -733,13 +776,14 @@ fn lift_method_call_parts(
         // make a valid auto-borrowed method call invalid (for example moving a
         // Box out of &self before calling slice::get_unchecked). Borrow the place
         // so method-call autoderef/autoref keeps the original ownership.
-        let lift_stmt: syn::Stmt = if matches!(original, syn::Expr::Field(_))
+        let receiver_is_place = matches!(original, syn::Expr::Field(_) | syn::Expr::Index(_));
+        let lift_stmt: syn::Stmt = if receiver_is_place
             && is_raw_pointer_value_receiver_method(callee_method)
         {
             parse_quote! { let #ident = #original; }
-        } else if matches!(original, syn::Expr::Field(_)) && mutable_receiver {
+        } else if receiver_is_place && mutable_receiver {
             parse_quote! { let #ident = &mut #original; }
-        } else if matches!(original, syn::Expr::Field(_)) {
+        } else if receiver_is_place {
             parse_quote! { let #ident = &#original; }
         } else {
             parse_quote! { let #ident = #original; }
@@ -822,6 +866,13 @@ fn span_matches(span: Span, injection: &Injection) -> bool {
     contains(start, end, injection.line, injection.col)
         || contains(start, end, injection.line, injection.col.saturating_sub(1))
         || contains(start, end, injection.line, injection.col.saturating_add(1))
+}
+
+fn span_starts_at_location(span: Span, injection: &Injection) -> bool {
+    let start = span.start();
+    let start_col = start.column + 1;
+    start.line == injection.line
+        && start_col.abs_diff(injection.col) <= 1
 }
 
 fn contains(start: LineColumn, end: LineColumn, line: usize, col: usize) -> bool {
@@ -1061,7 +1112,10 @@ fn make_value() -> u8 { 0 }
         assert!(compact.contains("let__klee_arg1=make_value();"));
         assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
-        assert!(compact.contains("core::ptr::write(__klee_arg0,__klee_arg1)"));
+        assert!(
+            compact.contains("core::ptr::write(__klee_arg0,__klee_arg1"),
+            "unexpected injection:\n{injected}"
+        );
         Ok(())
     }
 
@@ -1142,9 +1196,9 @@ fn make_value() -> u8 { 0 }
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
         assert!(compact
-            .contains("let__klee_ret_src_lib_rs_3_15_read_unaligned=ptr::read_unaligned(data);"));
+            .contains("letmut__klee_ret_src_lib_rs_3_15_read_unaligned=ptr::read_unaligned(data);"));
         assert!(compact
-            .contains("let__klee_ret_src_lib_rs_4_15_read_unaligned=ptr::read_unaligned(data);"));
+            .contains("letmut__klee_ret_src_lib_rs_4_15_read_unaligned=ptr::read_unaligned(data);"));
         assert!(!compact.contains(
             "let__klee_ret_src_lib_rs_4_15_read_unaligned=__klee_ret_src_lib_rs_3_15_read_unaligned;"
         ));
@@ -1231,7 +1285,10 @@ fn consume(_: &mut u8) {}
 
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
-        assert!(compact.contains("let__klee_arg0=storage.as_mut_ptr();"));
+        assert!(
+            compact.contains("let__klee_arg0=storage.as_mut_ptr();"),
+            "unexpected injection:\n{injected}"
+        );
         assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
         assert!(compact.contains("=__klee_arg0.add(cursor);"));
@@ -1277,6 +1334,52 @@ impl Window {
         assert!(compact.contains("let__klee_arg0=self.end;"));
         assert!(!compact.contains("let__klee_arg0=&self.end;"));
         assert!(compact.contains("=__klee_arg0.add(r);"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_mutably_borrows_unsafe_field_receiver() -> Result<()> {
+        let tmp = TempDir::new("unsafe-field-receiver")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"struct Stack;
+
+impl Stack {
+    unsafe fn pop_unsafe(&mut self) -> u8 { 0 }
+}
+
+struct Interpreter { stack: Stack }
+
+fn pop(interpreter: &mut Interpreter) -> u8 {
+    unsafe { interpreter.stack.pop_unsafe() }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-10-14".to_string(),
+                line: 10,
+                col: 14,
+                // mirscan can report an inlined unsafe callee while the source
+                // location names the enclosing unsafe method.
+                callee_name: Some(
+                    "std::option::Option::<T>::unwrap_unchecked".to_string(),
+                ),
+                raw_pointer_deref: false,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(
+            compact.contains("let__klee_arg0=&mutinterpreter.stack;"),
+            "unexpected injection:\n{injected}"
+        );
+        assert!(compact.contains("=__klee_arg0.pop_unsafe();"));
         Ok(())
     }
 

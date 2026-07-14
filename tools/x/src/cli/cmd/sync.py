@@ -599,12 +599,19 @@ def _transform_report(
 
     targets: list[dict[str, object]] = []
     human_placeholders: dict[str, dict[str, dict[str, object]]] = {}
+    seen_callsite_ids: set[str] = set()
     for target_index, raw_target in enumerate(targets_input, start=1):
         if not isinstance(raw_target, dict):
             continue
 
         target = _normalize_target_schema(raw_target)
         callsite_id = _callsite_id_from_target(target, target_index)
+        # MIR can report several unsafe operations inlined at one source
+        # location. They are one injectable source callsite and must not
+        # produce duplicate marker ids or duplicate autoinj work.
+        if callsite_id in seen_callsite_ids:
+            continue
+        seen_callsite_ids.add(callsite_id)
         callsite = target.get("callsite")
         if isinstance(callsite, dict):
             callsite_with_id = dict(callsite)

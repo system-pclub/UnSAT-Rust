@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     libz3-dev \
     libgoogle-perftools-dev \
     libsqlite3-dev \
+    bubblewrap \
 # Needed for falcon-capstone-0.5.2
     libcapstone-dev \ 
 # Needed for stainless_ffmpeg-0.5.4

@@ -13,6 +13,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::vec;
+
+// The report analysis has extensive, per-MIR diagnostic output. Keep it
+// available for investigations without flooding normal mirscan/verify runs.
+fn verbose_logging_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("MIRSCAN_VERBOSE").is_some())
+}
+
+macro_rules! println {
+    ($($arg:tt)*) => {
+        if verbose_logging_enabled() {
+            ::std::println!($($arg)*);
+        }
+    };
+}
+
+macro_rules! eprintln {
+    ($($arg:tt)*) => {
+        if verbose_logging_enabled() {
+            ::std::eprintln!($($arg)*);
+        }
+    };
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FnInfo {
     /// <mod>::<type>::<fn>
