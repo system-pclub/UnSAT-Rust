@@ -1,4 +1,6 @@
 use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::{self as hir, intravisit};
+use rustc_hir::intravisit::Visitor as HirVisitor;
 use rustc_abi::FieldIdx;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
@@ -922,6 +924,63 @@ fn place_has_raw_pointer_deref<'tcx>(
     false
 }
 
+struct ExplicitRawPointerDerefVisitor<'tcx> {
+    typeck: &'tcx ty::TypeckResults<'tcx>,
+    user_unsafe_depth: usize,
+    spans: Vec<Span>,
+}
+
+impl<'tcx> HirVisitor<'tcx> for ExplicitRawPointerDerefVisitor<'tcx> {
+    fn visit_block(&mut self, block: &'tcx hir::Block<'tcx>) {
+        let is_user_unsafe = matches!(
+            block.rules,
+            hir::BlockCheckMode::UnsafeBlock(hir::UnsafeSource::UserProvided)
+        );
+        if is_user_unsafe {
+            self.user_unsafe_depth += 1;
+        }
+        intravisit::walk_block(self, block);
+        if is_user_unsafe {
+            self.user_unsafe_depth -= 1;
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if self.user_unsafe_depth > 0 {
+            if let hir::ExprKind::Unary(hir::UnOp::Deref, pointer) = expr.kind {
+                if self.typeck.expr_ty(pointer).is_raw_ptr() {
+                    self.spans.push(expr.span.source_callsite());
+                }
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Return only raw-pointer dereferences written explicitly as
+/// `unsafe { *raw_pointer }` in this function's source HIR. Optimized MIR can
+/// contain additional raw loads from inlining and compiler/library lowering;
+/// those are deliberately not source callsites.
+fn explicit_raw_pointer_deref_spans<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+) -> Vec<Span> {
+    let Some(local_def_id) = def_id.as_local() else {
+        return Vec::new();
+    };
+    if tcx.hir_maybe_body_owned_by(local_def_id).is_none() {
+        return Vec::new();
+    }
+
+    let mut visitor = ExplicitRawPointerDerefVisitor {
+        typeck: tcx.typeck(local_def_id),
+        user_unsafe_depth: 0,
+        spans: Vec::new(),
+    };
+    visitor.visit_body(tcx.hir_body_owned_by(local_def_id));
+    visitor.spans
+}
+
 fn operand_raw_pointer_deref_place<'tcx>(
     tcx: TyCtxt<'tcx>,
     body: &'tcx Body<'tcx>,
@@ -1009,52 +1068,25 @@ fn collect_raw_pointer_derefs_in_body<'tcx>(
 fn collect_reachable_raw_pointer_derefs<'tcx>(
     tcx: TyCtxt<'tcx>,
     root_def_id: DefId,
-    max_call_depth: usize,
+    _max_call_depth: usize,
 ) -> Vec<RawPointerDerefSite<'tcx>> {
-    let mut results = Vec::new();
-    let root_args = ty::GenericArgs::identity_for_item(tcx, root_def_id);
-    let mut queue = VecDeque::from([(root_def_id, root_args, 0usize, None::<Span>)]);
-    let mut visited = HashSet::new();
-
-    while let Some((current_def_id, current_args, depth, root_callsite_span)) = queue.pop_front() {
-        let args_key = current_args
-            .iter()
-            .map(|arg| arg.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        if !visited.insert((current_def_id, args_key, depth)) {
-            continue;
-        }
-
-        let Some(body) = optimized_mir_if_available(tcx, current_def_id) else {
-            continue;
-        };
-
-        let mut raw_derefs = collect_raw_pointer_derefs_in_body(tcx, body, depth);
-        if let Some(span) = root_callsite_span {
-            for raw_deref in &mut raw_derefs {
-                raw_deref.callsite_span = span;
-            }
-        }
-        results.extend(raw_derefs);
-
-        if depth >= max_call_depth {
-            continue;
-        }
-
-        let mut unsafe_visitor = UnsafeCallVisitor::new(tcx);
-        unsafe_visitor.visit_body(body);
-        for (callee_def_id, callee_args, callsite_span, _, _) in unsafe_visitor.unsafe_calls {
-            let callee_args =
-                ty::EarlyBinder::bind(callee_args).instantiate(tcx, current_args);
-            if !is_core_or_std_fn(tcx, callee_def_id) && callee_def_id.as_local().is_some() {
-                let next_root_callsite = root_callsite_span.or(Some(callsite_span.source_callsite()));
-                queue.push_back((callee_def_id, callee_args, depth + 1, next_root_callsite));
-            }
-        }
+    let Some(body) = optimized_mir_if_available(tcx, root_def_id) else {
+        return Vec::new();
+    };
+    let explicit_spans = explicit_raw_pointer_deref_spans(tcx, root_def_id);
+    if explicit_spans.is_empty() {
+        return Vec::new();
     }
 
-    results
+    collect_raw_pointer_derefs_in_body(tcx, body, 0)
+        .into_iter()
+        .filter(|raw_deref| {
+            let mir_span = raw_deref.callsite_span.source_callsite();
+            explicit_spans
+                .iter()
+                .any(|source_span| source_span.overlaps(mir_span))
+        })
+        .collect()
 }
 
 impl<'tcx> Visitor<'tcx> for UnsafeCallVisitor<'tcx> {
@@ -3493,6 +3525,31 @@ mod tests {
     }
 
     #[test]
+    fn raw_pointer_callsites_require_explicit_source_deref() {
+        let src = r#"
+            pub fn explicit(pointer: *const u8) -> u8 {
+                unsafe { *pointer }
+            }
+
+            pub fn safe_slice_operations(bytes: &mut [u8]) -> u8 {
+                bytes.copy_within(0..1, 1);
+                bytes[0]
+            }
+        "#;
+
+        let report = run_audit(src);
+        let raw_targets = report
+            .targets
+            .iter()
+            .filter(|target| target.callee.name == "core::ptr::__raw_ptr_deref__")
+            .collect::<Vec<_>>();
+
+        assert_eq!(raw_targets.len(), 1, "unexpected raw targets: {raw_targets:#?}");
+        assert!(raw_targets[0].caller.name.contains("explicit"));
+        assert_eq!(raw_targets[0].callsite.line, 3);
+    }
+
+    #[test]
     fn test_audit_return_mut_ref() {
         // Test a struct with a method that returns &mut to a field, which should be flagged as a mutator
         let src = r#"
@@ -3608,9 +3665,13 @@ mod tests {
             );
         }
 
-        assert_eq!(report.targets.len(), 2, "suspect should be 3");
+        assert_eq!(report.targets.len(), 3, "read should include its explicit raw deref");
 
-        let suspect = &report.targets[1];
+        let suspect = report
+            .targets
+            .iter()
+            .find(|target| target.callee.name == "core::ptr::__raw_ptr_deref__")
+            .expect("explicit raw deref target");
         // Verify we found set_data as a mutator since it modifies 'data' field
         assert!(
             suspect.mutators.iter().any(|m| m.name.contains("set_data")),
@@ -3665,9 +3726,13 @@ mod tests {
         }
 
         // Should find suspect in access() method
-        assert_eq!(report.targets.len(), 2, "Should find 2 suspects");
+        assert_eq!(report.targets.len(), 3, "access should include its explicit raw deref");
 
-        let suspect = &report.targets[1];
+        let suspect = report
+            .targets
+            .iter()
+            .find(|target| target.callee.name == "core::ptr::__raw_ptr_deref__")
+            .expect("explicit raw deref target");
         // Verify we found buffer_mut as a mutator since it returns &mut to buffer field
         assert!(
             suspect

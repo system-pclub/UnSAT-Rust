@@ -458,9 +458,15 @@ impl VisitMut for Injector<'_> {
             if self.injection.raw_pointer_deref
                 && stmt_matches_raw_deref_location(&block.stmts[index], self.injection)
             {
-                block.stmts.insert(index, callsite_stmt(&self.injection.id));
-                self.inserted = true;
-                return;
+                let mut rewriter = RawPointerDerefRewriter {
+                    injection: self.injection,
+                    inserted: false,
+                };
+                rewriter.visit_stmt_mut(&mut block.stmts[index]);
+                if rewriter.inserted {
+                    self.inserted = true;
+                    return;
+                }
             }
 
             let rewrite = rewrite_stmt_matching_call_args(
@@ -517,6 +523,35 @@ fn callsite_stmt(id: &str) -> syn::Stmt {
 
 fn stmt_matches_raw_deref_location(stmt: &syn::Stmt, injection: &Injection) -> bool {
     span_matches(stmt.span(), injection)
+}
+
+struct RawPointerDerefRewriter<'a> {
+    injection: &'a Injection,
+    inserted: bool,
+}
+
+impl VisitMut for RawPointerDerefRewriter<'_> {
+    fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
+        if self.inserted {
+            return;
+        }
+
+        if let syn::Expr::Unary(unary) = expr {
+            if matches!(unary.op, syn::UnOp::Deref(_))
+                && span_matches(unary.span(), self.injection)
+            {
+                let pointer = (*unary.expr).clone();
+                let literal = syn::LitStr::new(&self.injection.id, Span::call_site());
+                unary.expr = Box::new(parse_quote! {
+                    klee_ext_bind::raw_pointer_deref!(#literal, #pointer)
+                });
+                self.inserted = true;
+                return;
+            }
+        }
+
+        visit_mut::visit_expr_mut(self, expr);
+    }
 }
 
 fn rewrite_stmt_matching_call_args(
@@ -1334,6 +1369,45 @@ impl Window {
         assert!(compact.contains("let__klee_arg0=self.end;"));
         assert!(!compact.contains("let__klee_arg0=&self.end;"));
         assert!(compact.contains("=__klee_arg0.add(r);"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_wraps_exact_raw_pointer_operand() -> Result<()> {
+        let tmp = TempDir::new("raw-pointer-deref")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub struct Interpreter {
+    pub instruction_pointer: *const u8,
+}
+
+impl Interpreter {
+    pub fn current_opcode(&self) -> u8 {
+        unsafe { *self.instruction_pointer }
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-7-18".to_string(),
+                line: 7,
+                col: 18,
+                callee_name: Some("core::ptr::__raw_ptr_deref__".to_string()),
+                raw_pointer_deref: true,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains(
+            "*klee_ext_bind::raw_pointer_deref!(\"src-lib-rs-7-18\",self.instruction_pointer)"
+        ));
+        assert!(!compact.contains("klee_ext_bind::callsite!"));
         Ok(())
     }
 

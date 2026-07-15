@@ -22,6 +22,7 @@ use core::ffi::{c_char, c_void};
 
 extern "C" {
     fn klee_ext_callsite(site_id: *const c_char);
+    fn klee_ext_raw_pointer_deref(site_id: *const c_char, pointer: *const c_void);
     fn klee_ext_bind_arg_u64(index: u64, value: u64);
 
     /// KLEE special function: mark `[ptr, ptr+size)` as a symbolic value named
@@ -37,6 +38,18 @@ pub fn callsite_raw(site_id_nul: &'static [u8]) {
     unsafe { klee_ext_callsite(name_ptr as *const c_char) }
 }
 
+/// Mark the exact pointer operand of a source-level raw-pointer dereference.
+///
+/// Unlike [`callsite_raw`], this does not rely on finding the next LLVM load:
+/// the pointer value is evaluated first and passed directly to KLEE.
+#[inline(always)]
+pub fn raw_pointer_deref_raw(site_id_nul: &'static [u8], pointer: *const c_void) {
+    let name_ptr = site_id_nul as *const [u8] as *const u8;
+    // Safety: the KLEE special function only observes the pointer expression;
+    // it does not dereference either argument.
+    unsafe { klee_ext_raw_pointer_deref(name_ptr as *const c_char, pointer) }
+}
+
 #[inline(always)]
 pub fn bind_arg_u64(index: u64, value: u64) {
     unsafe { klee_ext_bind_arg_u64(index, value) }
@@ -47,6 +60,20 @@ macro_rules! callsite {
     ($site_id:literal) => {
         $crate::callsite_raw(concat!($site_id, "\0").as_bytes())
     };
+}
+
+/// Evaluate a raw pointer once, report that exact value to KLEE, and return it
+/// unchanged for the surrounding `*pointer` source expression.
+#[macro_export]
+macro_rules! raw_pointer_deref {
+    ($site_id:literal, $pointer:expr) => {{
+        let __klee_raw_pointer = $pointer;
+        $crate::raw_pointer_deref_raw(
+            concat!($site_id, "\0").as_bytes(),
+            __klee_raw_pointer as *const ::core::ffi::c_void,
+        );
+        __klee_raw_pointer
+    }};
 }
 
 // ── klee_make_symbolic ───────────────────────────────────────────────────────

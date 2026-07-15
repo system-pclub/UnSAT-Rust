@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from llm.gen_example import build_testcase_prompt, read_rust_files_as_context
+from llm.gen_example import build_testcase_prompt, build_witness_guided_rust_context
 from llm.openai_llm import OpenAILLM
 
 
@@ -169,6 +169,7 @@ def generate_safe_testcase(
     klee_witness: str | None = None,
     retry_feedback: str | None = None,
     attempt: int = 1,
+    context_mode: str = "slice",
 ) -> str:
     callsite = target.get("callsite") if isinstance(target, dict) else None
     callsite_id = callsite.get("id") if isinstance(callsite, dict) else None
@@ -216,8 +217,14 @@ pub extern "C" fn {injection.function}() {{
 """
 
     testcase_chains = select_testcase_control_chains(chain)
+    rust_context = build_witness_guided_rust_context(
+        crate_dir,
+        target=target,
+        control_chains=testcase_chains,
+        mode=context_mode,
+    )
     prompt = build_testcase_prompt(
-        rust_context=read_rust_files_as_context(crate_dir),
+        rust_context=rust_context.text,
         call_chain=json.dumps(testcase_chains, indent=2),
         callsite=json.dumps(target, indent=2),
         safety_requirement=str(rule.get("rule", "")),
@@ -227,6 +234,17 @@ pub extern "C" fn {injection.function}() {{
         retry_feedback=retry_feedback,
     )
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+    (artifacts_dir / f"testcase-context-attempt-{attempt}.txt").write_text(
+        rust_context.text + "\n", encoding="utf-8"
+    )
+    (artifacts_dir / f"testcase-context-stats-attempt-{attempt}.json").write_text(
+        json.dumps(rust_context.stats, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (artifacts_dir / "testcase-context-stats.json").write_text(
+        json.dumps(rust_context.stats, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     (artifacts_dir / "testcase-prompt.txt").write_text(prompt + "\n", encoding="utf-8")
     (artifacts_dir / f"testcase-prompt-attempt-{attempt}.txt").write_text(
         prompt + "\n", encoding="utf-8"

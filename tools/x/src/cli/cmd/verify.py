@@ -754,6 +754,8 @@ def _stage_paths_from_pipeline(pipeline: dict[str, Any]) -> dict[str, Any]:
         "source_line": pipeline.get("source_line"),
         "prompt": pipeline.get("testcase_prompt"),
         "response": pipeline.get("testcase_response"),
+        "context_stats": pipeline.get("testcase_context_stats"),
+        "context_policy": pipeline.get("llm_context"),
         "build_log": pipeline.get("build_log"),
         "attempts": attempts,
     }
@@ -901,6 +903,11 @@ def _run_llm_testcase_pipeline(
     )
     if args.skip_llm_testcase:
         logger.info("[verify] --skip-llm-testcase set; stopping before LLM testcase generation")
+        pipeline_state = {
+            "schema_version": 1,
+            "callsite": callsite_id,
+            "rule": rule_id,
+        }
         pipeline_state["status"] = "skipped"
         pipeline_state["reason"] = "--skip-llm-testcase set"
         (artifact_dir / "testcase-pipeline.json").write_text(
@@ -942,6 +949,7 @@ def _run_llm_testcase_pipeline(
         "klee_compose_dir": str(compose_output),
         "klee_compose_log": str(artifact_dir / "klee-compose.log"),
         "skip_rerun": bool(args.skip_rerun),
+        "llm_context": str(getattr(args, "llm_context", "slice")),
         "llm_testcase_attempts": [],
     }
     klee_witness = _build_klee_witness_text(
@@ -956,12 +964,26 @@ def _run_llm_testcase_pipeline(
     pipeline_state["klee_witness"] = str(artifact_dir / "klee-witness.txt")
 
     max_attempts = max(1, int(getattr(args, "llm_testcase_retries", 3)))
+    requested_context_mode = str(getattr(args, "llm_context", "slice"))
     retry_feedback: str | None = None
     rerun_ll: Path | None = None
     build_log_path: Path | None = None
     last_error: str | None = None
+    rerun_result: dict[str, Any] | None = None
     for attempt in range(1, max_attempts + 1):
-        attempt_state: dict[str, Any] = {"attempt": attempt}
+        # A failed sliced attempt gets one conservative full-context attempt at
+        # the end. Successful cases therefore pay only for the semantic slice.
+        context_mode = (
+            "full"
+            if requested_context_mode == "slice"
+            and retry_feedback is not None
+            and attempt == max_attempts
+            else requested_context_mode
+        )
+        attempt_state: dict[str, Any] = {
+            "attempt": attempt,
+            "context_mode": context_mode,
+        }
         build_log_path = artifact_dir / f"testcase-build-attempt-{attempt}.log"
         try:
             testcase = generate_safe_testcase(
@@ -975,6 +997,7 @@ def _run_llm_testcase_pipeline(
                 klee_witness=klee_witness,
                 retry_feedback=retry_feedback,
                 attempt=attempt,
+                context_mode=context_mode,
             )
             ensure_cargo_feature(injected_dir, injection.feature)
             injection = inject_testcase_at_callsite(
@@ -1037,8 +1060,51 @@ def _run_llm_testcase_pipeline(
                     "llvm_ir": str(rerun_ll),
                 }
             )
+
+            rerun_log_path = artifact_dir / f"klee-rerun-attempt-{attempt}.log"
+            rerun_result = _run_klee_compose_rerun(
+                ll_path=rerun_ll,
+                callsite_id=callsite_id,
+                ast_json=ast_json,
+                klee_bin=args.klee_bin,
+                output_dir=artifact_dir / "klee-rerun",
+                entry_function=injection.function,
+                log_path=rerun_log_path,
+                timeout_sec=args.timeout_sec,
+                report_json=report_json,
+                raw_ptr_deref=(rule_id == RAW_PTR_DEREF_RULE),
+            )
+            shutil.copyfile(rerun_log_path, artifact_dir / "klee-rerun.log")
+            attempt_state["rerun"] = rerun_result
+            attempt_state["rerun_log"] = str(rerun_log_path)
+            attempt_state["status"] = (
+                "reproduced"
+                if rerun_result.get("full_rerun_passed")
+                else "rerun-miss"
+            )
             pipeline_state["llm_testcase_attempts"].append(attempt_state)
-            break
+            if rerun_result.get("full_rerun_passed"):
+                break
+
+            retry_feedback = _read_failure_feedback(
+                rerun_log_path,
+                RuntimeError(
+                    "The testcase compiled but did not reproduce the target "
+                    f"violation (rerun status: {rerun_result.get('status')})."
+                ),
+            )
+            last_error = retry_feedback
+            attempt_state["feedback"] = retry_feedback
+            (artifact_dir / "testcase-pipeline.json").write_text(
+                json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
+            )
+            if attempt < max_attempts:
+                logger.warning(
+                    "[verify:testcase] attempt %d/%d compiled but did not reproduce; "
+                    "retrying with KLEE feedback",
+                    attempt,
+                    max_attempts,
+                )
         except Exception as exc:
             retry_feedback = _read_failure_feedback(build_log_path, exc)
             last_error = retry_feedback
@@ -1077,6 +1143,9 @@ def _run_llm_testcase_pipeline(
             "build_log": str(artifact_dir / "testcase-build.log"),
             "testcase_prompt": str(artifact_dir / "testcase-prompt.txt"),
             "testcase_response": str(artifact_dir / "testcase-response.txt"),
+            "testcase_context_stats": str(
+                artifact_dir / "testcase-context-stats.json"
+            ),
             "klee_rerun_dir": str(artifact_dir / "klee-rerun"),
             "klee_rerun_log": str(artifact_dir / "klee-rerun.log"),
         }
@@ -1084,18 +1153,10 @@ def _run_llm_testcase_pipeline(
     (artifact_dir / "testcase-pipeline.json").write_text(
         json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
     )
-    rerun_result = _run_klee_compose_rerun(
-        ll_path=rerun_ll,
-        callsite_id=callsite_id,
-        ast_json=ast_json,
-        klee_bin=args.klee_bin,
-        output_dir=artifact_dir / "klee-rerun",
-        entry_function=injection.function,
-        log_path=artifact_dir / "klee-rerun.log",
-        timeout_sec=args.timeout_sec,
-        report_json=report_json,
-        raw_ptr_deref=(rule_id == RAW_PTR_DEREF_RULE),
-    )
+    if rerun_result is None:
+        raise RuntimeError(
+            "testcase build succeeded but compose-rerun did not produce a result"
+        )
     pipeline_state["rerun_returncode"] = rerun_result.get("returncode")
     pipeline_state["rerun"] = rerun_result
     (artifact_dir / "testcase-pipeline.json").write_text(

@@ -228,6 +228,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Model used for concrete testcase generation (default: gpt-5.4-mini).",
     )
     verify_parser.add_argument(
+        "--llm-context",
+        choices=("slice", "full"),
+        default="slice",
+        help=(
+            "Rust source context policy for testcase generation: witness-guided "
+            "semantic slice (default) or historical full-crate context."
+        ),
+    )
+    verify_parser.add_argument(
         "--llm-testcase-retries",
         type=int,
         default=3,
