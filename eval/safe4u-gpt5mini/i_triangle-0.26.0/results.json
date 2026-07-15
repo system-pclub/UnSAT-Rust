@@ -1,0 +1,260 @@
+[
+  {
+    "sample_label": "i_triangle-0.26.0/src/delaunay/triangle.rs/neighbor_by_order/10",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\n*self.neighbors.get_unchecked(index: order)\n```\n\n2. **Contract-related expressions**\n- `self.neighbors`\n- `order`\n- `self.neighbors.get_unchecked(order)`\n\n3. **Step-by-step analysis**\n- `self.neighbors` is an array: `[usize; 3]`.\n- The function receives `order: usize` from the caller, and it is untrusted/arbitrary.\n- `get_unchecked(order)` is called directly with `order` and there is no bounds check like `order < 3`.\n- Therefore, if `order` is `3` or larger, the call violates the contract of `get_unchecked`.\n- Since the function does not ensure `index` is in bounds before calling the unsafe function, the contract is not satisfied.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe {\n    *self.neighbors.get_unchecked(index: order)\n}\n```\n\n2. **Expressions highly related to the contract**\n- `order`\n- `self.neighbors`\n- `self.neighbors.get_unchecked(index: order)`\n\n3. **Step-by-step analysis**\n- The unsafe call is `get_unchecked(order)` on `self.neighbors`.\n- `self.neighbors` is an array of length 3: `[usize; 3]`.\n- The contract requires `index` to be in bounds for the slice/array.\n- Here, `order` is an unconstrained `usize` parameter, so it may be any value.\n- There is no check ensuring `order < 3` before calling `get_unchecked`.\n- Therefore, the contract is **not guaranteed** to hold.\n- Since an out-of-bounds `order` would make the call undefined behavior, the function does not satisfy the contract.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "i_triangle-0.26.0/src/delaunay/triangle.rs/vertex_by_order/16",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\n*self.vertices.get_unchecked(index: order)\n```\n\n## 2. Expressions highly related to the contract\n\n- `self.vertices`: the slice/array being indexed\n- `order`: the index passed to `get_unchecked`\n\n## 3. Step-by-step data flow analysis\n\n- `vertex_by_order` takes `order: usize` as a parameter.\n- `usize` is untrusted input here; it may be any value.\n- The function directly passes `order` to `self.vertices.get_unchecked(...)`.\n- There is no bounds check such as `order < self.vertices.len()`.\n- `self.vertices` is an array of length 3, so valid indices are only `0..3`.\n- Therefore, if `order >= 3`, the unsafe contract of `get_unchecked` is violated.\n- Since the function does not enforce the required bound, it does not satisfy the contract.\n\n## 4. Final determination\n\nNo"
+          },
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe {\n    *self.vertices.get_unchecked(index: order)\n}\n```\n\n2. **Expressions highly related to the contract**\n- `order`\n- `self.vertices`\n- `self.vertices.get_unchecked(index: order)`\n\n3. **Step-by-step analysis**\n- The unsafe function `get_unchecked` requires its `index` to be in bounds of the slice/collection.\n- Here, the index used is `order`, which is a function parameter of type `usize`.\n- There is no bounds check before calling `get_unchecked`.\n- There is also no prior validation that `order < self.vertices.len()`.\n- `self.vertices` is an array of length 3, so valid indices are only `0`, `1`, and `2`.\n- Since `order` is arbitrary and untrusted, it may be `3` or larger, which would violate the contract and cause undefined behavior.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "i_triangle-0.26.0/src/delaunay/triangle.rs/update_opposite/117",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the slice/tree structure.",
+          "fn_name": "get_unchecked_mut",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe {\n    *self.neighbors.get_unchecked_mut(index) = new_neighbor;\n}\n```\n\n2. **Expressions highly related to the contract**\n- `self.neighbors`\n- `index`\n- `self.opposite(old_neighbor)`\n\n3. **Step-by-step analysis**\n- The unsafe call is `get_unchecked_mut(index)` on `self.neighbors`, which is a fixed-size array of length 3.\n- Therefore, the contract requires `index` to be in bounds for this array, i.e. `index < 3`.\n- `index` is computed as `self.opposite(old_neighbor)`.\n- There is no information in the provided function showing that `self.opposite(old_neighbor)` is guaranteed to return one of `0`, `1`, or `2`.\n- Since `old_neighbor` is an arbitrary `usize` parameter, and the function performs no explicit bounds check on the returned `index`, we cannot prove that the index is always valid.\n- Therefore, the contract for `get_unchecked_mut` is not guaranteed by this function.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe call is:\n\n```rust\n*self.neighbors.get_unchecked_mut(index) = new_neighbor;\n```\n\n## 2. Expressions highly related to the contract\nThe contract for `get_unchecked_mut` requires:\n\n- `index` must be in bounds for the slice/tree structure.\n\nThe relevant expression is:\n\n```rust\nlet index: usize = self.opposite(old_neighbor);\n```\n\nbecause this computed `index` is passed directly into `get_unchecked_mut`.\n\n## 3. Step-by-step data flow analysis\n1. `old_neighbor` is a function parameter of type `usize`, so it is untrusted and may be any value.\n2. The function computes:\n   ```rust\n   let index: usize = self.opposite(old_neighbor);\n   ```\n3. There is no visible bounds check on `index` before calling:\n   ```rust\n   self.neighbors.get_unchecked_mut(index)\n   ```\n4. The safety of `get_unchecked_mut` depends on `index` being within bounds of `self.neighbors`.\n5. From the provided code alone, there is no evidence that `self.opposite(old_neighbor)` always returns a valid in-bounds index.\n6. Therefore, the contract is not guaranteed to be satisfied.\n\n## 4. Final determination\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "i_triangle-0.26.0/src/delaunay/delaunay.rs/to_triangulation/13",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are here:\n\n```rust\nunsafe {\n    *i_pnt.add(count: j) = a.index + shifted;\n    *i_pnt.add(count: j + 1) = b.index + shifted;\n    *i_pnt.add(count: j + 2) = c.index + shifted;\n}\n```\n\nand later:\n\n```rust\nunsafe {\n    *p_pnt.add(count: a.index) = a.point;\n    *p_pnt.add(count: b.index) = b.point;\n    *p_pnt.add(count: c.index) = c.point;\n}\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nFor the contract:\n\n> The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.\n\nthe relevant expressions are:\n\n- `j`, `j + 1`, `j + 2`\n- `a.index`, `b.index`, `c.index`\n- `self.triangles.len()`\n- `max_index + 1`\n- `points.as_mut_ptr()` and `indices.as_mut_ptr()` as the base pointers\n\n---\n\n## 3. Step-by-step dataflow analysis\n\n### First set of `add` calls on `indices`\n\n- `indices` is allocated as:\n  ```rust\n  vec![NIL_INDEX; 3 * self.triangles.len()]\n  ```\n- So `i_pnt` points to a buffer with exactly `3 * self.triangles.len()` elements.\n- The loop variable `j` starts at `0` and increases by `3` per triangle.\n- For each triangle, the code writes to:\n  - `j`\n  - `j + 1`\n  - `j + 2`\n\nSince `indices` is sized to `3 * self.triangles.len()`, these indices are intended to stay within bounds as long as arithmetic does not overflow. However, the contract we are checking is specifically about the byte offset fitting in `isize`.\n\nFor `*mut usize`, the byte offset is:\n\n- `count * size_of::<usize>()`\n\nIf `self.triangles.len()` is extremely large, then `3 * self.triangles.len()` or later `j + 2` could exceed what can be represented safely in bytes within `isize`. There is no explicit check that the computed pointer offset fits in `isize`.\n\nSo this part does **not** establish the contract.\n\n---\n\n### Second set of `add` calls on `points`\n\n- `points` is allocated as:\n  ```rust\n  vec![IntPoint::ZERO; max_index + 1]\n  ```\n- Then `p_pnt` is used with:\n  ```rust\n  *p_pnt.add(count: a.index) = a.point;\n  *p_pnt.add(count: b.index) = b.point;\n  *p_pnt.add(count: c.index) = c.point;\n  ```\n\nHere the offset count is based directly on vertex indices from triangles. There is no proof in this function that:\n\n- `a.index`, `b.index`, and `c.index` are all within `0..=max_index`, or\n- that `max_index + 1` is small enough that `count * size_of::<IntPoint>()` fits in `isize`.\n\nEven though `max_index` is computed as the maximum of all seen indices, the contract is stronger: it requires that the byte offset computation not overflow `isize`. A very large `max_index` could still violate this.\n\nThus this part also does **not** establish the contract.\n\n---\n\n## 4. Final determination\n\nThe function does not guarantee that the pointer offsets passed to `add` fit in `isize` without overflow.\n\n**Answer: No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe {\n    *i_pnt.add(count: j) = a.index + shifted;\n    *i_pnt.add(count: j + 1) = b.index + shifted;\n    *i_pnt.add(count: j + 2) = c.index + shifted;\n}\n...\nunsafe {\n    *p_pnt.add(count: a.index) = a.point;\n    *p_pnt.add(count: b.index) = b.point;\n    *p_pnt.add(count: c.index) = c.point;\n}\n```\n\n2. **Expressions highly related to the contract**\n- `j`, `j + 1`, `j + 2`\n- `a.index`, `b.index`, `c.index`\n- `indices.as_mut_ptr()`, `points.as_mut_ptr()`\n- `add(count: ...)` where the offset byte size is `count * size_of::<T>()`\n\n3. **Step-by-step data flow and contract analysis**\n\n- `add` requires that `count * size_of::<T>()` fits in `isize` without overflowing.\n- For `i_pnt.add(j)`, `j` starts at 0 and increases by 3 for each triangle. The vector `indices` is allocated with length `3 * self.triangles.len()`, so if this allocation succeeds and `j` stays within the allocated range, the pointer arithmetic is likely intended to remain in bounds.\n- However, the unsafe contract in question is not just about staying within allocation bounds; it explicitly requires that the computed byte offset fits in `isize`.\n- There is no check that `3 * self.triangles.len()` fits in `isize` bytes when multiplied by `size_of::<usize>()`. On a 64-bit platform, `usize` is 8 bytes, so if the triangle count is large enough, `j * 8` may overflow `isize`.\n- Similarly, for `p_pnt.add(a.index)`, `a.index`, `b.index`, and `c.index` come from triangle data and are not validated here. They may be arbitrarily large, and therefore the byte offset `index * size_of::<IntPoint>()` may exceed `isize::MAX`.\n- Since the parameters and triangle indices are untrusted and there is no explicit bound checking before the pointer additions, the contract is not guaranteed.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+          "fn_name": "add",
+          "type": "Allocated"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nunsafe {\n    *i_pnt.add(count: j) = a.index + shifted;\n    *i_pnt.add(count: j + 1) = b.index + shifted;\n    *i_pnt.add(count: j + 2) = c.index + shifted;\n}\n...\nunsafe {\n    *p_pnt.add(count: a.index) = a.point;\n    *p_pnt.add(count: b.index) = b.point;\n    *p_pnt.add(count: c.index) = c.point;\n}\n```\n\n2. **Expressions highly related to the contract**\n- `i_pnt: *mut usize = indices.as_mut_ptr();`\n- `p_pnt: *mut IntPoint = points.as_mut_ptr();`\n- `j`, `a.index`, `b.index`, `c.index`\n- `self.triangles.len()` and `max_index + 1` (because they determine allocation size)\n\n3. **Step-by-step contract analysis**\n- The contract for `add` says: **if the computed offset is non-zero, `self` must be derived from a pointer to an allocated object**.\n- Both `i_pnt` and `p_pnt` come from `Vec::as_mut_ptr()`, which returns a pointer derived from a heap-allocated vector buffer.\n- Therefore, the base pointers used with `add` are pointers derived from allocated objects.\n- The offsets used in `add` are:\n  - `j`, `j + 1`, `j + 2`, which are `usize` offsets into `indices`\n  - `a.index`, `b.index`, `c.index`, which index into `points`\n- Even if these offsets are non-zero, the base pointers are still derived from allocated objects, so this specific contract is satisfied.\n- The function may still have other possible issues in general if indices are out of bounds, but that is **not** the contract being checked here.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are:\n\n```rust\n*i_pnt.add(count: j) = a.index + shifted;\n*i_pnt.add(count: j + 1) = b.index + shifted;\n*i_pnt.add(count: j + 2) = c.index + shifted;\n```\n\nand:\n\n```rust\n*p_pnt.add(count: a.index) = a.point;\n*p_pnt.add(count: b.index) = b.point;\n*p_pnt.add(count: c.index) = c.point;\n```\n\n## 2. Expressions highly related to the contract\n\nFor the contract:\n\n> \"If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\"\n\nRelevant expressions are:\n- `i_pnt: *mut usize = indices.as_mut_ptr();`\n- `p_pnt: *mut IntPoint = points.as_mut_ptr();`\n- `j`, `a.index`, `b.index`, `c.index`\n\n## 3. Step-by-step data flow analysis\n\n- `indices` is created by:\n  ```rust\n  let mut indices: Vec<usize> = vec![NIL_INDEX; 3 * self.triangles.len()];\n  ```\n  So `indices.as_mut_ptr()` points into an allocated `Vec`, meaning `i_pnt` is derived from an allocated object.\n\n- Similarly, `points` is created by:\n  ```rust\n  let mut points: Vec<IntPoint> = vec![IntPoint::ZERO; max_index + 1];\n  ```\n  So `points.as_mut_ptr()` points into an allocated `Vec`, meaning `p_pnt` is derived from an allocated object.\n\n- The offsets used in `add` are:\n  - `j`, `j + 1`, `j + 2`\n  - `a.index`, `b.index`, `c.index`\n\n- These offsets may be zero or non-zero. When non-zero, the base pointers `i_pnt` and `p_pnt` still come from allocated vectors, satisfying the contract.\n\n- There is no case here where `add` is called on a pointer that is not derived from an allocated object.\n\n## 4. Final determination\n\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.",
+          "fn_name": "add",
+          "type": "Dereferencable"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe {\n    *i_pnt.add(count: j) = a.index + shifted;\n    *i_pnt.add(count: j + 1) = b.index + shifted;\n    *i_pnt.add(count: j + 2) = c.index + shifted;\n}\n...\nunsafe {\n    *p_pnt.add(count: a.index) = a.point;\n    *p_pnt.add(count: b.index) = b.point;\n    *p_pnt.add(count: c.index) = c.point;\n}\n```\n\n2. **Expressions highly related to the contract**\n- `i_pnt = indices.as_mut_ptr()`\n- `p_pnt = points.as_mut_ptr()`\n- `j`\n- `a.index`, `b.index`, `c.index`\n- `indices = vec![NIL_INDEX; 3 * self.triangles.len()]`\n- `points = vec![IntPoint::ZERO; max_index + 1]`\n\n3. **Step-by-step analysis**\n- `add` requires that if the offset is non-zero, the entire memory range between the starting pointer and the resulting pointer lies within the same allocated object.\n- For `i_pnt.add(j)`, `j` starts at 0 and increases by 3 each triangle. Since `indices` is allocated with exactly `3 * self.triangles.len()` elements, the writes at offsets `j`, `j+1`, and `j+2` are within the vector bounds as long as the loop iterates over exactly `self.triangles.len()` triangles, which it does.\n- Therefore, the first set of `add` calls satisfies the contract.\n- For `p_pnt.add(a.index)`, `p_pnt.add(b.index)`, and `p_pnt.add(c.index)`, the vector `points` is allocated with length `max_index + 1`, where `max_index` is computed as the maximum of all triangle vertex indices.\n- Since `max_index` is the maximum observed index, each of `a.index`, `b.index`, and `c.index` is `<= max_index`, so every offset used is within the allocation.\n- If the offset is non-zero, the path between the base pointer and the target element remains within the same vector allocation, so the contract is also satisfied there.\n- No pointer arithmetic here attempts to go outside the allocated objects.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are here:\n\n```rust\nunsafe {\n    *i_pnt.add(count: j) = a.index + shifted;\n    *i_pnt.add(count: j + 1) = b.index + shifted;\n    *i_pnt.add(count: j + 2) = c.index + shifted;\n}\n```\n\nand here:\n\n```rust\nunsafe {\n    *p_pnt.add(count: a.index) = a.point;\n    *p_pnt.add(count: b.index) = b.point;\n    *p_pnt.add(count: c.index) = c.point;\n}\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nFor the contract:\n\n> If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.\n\nthe key expressions are:\n\n- `i_pnt = indices.as_mut_ptr()`\n- `p_pnt = points.as_mut_ptr()`\n- `j`\n- `a.index`, `b.index`, `c.index`\n- allocations:\n  - `indices: vec![NIL_INDEX; 3 * self.triangles.len()]`\n  - `points: vec![IntPoint::ZERO; max_index + 1]`\n\n---\n\n## 3. Step-by-step data-flow analysis\n\n### First `add` usage: writing into `indices`\n\n- `indices` is allocated with length `3 * self.triangles.len()`.\n- `i_pnt` points to the first element of that allocation.\n- The loop variable `j` starts at `0` and increases by `3` per triangle.\n- For each triangle, three writes are done at offsets:\n  - `j`\n  - `j + 1`\n  - `j + 2`\n\nSince the vector length is exactly `3 * number_of_triangles`, the maximum used offset is the last triangle\u2019s `j + 2`, which stays within the allocated object, assuming the loop and arithmetic stay within normal bounds. So for `i_pnt.add(...)`, the offsets are within the allocation.\n\n### Second `add` usage: writing into `points`\n\n- `max_index` tracks the maximum vertex index seen in the triangles.\n- `points` is allocated with length `max_index + 1`.\n- `p_pnt` points to the first element of that allocation.\n- The writes use offsets `a.index`, `b.index`, and `c.index`.\n\nBecause `max_index` was computed as the maximum of all these indices, each of `a.index`, `b.index`, and `c.index` is `<= max_index`. Therefore, every computed pointer offset lies within the allocation of `points`.\n\n### Contract check\n\nThe contract requires that for non-zero offsets, the entire range between the base pointer and result pointer remains within the same allocated object.\n\nHere:\n- both `indices` and `points` are allocated as contiguous vectors,\n- the offsets used are bounded by the vector lengths,\n- the resulting pointers stay within the same allocated vector object.\n\nSo the contract for `add` is satisfied.\n\n---\n\n## 4. Final determination\n\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are:\n\n```rust\n*i_pnt.add(count: j) = a.index + shifted;\n*i_pnt.add(count: j + 1) = b.index + shifted;\n*i_pnt.add(count: j + 2) = c.index + shifted;\n```\n\nand:\n\n```rust\n*p_pnt.add(count: a.index) = a.point;\n*p_pnt.add(count: b.index) = b.point;\n*p_pnt.add(count: c.index) = c.point;\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nThe contract says:\n\n> If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.\n\nRelevant expressions:\n- `j`, `j + 1`, `j + 2`\n- `a.index`, `b.index`, `c.index`\n- `i_pnt.add(...)`\n- `p_pnt.add(...)`\n- allocation sizes:\n  - `vec![NIL_INDEX; 3 * self.triangles.len()]`\n  - `vec![IntPoint::ZERO; max_index + 1]`\n\n---\n\n## 3. Step-by-step data flow analysis\n\n### For `i_pnt.add(...)`\n- `i_pnt` points to the start of the `indices` vector.\n- `indices` is allocated with length `3 * self.triangles.len()`, and the loop writes exactly 3 entries per triangle.\n- `j` starts at `0` and increases by `3` each iteration, so the offsets `j`, `j + 1`, and `j + 2` stay within the intended allocation range **assuming** the vector length is sufficient.\n- However, the contract being checked is specifically about **address-space wraparound**, not general bounds.\n- Since `j` and `j + k` are plain `usize` arithmetic, if `self.triangles.len()` were extremely large, `3 * self.triangles.len()` or `j + 2` could in principle overflow/wrap in `usize` arithmetic before becoming an offset.\n- But in this code, `indices` allocation itself would already fail or be impossible before such an enormous size is practically usable. Still, the code does not explicitly prevent overflow/wraparound in the offset computation.\n\n### For `p_pnt.add(...)`\n- `p_pnt` points to the start of `points`.\n- `points` is allocated with length `max_index + 1`.\n- Each `a.index`, `b.index`, `c.index` is used directly as an offset.\n- There is no explicit guarantee in this function that these indices are small enough to avoid `usize` wraparound in pointer arithmetic.\n- The function relies on the geometry data being well-formed, but that is not enforced here.\n- Therefore, from the function body alone, the contract is not proven satisfied.\n\n### Contract conclusion\nThe unsafe `add` contract requires that the computed offset not rely on wrapping around the address space. This function does not establish that guarantee for the pointer additions. The offsets come from unchecked `usize` values derived from triangle indices and counters, with no explicit guard against extreme values or arithmetic wraparound.\n\n---\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\nThe unsafe `add` calls are here:\n```rust\n*i_pnt.add(count: j) = a.index + shifted;\n*i_pnt.add(count: j + 1) = b.index + shifted;\n*i_pnt.add(count: j + 2) = c.index + shifted;\n```\nand:\n```rust\n*p_pnt.add(count: a.index) = a.point;\n*p_pnt.add(count: b.index) = b.point;\n*p_pnt.add(count: c.index) = c.point;\n```\n\n## 2. Expressions related to the contract\nRelevant expressions:\n- `i_pnt`, `p_pnt`: raw pointers from `Vec::as_mut_ptr()`\n- `j`, `j + 1`, `j + 2`\n- `a.index`, `b.index`, `c.index`\n- `shifted` only affects stored values, not the pointer offset\n\n## 3. Step-by-step analysis\nThe contract for `add` is:\n\n> If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.\n\nWe need to see whether the offsets used in `add` are guaranteed not to wrap.\n\n### For `i_pnt.add(count: j)`, `j + 1`, `j + 2`\n- `i_pnt` points to the start of `indices`, a heap allocation.\n- `j` is incremented by 3 each triangle, starting from 0.\n- The code allocates `indices` with length `3 * self.triangles.len()`, so logically these offsets are intended to stay within bounds.\n- However, there is no explicit proof that `j + 2` cannot overflow `usize` if `self.triangles.len()` is extremely large.\n- Still, to violate the specific contract, the pointer arithmetic would need to wrap around the address space. Since `j` is a small monotonic index into a vector sized proportionally to triangle count, this does not suggest address-space wrapping in normal execution.\n\n### For `p_pnt.add(count: a.index)`, `b.index`, `c.index`\n- `points` is allocated with length `max_index + 1`.\n- Each `a.index`, `b.index`, `c.index` comes from triangles and is used as an index into `points`.\n- The intent is that these indices are within the allocated range.\n- Again, there is no explicit arithmetic on the pointer address itself besides adding a `usize` offset.\n- Nothing in the code indicates an address-space wraparound scenario.\n\n### Important consideration\nThis contract is about address-space wrapping, not about bounds safety. Even if some indices were too large for the vector, that would be a separate out-of-bounds issue, but not necessarily a wraparound of the pointer range.\n\nGiven the code structure, the offsets are derived from vector indices and allocation sizes, and there is no evidence that the pointer arithmetic relies on wrapping around the address space.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "i_triangle-0.26.0/src/delaunay/delaunay.rs/build/56",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nlet mut triangle: DTriangle = *unsafe { self.triangles.get_unchecked(index: i) };\n...\nlet neighbor: DTriangle = *unsafe { self.triangles.get_unchecked(neighbor_index) };\n...\ntriangle = *unsafe { self.triangles.get_unchecked(triangle.index) };\nlet neighbor: &DTriangle = unsafe { self.triangles.get_unchecked(neighbor_index) };\n...\nlet is_visited: bool = unsafe { *visit_marks.get_unchecked(visit_index) };\n```\n\n2. **Expressions highly related to the contract**\n- `i`\n- `neighbor_index`\n- `triangle.index`\n- `visit_index`\n- `count = self.triangles.len()`\n- `visit_marks.len() = count`\n- `origin.push(0)`\n- `buffer.push(...)`\n- `while j < origin.len()`\n- `while visit_index < count`\n\n3. **Step-by-step analysis**\n- The unsafe contract for `get_unchecked` requires the index to be within bounds.\n- For `visit_marks.get_unchecked(visit_index)`, the code checks `visit_index < count` before entering the inner loop, and `visit_marks` has length `count`, so this access is bounded.\n- For `self.triangles.get_unchecked(i)`, the loop uses `i = origin[j]`, but there is no explicit guarantee here that every value inserted into `origin` is `< self.triangles.len()`.\n  - Initially `origin` contains only `0`, which is safe if `count > 0`, but the function does not check that before `origin.push(0)`.\n  - Later, values are pushed into `buffer` from `triangle.na()/nb()/nc()` and `neighbor.na()/nb()/nc()` if they are not nil, but the code does not prove those values are always valid triangle indices.\n  - Since `triangle.index` and neighbor indices come from data and swap logic, there is no local proof that every `get_unchecked` index is in bounds.\n- The access `self.triangles.get_unchecked(neighbor_index)` is also unguarded except for `neighbor_index.is_nil()`. Nil is filtered out, but non-nil still may be out of range.\n- The access `self.triangles.get_unchecked(triangle.index)` similarly depends on `triangle.index`, which is not proven in bounds by this function.\n- Therefore, the function does not establish the required in-bounds guarantee for all unsafe `get_unchecked` calls.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe callee call site**\n```rust\nlet mut triangle: DTriangle = *unsafe { self.triangles.get_unchecked(index: i) };\n...\nlet neighbor: DTriangle = *unsafe { self.triangles.get_unchecked(neighbor_index) };\n...\ntriangle = *unsafe { self.triangles.get_unchecked(triangle.index) };\nlet neighbor: &DTriangle = unsafe { self.triangles.get_unchecked(neighbor_index) };\n...\nlet is_visited: bool = unsafe { *visit_marks.get_unchecked(visit_index) };\n```\n\n2. **Expressions related to the contract**\n- `i`\n- `neighbor_index`\n- `triangle.index`\n- `visit_index`\n- `count = self.triangles.len()`\n- `origin`, `buffer`, and their values coming from triangle neighbor indices\n\n3. **Step-by-step analysis**\n- The contract for `get_unchecked` is that the `index` must be within bounds.\n- For `visit_marks.get_unchecked(visit_index)`, `visit_index` is compared with `count` in:\n  ```rust\n  if buffer.is_empty() && visit_index < count {\n      visit_index += 1;\n      while visit_index < count {\n          let is_visited: bool = unsafe { *visit_marks.get_unchecked(visit_index) };\n  ```\n  So this access is guarded by `visit_index < count`, which is safe.\n- For `self.triangles.get_unchecked(i)`, `i` comes from `origin[j]`.\n  - `origin` is initialized with `0`.\n  - Later, new values are pushed from triangle neighbor indices and from the scan over unvisited indices.\n  - The scan only pushes `visit_index` when `visit_index < count`, so that source is in bounds.\n  - However, values pushed from `triangle.neighbor_by_order(k)`, `triangle.na()`, `triangle.nb()`, `triangle.nc()`, `neighbor.na()`, `neighbor.nb()`, and `neighbor.nc()` are not proven by this function to be within `0..count`.\n  - Those values are used later as indices into `self.triangles` through `get_unchecked`.\n- The function relies on `DTriangle` methods and `self.swap(...)` to maintain valid indices, but from the provided code alone there is no explicit bounds check ensuring every neighbor-derived index is less than `self.triangles.len()`.\n- Since the contract requires that every `index` passed to `get_unchecked` be in bounds, and at least some indices (`neighbor_index`, `triangle.index`) are derived from untrusted/internal state without local validation, the contract is not guaranteed by this function.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`index` must be in bounds for the slice/tree structure.",
+          "fn_name": "get_unchecked_mut",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nunsafe {\n    *visit_marks.get_unchecked_mut(index: i) = true;\n}\n```\n\n2. **Relevant expressions**\n- `let count: usize = self.triangles.len();`\n- `let mut visit_marks: Vec<bool> = vec![false; count];`\n- `let mut j: usize = 0;`\n- `let i: usize = origin[j];`\n- `unsafe { *visit_marks.get_unchecked_mut(index: i) = true; }`\n\n3. **Step-by-step analysis**\n- `visit_marks` is created with length `count`, so valid indices are `0..count`.\n- The unsafe access uses `i`, which comes from `origin[j]`.\n- `origin` is initialized with `origin.push(0)`, so the first accessed index is `0`, which is in bounds if `count > 0`.\n- However, the code later pushes values into `origin` from `buffer`, and `buffer` receives triangle neighbor indices such as `tna`, `tnb`, `tnc`, `nna`, `nnb`, `nnc`.\n- These indices are only checked against `is_not_nil()` and against equality with another triangle index, but there is **no explicit bounds check** ensuring they are less than `count`.\n- Therefore, `origin` may contain an out-of-bounds value, which would later be used as `i` in `visit_marks.get_unchecked_mut(i)`.\n- Since the function accepts arbitrary internal triangle indices and does not guarantee they are within `0..count`, the contract is not proven to hold.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nunsafe {\n    *visit_marks.get_unchecked_mut(index: i) = true;\n}\n```\n\n2. **Expressions related to the contract**\n- `i`\n- `origin[j]` used to produce `i`\n- `origin`, `j`, and `origin.len()`\n- `count = self.triangles.len()`\n- `visit_marks: Vec<bool> = vec![false; count]`\n\n3. **Step-by-step analysis**\n- `visit_marks` is created with length `count`, so valid indices are `0..count`.\n- The unsafe call uses index `i`.\n- `i` comes from `let i: usize = origin[j];`.\n- `origin` is initialized with `origin.push(0);`, so at the beginning `i = 0`, which is in bounds if `count > 0`.\n- The loop condition `while j < origin.len()` ensures `origin[j]` itself is in bounds for the `origin` vector.\n- However, there is **no explicit check** that `i < count` before using `visit_marks.get_unchecked_mut(i)`.\n- The only initial value inserted into `origin` is `0`, but later values are pushed from triangle neighbor indices and other triangle indices (`tna`, `tnb`, `tnc`, `nna`, `nnb`, `nnc`) without any visible guarantee here that they are all `< count`.\n- Since these values are treated as arbitrary from the perspective of this function, `i` can potentially be out of bounds for `visit_marks`.\n- Therefore, the contract of `get_unchecked_mut` is not guaranteed to be satisfied.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "i_triangle-0.26.0/src/monotone/mslice_buffer.rs/new/37",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the slice/tree structure.",
+          "fn_name": "get_unchecked_mut",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe calls are:\n\n```rust\n*vertex_marks.get_unchecked_mut(index: slice.a) = true;\n*vertex_marks.get_unchecked_mut(index: slice.b) = true;\n*edges.get_unchecked_mut(index: i) = Edge { id, edge: NIL_INDEX, triangle: NIL_INDEX };\n```\n\n## 2. Expressions highly related to the contract\n\nThe contract for `get_unchecked_mut` is:\n\n- `index` must be in bounds for the slice/tree structure.\n\nSo the relevant expressions are:\n- `slice.a`\n- `slice.b`\n- `i`\n- `vertex_marks.len() == vertex_count`\n- `edges.len() == slices.len()`\n\n## 3. Step-by-step data flow analysis\n\n### For `edges.get_unchecked_mut(index: i)`\n- `edges` is created as `vec![Edge::EMPTY; slices.len()]`, so its length is exactly `slices.len()`.\n- The loop uses `for (i, slice) in slices.iter().enumerate()`.\n- `enumerate()` guarantees `i` ranges from `0` to `slices.len() - 1`.\n- Therefore `i` is always in bounds for `edges`.\n\nSo this unsafe access satisfies the contract.\n\n### For `vertex_marks.get_unchecked_mut(index: slice.a)`\n- `vertex_marks` is created as `vec![false; vertex_count]`, so its length is exactly `vertex_count`.\n- However, `slice.a` comes from the input `slices: &[MSlice]`, which is fully untrusted and arbitrary.\n- There is no check that `slice.a < vertex_count`.\n- Therefore `slice.a` may be out of bounds.\n\nSo this unsafe access does **not** satisfy the contract.\n\n### For `vertex_marks.get_unchecked_mut(index: slice.b)`\n- Same reasoning as above.\n- `slice.b` is untrusted and not validated against `vertex_count`.\n- Therefore it may also be out of bounds.\n\nSo this unsafe access does **not** satisfy the contract.\n\n## 4. Final determination\n\nThe function does **not** ensure that `slice.a` and `slice.b` are within bounds of `vertex_marks` before using `get_unchecked_mut`.\n\n**Answer: No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\n*vertex_marks.get_unchecked_mut(index: slice.a) = true;\n*vertex_marks.get_unchecked_mut(index: slice.b) = true;\n\n*edges.get_unchecked_mut(index: i) = Edge { id, edge: NIL_INDEX, triangle: NIL_INDEX };\n```\n\n2. **Expressions related to the contract**\n- `slice.a`\n- `slice.b`\n- `i`\n- `vertex_marks` has length `vertex_count`\n- `edges` has length `slices.len()`\n\n3. **Step-by-step analysis**\n- `get_unchecked_mut` requires the index to be in bounds.\n- For `edges.get_unchecked_mut(index: i)`:\n  - `i` comes from `slices.iter().enumerate()`.\n  - Therefore `i` ranges from `0` to `slices.len() - 1`.\n  - Since `edges` was created with `vec![Edge::EMPTY; slices.len()]`, `i` is always in bounds.\n  - So this call satisfies the contract.\n\n- For `vertex_marks.get_unchecked_mut(index: slice.a)` and `vertex_marks.get_unchecked_mut(index: slice.b)`:\n  - `vertex_marks` has length `vertex_count`.\n  - `slice.a` and `slice.b` come from input `slices`, which are untrusted.\n  - The function does not check that `slice.a < vertex_count` or `slice.b < vertex_count`.\n  - Therefore these indices may be out of bounds.\n  - So the contract is not guaranteed to hold.\n\n4. **Final determination**\nNo"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "i_triangle-0.26.0/src/monotone/mslice_buffer.rs/add_connections/60",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nlet vertices: [DVertex; 3] = triangles.get_unchecked(index: i).vertices;\n```\n\n2. **Expressions highly related to the contract**\n- `triangles`\n- `n = triangles.len()`\n- loop range: `for i: usize in 0..n`\n- `i` passed to `triangles.get_unchecked(index: i)`\n\n3. **Step-by-step data flow analysis**\n- `triangles` is a slice, so its valid indices are `0..triangles.len()`.\n- The function computes `n` as `triangles.len()`.\n- The loop iterates `i` over `0..n`.\n- Therefore, for every iteration, `i < n == triangles.len()`.\n- So the index used in `triangles.get_unchecked(index: i)` is guaranteed to be in bounds.\n- The contract of `get_unchecked` is satisfied at this call site.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nlet vertices: [DVertex; 3] = triangles.get_unchecked(index: i).vertices;\n```\n\n2. **Expressions highly related to the contract**\n- `triangles`\n- `i`\n- `n = triangles.len()`\n- loop: `for i: usize in 0..n`\n\n3. **Step-by-step analysis**\n- The unsafe call is `triangles.get_unchecked(i)`.\n- The contract requires `index` (`i`) to be in bounds for `triangles`.\n- `n` is computed as `triangles.len()`.\n- The loop iterates `i` over `0..n`.\n- For Rust slices, every `i` produced by `0..triangles.len()` satisfies `i < triangles.len()`.\n- Therefore `i` is always a valid in-bounds index when passed to `get_unchecked`.\n- No other use of `get_unchecked` here is relevant to this specific contract.\n\n4. **Final determination**\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`index` must be in bounds for the slice/tree structure.",
+          "fn_name": "get_unchecked_mut",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nlet triangle: &mut DTriangle = triangles.get_unchecked_mut(index: i);\n...\nlet neighbor: &mut DTriangle = triangles.get_unchecked_mut(index: edge.triangle);\n```\n\n2. **Expressions related to the contract**\n- `i`, coming from `for i in 0..n`\n- `edge.triangle`, coming from previously stored edge metadata\n- `n = triangles.len()`\n\n3. **Step-by-step analysis**\n- The first `get_unchecked_mut(i)` is used with `i` from `0..n`, so `i < triangles.len()` always holds. This access is in bounds.\n- The second `get_unchecked_mut(edge.triangle)` depends on `edge.triangle`, which is not validated at the point of use.\n- Although `edge.triangle` is only assigned from `i` in the branch:\n  ```rust\n  if edge.triangle.is_nil() {\n      edge.triangle = i;\n      ...\n  } else {\n      let neighbor = triangles.get_unchecked_mut(edge.triangle);\n  }\n  ```\n  there is no guarantee from the shown code that every non-nil `edge.triangle` value is a valid index into `triangles`.\n- Since `edge.triangle` comes from `self.edges[edge_index]`, its value may be arbitrary relative to the current `triangles` slice length, and the function does not bounds-check it before calling `get_unchecked_mut`.\n\n4. **Final determination**\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `get_unchecked_mut` is called here:\n\n```rust\nlet triangle: &mut DTriangle = triangles.get_unchecked_mut(index: i);\n...\nlet neighbor: &mut DTriangle = triangles.get_unchecked_mut(index: edge.triangle);\n```\n\n## 2. Expressions related to the contract\n\nThe contract says the `index` must be in bounds for the slice.\n\nRelevant expressions:\n- `i`\n- `edge.triangle`\n- `n = triangles.len()`\n- loop range `for i in 0..n`\n\n## 3. Step-by-step analysis\n\n- `triangles` is a mutable slice, so valid indices are `0..triangles.len()`.\n- `n` is set to `triangles.len()`.\n- The outer loop iterates `i` over `0..n`, so `i` is always in bounds.\n- Therefore, the call:\n  ```rust\n  triangles.get_unchecked_mut(index: i)\n  ```\n  satisfies the contract.\n\n- For the second call:\n  ```rust\n  triangles.get_unchecked_mut(index: edge.triangle)\n  ```\n  `edge.triangle` comes from `self.edges[edge_index]`.\n- There is no guarantee in this function that `edge.triangle < triangles.len()`.\n- `edge.triangle` may hold any `usize` value depending on prior state of `self.edges`, so it is untrusted here.\n- Thus the function does not establish the required bounds condition for this index.\n\nSince the function contains an unsafe `get_unchecked_mut` call whose index is not proven in bounds, the contract is not fully satisfied.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      }
+    ]
+  }
+]

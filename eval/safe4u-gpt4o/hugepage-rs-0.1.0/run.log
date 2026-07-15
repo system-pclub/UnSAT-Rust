@@ -1,0 +1,62 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/hugepage-rs-0.1.0
+  model: gpt-4o-2024-05-13
+  prompt: Safe4U
+  output: ../../eval/safe4u-gpt4o/hugepage-rs-0.1.0
+  evaluation jobs: 4
+
+▸ Extract Candidates
+↻ Scanning Rust files: ███████░░░░░░░░░░░░░░░ 1/3 (33%) 0 candidates | src/allocator.rs
+↻ Scanning Rust files: ███████████████░░░░░░░ 2/3 (67%) 1 candidates | src/boxed.rs
+↻ Scanning Rust files: ██████████████████████ 3/3 (100%) 3 candidates | src/lib.rs
+✓ Detected 3 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "hugepage-rs-0.1.0"
+✓ Context ready.
+• Context samples: 3
+  src/boxed.rs
+    ● new:15 | unsafe callees: alloc | context refs: 2
+      - alloc: unsafe fn alloc(&self, layout: Layout) -> *mut u8
+  src/lib.rs
+    ● alloc:53 | unsafe callees: alloc | context refs: 1
+      - alloc: unsafe fn alloc(&self, layout: Layout) -> *mut u8
+    ● dealloc:68 | unsafe callees: dealloc | context refs: 1
+      - dealloc: unsafe fn dealloc(&self, p: *mut u8, layout: Layout)
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: ███████░░░░░░░░░░░░░░░ 1/3 (33%) 0 constraints | hugepage-rs-0.1.0/src/boxed.rs/new/14
+↻ Decomposing samples: ███████████████░░░░░░░ 2/3 (67%) 0 constraints | hugepage-rs-0.1.0/src/lib.rs/alloc/52
+↻ Decomposing samples: ██████████████████████ 3/3 (100%) 0 constraints | hugepage-rs-0.1.0/src/lib.rs/dealloc/67
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 3
+• Resolved unsafe callees: 3
+  src/boxed.rs
+    ● new:15 (0 constraints) | unsafe: alloc
+      - no safety constraints found
+  src/lib.rs
+    ● alloc:53 (0 constraints) | unsafe: alloc
+      - no safety constraints found
+    ● dealloc:68 (0 constraints) | unsafe: dealloc
+      - no safety constraints found
+
+▸ Evaluate Encapsulations
+
+▸ Summary
+  sound 0 | unsound 0 | unknown 0 | total 0
+  requests 0 | input 0 | output 0 | total 0
+• Results saved to ../../eval/safe4u-gpt4o/hugepage-rs-0.1.0/results.json
+• Elapsed: 50.6s
+✓ No unsound encapsulations detected.

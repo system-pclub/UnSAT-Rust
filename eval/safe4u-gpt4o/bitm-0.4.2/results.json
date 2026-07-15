@@ -1,0 +1,74 @@
+[
+  {
+    "sample_label": "bitm-0.4.2/src/rank_select/mod.rs/try_rank/322",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be within the bounds of the `Tree`.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## Answer:\nIn the provided function `try_rank`, the unsafe callee `get_unchecked` is called at:\n```rust\nr += unsafe { self.ranks.get_unchecked(index: block) };\nr += unsafe { self.content.get_unchecked(index: w) }.count_ones();\n```\n\nExpressions related to the Contract:\n- `block`: Calculated as `index / 512`.\n- `w`: Iterates from `block * (512 / 64)` to `word_idx`.\n\nAnalysis towards the Contract:\n\n1. **First `get_unchecked` Call:**\n   ```rust\n   r += unsafe { self.ranks.get_unchecked(index: block) };\n   ```\n   - `block` is calculated as `index / 512`.\n   - The contract requires that `block` must be within the bounds of `self.ranks`.\n   - There is no bounds checking for `block` before calling `get_unchecked`.\n\n2. **Second `get_unchecked` Call:**\n   ```rust\n   r += unsafe { self.content.get_unchecked(index: w) }.count_ones();\n   ```\n   - `w` iterates from `block * (512 / 64)` to `word_idx`.\n   - The contract requires that `w` must be within the bounds of `self.content`.\n   - There is no bounds checking for `w` before calling `get_unchecked`.\n\nSince there is no bounds checking for `block` and `w` before calling `get_unchecked`, the contract is not satisfied.\n\nFinal Determination:\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## Answer:\nIn the provided function `try_rank`, the unsafe callee `get_unchecked` is called at:\n```rust\nr += unsafe { self.ranks.get_unchecked(index: block) };\n```\nand\n```rust\nr += unsafe { self.content.get_unchecked(index: w) }.count_ones();\n```\n\nExpressions related to the Contract:\n- `block`: The parameter passed to the first `get_unchecked` call.\n- `w`: The parameter passed to the second `get_unchecked` call.\n\nAnalysis towards the Contract:\n\n1. **First `get_unchecked` Call:**\n   ```rust\n   r += unsafe { self.ranks.get_unchecked(index: block) };\n   ```\n   - `block` is calculated as `index / 512`.\n   - The function does not perform any bounds checking on `block`.\n   - To satisfy the contract, `block` must be within the bounds of `self.ranks`.\n\n2. **Second `get_unchecked` Call:**\n   ```rust\n   r += unsafe { self.content.get_unchecked(index: w) }.count_ones();\n   ```\n   - `w` is iterated from `block * (512 / 64)` to `word_idx`.\n   - `block` is calculated as `index / 512`.\n   - `word_idx` is calculated as `index / 64`.\n   - The function does not perform any bounds checking on `w`.\n   - To satisfy the contract, `w` must be within the bounds of `self.content`.\n\nSince the function `try_rank` does not perform any bounds checking on `block` or `w`, there is no guarantee that these indices are within the bounds of `self.ranks` and `self.content`, respectively. Therefore, the contract of `get_unchecked` is not satisfied.\n\nFinal Determination:\nNo"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "bitm-0.4.2/src/rank_select/select.rs/select64/93",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be within the bounds of the `Tree`.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## Answer:\nIn the provided function `select64`, the unsafe callee `get_unchecked` is called at:\n```rust\nplace + unsafe { SELECT_U8.get_unchecked(index: (((n >> place) & 0xFF) | (byte_rank << 8)) as usize) }\n```\n\nExpressions related to the Contract:\n- `index`: The expression `(((n >> place) & 0xFF) | (byte_rank << 8)) as usize`.\n\nAnalysis towards the Contract:\n1. **Understanding `index` Calculation**:\n   - `place` is calculated as `geq_step8.0.count_ones() as u8 * 8`.\n   - `byte_rank` is calculated as `rank.0 - (((byte_sums.0 << 8) >> place) & 0xFF)`.\n   - `index` is then calculated as `(((n >> place) & 0xFF) | (byte_rank << 8)) as usize`.\n\n2. **Bounds Checking**:\n   - The contract requires that `index` must be within the bounds of the `Tree` (in this case, `SELECT_U8`).\n   - `SELECT_U8` is not defined in the provided code, but we can assume it is a fixed-size array or slice.\n   - The calculation of `index` involves bitwise operations and shifts, which can produce values that are not guaranteed to be within the bounds of `SELECT_U8`.\n\n3. **Potential Issues**:\n   - Without knowing the exact size of `SELECT_U8`, we cannot definitively determine if the calculated `index` will always be within bounds.\n   - The expression `(((n >> place) & 0xFF) | (byte_rank << 8))` can produce values that exceed the size of `SELECT_U8` if `byte_rank` or `(n >> place) & 0xFF` are large enough.\n\nFinal Determination:\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## Answer:\nIn the provided function `select64`, the unsafe callee `get_unchecked` is called at:\n```rust\nplace + unsafe { SELECT_U8.get_unchecked(index: (((n >> place) & 0xFF) | (byte_rank << 8)) as usize) }\n```\n\nExpressions related to the Contract:\n- `index: (((n >> place) & 0xFF) | (byte_rank << 8)) as usize`: The parameter passed to the `get_unchecked` function.\n\nAnalysis towards the Contract:\n1. **Calculation of `place`**:\n   ```rust\n   let place: u8 = geq_step8.0.count_ones() as u8 * 8;\n   ```\n   - `geq_step8` is derived from `byte_sums` and `rank`, both of which are manipulated using bitwise operations and constants. The result is a value between 0 and 64 (since `count_ones` returns a value between 0 and 8, and it is multiplied by 8).\n\n2. **Calculation of `byte_rank`**:\n   ```rust\n   let byte_rank: u64 = rank.0 - (((byte_sums.0 << 8) >> place) & 0xFF);\n   ```\n   - `byte_rank` is derived from `rank` and `byte_sums`, both of which are manipulated using bitwise operations and constants. The result is a value between 0 and 255 (since `& 0xFF` ensures it is within this range).\n\n3. **Calculation of `index`**:\n   ```rust\n   let index = (((n >> place) & 0xFF) | (byte_rank << 8)) as usize;\n   ```\n   - `n >> place` shifts `n` right by `place` bits.\n   - `& 0xFF` ensures the result is within 0 to 255.\n   - `byte_rank << 8` shifts `byte_rank` left by 8 bits, making it a multiple of 256.\n   - The bitwise OR operation combines these two values, resulting in a value that is a combination of the lower 8 bits of `n` and `byte_rank`.\n\n4. **Bounds Checking**:\n   - The `index` is derived from bitwise operations on `n` and `byte_rank`, both of which are constrained to specific ranges.\n   - However, there is no explicit check to ensure that `index` is within the bounds of `SELECT_U8`.\n\nWithout knowing the exact size of `SELECT_U8`, we cannot guarantee that `index` is within bounds. The contract of `get_unchecked` requires that `index` must be within the bounds of the `Tree`, but this is not explicitly checked in the function.\n\nFinal Determination:\nNo"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "bitm-0.4.2/src/rank_select/utils.rs/partition_point_with_index/20",
+    "result": "sound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be within the bounds of the `Tree`.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## Answer:\nIn the provided function `partition_point_with_index`, the unsafe callee `get_unchecked` is called at:\n```rust\nf(unsafe { tab.get_unchecked(index: mid) }, mid)\n```\n\nExpressions related to the Contract:\n- `tab`: The slice of type `&[T]`.\n- `mid`: The index passed to `get_unchecked`.\n\nAnalysis towards the Contract:\n1. **Initialization**:\n   - `size` is initialized to `tab.len()`, which is the length of the slice.\n   - `left` is initialized to `0`.\n   - `right` is initialized to `size`.\n\n2. **Loop Invariant**:\n   - The loop invariant states that `0 <= left <= left + size = right <= tab.len()`.\n   - This invariant ensures that `left` and `right` are always within the bounds of the slice.\n\n3. **Loop Condition**:\n   - The loop runs while `size > 0`.\n\n4. **Mid Calculation**:\n   - `mid` is calculated as `left + size / 2`.\n   - Given the invariant `0 <= left <= right <= tab.len()`, `mid` will always be within the bounds of the slice.\n\n5. **Function Call**:\n   - `f(unsafe { tab.get_unchecked(index: mid) }, mid)` is called.\n   - Since `mid` is within the bounds of the slice, the contract of `get_unchecked` is satisfied.\n\n6. **Updating Bounds**:\n   - If `f` returns `true`, `left` is updated to `mid + 1`.\n   - If `f` returns `false`, `right` is updated to `mid`.\n   - The invariant `0 <= left <= right <= tab.len()` is maintained after each iteration.\n\nFinal Determination:\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "## Answer:\nIn the provided function `partition_point_with_index`, the unsafe callee `get_unchecked` is called at:\n```rust\nif f(unsafe { tab.get_unchecked(index: mid) }, mid) {\n```\n\nExpressions related to the Contract:\n- `tab`: The slice on which `get_unchecked` is called.\n- `mid`: The index passed to `get_unchecked`.\n\nAnalysis towards the Contract:\n1. **Initialization**:\n   - `size` is initialized to `tab.len()`.\n   - `left` is initialized to `0`.\n   - `right` is initialized to `size`.\n\n2. **Loop Invariant**:\n   - The loop invariant states that `0 <= left <= left + size = right <= tab.len()`.\n   - The loop continues as long as `size > 0`.\n\n3. **Calculation of `mid`**:\n   - `mid` is calculated as `left + size / 2`.\n   - Given the invariant `0 <= left <= right <= tab.len()`, `mid` will always be within the bounds of `tab`.\n\n4. **Bounds Checking**:\n   - Since `left` starts at `0` and `right` starts at `tab.len()`, and `mid` is always calculated as a value between `left` and `right`, `mid` will always be a valid index within the bounds of `tab`.\n\n5. **Update of `left` and `right`**:\n   - If `f(unsafe { tab.get_unchecked(index: mid) }, mid)` returns `true`, `left` is updated to `mid + 1`.\n   - Otherwise, `right` is updated to `mid`.\n   - The loop invariant ensures that `left` and `right` are always within the bounds of `tab`.\n\nFinal Determination:\nYes"
+          }
+        ]
+      }
+    ]
+  }
+]

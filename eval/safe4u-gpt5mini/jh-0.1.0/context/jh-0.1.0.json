@@ -1,0 +1,190 @@
+[
+  {
+    "sample_label": "jh-0.1.0/src/compressor.rs/f8_impl/97",
+    "repo_name": "jh-0.1.0",
+    "relative_file": "src/compressor.rs",
+    "start_line": 97,
+    "end_line": 149,
+    "start_byte": 2170,
+    "end_byte": 3870,
+    "name": "f8_impl",
+    "raw_code": "pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {\n    #[allow(clippy::cast_ptr_alignment)]\n    let data = data as *const M::u128x1;\n    let mut y = X8::<M>(\n        mach.unpack(state[0]),\n        mach.unpack(state[1]),\n        mach.unpack(state[2]),\n        mach.unpack(state[3]),\n        mach.unpack(state[4]),\n        mach.unpack(state[5]),\n        mach.unpack(state[6]),\n        mach.unpack(state[7]),\n    );\n    unsafe {\n        y.0 ^= ptr::read_unaligned(data);\n        y.1 ^= ptr::read_unaligned(data.offset(1));\n        y.2 ^= ptr::read_unaligned(data.offset(2));\n        y.3 ^= ptr::read_unaligned(data.offset(3));\n    }\n    for rc in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {\n        unroll7!(j, {\n            y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });\n            y = l(y);\n            let f = match j {\n                0 => M::u128x1::swap1,\n                1 => M::u128x1::swap2,\n                2 => M::u128x1::swap4,\n                3 => M::u128x1::swap8,\n                4 => M::u128x1::swap16,\n                5 => M::u128x1::swap32,\n                6 => M::u128x1::swap64,\n                _ => unreachable!(),\n            };\n            y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));\n        });\n    }\n    unsafe {\n        y.4 ^= ptr::read_unaligned(data);\n        y.5 ^= ptr::read_unaligned(data.offset(1));\n        y.6 ^= ptr::read_unaligned(data.offset(2));\n        y.7 ^= ptr::read_unaligned(data.offset(3));\n    }\n    *state = [\n        y.0.into(),\n        y.1.into(),\n        y.2.into(),\n        y.3.into(),\n        y.4.into(),\n        y.5.into(),\n        y.6.into(),\n        y.7.into(),\n    ];\n}",
+    "code_with_hints": "pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {\n    #[allow(clippy::cast_ptr_alignment)]\n    let data: *const <M as Machine>::u128x1 = data as *const M::u128x1;\n    let mut y: X8<M> = X8::<M>(\n        mach.unpack(state[0]),\n        mach.unpack(state[1]),\n        mach.unpack(state[2]),\n        mach.unpack(state[3]),\n        mach.unpack(state[4]),\n        mach.unpack(state[5]),\n        mach.unpack(state[6]),\n        mach.unpack(state[7]),\n    );\n    unsafe {\n        y.0 ^= ptr::read_unaligned(src: data);\n        y.1 ^= ptr::read_unaligned(src: data.offset(count: 1));\n        y.2 ^= ptr::read_unaligned(src: data.offset(count: 2));\n        y.3 ^= ptr::read_unaligned(src: data.offset(count: 3));\n    }\n    for rc: &[[u8; 32]] in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(chunk_size: 7) {\n        unroll7!(j, {\n            y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });\n            y = l(y);\n            let f = match j {\n                0 => M::u128x1::swap1,\n                1 => M::u128x1::swap2,\n                2 => M::u128x1::swap4,\n                3 => M::u128x1::swap8,\n                4 => M::u128x1::swap16,\n                5 => M::u128x1::swap32,\n                6 => M::u128x1::swap64,\n                _ => unreachable!(),\n            };\n            y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));\n        });\n    }\n    unsafe {\n        y.4 ^= ptr::read_unaligned(src: data);\n        y.5 ^= ptr::read_unaligned(src: data.offset(count: 1));\n        y.6 ^= ptr::read_unaligned(src: data.offset(count: 2));\n        y.7 ^= ptr::read_unaligned(src: data.offset(count: 3));\n    }\n    *state = [\n        y.0.into(),\n        y.1.into(),\n        y.2.into(),\n        y.3.into(),\n        y.4.into(),\n        y.5.into(),\n        y.6.into(),\n        y.7.into(),\n    ];\n}",
+    "code_with_type": "pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {\n    #[allow(clippy::cast_ptr_alignment)]\n    let data: *const <M as Machine>::u128x1 = data as *const M::u128x1;\n    let mut y: X8<M> = X8::<M>(\n        mach.unpack(state[0]),\n        mach.unpack(state[1]),\n        mach.unpack(state[2]),\n        mach.unpack(state[3]),\n        mach.unpack(state[4]),\n        mach.unpack(state[5]),\n        mach.unpack(state[6]),\n        mach.unpack(state[7]),\n    );\n    unsafe {\n        y.0 ^= ptr::read_unaligned(data);\n        y.1 ^= ptr::read_unaligned(data.offset(1));\n        y.2 ^= ptr::read_unaligned(data.offset(2));\n        y.3 ^= ptr::read_unaligned(data.offset(3));\n    }\n    for rc: &[[u8; 32]] in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {\n        unroll7!(j, {\n            y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });\n            y = l(y);\n            let f = match j {\n                0 => M::u128x1::swap1,\n                1 => M::u128x1::swap2,\n                2 => M::u128x1::swap4,\n                3 => M::u128x1::swap8,\n                4 => M::u128x1::swap16,\n                5 => M::u128x1::swap32,\n                6 => M::u128x1::swap64,\n                _ => unreachable!(),\n            };\n            y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));\n        });\n    }\n    unsafe {\n        y.4 ^= ptr::read_unaligned(data);\n        y.5 ^= ptr::read_unaligned(data.offset(1));\n        y.6 ^= ptr::read_unaligned(data.offset(2));\n        y.7 ^= ptr::read_unaligned(data.offset(3));\n    }\n    *state = [\n        y.0.into(),\n        y.1.into(),\n        y.2.into(),\n        y.3.into(),\n        y.4.into(),\n        y.5.into(),\n        y.6.into(),\n        y.7.into(),\n    ];\n}",
+    "code_with_param": "pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {\n    #[allow(clippy::cast_ptr_alignment)]\n    let data = data as *const M::u128x1;\n    let mut y = X8::<M>(\n        mach.unpack(state[0]),\n        mach.unpack(state[1]),\n        mach.unpack(state[2]),\n        mach.unpack(state[3]),\n        mach.unpack(state[4]),\n        mach.unpack(state[5]),\n        mach.unpack(state[6]),\n        mach.unpack(state[7]),\n    );\n    unsafe {\n        y.0 ^= ptr::read_unaligned(src: data);\n        y.1 ^= ptr::read_unaligned(src: data.offset(count: 1));\n        y.2 ^= ptr::read_unaligned(src: data.offset(count: 2));\n        y.3 ^= ptr::read_unaligned(src: data.offset(count: 3));\n    }\n    for rc in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(chunk_size: 7) {\n        unroll7!(j, {\n            y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });\n            y = l(y);\n            let f = match j {\n                0 => M::u128x1::swap1,\n                1 => M::u128x1::swap2,\n                2 => M::u128x1::swap4,\n                3 => M::u128x1::swap8,\n                4 => M::u128x1::swap16,\n                5 => M::u128x1::swap32,\n                6 => M::u128x1::swap64,\n                _ => unreachable!(),\n            };\n            y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));\n        });\n    }\n    unsafe {\n        y.4 ^= ptr::read_unaligned(src: data);\n        y.5 ^= ptr::read_unaligned(src: data.offset(count: 1));\n        y.6 ^= ptr::read_unaligned(src: data.offset(count: 2));\n        y.7 ^= ptr::read_unaligned(src: data.offset(count: 3));\n    }\n    *state = [\n        y.0.into(),\n        y.1.into(),\n        y.2.into(),\n        y.3.into(),\n        y.4.into(),\n        y.5.into(),\n        y.6.into(),\n        y.7.into(),\n    ];\n}",
+    "params": [
+      "mach",
+      "state",
+      "data"
+    ],
+    "return_type": "",
+    "comment": "",
+    "attributes": "#[inline(always)]\n#[doc(hidden)]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "M",
+        "item_type": "type_param",
+        "offset_in_fn": 15,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "types",
+        "name": "Machine",
+        "item_type": "trait",
+        "offset_in_fn": 18,
+        "declaration": "pub trait Machine\nwhere\n    Self: Sized + Copy,",
+        "documentation": ""
+      },
+      {
+        "src_mod": "x86_64",
+        "name": "vec128_storage",
+        "item_type": "union",
+        "offset_in_fn": 49,
+        "declaration": "vec128_storage {\n        u32x4: [u32; 4],\n        u64x2: [u64; 2],\n        u128x1: [u128; 1],\n        sse2: __m128i,\n    }\n}",
+        "documentation": "Generic wrapper for unparameterized storage of any of the possible impls.\nConverting into and out of this type should be essentially free, although it may be more\naligned than a particular impl requires."
+      },
+      {
+        "src_mod": "Machine",
+        "name": "u128x1",
+        "item_type": "type_alias",
+        "offset_in_fn": 162,
+        "declaration": "u128x1: u128x1<Self>;",
+        "documentation": ""
+      },
+      {
+        "src_mod": "Machine",
+        "name": "unpack",
+        "item_type": "function",
+        "offset_in_fn": 208,
+        "declaration": "pub fn unpack<S, V>(self, s: S) -> V\nwhere\n    V: Store<S>,",
+        "documentation": ""
+      },
+      {
+        "src_mod": "ptr",
+        "name": "read_unaligned",
+        "item_type": "function",
+        "offset_in_fn": 483,
+        "declaration": "pub const unsafe fn read_unaligned<T>(src: *const T) -> T",
+        "documentation": "Reads the value from `src` without moving it. This leaves the\nmemory in `src` unchanged.\n\nUnlike [`read`], `read_unaligned` works with unaligned pointers.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads.\n\n* `src` must point to a properly initialized value of type `T`.\n\nLike [`read`], `read_unaligned` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using both the returned\nvalue and the value at `*src` can [violate memory safety][read-ownership].\n\nNote that even if `T` has size `0`, the pointer must be non-null.\n\n[read-ownership]: read#ownership-of-the-returned-value\n[valid]: self#safety\n\n## On `packed` structs\n\nAttempting to create a raw pointer to an `unaligned` struct field with\nan expression such as `&packed.unaligned as *const FieldType` creates an\nintermediate unaligned reference before converting that to a raw pointer.\nThat this reference is temporary and immediately cast is inconsequential\nas the compiler always expects references to be properly aligned.\nAs a result, using `&packed.unaligned as *const FieldType` causes immediate\n*undefined behavior* in your program.\n\nInstead you must use the [`ptr::addr_of!`](addr_of) macro to\ncreate the pointer. You may use that returned pointer together with this\nfunction.\n\nAn example of what not to do and how this relates to `read_unaligned` is:\n\n```\n#[repr(packed, C)]\nstruct Packed {\n    _padding: u8,\n    unaligned: u32,\n}\n\nlet packed = Packed {\n    _padding: 0x00,\n    unaligned: 0x01020304,\n};\n\n// Take the address of a 32-bit integer which is not aligned.\n// In contrast to `&packed.unaligned as *const _`, this has no undefined behavior.\nlet unaligned = std::ptr::addr_of!(packed.unaligned);\n\nlet v = unsafe { std::ptr::read_unaligned(unaligned) };\nassert_eq!(v, 0x01020304);\n```\n\nAccessing unaligned fields directly with e.g. `packed.unaligned` is safe however.\n\n# Examples\n\nRead a `usize` value from a byte buffer:\n\n```\nuse std::mem;\n\nfn read_usize(x: &[u8]) -> usize {\n    assert!(x.len() >= mem::size_of::<usize>());\n\n    let ptr = x.as_ptr() as *const usize;\n\n    unsafe { ptr.read_unaligned() }\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 545,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *const T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!(*ptr.offset(1) as char, '2');\n    assert_eq!(*ptr.offset(2) as char, '3');\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "chunks_exact",
+        "item_type": "function",
+        "offset_in_fn": 722,
+        "declaration": "pub fn chunks_exact(&self, chunk_size: usize) -> ChunksExact<'_, T>",
+        "documentation": "Returns an iterator over `chunk_size` elements of the slice at a time, starting at the\nbeginning of the slice.\n\nThe chunks are slices and do not overlap. If `chunk_size` does not divide the length of the\nslice, then the last up to `chunk_size-1` elements will be omitted and can be retrieved\nfrom the `remainder` function of the iterator.\n\nDue to each chunk having exactly `chunk_size` elements, the compiler can often optimize the\nresulting code better than in the case of [`chunks`].\n\nSee [`chunks`] for a variant of this iterator that also returns the remainder as a smaller\nchunk, and [`rchunks_exact`] for the same iterator but starting at the end of the slice.\n\n# Panics\n\nPanics if `chunk_size` is 0.\n\n# Examples\n\n```\nlet slice = ['l', 'o', 'r', 'e', 'm'];\nlet mut iter = slice.chunks_exact(2);\nassert_eq!(iter.next().unwrap(), &['l', 'o']);\nassert_eq!(iter.next().unwrap(), &['r', 'e']);\nassert!(iter.next().is_none());\nassert_eq!(iter.remainder(), &['m']);\n```\n\n[`chunks`]: slice::chunks\n[`rchunks_exact`]: slice::rchunks_exact"
+      },
+      {
+        "src_mod": "",
+        "name": "unroll7",
+        "item_type": "macro",
+        "offset_in_fn": 748,
+        "declaration": "",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "jh-0.1.0/src/compressor.rs/update/169",
+    "repo_name": "jh-0.1.0",
+    "relative_file": "src/compressor.rs",
+    "start_line": 169,
+    "end_line": 171,
+    "start_byte": 4222,
+    "end_byte": 4343,
+    "name": "update",
+    "raw_code": "pub(crate) fn update(&mut self, data: &GenericArray<u8, U64>) {\n        f8(unsafe { &mut self.cv }, data.as_ptr());\n    }",
+    "code_with_hints": "pub(crate) fn update(&mut self, data: &GenericArray<u8, U64>) {\n        f8(state: unsafe { &mut self.cv }, data: data.as_ptr());\n    }",
+    "code_with_type": "pub(crate) fn update(&mut self, data: &GenericArray<u8, U64>) {\n        f8(unsafe { &mut self.cv }, data.as_ptr());\n    }",
+    "code_with_param": "pub(crate) fn update(&mut self, data: &GenericArray<u8, U64>) {\n        f8(state: unsafe { &mut self.cv }, data: data.as_ptr());\n    }",
+    "params": [
+      "self",
+      "data"
+    ],
+    "return_type": "",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "GenericArray",
+        "item_type": "struct",
+        "offset_in_fn": 39,
+        "declaration": "GenericArray<T, U: ArrayLength<T>> {\r\n    data: U::ArrayType,\r\n}",
+        "documentation": "Struct representing a generic array - `GenericArray<T, N>` works like [T; N]\r"
+      },
+      {
+        "src_mod": "consts",
+        "name": "U64",
+        "item_type": "type_alias",
+        "offset_in_fn": 56,
+        "declaration": "U64 = UInt<UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, B0>, B0>, B0>, B0>;",
+        "documentation": ""
+      },
+      {
+        "src_mod": "compressor",
+        "name": "f8",
+        "item_type": "function",
+        "offset_in_fn": 72,
+        "declaration": "fn f8(state: &mut [vec128_storage; 8], data: *const u8)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "compressor",
+      "name": "Compressor",
+      "item_type": "union",
+      "offset_in_fn": 26,
+      "declaration": "Compressor {\n    cv: [vec128_storage; 8],\n    bytes: [u8; 128],\n}",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "jh-0.1.0/src/compressor.rs/finalize/174",
+    "repo_name": "jh-0.1.0",
+    "relative_file": "src/compressor.rs",
+    "start_line": 174,
+    "end_line": 176,
+    "start_byte": 4363,
+    "end_byte": 4445,
+    "name": "finalize",
+    "raw_code": "pub(crate) fn finalize(&self) -> &[u8; 128] {\n        unsafe { &self.bytes }\n    }",
+    "code_with_hints": "pub(crate) fn finalize(&self) -> &[u8; 128] {\n        unsafe { &self.bytes }\n    }",
+    "code_with_type": "pub(crate) fn finalize(&self) -> &[u8; 128] {\n        unsafe { &self.bytes }\n    }",
+    "code_with_param": "pub(crate) fn finalize(&self) -> &[u8; 128] {\n        unsafe { &self.bytes }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "&[u8; 128]",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "compressor",
+      "name": "Compressor",
+      "item_type": "union",
+      "offset_in_fn": 24,
+      "declaration": "Compressor {\n    cv: [vec128_storage; 8],\n    bytes: [u8; 128],\n}",
+      "documentation": ""
+    }
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "sample_label": "splay_tree-0.3.1/src/tree_core.rs/node_ref/420",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n```rust\nunsafe { self.nodes.get_unchecked(index: i as usize) }\n```\n\n## 2. Expressions highly related to the contract\n- `self.nodes`\n- `i`\n- `i as usize`\n- `get_unchecked(...)`\n\n## 3. Step-by-step analysis of the contract\nThe unsafe contract says:\n\n- `index` must be in bounds for the tree.\n\nHere, the function takes `i: NodeIndex`, where `NodeIndex = u32`, and directly casts it to `usize`:\n```rust\ni as usize\n```\n\nThen it calls:\n```rust\nself.nodes.get_unchecked(i as usize)\n```\n\nThere is no bounds check anywhere in `node_ref`. Since `i` is an arbitrary parameter and untrusted, it may be larger than or equal to `self.nodes.len()`. If that happens, the unsafe call violates the contract.\n\nSo this function does not guarantee that the index is in bounds before using `get_unchecked`.\n\n## 4. Final determination\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\nunsafe { self.nodes.get_unchecked(index: i as usize) }\n```\n\n## 2. Expressions highly related to the contract\n\n- `i: NodeIndex`\n- `i as usize`\n- `self.nodes`\n- the implicit bounds requirement for `get_unchecked`\n\n## 3. Step-by-step analysis of the contract\n\nThe contract for `get_unchecked` is:\n\n- `index` must be in bounds for the tree.\n\nHere, the function `node_ref` takes `i: NodeIndex` as an arbitrary input. There is no check that `i as usize` is less than `self.nodes.len()` before calling `get_unchecked`.\n\nEven though `NodeIndex` is a `u32`, that does not guarantee it is a valid index into `self.nodes`. Since the parameter is untrusted and the function does not validate it, `i` may be out of bounds.\n\nTherefore, the contract is **not** satisfied by this function.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "splay_tree-0.3.1/src/tree_core.rs/node_mut/423",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the slice/tree structure.",
+          "fn_name": "get_unchecked_mut",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nunsafe { self.nodes.get_unchecked_mut(index: i as usize) }\n```\n\n2. **Contract-related expressions**\n- `i: NodeIndex`\n- `i as usize`\n- `self.nodes`\n- the missing bounds check before `get_unchecked_mut`\n\n3. **Step-by-step analysis**\n- `node_mut` takes `i` as a `NodeIndex`, which is just a `u32`.\n- The function directly casts `i` to `usize` and passes it to `get_unchecked_mut`.\n- There is no validation that `i as usize < self.nodes.len()`.\n- Since `i` is an arbitrary caller-provided value, it may be out of bounds.\n- Therefore, the contract for `get_unchecked_mut` is **not guaranteed** to be satisfied.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nunsafe { self.nodes.get_unchecked_mut(index: i as usize) }\n```\n\n2. **Expressions related to the contract**\n- `self.nodes`\n- `i as usize`\n- The contract requirement: `index` must be in bounds for the slice/tree structure.\n\n3. **Step-by-step analysis**\n- `node_mut` takes `i: NodeIndex`, where `NodeIndex = u32`.\n- The function directly casts `i` to `usize` and passes it to `get_unchecked_mut`.\n- There is no bounds check such as `i < self.nodes.len()`.\n- There is also no evidence from the provided code that `i` is guaranteed by prior invariants to always be valid.\n- Since `i` is an arbitrary function argument, it may be any `u32` value, including values greater than or equal to `self.nodes.len()`.\n- Therefore, the unsafe call may receive an out-of-bounds index, violating the contract.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  }
+]

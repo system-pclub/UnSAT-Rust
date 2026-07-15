@@ -1,0 +1,149 @@
+[
+  {
+    "sample_label": "hugepage-rs-0.1.0/src/boxed.rs/new/14",
+    "repo_name": "hugepage-rs-0.1.0",
+    "relative_file": "src/boxed.rs",
+    "start_line": 14,
+    "end_line": 21,
+    "start_byte": 305,
+    "end_byte": 565,
+    "name": "new",
+    "raw_code": "pub fn new(data: T) -> Box<T> {\n        let layout = Layout::new::<T>();\n        unsafe {\n            let mut p = NonNull::new(default_allocator().alloc(layout) as *mut T).unwrap();\n            *(p.as_mut()) = data;\n            Self { data: p }\n        }\n    }",
+    "code_with_hints": "pub fn new(data: T) -> Box<T> {\n        let layout: Layout = Layout::new::<T>();\n        unsafe {\n            let mut p: NonNull<T> = NonNull::new(ptr: default_allocator().alloc(layout) as *mut T).unwrap();\n            *(p.as_mut()) = data;\n            Self { data: p }\n        }\n    }",
+    "code_with_type": "pub fn new(data: T) -> Box<T> {\n        let layout: Layout = Layout::new::<T>();\n        unsafe {\n            let mut p: NonNull<T> = NonNull::new(default_allocator().alloc(layout) as *mut T).unwrap();\n            *(p.as_mut()) = data;\n            Self { data: p }\n        }\n    }",
+    "code_with_param": "pub fn new(data: T) -> Box<T> {\n        let layout = Layout::new::<T>();\n        unsafe {\n            let mut p = NonNull::new(ptr: default_allocator().alloc(layout) as *mut T).unwrap();\n            *(p.as_mut()) = data;\n            Self { data: p }\n        }\n    }",
+    "params": [
+      "data"
+    ],
+    "return_type": "Box<T>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "T",
+        "item_type": "type_param",
+        "offset_in_fn": 17,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "default_allocator",
+        "item_type": "function",
+        "offset_in_fn": 127,
+        "declaration": "fn default_allocator() -> &'static HugePageAllocator",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "alloc",
+        "item_type": "function",
+        "offset_in_fn": 147,
+        "declaration": "unsafe fn alloc(&self, layout: Layout) -> *mut u8",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "boxed",
+      "name": "Box",
+      "item_type": "struct",
+      "offset_in_fn": 228,
+      "declaration": "Box<T> {\n    data: NonNull<T>,\n}",
+      "documentation": "A pointer type for hugepage allocation.\n\nAllocates memory on the hugepage and then places x into it."
+    }
+  },
+  {
+    "sample_label": "hugepage-rs-0.1.0/src/lib.rs/alloc/52",
+    "repo_name": "hugepage-rs-0.1.0",
+    "relative_file": "src/lib.rs",
+    "start_line": 52,
+    "end_line": 54,
+    "start_byte": 1101,
+    "end_byte": 1192,
+    "name": "alloc",
+    "raw_code": "pub fn alloc(layout: Layout) -> *mut u8 {\n    unsafe { HUGEPAGE_ALLOCATOR.alloc(layout) }\n}",
+    "code_with_hints": "pub fn alloc(layout: Layout) -> *mut u8 {\n    unsafe { HUGEPAGE_ALLOCATOR.alloc(layout) }\n}",
+    "code_with_type": "pub fn alloc(layout: Layout) -> *mut u8 {\n    unsafe { HUGEPAGE_ALLOCATOR.alloc(layout) }\n}",
+    "code_with_param": "pub fn alloc(layout: Layout) -> *mut u8 {\n    unsafe { HUGEPAGE_ALLOCATOR.alloc(layout) }\n}",
+    "params": [
+      "layout"
+    ],
+    "return_type": "*mut u8",
+    "comment": "/// Allocate memory with the hugepage allocator.\n///\n/// This function forwards calls to the HugePageAllocator.alloc() function.\n///\n/// # Safety\n///\n/// See [`GlobalAlloc::alloc`].\n///\n/// # Examples\n///\n/// ```\n/// use std::alloc::Layout;\n/// use hugepage_rs::{alloc, dealloc};\n///\n/// unsafe {\n///     let layout = Layout::new::<u16>();\n///     let ptr = alloc(layout);\n///\n///     *(ptr as *mut u16) = 42;\n///     assert_eq!(*(ptr as *mut u16), 42);\n///\n///     dealloc(ptr, layout);\n/// }\n/// ```\n",
+    "attributes": "#[cfg(target_os = \"linux\")]\n",
+    "detail_info": [
+      {
+        "src_mod": "layout",
+        "name": "Layout",
+        "item_type": "struct",
+        "offset_in_fn": 21,
+        "declaration": "Layout {\n    // size of the requested block of memory, measured in bytes.\n    size: usize,\n\n    // alignment of the requested block of memory, measured in bytes.\n    // we ensure that this is always a power-of-two, because API's\n    // like `posix_memalign` require it and it is a reasonable\n    // constraint to impose on Layout constructors.\n    //\n    // (However, we do not analogously require `align >= sizeof(void*)`,\n    //  even though that is *also* a requirement of `posix_memalign`.)\n    align: Alignment,\n}",
+        "documentation": "Layout of a block of memory.\n\nAn instance of `Layout` describes a particular layout of memory.\nYou build a `Layout` up as an input to give to an allocator.\n\nAll layouts have an associated size and a power-of-two alignment. The size, when rounded up to\nthe nearest multiple of `align`, does not overflow `isize` (i.e., the rounded value will always be\nless than or equal to `isize::MAX`).\n\n(Note that layouts are *not* required to have non-zero size,\neven though `GlobalAlloc` requires that all memory requests\nbe non-zero in size. A caller must either ensure that conditions\nlike this are met, use specific allocators with looser\nrequirements, or use the more lenient `Allocator` interface.)"
+      },
+      {
+        "src_mod": "",
+        "name": "alloc",
+        "item_type": "function",
+        "offset_in_fn": 74,
+        "declaration": "unsafe fn alloc(&self, layout: Layout) -> *mut u8",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "hugepage-rs-0.1.0/src/lib.rs/dealloc/67",
+    "repo_name": "hugepage-rs-0.1.0",
+    "relative_file": "src/lib.rs",
+    "start_line": 67,
+    "end_line": 71,
+    "start_byte": 1663,
+    "end_byte": 1776,
+    "name": "dealloc",
+    "raw_code": "pub fn dealloc(p: *mut u8, layout: Layout) {\n    unsafe { \n        HUGEPAGE_ALLOCATOR.dealloc(p, layout) \n    }\n}",
+    "code_with_hints": "pub fn dealloc(p: *mut u8, layout: Layout) {\n    unsafe { \n        HUGEPAGE_ALLOCATOR.dealloc(ptr: p, layout) \n    }\n}",
+    "code_with_type": "pub fn dealloc(p: *mut u8, layout: Layout) {\n    unsafe { \n        HUGEPAGE_ALLOCATOR.dealloc(p, layout) \n    }\n}",
+    "code_with_param": "pub fn dealloc(p: *mut u8, layout: Layout) {\n    unsafe { \n        HUGEPAGE_ALLOCATOR.dealloc(ptr: p, layout) \n    }\n}",
+    "params": [
+      "p",
+      "layout"
+    ],
+    "return_type": "",
+    "comment": "/// Deallocate memory with the hugepage allocator.\n///\n/// This function forwards calls to the HugePageAllocator.dealloc() function.\n///\n/// # Safety\n///\n/// This function is unsafe because undefined behavior can result if the caller does not ensure all of the following:\n///\n/// - ptr must denote a block of memory currently allocated via this allocator,\n/// - layout must be the same layout that was used to allocate that block of memory.\n",
+    "attributes": "#[cfg(target_os = \"linux\")]\n",
+    "detail_info": [
+      {
+        "src_mod": "layout",
+        "name": "Layout",
+        "item_type": "struct",
+        "offset_in_fn": 35,
+        "declaration": "Layout {\n    // size of the requested block of memory, measured in bytes.\n    size: usize,\n\n    // alignment of the requested block of memory, measured in bytes.\n    // we ensure that this is always a power-of-two, because API's\n    // like `posix_memalign` require it and it is a reasonable\n    // constraint to impose on Layout constructors.\n    //\n    // (However, we do not analogously require `align >= sizeof(void*)`,\n    //  even though that is *also* a requirement of `posix_memalign`.)\n    align: Alignment,\n}",
+        "documentation": "Layout of a block of memory.\n\nAn instance of `Layout` describes a particular layout of memory.\nYou build a `Layout` up as an input to give to an allocator.\n\nAll layouts have an associated size and a power-of-two alignment. The size, when rounded up to\nthe nearest multiple of `align`, does not overflow `isize` (i.e., the rounded value will always be\nless than or equal to `isize::MAX`).\n\n(Note that layouts are *not* required to have non-zero size,\neven though `GlobalAlloc` requires that all memory requests\nbe non-zero in size. A caller must either ensure that conditions\nlike this are met, use specific allocators with looser\nrequirements, or use the more lenient `Allocator` interface.)"
+      },
+      {
+        "src_mod": "",
+        "name": "dealloc",
+        "item_type": "function",
+        "offset_in_fn": 86,
+        "declaration": "unsafe fn dealloc(&self, p: *mut u8, layout: Layout)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  }
+]

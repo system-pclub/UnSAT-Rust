@@ -1,0 +1,131 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/splay_tree-0.3.1
+  model: gpt-5.4-mini-2026-03-17
+  prompt: Safe4U
+  output: ../../eval/safe4u-gpt5mini/splay_tree-0.3.1
+  evaluation jobs: 4
+
+▸ Extract Candidates
+✓ Detected 3 public safe encapsulation candidates.
+
+▸ Retrieve Context
+✓ Context ready.
+• Context samples: 3
+  src/tree_core.rs
+    ● pop_last:208 | unsafe callees: none | context refs: 5
+    ● node_ref:421 | unsafe callees: get_unchecked | context refs: 4
+      - get_unchecked: pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output where I: SliceIndex<Self>,
+    ● node_mut:424 | unsafe callees: get_unchecked_mut | context refs: 4
+      - get_unchecked_mut: pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output where I: SliceIndex<Self>,
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: ███████░░░░░░░░░░░░░░░ 1/3 (33%) 0 constraints | splay_tree-0.3.1/src/tree_core.rs/pop_last/207
+↻ Decomposing samples: ███████████████░░░░░░░ 2/3 (67%) 1 constraints | splay_tree-0.3.1/src/tree_core.rs/node_ref/420
+↻ Decomposing samples: ██████████████████████ 3/3 (100%) 1 constraints | splay_tree-0.3.1/src/tree_core.rs/node_mut/423
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 3
+• Resolved unsafe callees: 2
+  src/tree_core.rs
+    ● pop_last:208 (0 constraints)
+      - no safety constraints found
+    ● node_ref:421 (1 constraints) | unsafe: get_unchecked
+      - get_unchecked / Numeric Relation: `index` must be in bounds for the tree.
+    ● node_mut:424 (1 constraints) | unsafe: get_unchecked_mut
+      - get_unchecked_mut / Numeric Relation: `index` must be in bounds for the slice/tree structure.
+
+▸ Evaluate Encapsulations
+LLM → Evaluate `node_ref` against `get_unchecked` (Numeric Relation, pattern 1/2) [input≈2,056, max_out=4,096]
+LLM → Evaluate `node_mut` against `get_unchecked_mut` (Numeric Relation, pattern 1/2) [input≈2,071, max_out=4,096]
+LLM ✓ Evaluate `node_ref` against `get_unchecked` (Numeric Relation, pattern 1/2) [in=1,976 out=227 total=2,203, 1.8s, run=2,203]
+LLM → Evaluate `node_ref` against `get_unchecked` (Numeric Relation, pattern 2/2) [input≈2,568, max_out=4,096]
+LLM ✓ Evaluate `node_mut` against `get_unchecked_mut` (Numeric Relation, pattern 1/2) [in=1,988 out=186 total=2,174, 2.1s, run=4,377]
+LLM → Evaluate `node_mut` against `get_unchecked_mut` (Numeric Relation, pattern 2/2) [input≈2,583, max_out=4,096]
+LLM ✓ Evaluate `node_ref` against `get_unchecked` (Numeric Relation, pattern 2/2) [in=2,545 out=231 total=2,776, 1.9s, run=7,153]
+✗ Unsound candidate: splay_tree-0.3.1/src/tree_core.rs/node_ref/420 (callee=get_unchecked, type=Numeric Relation); details in final summary.
+↻ Checking samples: ███████████░░░░░░░░░░░ 1/2 (50%) unsound | splay_tree-0.3.1/src/tree_core.rs/node_ref/420
+LLM ✓ Evaluate `node_mut` against `get_unchecked_mut` (Numeric Relation, pattern 2/2) [in=2,557 out=221 total=2,778, 1.9s, run=9,931]
+✗ Unsound candidate: splay_tree-0.3.1/src/tree_core.rs/node_mut/423 (callee=get_unchecked_mut, type=Numeric Relation); details in final summary.
+↻ Checking samples: ██████████████████████ 2/2 (100%) unsound | splay_tree-0.3.1/src/tree_core.rs/node_mut/423
+
+▸ Summary
+  sound 0 | unsound 2 | unknown 0 | total 2
+  requests 4 | input 9,066 | output 865 | total 9,931
+• Results saved to ../../eval/safe4u-gpt5mini/splay_tree-0.3.1/results.json
+• Elapsed: 6.3s
+
+Unsatisfied contracts:
+  1. splay_tree-0.3.1/src/tree_core.rs/node_ref/420 (1 failed contract)
+  call site: src/tree_core.rs:422
+  nearby code
+     421 │ pub fn node_ref(&self, i: NodeIndex) -> &Node<K, V> {
+  >  422 │         unsafe { self.nodes.get_unchecked(i as usize) }
+     423 │     }
+     - get_unchecked / Numeric Relation: `index` must be in bounds for the tree.
+       LLM evidence:
+       ## 1. Code snippet that calls the unsafe callee
+       ```rust
+       unsafe { self.nodes.get_unchecked(index: i as usize) }
+       ```
+       
+       ## 2. Expressions highly related to the contract
+       - `self.nodes`
+       - `i`
+       - `i as usize`
+       - `get_unchecked(...)`
+       
+       ## 3. Step-by-step analysis of the contract
+       The unsafe contract says:
+       
+       - `index` must be in bounds for the tree.
+       
+       Here, the function takes `i: NodeIndex`, where `NodeIndex = u32`, and directly casts it to `usize`:
+       ```rust
+       i as usize
+       ```
+       
+       Then it calls:
+       ```rust
+       self.nodes.get_unchecked(i as usize)
+       ```
+       
+       There is no bounds check anywhere in `node_ref`. Since `i` is an arbitrary parameter and untrusted, it may be larger than or equal to `self.nodes.len()`. If that happens, the unsafe call violates the contract.
+       
+       So this function does not guarantee that the index is in bounds before using `get_unchecked`.
+       
+       ## 4. Final determination
+       No
+  2. splay_tree-0.3.1/src/tree_core.rs/node_mut/423 (1 failed contract)
+  call site: src/tree_core.rs:425
+  nearby code
+     424 │ pub fn node_mut(&mut self, i: NodeIndex) -> &mut Node<K, V> {
+  >  425 │         unsafe { self.nodes.get_unchecked_mut(i as usize) }
+     426 │     }
+     - get_unchecked_mut / Numeric Relation: `index` must be in bounds for the slice/tree structure.
+       LLM evidence:
+       1. **Unsafe call site**
+       ```rust
+       unsafe { self.nodes.get_unchecked_mut(index: i as usize) }
+       ```
+       
+       2. **Contract-related expressions**
+       - `i: NodeIndex`
+       - `i as usize`
+       - `self.nodes`
+       - the missing bounds check before `get_unchecked_mut`
+       
+       3. **Step-by-step analysis**
+       - `node_mut` takes `i` as a `NodeIndex`, which is just a `u32`.
+       - The function directly casts `i` to `usize` and passes it to `get_unchecked_mut`.
+       - There is no validation that `i as usize < self.nodes.len()`.
+       - Since `i` is an arbitrary caller-provided value, it may be out of bounds.
+       - Therefore, the contract for `get_unchecked_mut` is **not guaranteed** to be satisfied.
+       
+       4. **Final determination**
+       **No**

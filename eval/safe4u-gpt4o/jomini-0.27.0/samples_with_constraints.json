@@ -1,0 +1,1771 @@
+[
+  {
+    "sample_label": "jomini-0.27.0/src/copyless.rs/init/15",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/copyless.rs",
+    "start_line": 15,
+    "end_line": 21,
+    "start_byte": 609,
+    "end_byte": 820,
+    "name": "init",
+    "raw_code": "pub fn init(self, value: T) -> usize {\n        unsafe {\n            std::ptr::write(self.vec.as_mut_ptr().add(self.index), value);\n            self.vec.set_len(self.index + 1);\n        }\n        self.index\n    }",
+    "code_with_hints": "pub fn init(self, value: T) -> usize {\n        unsafe {\n            std::ptr::write(dst: self.vec.as_mut_ptr().add(count: self.index), src: value);\n            self.vec.set_len(new_len: self.index + 1);\n        }\n        self.index\n    }",
+    "code_with_type": "pub fn init(self, value: T) -> usize {\n        unsafe {\n            std::ptr::write(self.vec.as_mut_ptr().add(self.index), value);\n            self.vec.set_len(self.index + 1);\n        }\n        self.index\n    }",
+    "code_with_param": "pub fn init(self, value: T) -> usize {\n        unsafe {\n            std::ptr::write(dst: self.vec.as_mut_ptr().add(count: self.index), src: value);\n            self.vec.set_len(new_len: self.index + 1);\n        }\n        self.index\n    }",
+    "params": [
+      "self",
+      "value"
+    ],
+    "return_type": "usize",
+    "comment": "/// Consumes self and writes the given value into the allocation.\n// writing is safe because alloc() ensured enough capacity\n// and `Allocation` holds a mutable borrow to prevent anyone else\n// from breaking this invariant.\n",
+    "attributes": "#[inline(always)]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "T",
+        "item_type": "type_param",
+        "offset_in_fn": 25,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 106,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!('2', *ptr.add(1) as char);\n    assert_eq!('3', *ptr.add(2) as char);\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "set_len",
+        "item_type": "function",
+        "offset_in_fn": 152,
+        "declaration": "pub unsafe fn set_len(&mut self, new_len: usize)",
+        "documentation": "Forces the length of the vector to `new_len`.\n\nThis is a low-level operation that maintains none of the normal\ninvariants of the type. Normally changing the length of a vector\nis done using one of the safe operations instead, such as\n[`truncate`], [`resize`], [`extend`], or [`clear`].\n\n[`truncate`]: Vec::truncate\n[`resize`]: Vec::resize\n[`extend`]: Extend::extend\n[`clear`]: Vec::clear\n\n# Safety\n\n- `new_len` must be less than or equal to [`capacity()`].\n- The elements at `old_len..new_len` must be initialized.\n\n[`capacity()`]: Vec::capacity\n\n# Examples\n\nThis method can be useful for situations in which the vector\nis serving as a buffer for other code, particularly over FFI:\n\n```no_run\n# #![allow(dead_code)]\n# // This is just a minimal skeleton for the doc example;\n# // don't use this as a starting point for a real library.\n# pub struct StreamWrapper { strm: *mut std::ffi::c_void }\n# const Z_OK: i32 = 0;\n# extern \"C\" {\n#     fn deflateGetDictionary(\n#         strm: *mut std::ffi::c_void,\n#         dictionary: *mut u8,\n#         dictLength: *mut usize,\n#     ) -> i32;\n# }\n# impl StreamWrapper {\npub fn get_dictionary(&self) -> Option<Vec<u8>> {\n    // Per the FFI method's docs, \"32768 bytes is always enough\".\n    let mut dict = Vec::with_capacity(32_768);\n    let mut dict_length = 0;\n    // SAFETY: When `deflateGetDictionary` returns `Z_OK`, it holds that:\n    // 1. `dict_length` elements were initialized.\n    // 2. `dict_length` <= the capacity (32_768)\n    // which makes `set_len` safe to call.\n    unsafe {\n        // Make the FFI call...\n        let r = deflateGetDictionary(self.strm, dict.as_mut_ptr(), &mut dict_length);\n        if r == Z_OK {\n            // ...and update the length to what was initialized.\n            dict.set_len(dict_length);\n            Some(dict)\n        } else {\n            None\n        }\n    }\n}\n# }\n```\n\nWhile the following example is sound, there is a memory leak since\nthe inner vectors were not freed prior to the `set_len` call:\n\n```\nlet mut vec = vec![vec![1, 0, 0],\n                   vec![0, 1, 0],\n                   vec![0, 0, 1]];\n// SAFETY:\n// 1. `old_len..0` is empty so no elements need to be initialized.\n// 2. `0 <= capacity` always holds whatever `capacity` is.\nunsafe {\n    vec.set_len(0);\n#   // FIXME(https://github.com/rust-lang/miri/issues/3670):\n#   // use -Zmiri-disable-leak-check instead of unleaking in tests meant to leak.\n#   vec.set_len(3);\n}\n```\n\nNormally, here, one would use [`clear`] instead to correctly drop\nthe contents and thus not leak memory."
+      }
+    ],
+    "self_info": {
+      "src_mod": "copyless",
+      "name": "VecAllocation",
+      "item_type": "struct",
+      "offset_in_fn": 12,
+      "declaration": "VecAllocation<'a, T: 'a> {\n    vec: &'a mut Vec<T>,\n    index: usize,\n}",
+      "documentation": "A typesafe helper that separates new value construction from\nvector growing, allowing LLVM to ideally construct the element in place."
+    },
+    "constraints": [
+      {
+        "content": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without \"wrapping around\"), must fit in an `isize`.",
+        "fn_name": "add",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+        "fn_name": "add",
+        "type": "Allocated"
+      },
+      {
+        "content": "The entire memory range between `self` and the result must be within the bounds of the allocated object.",
+        "fn_name": "add",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The memory range must not \"wrap around\" the edge of the address space.",
+        "fn_name": "add",
+        "type": "Overflow"
+      },
+      {
+        "content": "The `new_len` must be less than or equal to the vector's capacity.",
+        "fn_name": "set_len",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The elements at the range `old_len..new_len` must be initialized.",
+        "fn_name": "set_len",
+        "type": "Initialized"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/encoding.rs/decode_windows1252/123",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/encoding.rs",
+    "start_line": 123,
+    "end_line": 137,
+    "start_byte": 3912,
+    "end_byte": 4323,
+    "name": "decode_windows1252",
+    "raw_code": "pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {\n    let bytes = trim_ascii_end(d);\n    let mut eject = false;\n    for x in bytes {\n        eject |= !x.is_ascii() || *x == b'\\\\'\n    }\n\n    if eject {\n        return Cow::Owned(windows_1252_create(bytes, 0));\n    }\n\n    debug_assert!(std::str::from_utf8(bytes).is_ok());\n    let s = unsafe { std::str::from_utf8_unchecked(bytes) };\n    Cow::Borrowed(s)\n}",
+    "code_with_hints": "pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {\n    let bytes: &[u8] = trim_ascii_end(data: d);\n    let mut eject: bool = false;\n    for x: &u8 in bytes {\n        eject |= !x.is_ascii() || *x == b'\\\\'\n    }\n\n    if eject {\n        return Cow::Owned(windows_1252_create(d: bytes, offset: 0));\n    }\n\n    debug_assert!(std::str::from_utf8(bytes).is_ok());\n    let s: &str = unsafe { std::str::from_utf8_unchecked(bytes) };\n    Cow::Borrowed(s)\n}",
+    "code_with_type": "pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {\n    let bytes: &[u8] = trim_ascii_end(d);\n    let mut eject: bool = false;\n    for x: &u8 in bytes {\n        eject |= !x.is_ascii() || *x == b'\\\\'\n    }\n\n    if eject {\n        return Cow::Owned(windows_1252_create(bytes, 0));\n    }\n\n    debug_assert!(std::str::from_utf8(bytes).is_ok());\n    let s: &str = unsafe { std::str::from_utf8_unchecked(bytes) };\n    Cow::Borrowed(s)\n}",
+    "code_with_param": "pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {\n    let bytes = trim_ascii_end(data: d);\n    let mut eject = false;\n    for x in bytes {\n        eject |= !x.is_ascii() || *x == b'\\\\'\n    }\n\n    if eject {\n        return Cow::Owned(windows_1252_create(d: bytes, offset: 0));\n    }\n\n    debug_assert!(std::str::from_utf8(bytes).is_ok());\n    let s = unsafe { std::str::from_utf8_unchecked(bytes) };\n    Cow::Borrowed(s)\n}",
+    "params": [
+      "d"
+    ],
+    "return_type": "Cow<str>",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "borrow",
+        "name": "Cow",
+        "item_type": "enum",
+        "offset_in_fn": 46,
+        "declaration": "Cow<'a, B: ?Sized + 'a>\nwhere\n    B: ToOwned,\n{\n    /// Borrowed data.\n    #[stable(feature = \"rust1\", since = \"1.0.0\")]\n    Borrowed(#[stable(feature = \"rust1\", since = \"1.0.0\")] &'a B),\n\n    /// Owned data.\n    #[stable(feature = \"rust1\", since = \"1.0.0\")]\n    Owned(#[stable(feature = \"rust1\", since = \"1.0.0\")] <B as ToOwned>::Owned),\n}",
+        "documentation": "A clone-on-write smart pointer.\n\nThe type `Cow` is a smart pointer providing clone-on-write functionality: it\ncan enclose and provide immutable access to borrowed data, and clone the\ndata lazily when mutation or ownership is required. The type is designed to\nwork with general borrowed data via the `Borrow` trait.\n\n`Cow` implements `Deref`, which means that you can call\nnon-mutating methods directly on the data it encloses. If mutation\nis desired, `to_mut` will obtain a mutable reference to an owned\nvalue, cloning if necessary.\n\nIf you need reference-counting pointers, note that\n[`Rc::make_mut`][crate::rc::Rc::make_mut] and\n[`Arc::make_mut`][crate::sync::Arc::make_mut] can provide clone-on-write\nfunctionality as well.\n\n# Examples\n\n```\nuse std::borrow::Cow;\n\nfn abs_all(input: &mut Cow<'_, [i32]>) {\n    for i in 0..input.len() {\n        let v = input[i];\n        if v < 0 {\n            // Clones into a vector if not already owned.\n            input.to_mut()[i] = -v;\n        }\n    }\n}\n\n// No clone occurs because `input` doesn't need to be mutated.\nlet slice = [0, 1, 2];\nlet mut input = Cow::from(&slice[..]);\nabs_all(&mut input);\n\n// Clone occurs because `input` needs to be mutated.\nlet slice = [-1, 0, 1];\nlet mut input = Cow::from(&slice[..]);\nabs_all(&mut input);\n\n// No clone occurs because `input` is already owned.\nlet mut input = Cow::from(vec![-1, 0, 1]);\nabs_all(&mut input);\n```\n\nAnother example showing how to keep `Cow` in a struct:\n\n```\nuse std::borrow::Cow;\n\nstruct Items<'a, X> where [X]: ToOwned<Owned = Vec<X>> {\n    values: Cow<'a, [X]>,\n}\n\nimpl<'a, X: Clone + 'a> Items<'a, X> where [X]: ToOwned<Owned = Vec<X>> {\n    fn new(v: Cow<'a, [X]>) -> Self {\n        Items { values: v }\n    }\n}\n\n// Creates a container from borrowed values of a slice\nlet readonly = [1, 2];\nlet borrowed = Items::new((&readonly[..]).into());\nmatch borrowed {\n    Items { values: Cow::Borrowed(b) } => println!(\"borrowed {b:?}\"),\n    _ => panic!(\"expect borrowed value\"),\n}\n\nlet mut clone_on_write = borrowed;\n// Mutates the data from slice into owned vec and pushes a new value on top\nclone_on_write.values.to_mut().push(3);\nprintln!(\"clone_on_write = {:?}\", clone_on_write.values);\n\n// The data was mutated. Let's check it out.\nmatch clone_on_write {\n    Items { values: Cow::Owned(_) } => println!(\"clone_on_write contains owned data\"),\n    _ => panic!(\"expect owned data\"),\n}\n```"
+      },
+      {
+        "src_mod": "encoding",
+        "name": "trim_ascii_end",
+        "item_type": "function",
+        "offset_in_fn": 73,
+        "declaration": "const fn trim_ascii_end(data: &[u8]) -> &[u8]",
+        "documentation": "https://github.com/rust-lang/rust/blob/767453eb7ca188e991ac5568c17b984dd4893e77/library/core/src/slice/ascii.rs#L159-L171"
+      },
+      {
+        "src_mod": "",
+        "name": "is_ascii",
+        "item_type": "function",
+        "offset_in_fn": 160,
+        "declaration": "pub const fn is_ascii(&self) -> bool",
+        "documentation": "Checks if the value is within the ASCII range.\n\n# Examples\n\n```\nlet ascii = 97u8;\nlet non_ascii = 150u8;\n\nassert!(ascii.is_ascii());\nassert!(!non_ascii.is_ascii());\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "Owned",
+        "item_type": "variant",
+        "offset_in_fn": 228,
+        "declaration": "Owned(<B as ToOwned>::Owned)",
+        "documentation": "Owned data."
+      },
+      {
+        "src_mod": "encoding",
+        "name": "windows_1252_create",
+        "item_type": "function",
+        "offset_in_fn": 234,
+        "declaration": "fn windows_1252_create(d: &[u8], offset: usize) -> String",
+        "documentation": ""
+      },
+      {
+        "src_mod": "converts",
+        "name": "from_utf8_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 359,
+        "declaration": "pub const unsafe fn from_utf8_unchecked(v: &[u8]) -> &str",
+        "documentation": "Converts a slice of bytes to a string slice without checking\nthat the string contains valid UTF-8.\n\nSee the safe version, [`from_utf8`], for more information.\n\n# Safety\n\nThe bytes passed in must be valid UTF-8.\n\n# Examples\n\nBasic usage:\n\n```\nuse std::str;\n\n// some bytes, in a vector\nlet sparkle_heart = vec![240, 159, 146, 150];\n\nlet sparkle_heart = unsafe {\n    str::from_utf8_unchecked(&sparkle_heart)\n};\n\nassert_eq!(\"\ud83d\udc96\", sparkle_heart);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "Borrowed",
+        "item_type": "variant",
+        "offset_in_fn": 398,
+        "declaration": "Borrowed(&'a B)",
+        "documentation": "Borrowed data."
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The bytes passed in must be valid UTF-8.",
+        "fn_name": "from_utf8_unchecked",
+        "type": "Type Constraint"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/encoding.rs/decode_utf8/157",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/encoding.rs",
+    "start_line": 157,
+    "end_line": 199,
+    "start_byte": 4848,
+    "end_byte": 6445,
+    "name": "decode_utf8",
+    "raw_code": "pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {\n    // Then we iterate through the data in 8 byte chunks and ensure that each chunk\n    // has no escape characters\n    let d = trim_ascii_end(d);\n    let mut chunk_iter = d.chunks_exact(8);\n    let mut offset = 0;\n    let mut is_ascii = true;\n    for n in &mut chunk_iter {\n        let wide = le_u64(n);\n        is_ascii &= wide & 0x8080_8080_8080_8080 == 0;\n        if contains_zero_byte(wide ^ repeat_byte(b'\\\\')) {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 8;\n    }\n\n    // Same logic as before but instead of operating on 8 bytes at a time, work bytewise\n    let remainder = chunk_iter.remainder();\n    for &byte in remainder {\n        is_ascii &= byte.is_ascii();\n        if byte == b'\\\\' {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 1;\n    }\n\n    let d = trim_ascii_end(d);\n\n    // Most the strings we'll be decoding are ascii, so we have an ascii fast path. If we don't\n    // detect any non-ascii characters then we can immediately create the borrowed string without\n    // validation. This causes the string benchmarks to be 2-3x faster on ascii inputs (with ~5%\n    // decrease on utf-8 inputs). Large string decodes saw perf increases of 5x.\n    if is_ascii {\n        // This is safe as we just checked that the data is ascii and ascii is a subset of utf8\n        debug_assert!(std::str::from_utf8(d).is_ok());\n        let s = unsafe { std::str::from_utf8_unchecked(d) };\n        Cow::Borrowed(s)\n    } else {\n        String::from_utf8_lossy(d)\n    }\n}",
+    "code_with_hints": "pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {\n    // Then we iterate through the data in 8 byte chunks and ensure that each chunk\n    // has no escape characters\n    let d: &[u8] = trim_ascii_end(data: d);\n    let mut chunk_iter: ChunksExact<u8> = d.chunks_exact(chunk_size: 8);\n    let mut offset: usize = 0;\n    let mut is_ascii: bool = true;\n    for n: &[u8] in &mut chunk_iter {\n        let wide: u64 = le_u64(data: n);\n        is_ascii &= wide & 0x8080_8080_8080_8080 == 0;\n        if contains_zero_byte(wide ^ repeat_byte(b'\\\\')) {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 8;\n    }\n\n    // Same logic as before but instead of operating on 8 bytes at a time, work bytewise\n    let remainder: &[u8] = chunk_iter.remainder();\n    for &byte: u8 in remainder {\n        is_ascii &= byte.is_ascii();\n        if byte == b'\\\\' {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 1;\n    }\n\n    let d: &[u8] = trim_ascii_end(data: d);\n\n    // Most the strings we'll be decoding are ascii, so we have an ascii fast path. If we don't\n    // detect any non-ascii characters then we can immediately create the borrowed string without\n    // validation. This causes the string benchmarks to be 2-3x faster on ascii inputs (with ~5%\n    // decrease on utf-8 inputs). Large string decodes saw perf increases of 5x.\n    if is_ascii {\n        // This is safe as we just checked that the data is ascii and ascii is a subset of utf8\n        debug_assert!(std::str::from_utf8(d).is_ok());\n        let s: &str = unsafe { std::str::from_utf8_unchecked(d) };\n        Cow::Borrowed(s)\n    } else {\n        String::from_utf8_lossy(d)\n    }\n}",
+    "code_with_type": "pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {\n    // Then we iterate through the data in 8 byte chunks and ensure that each chunk\n    // has no escape characters\n    let d: &[u8] = trim_ascii_end(d);\n    let mut chunk_iter: ChunksExact<u8> = d.chunks_exact(8);\n    let mut offset: usize = 0;\n    let mut is_ascii: bool = true;\n    for n: &[u8] in &mut chunk_iter {\n        let wide: u64 = le_u64(n);\n        is_ascii &= wide & 0x8080_8080_8080_8080 == 0;\n        if contains_zero_byte(wide ^ repeat_byte(b'\\\\')) {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 8;\n    }\n\n    // Same logic as before but instead of operating on 8 bytes at a time, work bytewise\n    let remainder: &[u8] = chunk_iter.remainder();\n    for &byte: u8 in remainder {\n        is_ascii &= byte.is_ascii();\n        if byte == b'\\\\' {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 1;\n    }\n\n    let d: &[u8] = trim_ascii_end(d);\n\n    // Most the strings we'll be decoding are ascii, so we have an ascii fast path. If we don't\n    // detect any non-ascii characters then we can immediately create the borrowed string without\n    // validation. This causes the string benchmarks to be 2-3x faster on ascii inputs (with ~5%\n    // decrease on utf-8 inputs). Large string decodes saw perf increases of 5x.\n    if is_ascii {\n        // This is safe as we just checked that the data is ascii and ascii is a subset of utf8\n        debug_assert!(std::str::from_utf8(d).is_ok());\n        let s: &str = unsafe { std::str::from_utf8_unchecked(d) };\n        Cow::Borrowed(s)\n    } else {\n        String::from_utf8_lossy(d)\n    }\n}",
+    "code_with_param": "pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {\n    // Then we iterate through the data in 8 byte chunks and ensure that each chunk\n    // has no escape characters\n    let d = trim_ascii_end(data: d);\n    let mut chunk_iter = d.chunks_exact(chunk_size: 8);\n    let mut offset = 0;\n    let mut is_ascii = true;\n    for n in &mut chunk_iter {\n        let wide = le_u64(data: n);\n        is_ascii &= wide & 0x8080_8080_8080_8080 == 0;\n        if contains_zero_byte(wide ^ repeat_byte(b'\\\\')) {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 8;\n    }\n\n    // Same logic as before but instead of operating on 8 bytes at a time, work bytewise\n    let remainder = chunk_iter.remainder();\n    for &byte in remainder {\n        is_ascii &= byte.is_ascii();\n        if byte == b'\\\\' {\n            return Cow::Owned(utf8_create(d, offset));\n        }\n\n        offset += 1;\n    }\n\n    let d = trim_ascii_end(data: d);\n\n    // Most the strings we'll be decoding are ascii, so we have an ascii fast path. If we don't\n    // detect any non-ascii characters then we can immediately create the borrowed string without\n    // validation. This causes the string benchmarks to be 2-3x faster on ascii inputs (with ~5%\n    // decrease on utf-8 inputs). Large string decodes saw perf increases of 5x.\n    if is_ascii {\n        // This is safe as we just checked that the data is ascii and ascii is a subset of utf8\n        debug_assert!(std::str::from_utf8(d).is_ok());\n        let s = unsafe { std::str::from_utf8_unchecked(d) };\n        Cow::Borrowed(s)\n    } else {\n        String::from_utf8_lossy(d)\n    }\n}",
+    "params": [
+      "d"
+    ],
+    "return_type": "Cow<str>",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "borrow",
+        "name": "Cow",
+        "item_type": "enum",
+        "offset_in_fn": 39,
+        "declaration": "Cow<'a, B: ?Sized + 'a>\nwhere\n    B: ToOwned,\n{\n    /// Borrowed data.\n    #[stable(feature = \"rust1\", since = \"1.0.0\")]\n    Borrowed(#[stable(feature = \"rust1\", since = \"1.0.0\")] &'a B),\n\n    /// Owned data.\n    #[stable(feature = \"rust1\", since = \"1.0.0\")]\n    Owned(#[stable(feature = \"rust1\", since = \"1.0.0\")] <B as ToOwned>::Owned),\n}",
+        "documentation": "A clone-on-write smart pointer.\n\nThe type `Cow` is a smart pointer providing clone-on-write functionality: it\ncan enclose and provide immutable access to borrowed data, and clone the\ndata lazily when mutation or ownership is required. The type is designed to\nwork with general borrowed data via the `Borrow` trait.\n\n`Cow` implements `Deref`, which means that you can call\nnon-mutating methods directly on the data it encloses. If mutation\nis desired, `to_mut` will obtain a mutable reference to an owned\nvalue, cloning if necessary.\n\nIf you need reference-counting pointers, note that\n[`Rc::make_mut`][crate::rc::Rc::make_mut] and\n[`Arc::make_mut`][crate::sync::Arc::make_mut] can provide clone-on-write\nfunctionality as well.\n\n# Examples\n\n```\nuse std::borrow::Cow;\n\nfn abs_all(input: &mut Cow<'_, [i32]>) {\n    for i in 0..input.len() {\n        let v = input[i];\n        if v < 0 {\n            // Clones into a vector if not already owned.\n            input.to_mut()[i] = -v;\n        }\n    }\n}\n\n// No clone occurs because `input` doesn't need to be mutated.\nlet slice = [0, 1, 2];\nlet mut input = Cow::from(&slice[..]);\nabs_all(&mut input);\n\n// Clone occurs because `input` needs to be mutated.\nlet slice = [-1, 0, 1];\nlet mut input = Cow::from(&slice[..]);\nabs_all(&mut input);\n\n// No clone occurs because `input` is already owned.\nlet mut input = Cow::from(vec![-1, 0, 1]);\nabs_all(&mut input);\n```\n\nAnother example showing how to keep `Cow` in a struct:\n\n```\nuse std::borrow::Cow;\n\nstruct Items<'a, X> where [X]: ToOwned<Owned = Vec<X>> {\n    values: Cow<'a, [X]>,\n}\n\nimpl<'a, X: Clone + 'a> Items<'a, X> where [X]: ToOwned<Owned = Vec<X>> {\n    fn new(v: Cow<'a, [X]>) -> Self {\n        Items { values: v }\n    }\n}\n\n// Creates a container from borrowed values of a slice\nlet readonly = [1, 2];\nlet borrowed = Items::new((&readonly[..]).into());\nmatch borrowed {\n    Items { values: Cow::Borrowed(b) } => println!(\"borrowed {b:?}\"),\n    _ => panic!(\"expect borrowed value\"),\n}\n\nlet mut clone_on_write = borrowed;\n// Mutates the data from slice into owned vec and pushes a new value on top\nclone_on_write.values.to_mut().push(3);\nprintln!(\"clone_on_write = {:?}\", clone_on_write.values);\n\n// The data was mutated. Let's check it out.\nmatch clone_on_write {\n    Items { values: Cow::Owned(_) } => println!(\"clone_on_write contains owned data\"),\n    _ => panic!(\"expect owned data\"),\n}\n```"
+      },
+      {
+        "src_mod": "encoding",
+        "name": "trim_ascii_end",
+        "item_type": "function",
+        "offset_in_fn": 178,
+        "declaration": "const fn trim_ascii_end(data: &[u8]) -> &[u8]",
+        "documentation": "https://github.com/rust-lang/rust/blob/767453eb7ca188e991ac5568c17b984dd4893e77/library/core/src/slice/ascii.rs#L159-L171"
+      },
+      {
+        "src_mod": "",
+        "name": "chunks_exact",
+        "item_type": "function",
+        "offset_in_fn": 224,
+        "declaration": "pub fn chunks_exact(&self, chunk_size: usize) -> ChunksExact<'_, T>",
+        "documentation": "Returns an iterator over `chunk_size` elements of the slice at a time, starting at the\nbeginning of the slice.\n\nThe chunks are slices and do not overlap. If `chunk_size` does not divide the length of the\nslice, then the last up to `chunk_size-1` elements will be omitted and can be retrieved\nfrom the `remainder` function of the iterator.\n\nDue to each chunk having exactly `chunk_size` elements, the compiler can often optimize the\nresulting code better than in the case of [`chunks`].\n\nSee [`chunks`] for a variant of this iterator that also returns the remainder as a smaller\nchunk, and [`rchunks_exact`] for the same iterator but starting at the end of the slice.\n\n# Panics\n\nPanics if `chunk_size` is 0.\n\n# Examples\n\n```\nlet slice = ['l', 'o', 'r', 'e', 'm'];\nlet mut iter = slice.chunks_exact(2);\nassert_eq!(iter.next().unwrap(), &['l', 'o']);\nassert_eq!(iter.next().unwrap(), &['r', 'e']);\nassert!(iter.next().is_none());\nassert_eq!(iter.remainder(), &['m']);\n```\n\n[`chunks`]: slice::chunks\n[`rchunks_exact`]: slice::rchunks_exact"
+      },
+      {
+        "src_mod": "util",
+        "name": "le_u64",
+        "item_type": "function",
+        "offset_in_fn": 344,
+        "declaration": "pub(crate) fn le_u64(data: &[u8]) -> u64",
+        "documentation": ""
+      },
+      {
+        "src_mod": "util",
+        "name": "contains_zero_byte",
+        "item_type": "function",
+        "offset_in_fn": 421,
+        "declaration": "pub(crate) fn contains_zero_byte(x: u64) -> bool",
+        "documentation": "From the memchr crate which bases its implementation on several others"
+      },
+      {
+        "src_mod": "util",
+        "name": "repeat_byte",
+        "item_type": "function",
+        "offset_in_fn": 447,
+        "declaration": "pub(crate) const fn repeat_byte(b: u8) -> u64",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "Owned",
+        "item_type": "variant",
+        "offset_in_fn": 493,
+        "declaration": "Owned(<B as ToOwned>::Owned)",
+        "documentation": "Owned data."
+      },
+      {
+        "src_mod": "encoding",
+        "name": "utf8_create",
+        "item_type": "function",
+        "offset_in_fn": 499,
+        "declaration": "fn utf8_create(d: &[u8], offset: usize) -> String",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "remainder",
+        "item_type": "function",
+        "offset_in_fn": 683,
+        "declaration": "pub fn remainder(&self) -> &'a [T]",
+        "documentation": "Returns the remainder of the original slice that is not going to be\nreturned by the iterator. The returned slice has at most `chunk_size-1`\nelements.\n\n# Example\n\n```\nlet slice = ['l', 'o', 'r', 'e', 'm'];\nlet mut iter = slice.chunks_exact(2);\nassert_eq!(iter.remainder(), &['m'][..]);\nassert_eq!(iter.next(), Some(&['l', 'o'][..]));\nassert_eq!(iter.remainder(), &['m'][..]);\nassert_eq!(iter.next(), Some(&['r', 'e'][..]));\nassert_eq!(iter.remainder(), &['m'][..]);\nassert_eq!(iter.next(), None);\nassert_eq!(iter.remainder(), &['m'][..]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "is_ascii",
+        "item_type": "function",
+        "offset_in_fn": 750,
+        "declaration": "pub const fn is_ascii(&self) -> bool",
+        "documentation": "Checks if the value is within the ASCII range.\n\n# Examples\n\n```\nlet ascii = 97u8;\nlet non_ascii = 150u8;\n\nassert!(ascii.is_ascii());\nassert!(!non_ascii.is_ascii());\n```"
+      },
+      {
+        "src_mod": "converts",
+        "name": "from_utf8_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 1491,
+        "declaration": "pub const unsafe fn from_utf8_unchecked(v: &[u8]) -> &str",
+        "documentation": "Converts a slice of bytes to a string slice without checking\nthat the string contains valid UTF-8.\n\nSee the safe version, [`from_utf8`], for more information.\n\n# Safety\n\nThe bytes passed in must be valid UTF-8.\n\n# Examples\n\nBasic usage:\n\n```\nuse std::str;\n\n// some bytes, in a vector\nlet sparkle_heart = vec![240, 159, 146, 150];\n\nlet sparkle_heart = unsafe {\n    str::from_utf8_unchecked(&sparkle_heart)\n};\n\nassert_eq!(\"\ud83d\udc96\", sparkle_heart);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "Borrowed",
+        "item_type": "variant",
+        "offset_in_fn": 1530,
+        "declaration": "Borrowed(&'a B)",
+        "documentation": "Borrowed data."
+      },
+      {
+        "src_mod": "",
+        "name": "from_utf8_lossy",
+        "item_type": "function",
+        "offset_in_fn": 1571,
+        "declaration": "pub fn from_utf8_lossy(v: &[u8]) -> Cow<'_, str>",
+        "documentation": "Converts a slice of bytes to a string, including invalid characters.\n\nStrings are made of bytes ([`u8`]), and a slice of bytes\n([`&[u8]`][byteslice]) is made of bytes, so this function converts\nbetween the two. Not all byte slices are valid strings, however: strings\nare required to be valid UTF-8. During this conversion,\n`from_utf8_lossy()` will replace any invalid UTF-8 sequences with\n[`U+FFFD REPLACEMENT CHARACTER`][U+FFFD], which looks like this: \ufffd\n\n[byteslice]: prim@slice\n[U+FFFD]: core::char::REPLACEMENT_CHARACTER\n\nIf you are sure that the byte slice is valid UTF-8, and you don't want\nto incur the overhead of the conversion, there is an unsafe version\nof this function, [`from_utf8_unchecked`], which has the same behavior\nbut skips the checks.\n\n[`from_utf8_unchecked`]: String::from_utf8_unchecked\n\nThis function returns a [`Cow<'a, str>`]. If our byte slice is invalid\nUTF-8, then we need to insert the replacement characters, which will\nchange the size of the string, and hence, require a `String`. But if\nit's already valid UTF-8, we don't need a new allocation. This return\ntype allows us to handle both cases.\n\n[`Cow<'a, str>`]: crate::borrow::Cow \"borrow::Cow\"\n\n# Examples\n\nBasic usage:\n\n```\n// some bytes, in a vector\nlet sparkle_heart = vec![240, 159, 146, 150];\n\nlet sparkle_heart = String::from_utf8_lossy(&sparkle_heart);\n\nassert_eq!(\"\ud83d\udc96\", sparkle_heart);\n```\n\nIncorrect bytes:\n\n```\n// some invalid bytes\nlet input = b\"Hello \\xF0\\x90\\x80World\";\nlet output = String::from_utf8_lossy(input);\n\nassert_eq!(\"Hello \ufffdWorld\", output);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The bytes passed in must be valid UTF-8.",
+        "fn_name": "from_utf8_unchecked",
+        "type": "Type Constraint"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/buffer.rs/advance/43",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/buffer.rs",
+    "start_line": 43,
+    "end_line": 47,
+    "start_byte": 877,
+    "end_byte": 1061,
+    "name": "advance",
+    "raw_code": "pub fn advance(&mut self, amt: usize) {\n        let ptr = unsafe { self.start.add(amt) };\n        debug_assert!((self.start..=self.end).contains(&ptr));\n        self.start = ptr;\n    }",
+    "code_with_hints": "pub fn advance(&mut self, amt: usize) {\n        let ptr: *const u8 = unsafe { self.start.add(count: amt) };\n        debug_assert!((self.start..=self.end).contains(&ptr));\n        self.start = ptr;\n    }",
+    "code_with_type": "pub fn advance(&mut self, amt: usize) {\n        let ptr: *const u8 = unsafe { self.start.add(amt) };\n        debug_assert!((self.start..=self.end).contains(&ptr));\n        self.start = ptr;\n    }",
+    "code_with_param": "pub fn advance(&mut self, amt: usize) {\n        let ptr = unsafe { self.start.add(count: amt) };\n        debug_assert!((self.start..=self.end).contains(&ptr));\n        self.start = ptr;\n    }",
+    "params": [
+      "self",
+      "amt"
+    ],
+    "return_type": "",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 78,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!(*ptr.add(1), b'2');\n    assert_eq!(*ptr.add(2), b'3');\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "BufferWindow",
+      "item_type": "struct",
+      "offset_in_fn": 20,
+      "declaration": "BufferWindow {\n    pub buf: Box<[u8]>,\n\n    start_buf: *const u8,\n\n    // start of window into buffer\n    pub start: *const u8,\n\n    // end of window into buffer\n    pub end: *const u8,\n\n    // number of consumed bytes from prior reads\n    pub prior_reads: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without \"wrapping around\"), must fit in an `isize`.",
+        "fn_name": "add",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+        "fn_name": "add",
+        "type": "Allocated"
+      },
+      {
+        "content": "The entire memory range between `self` and the result must be within the bounds of the allocated object.",
+        "fn_name": "add",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The memory range must not \"wrap around\" the edge of the address space.",
+        "fn_name": "add",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/buffer.rs/window/50",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/buffer.rs",
+    "start_line": 50,
+    "end_line": 52,
+    "start_byte": 1081,
+    "end_byte": 1195,
+    "name": "window",
+    "raw_code": "pub fn window(&self) -> &[u8] {\n        unsafe { std::slice::from_raw_parts(self.start, self.window_len()) }\n    }",
+    "code_with_hints": "pub fn window(&self) -> &[u8] {\n        unsafe { std::slice::from_raw_parts(data: self.start, self.window_len()) }\n    }",
+    "code_with_type": "pub fn window(&self) -> &[u8] {\n        unsafe { std::slice::from_raw_parts(self.start, self.window_len()) }\n    }",
+    "code_with_param": "pub fn window(&self) -> &[u8] {\n        unsafe { std::slice::from_raw_parts(data: self.start, self.window_len()) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "&[u8]",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 61,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** \u26a0\ufe0f\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "window_len",
+        "item_type": "function",
+        "offset_in_fn": 93,
+        "declaration": "pub fn window_len(&self) -> usize",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "BufferWindow",
+      "item_type": "struct",
+      "offset_in_fn": 15,
+      "declaration": "BufferWindow {\n    pub buf: Box<[u8]>,\n\n    start_buf: *const u8,\n\n    // start of window into buffer\n    pub start: *const u8,\n\n    // end of window into buffer\n    pub end: *const u8,\n\n    // number of consumed bytes from prior reads\n    pub prior_reads: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The `data` pointer must be non-null.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be valid for reads for `len * mem::size_of::<T>()` many bytes.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be properly aligned.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The entire memory range of the slice must be contained within a single allocated object.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be non-null even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be aligned even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The `data` pointer must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts",
+        "type": "Initialized"
+      },
+      {
+        "content": "The memory referenced by the returned slice must not be mutated for the duration of lifetime `'a`, except inside an `UnsafeCell`.",
+        "fn_name": "from_raw_parts",
+        "type": "Exclusive"
+      },
+      {
+        "content": "The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the total size `len * mem::size_of::<T>()` to `data` must not \"wrap around\" the address space.",
+        "fn_name": "from_raw_parts",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/buffer.rs/window_len/55",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/buffer.rs",
+    "start_line": 55,
+    "end_line": 57,
+    "start_byte": 1215,
+    "end_byte": 1317,
+    "name": "window_len",
+    "raw_code": "pub fn window_len(&self) -> usize {\n        unsafe { self.end.offset_from(self.start) as usize }\n    }",
+    "code_with_hints": "pub fn window_len(&self) -> usize {\n        unsafe { self.end.offset_from(origin: self.start) as usize }\n    }",
+    "code_with_type": "pub fn window_len(&self) -> usize {\n        unsafe { self.end.offset_from(self.start) as usize }\n    }",
+    "code_with_param": "pub fn window_len(&self) -> usize {\n        unsafe { self.end.offset_from(origin: self.start) as usize }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "usize",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "offset_from",
+        "item_type": "function",
+        "offset_in_fn": 62,
+        "declaration": "pub const unsafe fn offset_from(self, origin: *const T) -> isize\nwhere\n    T: Sized,",
+        "documentation": "Calculates the distance between two pointers. The returned value is in\nunits of T: the distance in bytes divided by `mem::size_of::<T>()`.\n\nThis is equivalent to `(self as isize - origin as isize) / (mem::size_of::<T>() as isize)`,\nexcept that it has a lot more opportunities for UB, in exchange for the compiler\nbetter understanding what you are doing.\n\nThe primary motivation of this method is for computing the `len` of an array/slice\nof `T` that you are currently representing as a \"start\" and \"end\" pointer\n(and \"end\" is \"one past the end\" of the array).\nIn that case, `end.offset_from(start)` gets you the length of the array.\n\nAll of the following safety requirements are trivially satisfied for this usecase.\n\n[`offset`]: #method.offset\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* `self` and `origin` must either\n\n  * point to the same address, or\n  * both be *derived from* a pointer to the same [allocated object], and the memory range between\n    the two pointers must be in bounds of that object. (See below for an example.)\n\n* The distance between the pointers, in bytes, must be an exact multiple\n  of the size of `T`.\n\nAs a consequence, the absolute distance between the pointers, in bytes, computed on\nmathematical integers (without \"wrapping around\"), cannot overflow an `isize`. This is\nimplied by the in-bounds requirement, and the fact that no allocated object can be larger\nthan `isize::MAX` bytes.\n\nThe requirement for pointers to be derived from the same allocated object is primarily\nneeded for `const`-compatibility: the distance between pointers into *different* allocated\nobjects is not known at compile-time. However, the requirement also exists at\nruntime and may be exploited by optimizations. If you wish to compute the difference between\npointers that are not guaranteed to be from the same allocation, use `(self as isize -\norigin as isize) / mem::size_of::<T>()`.\n\n[`add`]: #method.add\n[allocated object]: crate::ptr#allocated-object\n\n# Panics\n\nThis function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [0; 5];\nlet ptr1: *const i32 = &a[1];\nlet ptr2: *const i32 = &a[3];\nunsafe {\n    assert_eq!(ptr2.offset_from(ptr1), 2);\n    assert_eq!(ptr1.offset_from(ptr2), -2);\n    assert_eq!(ptr1.offset(2), ptr2);\n    assert_eq!(ptr2.offset(-2), ptr1);\n}\n```\n\n*Incorrect* usage:\n\n```rust,no_run\nlet ptr1 = Box::into_raw(Box::new(0u8)) as *const u8;\nlet ptr2 = Box::into_raw(Box::new(1u8)) as *const u8;\nlet diff = (ptr2 as isize).wrapping_sub(ptr1 as isize);\n// Make ptr2_other an \"alias\" of ptr2.add(1), but derived from ptr1.\nlet ptr2_other = (ptr1 as *const u8).wrapping_offset(diff).wrapping_offset(1);\nassert_eq!(ptr2 as usize, ptr2_other as usize);\n// Since ptr2_other and ptr2 are derived from pointers to different objects,\n// computing their offset is undefined behavior, even though\n// they point to addresses that are in-bounds of the same object!\nunsafe {\n    let one = ptr2_other.offset_from(ptr2); // Undefined Behavior! \u26a0\ufe0f\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "BufferWindow",
+      "item_type": "struct",
+      "offset_in_fn": 19,
+      "declaration": "BufferWindow {\n    pub buf: Box<[u8]>,\n\n    start_buf: *const u8,\n\n    // start of window into buffer\n    pub start: *const u8,\n\n    // end of window into buffer\n    pub end: *const u8,\n\n    // number of consumed bytes from prior reads\n    pub prior_reads: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "`self` and `origin` must point to the same address or both be derived from a pointer to the same allocated object.",
+        "fn_name": "offset_from",
+        "type": "Allocated"
+      },
+      {
+        "content": "The memory range between `self` and `origin` must be within the bounds of the allocated object.",
+        "fn_name": "offset_from",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The distance between `self` and `origin`, in bytes, must be an exact multiple of the size of `T`.",
+        "fn_name": "offset_from",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The absolute distance between `self` and `origin`, in bytes, computed on mathematical integers (without \"wrapping around\"), cannot overflow an `isize`.",
+        "fn_name": "offset_from",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/buffer.rs/consumed_data/65",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/buffer.rs",
+    "start_line": 65,
+    "end_line": 67,
+    "start_byte": 1444,
+    "end_byte": 1555,
+    "name": "consumed_data",
+    "raw_code": "pub fn consumed_data(&self) -> usize {\n        unsafe { self.start.offset_from(self.start_buf) as usize }\n    }",
+    "code_with_hints": "pub fn consumed_data(&self) -> usize {\n        unsafe { self.start.offset_from(origin: self.start_buf) as usize }\n    }",
+    "code_with_type": "pub fn consumed_data(&self) -> usize {\n        unsafe { self.start.offset_from(self.start_buf) as usize }\n    }",
+    "code_with_param": "pub fn consumed_data(&self) -> usize {\n        unsafe { self.start.offset_from(origin: self.start_buf) as usize }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "usize",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "offset_from",
+        "item_type": "function",
+        "offset_in_fn": 67,
+        "declaration": "pub const unsafe fn offset_from(self, origin: *const T) -> isize\nwhere\n    T: Sized,",
+        "documentation": "Calculates the distance between two pointers. The returned value is in\nunits of T: the distance in bytes divided by `mem::size_of::<T>()`.\n\nThis is equivalent to `(self as isize - origin as isize) / (mem::size_of::<T>() as isize)`,\nexcept that it has a lot more opportunities for UB, in exchange for the compiler\nbetter understanding what you are doing.\n\nThe primary motivation of this method is for computing the `len` of an array/slice\nof `T` that you are currently representing as a \"start\" and \"end\" pointer\n(and \"end\" is \"one past the end\" of the array).\nIn that case, `end.offset_from(start)` gets you the length of the array.\n\nAll of the following safety requirements are trivially satisfied for this usecase.\n\n[`offset`]: #method.offset\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* `self` and `origin` must either\n\n  * point to the same address, or\n  * both be *derived from* a pointer to the same [allocated object], and the memory range between\n    the two pointers must be in bounds of that object. (See below for an example.)\n\n* The distance between the pointers, in bytes, must be an exact multiple\n  of the size of `T`.\n\nAs a consequence, the absolute distance between the pointers, in bytes, computed on\nmathematical integers (without \"wrapping around\"), cannot overflow an `isize`. This is\nimplied by the in-bounds requirement, and the fact that no allocated object can be larger\nthan `isize::MAX` bytes.\n\nThe requirement for pointers to be derived from the same allocated object is primarily\nneeded for `const`-compatibility: the distance between pointers into *different* allocated\nobjects is not known at compile-time. However, the requirement also exists at\nruntime and may be exploited by optimizations. If you wish to compute the difference between\npointers that are not guaranteed to be from the same allocation, use `(self as isize -\norigin as isize) / mem::size_of::<T>()`.\n\n[`add`]: #method.add\n[allocated object]: crate::ptr#allocated-object\n\n# Panics\n\nThis function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [0; 5];\nlet ptr1: *const i32 = &a[1];\nlet ptr2: *const i32 = &a[3];\nunsafe {\n    assert_eq!(ptr2.offset_from(ptr1), 2);\n    assert_eq!(ptr1.offset_from(ptr2), -2);\n    assert_eq!(ptr1.offset(2), ptr2);\n    assert_eq!(ptr2.offset(-2), ptr1);\n}\n```\n\n*Incorrect* usage:\n\n```rust,no_run\nlet ptr1 = Box::into_raw(Box::new(0u8)) as *const u8;\nlet ptr2 = Box::into_raw(Box::new(1u8)) as *const u8;\nlet diff = (ptr2 as isize).wrapping_sub(ptr1 as isize);\n// Make ptr2_other an \"alias\" of ptr2.add(1), but derived from ptr1.\nlet ptr2_other = (ptr1 as *const u8).wrapping_offset(diff).wrapping_offset(1);\nassert_eq!(ptr2 as usize, ptr2_other as usize);\n// Since ptr2_other and ptr2 are derived from pointers to different objects,\n// computing their offset is undefined behavior, even though\n// they point to addresses that are in-bounds of the same object!\nunsafe {\n    let one = ptr2_other.offset_from(ptr2); // Undefined Behavior! \u26a0\ufe0f\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "BufferWindow",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "BufferWindow {\n    pub buf: Box<[u8]>,\n\n    start_buf: *const u8,\n\n    // start of window into buffer\n    pub start: *const u8,\n\n    // end of window into buffer\n    pub end: *const u8,\n\n    // number of consumed bytes from prior reads\n    pub prior_reads: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "`self` and `origin` must point to the same address or both be derived from a pointer to the same allocated object.",
+        "fn_name": "offset_from",
+        "type": "Allocated"
+      },
+      {
+        "content": "The memory range between `self` and `origin` must be within the bounds of the allocated object.",
+        "fn_name": "offset_from",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The distance between `self` and `origin`, in bytes, must be an exact multiple of the size of `T`.",
+        "fn_name": "offset_from",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The absolute distance between `self` and `origin`, in bytes, computed on mathematical integers (without \"wrapping around\"), cannot overflow an `isize`.",
+        "fn_name": "offset_from",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/buffer.rs/get/70",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/buffer.rs",
+    "start_line": 70,
+    "end_line": 76,
+    "start_byte": 1575,
+    "end_byte": 1907,
+    "name": "get",
+    "raw_code": "pub fn get(&self, range: Range<*const u8>) -> Scalar {\n        debug_assert!(range.start >= self.start_buf);\n        debug_assert!(range.end <= self.end);\n        let len = unsafe { range.end.offset_from(range.start) as usize };\n        let sl = unsafe { std::slice::from_raw_parts(range.start, len) };\n        Scalar::new(sl)\n    }",
+    "code_with_hints": "pub fn get(&self, range: Range<*const u8>) -> Scalar {\n        debug_assert!(range.start >= self.start_buf);\n        debug_assert!(range.end <= self.end);\n        let len: usize = unsafe { range.end.offset_from(origin: range.start) as usize };\n        let sl: &[u8] = unsafe { std::slice::from_raw_parts(data: range.start, len) };\n        Scalar::new(data: sl)\n    }",
+    "code_with_type": "pub fn get(&self, range: Range<*const u8>) -> Scalar {\n        debug_assert!(range.start >= self.start_buf);\n        debug_assert!(range.end <= self.end);\n        let len: usize = unsafe { range.end.offset_from(range.start) as usize };\n        let sl: &[u8] = unsafe { std::slice::from_raw_parts(range.start, len) };\n        Scalar::new(sl)\n    }",
+    "code_with_param": "pub fn get(&self, range: Range<*const u8>) -> Scalar {\n        debug_assert!(range.start >= self.start_buf);\n        debug_assert!(range.end <= self.end);\n        let len = unsafe { range.end.offset_from(origin: range.start) as usize };\n        let sl = unsafe { std::slice::from_raw_parts(data: range.start, len) };\n        Scalar::new(data: sl)\n    }",
+    "params": [
+      "self",
+      "range"
+    ],
+    "return_type": "Scalar",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "scalar",
+        "name": "Scalar",
+        "item_type": "struct",
+        "offset_in_fn": 46,
+        "declaration": "Scalar<'a> {\n    data: &'a [u8],\n}",
+        "documentation": "A byte slice that represents a single value.\n\nA scalars does not carry with it an encoding, so an appropriate encoder must be used\nif text is wished to be extracted from a scalar\n\n```\nuse jomini::Scalar;\n\nlet v1 = Scalar::new(b\"10\");\nassert_eq!(v1.to_u64(), Ok(10));\nassert_eq!(v1.to_i64(), Ok(10));\nassert_eq!(v1.to_f64(), Ok(10.0));\nassert!(v1.to_bool().is_err());\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset_from",
+        "item_type": "function",
+        "offset_in_fn": 192,
+        "declaration": "pub const unsafe fn offset_from(self, origin: *const T) -> isize\nwhere\n    T: Sized,",
+        "documentation": "Calculates the distance between two pointers. The returned value is in\nunits of T: the distance in bytes divided by `mem::size_of::<T>()`.\n\nThis is equivalent to `(self as isize - origin as isize) / (mem::size_of::<T>() as isize)`,\nexcept that it has a lot more opportunities for UB, in exchange for the compiler\nbetter understanding what you are doing.\n\nThe primary motivation of this method is for computing the `len` of an array/slice\nof `T` that you are currently representing as a \"start\" and \"end\" pointer\n(and \"end\" is \"one past the end\" of the array).\nIn that case, `end.offset_from(start)` gets you the length of the array.\n\nAll of the following safety requirements are trivially satisfied for this usecase.\n\n[`offset`]: #method.offset\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* `self` and `origin` must either\n\n  * point to the same address, or\n  * both be *derived from* a pointer to the same [allocated object], and the memory range between\n    the two pointers must be in bounds of that object. (See below for an example.)\n\n* The distance between the pointers, in bytes, must be an exact multiple\n  of the size of `T`.\n\nAs a consequence, the absolute distance between the pointers, in bytes, computed on\nmathematical integers (without \"wrapping around\"), cannot overflow an `isize`. This is\nimplied by the in-bounds requirement, and the fact that no allocated object can be larger\nthan `isize::MAX` bytes.\n\nThe requirement for pointers to be derived from the same allocated object is primarily\nneeded for `const`-compatibility: the distance between pointers into *different* allocated\nobjects is not known at compile-time. However, the requirement also exists at\nruntime and may be exploited by optimizations. If you wish to compute the difference between\npointers that are not guaranteed to be from the same allocation, use `(self as isize -\norigin as isize) / mem::size_of::<T>()`.\n\n[`add`]: #method.add\n[allocated object]: crate::ptr#allocated-object\n\n# Panics\n\nThis function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [0; 5];\nlet ptr1: *const i32 = &a[1];\nlet ptr2: *const i32 = &a[3];\nunsafe {\n    assert_eq!(ptr2.offset_from(ptr1), 2);\n    assert_eq!(ptr1.offset_from(ptr2), -2);\n    assert_eq!(ptr1.offset(2), ptr2);\n    assert_eq!(ptr2.offset(-2), ptr1);\n}\n```\n\n*Incorrect* usage:\n\n```rust,no_run\nlet ptr1 = Box::into_raw(Box::new(0u8)) as *const u8;\nlet ptr2 = Box::into_raw(Box::new(1u8)) as *const u8;\nlet diff = (ptr2 as isize).wrapping_sub(ptr1 as isize);\n// Make ptr2_other an \"alias\" of ptr2.add(1), but derived from ptr1.\nlet ptr2_other = (ptr1 as *const u8).wrapping_offset(diff).wrapping_offset(1);\nassert_eq!(ptr2 as usize, ptr2_other as usize);\n// Since ptr2_other and ptr2 are derived from pointers to different objects,\n// computing their offset is undefined behavior, even though\n// they point to addresses that are in-bounds of the same object!\nunsafe {\n    let one = ptr2_other.offset_from(ptr2); // Undefined Behavior! \u26a0\ufe0f\n}\n```"
+      },
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 267,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** \u26a0\ufe0f\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "BufferWindow",
+      "item_type": "struct",
+      "offset_in_fn": 12,
+      "declaration": "BufferWindow {\n    pub buf: Box<[u8]>,\n\n    start_buf: *const u8,\n\n    // start of window into buffer\n    pub start: *const u8,\n\n    // end of window into buffer\n    pub end: *const u8,\n\n    // number of consumed bytes from prior reads\n    pub prior_reads: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "`self` and `origin` must point to the same address or both be derived from a pointer to the same allocated object.",
+        "fn_name": "offset_from",
+        "type": "Allocated"
+      },
+      {
+        "content": "The memory range between `self` and `origin` must be within the bounds of the allocated object.",
+        "fn_name": "offset_from",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The distance between `self` and `origin`, in bytes, must be an exact multiple of the size of `T`.",
+        "fn_name": "offset_from",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The absolute distance between `self` and `origin`, in bytes, computed on mathematical integers (without \"wrapping around\"), cannot overflow an `isize`.",
+        "fn_name": "offset_from",
+        "type": "Overflow"
+      },
+      {
+        "content": "The `data` pointer must be non-null.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be valid for reads for `len * mem::size_of::<T>()` many bytes.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be properly aligned.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The entire memory range of the slice must be contained within a single allocated object.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be non-null even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be aligned even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The `data` pointer must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts",
+        "type": "Initialized"
+      },
+      {
+        "content": "The memory referenced by the returned slice must not be mutated for the duration of lifetime `'a`, except inside an `UnsafeCell`.",
+        "fn_name": "from_raw_parts",
+        "type": "Exclusive"
+      },
+      {
+        "content": "The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the total size `len * mem::size_of::<T>()` to `data` must not \"wrap around\" the address space.",
+        "fn_name": "from_raw_parts",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/buffer.rs/fill_buf/83",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/buffer.rs",
+    "start_line": 83,
+    "end_line": 110,
+    "start_byte": 2177,
+    "end_byte": 3175,
+    "name": "fill_buf",
+    "raw_code": "pub fn fill_buf(&mut self, mut reader: impl Read) -> Result<usize, BufferError> {\n        let carry_over = self.window_len();\n        if carry_over >= self.buf.len() {\n            return Ok(0);\n        }\n\n        // Copy over the unconsumed bytes to the start of the buffer\n        if carry_over != 0 {\n            if carry_over >= self.buf.len() {\n                return Err(BufferError::BufferFull);\n            }\n            self.buf.copy_within(self.consumed_data().., 0);\n        }\n\n        self.prior_reads += self.consumed_data();\n        self.start = self.buf.as_ptr();\n        self.end = unsafe { self.buf.as_ptr().add(carry_over) };\n\n        // Have the reader start filling in bytes after unconsumed bytes\n        match reader.read(&mut self.buf[carry_over..]) {\n            Ok(r) => {\n                self.start = self.buf.as_ptr();\n                self.end = unsafe { self.end.add(r) };\n                Ok(r)\n            }\n            Err(e) => Err(BufferError::Io(e)),\n        }\n    }",
+    "code_with_hints": "pub fn fill_buf(&mut self, mut reader: impl Read) -> Result<usize, BufferError> {\n        let carry_over: usize = self.window_len();\n        if carry_over >= self.buf.len() {\n            return Ok(0);\n        }\n\n        // Copy over the unconsumed bytes to the start of the buffer\n        if carry_over != 0 {\n            if carry_over >= self.buf.len() {\n                return Err(BufferError::BufferFull);\n            }\n            self.buf.copy_within(src: self.consumed_data().., dest: 0);\n        }\n\n        self.prior_reads += self.consumed_data();\n        self.start = self.buf.as_ptr();\n        self.end = unsafe { self.buf.as_ptr().add(count: carry_over) };\n\n        // Have the reader start filling in bytes after unconsumed bytes\n        match reader.read(buf: &mut self.buf[carry_over..]) {\n            Ok(r: usize) => {\n                self.start = self.buf.as_ptr();\n                self.end = unsafe { self.end.add(count: r) };\n                Ok(r)\n            }\n            Err(e: Error) => Err(BufferError::Io(e)),\n        }\n    }",
+    "code_with_type": "pub fn fill_buf(&mut self, mut reader: impl Read) -> Result<usize, BufferError> {\n        let carry_over: usize = self.window_len();\n        if carry_over >= self.buf.len() {\n            return Ok(0);\n        }\n\n        // Copy over the unconsumed bytes to the start of the buffer\n        if carry_over != 0 {\n            if carry_over >= self.buf.len() {\n                return Err(BufferError::BufferFull);\n            }\n            self.buf.copy_within(self.consumed_data().., 0);\n        }\n\n        self.prior_reads += self.consumed_data();\n        self.start = self.buf.as_ptr();\n        self.end = unsafe { self.buf.as_ptr().add(carry_over) };\n\n        // Have the reader start filling in bytes after unconsumed bytes\n        match reader.read(&mut self.buf[carry_over..]) {\n            Ok(r: usize) => {\n                self.start = self.buf.as_ptr();\n                self.end = unsafe { self.end.add(r) };\n                Ok(r)\n            }\n            Err(e: Error) => Err(BufferError::Io(e)),\n        }\n    }",
+    "code_with_param": "pub fn fill_buf(&mut self, mut reader: impl Read) -> Result<usize, BufferError> {\n        let carry_over = self.window_len();\n        if carry_over >= self.buf.len() {\n            return Ok(0);\n        }\n\n        // Copy over the unconsumed bytes to the start of the buffer\n        if carry_over != 0 {\n            if carry_over >= self.buf.len() {\n                return Err(BufferError::BufferFull);\n            }\n            self.buf.copy_within(src: self.consumed_data().., dest: 0);\n        }\n\n        self.prior_reads += self.consumed_data();\n        self.start = self.buf.as_ptr();\n        self.end = unsafe { self.buf.as_ptr().add(count: carry_over) };\n\n        // Have the reader start filling in bytes after unconsumed bytes\n        match reader.read(buf: &mut self.buf[carry_over..]) {\n            Ok(r) => {\n                self.start = self.buf.as_ptr();\n                self.end = unsafe { self.end.add(count: r) };\n                Ok(r)\n            }\n            Err(e) => Err(BufferError::Io(e)),\n        }\n    }",
+    "params": [
+      "self",
+      "reader"
+    ],
+    "return_type": "Result<usize, BufferError>",
+    "comment": "/// This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`\n/// will only call the underlying read if the buffer is currently empty,\n/// this function will copy over the bytes that haven't been consumed to the\n/// start.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "buffer",
+        "name": "BufferError",
+        "item_type": "enum",
+        "offset_in_fn": 67,
+        "declaration": "BufferError {\n    Io(std::io::Error),\n    BufferFull,\n}",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "window_len",
+        "item_type": "function",
+        "offset_in_fn": 112,
+        "declaration": "pub fn window_len(&self) -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "copy_within",
+        "item_type": "function",
+        "offset_in_fn": 437,
+        "declaration": "pub fn copy_within<R>(&mut self, src: R, dest: usize)\nwhere\n    R: RangeBounds<usize>,\n    T: Copy,",
+        "documentation": "Copies elements from one part of the slice to another part of itself,\nusing a memmove.\n\n`src` is the range within `self` to copy from. `dest` is the starting\nindex of the range within `self` to copy to, which will have the same\nlength as `src`. The two ranges may overlap. The ends of the two ranges\nmust be less than or equal to `self.len()`.\n\n# Panics\n\nThis function will panic if either range exceeds the end of the slice,\nor if the end of `src` is before the start.\n\n# Examples\n\nCopying four bytes within a slice:\n\n```\nlet mut bytes = *b\"Hello, World!\";\n\nbytes.copy_within(1..5, 8);\n\nassert_eq!(&bytes, b\"Hello, Wello!\");\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "consumed_data",
+        "item_type": "function",
+        "offset_in_fn": 454,
+        "declaration": "pub fn consumed_data(&self) -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 624,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!(*ptr.add(1), b'2');\n    assert_eq!(*ptr.add(2), b'3');\n}\n```"
+      },
+      {
+        "src_mod": "Read",
+        "name": "read",
+        "item_type": "function",
+        "offset_in_fn": 738,
+        "declaration": "pub fn read(&mut self, buf: &mut [u8]) -> Result<usize>",
+        "documentation": "Pull some bytes from this source into the specified buffer, returning\nhow many bytes were read.\n\nThis function does not provide any guarantees about whether it blocks\nwaiting for data, but if an object needs to block for a read and cannot,\nit will typically signal this via an [`Err`] return value.\n\nIf the return value of this method is [`Ok(n)`], then implementations must\nguarantee that `0 <= n <= buf.len()`. A nonzero `n` value indicates\nthat the buffer `buf` has been filled in with `n` bytes of data from this\nsource. If `n` is `0`, then it can indicate one of two scenarios:\n\n1. This reader has reached its \"end of file\" and will likely no longer\n   be able to produce bytes. Note that this does not mean that the\n   reader will *always* no longer be able to produce bytes. As an example,\n   on Linux, this method will call the `recv` syscall for a [`TcpStream`],\n   where returning zero indicates the connection was shut down correctly. While\n   for [`File`], it is possible to reach the end of file and get zero as result,\n   but if more data is appended to the file, future calls to `read` will return\n   more data.\n2. The buffer specified was 0 bytes in length.\n\nIt is not an error if the returned value `n` is smaller than the buffer size,\neven when the reader is not at the end of the stream yet.\nThis may happen for example because fewer bytes are actually available right now\n(e. g. being close to end-of-file) or because read() was interrupted by a signal.\n\nAs this trait is safe to implement, callers in unsafe code cannot rely on\n`n <= buf.len()` for safety.\nExtra care needs to be taken when `unsafe` functions are used to access the read bytes.\nCallers have to ensure that no unchecked out-of-bounds accesses are possible even if\n`n > buf.len()`.\n\n*Implementations* of this method can make no assumptions about the contents of `buf` when\nthis function is called. It is recommended that implementations only write data to `buf`\ninstead of reading its contents.\n\nCorrespondingly, however, *callers* of this method in unsafe code must not assume\nany guarantees about how the implementation uses `buf`. The trait is safe to implement,\nso it is possible that the code that's supposed to write to the buffer might also read\nfrom it. It is your responsibility to make sure that `buf` is initialized\nbefore calling `read`. Calling `read` with an uninitialized `buf` (of the kind one\nobtains via [`MaybeUninit<T>`]) is not safe, and can lead to undefined behavior.\n\n[`MaybeUninit<T>`]: crate::mem::MaybeUninit\n\n# Errors\n\nIf this function encounters any form of I/O or other error, an error\nvariant will be returned. If an error is returned then it must be\nguaranteed that no bytes were read.\n\nAn error of the [`ErrorKind::Interrupted`] kind is non-fatal and the read\noperation should be retried if there is nothing else to do.\n\n# Examples\n\n[`File`]s implement `Read`:\n\n[`Ok(n)`]: Ok\n[`File`]: crate::fs::File\n[`TcpStream`]: crate::net::TcpStream\n\n```no_run\nuse std::io;\nuse std::io::prelude::*;\nuse std::fs::File;\n\nfn main() -> io::Result<()> {\n    let mut f = File::open(\"foo.txt\")?;\n    let mut buffer = [0; 10];\n\n    // read up to 10 bytes\n    let n = f.read(&mut buffer[..])?;\n\n    println!(\"The bytes: {:?}\", &buffer[..n]);\n    Ok(())\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "Io",
+        "item_type": "variant",
+        "offset_in_fn": 975,
+        "declaration": "Io(std::io::Error)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "BufferWindow",
+      "item_type": "struct",
+      "offset_in_fn": 21,
+      "declaration": "BufferWindow {\n    pub buf: Box<[u8]>,\n\n    start_buf: *const u8,\n\n    // start of window into buffer\n    pub start: *const u8,\n\n    // end of window into buffer\n    pub end: *const u8,\n\n    // number of consumed bytes from prior reads\n    pub prior_reads: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without \"wrapping around\"), must fit in an `isize`.",
+        "fn_name": "add",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+        "fn_name": "add",
+        "type": "Allocated"
+      },
+      {
+        "content": "The entire memory range between `self` and the result must be within the bounds of the allocated object.",
+        "fn_name": "add",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The memory range must not \"wrap around\" the edge of the address space.",
+        "fn_name": "add",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/binary/reader.rs/read_bytes/93",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/binary/reader.rs",
+    "start_line": 93,
+    "end_line": 105,
+    "start_byte": 3161,
+    "end_byte": 3657,
+    "name": "read_bytes",
+    "raw_code": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.lex_error(LexError::Eof)),\n                Ok(_) => {}\n                Err(e) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input = unsafe { std::slice::from_raw_parts(self.buf.start, bytes) };\n        self.buf.advance(bytes);\n        Ok(input)\n    }",
+    "code_with_hints": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.lex_error(LexError::Eof)),\n                Ok(_) => {}\n                Err(e: BufferError) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input: &[u8] = unsafe { std::slice::from_raw_parts(data: self.buf.start, len: bytes) };\n        self.buf.advance(amt: bytes);\n        Ok(input)\n    }",
+    "code_with_type": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.lex_error(LexError::Eof)),\n                Ok(_) => {}\n                Err(e: BufferError) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input: &[u8] = unsafe { std::slice::from_raw_parts(self.buf.start, bytes) };\n        self.buf.advance(bytes);\n        Ok(input)\n    }",
+    "code_with_param": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.lex_error(LexError::Eof)),\n                Ok(_) => {}\n                Err(e) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input = unsafe { std::slice::from_raw_parts(data: self.buf.start, len: bytes) };\n        self.buf.advance(amt: bytes);\n        Ok(input)\n    }",
+    "params": [
+      "self",
+      "bytes"
+    ],
+    "return_type": "Result<&[u8], ReaderError>",
+    "comment": "/// Advance a given number of bytes and return them.\n///\n/// The internal buffer must be large enough to accomodate all bytes.\n///\n/// ```rust\n/// use jomini::binary::{TokenReader, LexError, ReaderErrorKind};\n/// let mut reader = TokenReader::new(&b\"EU4bin\"[..]);\n/// assert_eq!(reader.read_bytes(6).unwrap(), &b\"EU4bin\"[..]);\n/// assert!(matches!(reader.read_bytes(1).unwrap_err().kind(), ReaderErrorKind::Lexer(LexError::Eof)));\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 60,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An binary lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "window_len",
+        "item_type": "function",
+        "offset_in_fn": 98,
+        "declaration": "pub fn window_len(&self) -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "fill_buf",
+        "item_type": "function",
+        "offset_in_fn": 148,
+        "declaration": "pub fn fill_buf(&mut self, reader: impl Read) -> Result<usize, BufferError>",
+        "documentation": "This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`\nwill only call the underlying read if the buffer is currently empty,\nthis function will copy over the bytes that haven't been consumed to the\nstart."
+      },
+      {
+        "src_mod": "",
+        "name": "lex_error",
+        "item_type": "function",
+        "offset_in_fn": 218,
+        "declaration": "fn lex_error(&self, e: LexError) -> ReaderError",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "buffer_error",
+        "item_type": "function",
+        "offset_in_fn": 315,
+        "declaration": "fn buffer_error(&self, e: BufferError) -> ReaderError",
+        "documentation": ""
+      },
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 399,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** \u26a0\ufe0f\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "advance",
+        "item_type": "function",
+        "offset_in_fn": 457,
+        "declaration": "pub fn advance(&mut self, amt: usize)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 23,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n}",
+      "documentation": "[Lexer](crate::binary::Lexer) that works over a [Read] implementation\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::binary::{TokenReader, Token};\nlet data = [0x2d, 0x28, 0x01, 0x00, 0x03, 0x00, 0x03, 0x00, 0x04, 0x00, 0x04, 0x00];\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::binary::ReaderError>(())\n```\n\nUnlike a [BinaryTape](crate::BinaryTape), which will skip ghost objects,\npair open and close tokens together, and recognize if a container is an\nobject, array, or mixed -- the tokens yielded from a [TokenReader] are not\nfully formed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers, melters, and deserializers that operate over\na stream of data.\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": [
+      {
+        "content": "The `data` pointer must be non-null.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be valid for reads for `len * mem::size_of::<T>()` many bytes.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be properly aligned.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The entire memory range of the slice must be contained within a single allocated object.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be non-null even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be aligned even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The `data` pointer must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts",
+        "type": "Initialized"
+      },
+      {
+        "content": "The memory referenced by the returned slice must not be mutated for the duration of lifetime `'a`, except inside an `UnsafeCell`.",
+        "fn_name": "from_raw_parts",
+        "type": "Exclusive"
+      },
+      {
+        "content": "The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the total size `len * mem::size_of::<T>()` to `data` must not \"wrap around\" the address space.",
+        "fn_name": "from_raw_parts",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/binary/reader.rs/read/200",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/binary/reader.rs",
+    "start_line": 200,
+    "end_line": 204,
+    "start_byte": 7486,
+    "end_byte": 7682,
+    "name": "read",
+    "raw_code": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s = std::ptr::addr_of!(self);\n        self.next()?\n            .ok_or_else(|| unsafe { s.read().lex_error(LexError::Eof) })\n    }",
+    "code_with_hints": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s = std::ptr::addr_of!(self);\n        self.next()?\n            .ok_or_else(err: || -> ReaderError unsafe { s.read().lex_error(LexError::Eof) })\n    }",
+    "code_with_type": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s = std::ptr::addr_of!(self);\n        self.next()?\n            .ok_or_else(|| -> ReaderError unsafe { s.read().lex_error(LexError::Eof) })\n    }",
+    "code_with_param": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s = std::ptr::addr_of!(self);\n        self.next()?\n            .ok_or_else(err: || unsafe { s.read().lex_error(LexError::Eof) })\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<Token, ReaderError>",
+    "comment": "/// Read the next token in the stream. Will error if not enough data remains\n/// to decode a token.\n///\n/// ```rust\n/// use jomini::binary::{TokenReader, Token, ReaderErrorKind, LexError};\n/// let mut reader = TokenReader::new(&[\n///     0xd2, 0x28, 0x01, 0x00, 0x03, 0x00, 0x04, 0x00\n/// ][..]);\n/// assert_eq!(reader.read().unwrap(), Token::Id(0x28d2));\n/// assert_eq!(reader.read().unwrap(), Token::Equal);\n/// assert_eq!(reader.read().unwrap(), Token::Open);\n/// assert_eq!(reader.read().unwrap(), Token::Close);\n/// assert!(matches!(reader.read().unwrap_err().kind(), ReaderErrorKind::Lexer(LexError::Eof)));\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "lexer",
+        "name": "Token",
+        "item_type": "enum",
+        "offset_in_fn": 33,
+        "declaration": "Token<'a> {\n    /// '{'\n    Open,\n\n    /// '}'\n    Close,\n\n    /// '='\n    Equal,\n\n    /// 32bit unsigned integer\n    U32(u32),\n\n    /// 64bit unsigned integer\n    U64(u64),\n\n    /// 32bit signed integer\n    I32(i32),\n\n    /// boolean\n    Bool(bool),\n\n    /// quoted text\n    Quoted(Scalar<'a>),\n\n    /// text that is not quoted\n    Unquoted(Scalar<'a>),\n\n    /// 32bits of floating point data\n    F32([u8; 4]),\n\n    /// 64bits of floating point data\n    F64([u8; 8]),\n\n    /// Rgb data\n    Rgb(Rgb),\n\n    /// 64bit signed integer\n    I64(i64),\n\n    /// token id that can be resolved to a string via a\n    /// [TokenResolver](crate::binary::TokenResolver)\n    Id(u16),\n}",
+        "documentation": "Binary token, the raw form of [BinaryToken](crate::binary::BinaryToken)\n\nThis binary token contains the yielded raw tokens, and won't match open and\nclose tokens together, nor does it make a determination if open and close\nrepresents an array, object, or both."
+      },
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 40,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An binary lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "next",
+        "item_type": "function",
+        "offset_in_fn": 110,
+        "declaration": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError>",
+        "documentation": "Read a token, returning none when all the data has been consumed\n\n```rust\nuse jomini::binary::{TokenReader, Token};\nlet mut reader = TokenReader::new(&[\n    0xd2, 0x28, 0x01, 0x00, 0x03, 0x00, 0x04, 0x00\n][..]);\nassert_eq!(reader.next().unwrap(), Some(Token::Id(0x28d2)));\nassert_eq!(reader.next().unwrap(), Some(Token::Equal));\nassert_eq!(reader.next().unwrap(), Some(Token::Open));\nassert_eq!(reader.next().unwrap(), Some(Token::Close));\nassert_eq!(reader.next().unwrap(), None);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "ok_or_else",
+        "item_type": "function",
+        "offset_in_fn": 131,
+        "declaration": "pub fn ok_or_else<E, F>(self, err: F) -> Result<T, E>\nwhere\n    F: FnOnce() -> E,",
+        "documentation": "Transforms the `Option<T>` into a [`Result<T, E>`], mapping [`Some(v)`] to\n[`Ok(v)`] and [`None`] to [`Err(err())`].\n\n[`Ok(v)`]: Ok\n[`Err(err())`]: Err\n[`Some(v)`]: Some\n\n# Examples\n\n```\nlet x = Some(\"foo\");\nassert_eq!(x.ok_or_else(|| 0), Ok(\"foo\"));\n\nlet x: Option<&str> = None;\nassert_eq!(x.ok_or_else(|| 0), Err(0));\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "read",
+        "item_type": "function",
+        "offset_in_fn": 156,
+        "declaration": "pub const unsafe fn read(self) -> T\nwhere\n    T: Sized,",
+        "documentation": "Reads the value from `self` without moving it. This leaves the\nmemory in `self` unchanged.\n\nSee [`ptr::read`] for safety concerns and examples.\n\n[`ptr::read`]: crate::ptr::read()"
+      },
+      {
+        "src_mod": "",
+        "name": "lex_error",
+        "item_type": "function",
+        "offset_in_fn": 163,
+        "declaration": "fn lex_error(&self, e: LexError) -> ReaderError",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n}",
+      "documentation": "[Lexer](crate::binary::Lexer) that works over a [Read] implementation\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::binary::{TokenReader, Token};\nlet data = [0x2d, 0x28, 0x01, 0x00, 0x03, 0x00, 0x03, 0x00, 0x04, 0x00, 0x04, 0x00];\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::binary::ReaderError>(())\n```\n\nUnlike a [BinaryTape](crate::BinaryTape), which will skip ghost objects,\npair open and close tokens together, and recognize if a container is an\nobject, array, or mixed -- the tokens yielded from a [TokenReader] are not\nfully formed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers, melters, and deserializers that operate over\na stream of data.\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/binary/reader.rs/next/230",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/binary/reader.rs",
+    "start_line": 230,
+    "end_line": 240,
+    "start_byte": 8676,
+    "end_byte": 9125,
+    "name": "next",
+    "raw_code": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        let window = unsafe { std::slice::from_raw_parts(self.buf.start, self.buf.window_len()) };\n        match read_token(window) {\n            Ok((tok, new_data)) => {\n                self.buf.advance_to(new_data.as_ptr());\n                Ok(Some(tok))\n            }\n            Err(LexError::Eof) => self.refill_next(),\n            Err(e) => Err(self.lex_error(e)),\n        }\n    }",
+    "code_with_hints": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        let window: &[u8] = unsafe { std::slice::from_raw_parts(data: self.buf.start, self.buf.window_len()) };\n        match read_token(data: window) {\n            Ok((tok: Token, new_data: &[u8])) => {\n                self.buf.advance_to(new_data.as_ptr());\n                Ok(Some(tok))\n            }\n            Err(LexError::Eof) => self.refill_next(),\n            Err(e: LexError) => Err(self.lex_error(e)),\n        }\n    }",
+    "code_with_type": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        let window: &[u8] = unsafe { std::slice::from_raw_parts(self.buf.start, self.buf.window_len()) };\n        match read_token(window) {\n            Ok((tok: Token, new_data: &[u8])) => {\n                self.buf.advance_to(new_data.as_ptr());\n                Ok(Some(tok))\n            }\n            Err(LexError::Eof) => self.refill_next(),\n            Err(e: LexError) => Err(self.lex_error(e)),\n        }\n    }",
+    "code_with_param": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        let window = unsafe { std::slice::from_raw_parts(data: self.buf.start, self.buf.window_len()) };\n        match read_token(data: window) {\n            Ok((tok, new_data)) => {\n                self.buf.advance_to(new_data.as_ptr());\n                Ok(Some(tok))\n            }\n            Err(LexError::Eof) => self.refill_next(),\n            Err(e) => Err(self.lex_error(e)),\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<Option<Token>, ReaderError>",
+    "comment": "/// Read a token, returning none when all the data has been consumed\n///\n/// ```rust\n/// use jomini::binary::{TokenReader, Token};\n/// let mut reader = TokenReader::new(&[\n///     0xd2, 0x28, 0x01, 0x00, 0x03, 0x00, 0x04, 0x00\n/// ][..]);\n/// assert_eq!(reader.next().unwrap(), Some(Token::Id(0x28d2)));\n/// assert_eq!(reader.next().unwrap(), Some(Token::Equal));\n/// assert_eq!(reader.next().unwrap(), Some(Token::Open));\n/// assert_eq!(reader.next().unwrap(), Some(Token::Close));\n/// assert_eq!(reader.next().unwrap(), None);\n/// ```\n",
+    "attributes": "#[inline]\n#[allow(clippy::should_implement_trait)]\n",
+    "detail_info": [
+      {
+        "src_mod": "lexer",
+        "name": "Token",
+        "item_type": "enum",
+        "offset_in_fn": 40,
+        "declaration": "Token<'a> {\n    /// '{'\n    Open,\n\n    /// '}'\n    Close,\n\n    /// '='\n    Equal,\n\n    /// 32bit unsigned integer\n    U32(u32),\n\n    /// 64bit unsigned integer\n    U64(u64),\n\n    /// 32bit signed integer\n    I32(i32),\n\n    /// boolean\n    Bool(bool),\n\n    /// quoted text\n    Quoted(Scalar<'a>),\n\n    /// text that is not quoted\n    Unquoted(Scalar<'a>),\n\n    /// 32bits of floating point data\n    F32([u8; 4]),\n\n    /// 64bits of floating point data\n    F64([u8; 8]),\n\n    /// Rgb data\n    Rgb(Rgb),\n\n    /// 64bit signed integer\n    I64(i64),\n\n    /// token id that can be resolved to a string via a\n    /// [TokenResolver](crate::binary::TokenResolver)\n    Id(u16),\n}",
+        "documentation": "Binary token, the raw form of [BinaryToken](crate::binary::BinaryToken)\n\nThis binary token contains the yielded raw tokens, and won't match open and\nclose tokens together, nor does it make a determination if open and close\nrepresents an array, object, or both."
+      },
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 48,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An binary lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 105,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** \u26a0\ufe0f\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "window_len",
+        "item_type": "function",
+        "offset_in_fn": 145,
+        "declaration": "pub fn window_len(&self) -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "lexer",
+        "name": "read_token",
+        "item_type": "function",
+        "offset_in_fn": 176,
+        "declaration": "pub(crate) fn read_token(data: &[u8]) -> Result<(Token, &[u8]), LexError>",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "advance_to",
+        "item_type": "function",
+        "offset_in_fn": 259,
+        "declaration": "pub fn advance_to(&mut self, ptr: *const u8)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "refill_next",
+        "item_type": "function",
+        "offset_in_fn": 373,
+        "declaration": "fn refill_next(&mut self) -> Result<Option<Token>, ReaderError>",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "lex_error",
+        "item_type": "function",
+        "offset_in_fn": 419,
+        "declaration": "fn lex_error(&self, e: LexError) -> ReaderError",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n}",
+      "documentation": "[Lexer](crate::binary::Lexer) that works over a [Read] implementation\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::binary::{TokenReader, Token};\nlet data = [0x2d, 0x28, 0x01, 0x00, 0x03, 0x00, 0x03, 0x00, 0x04, 0x00, 0x04, 0x00];\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::binary::ReaderError>(())\n```\n\nUnlike a [BinaryTape](crate::BinaryTape), which will skip ghost objects,\npair open and close tokens together, and recognize if a container is an\nobject, array, or mixed -- the tokens yielded from a [TokenReader] are not\nfully formed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers, melters, and deserializers that operate over\na stream of data.\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": [
+      {
+        "content": "The `data` pointer must be non-null.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be valid for reads for `len * mem::size_of::<T>()` many bytes.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be properly aligned.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The entire memory range of the slice must be contained within a single allocated object.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be non-null even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be aligned even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The `data` pointer must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts",
+        "type": "Initialized"
+      },
+      {
+        "content": "The memory referenced by the returned slice must not be mutated for the duration of lifetime `'a`, except inside an `UnsafeCell`.",
+        "fn_name": "from_raw_parts",
+        "type": "Exclusive"
+      },
+      {
+        "content": "The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the total size `len * mem::size_of::<T>()` to `data` must not \"wrap around\" the address space.",
+        "fn_name": "from_raw_parts",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/text/reader.rs/read_bytes/510",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/text/reader.rs",
+    "start_line": 510,
+    "end_line": 522,
+    "start_byte": 19549,
+    "end_byte": 20032,
+    "name": "read_bytes",
+    "raw_code": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Ok(_) => {}\n                Err(e) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input = unsafe { std::slice::from_raw_parts(self.buf.start, bytes) };\n        self.buf.advance(bytes);\n        Ok(input)\n    }",
+    "code_with_hints": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Ok(_) => {}\n                Err(e: BufferError) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input: &[u8] = unsafe { std::slice::from_raw_parts(data: self.buf.start, len: bytes) };\n        self.buf.advance(amt: bytes);\n        Ok(input)\n    }",
+    "code_with_type": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Ok(_) => {}\n                Err(e: BufferError) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input: &[u8] = unsafe { std::slice::from_raw_parts(self.buf.start, bytes) };\n        self.buf.advance(bytes);\n        Ok(input)\n    }",
+    "code_with_param": "pub fn read_bytes(&mut self, bytes: usize) -> Result<&[u8], ReaderError> {\n        while self.buf.window_len() < bytes {\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Ok(_) => {}\n                Err(e) => return Err(self.buffer_error(e)),\n            }\n        }\n\n        let input = unsafe { std::slice::from_raw_parts(data: self.buf.start, len: bytes) };\n        self.buf.advance(amt: bytes);\n        Ok(input)\n    }",
+    "params": [
+      "self",
+      "bytes"
+    ],
+    "return_type": "Result<&[u8], ReaderError>",
+    "comment": "/// Advance a given number of bytes and return them.\n///\n/// The internal buffer must be large enough to accomodate all bytes.\n///\n/// ```rust\n/// use jomini::text::{TokenReader, ReaderErrorKind};\n/// let mut reader = TokenReader::new(&b\"EU4txt\"[..]);\n/// assert_eq!(reader.read_bytes(6).unwrap(), &b\"EU4txt\"[..]);\n/// assert!(matches!(reader.read_bytes(1).unwrap_err().kind(), ReaderErrorKind::Eof));\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 60,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An text lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "window_len",
+        "item_type": "function",
+        "offset_in_fn": 98,
+        "declaration": "pub fn window_len(&self) -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "fill_buf",
+        "item_type": "function",
+        "offset_in_fn": 148,
+        "declaration": "pub fn fill_buf(&mut self, reader: impl Read) -> Result<usize, BufferError>",
+        "documentation": "This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`\nwill only call the underlying read if the buffer is currently empty,\nthis function will copy over the bytes that haven't been consumed to the\nstart."
+      },
+      {
+        "src_mod": "",
+        "name": "eof_error",
+        "item_type": "function",
+        "offset_in_fn": 218,
+        "declaration": "pub(crate) fn eof_error(&self) -> ReaderError",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "buffer_error",
+        "item_type": "function",
+        "offset_in_fn": 302,
+        "declaration": "fn buffer_error(&self, e: BufferError) -> ReaderError",
+        "documentation": ""
+      },
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 386,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** \u26a0\ufe0f\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "advance",
+        "item_type": "function",
+        "offset_in_fn": 444,
+        "declaration": "pub fn advance(&mut self, amt: usize)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 23,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n    utf8: Utf8Bom,\n}",
+      "documentation": "Scan a [Read] implementation for text [Token]s\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::text::{TokenReader, Token};\nlet data = b\"foo={{ id=3 } {} { id = 4 }}\";\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::text::ReaderError>(())\n```\n\nUnlike a [TextTape](crate::TextTape), which will skip ghost objects, pair\nopen and close tokens together, and recognize if a container is an object,\narray, or mixed -- the tokens yielded from a [TokenReader] are not fully\nformed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers and deserializers that operate over a stream\nof data.\n\nThe [TokenReader] is considered **experimental**, as it uses a different\nparsing algorithm geared towards parsing large save files. Ergonomic\nequivalents for more esoteric game syntax (like parameter definitions) have\nnot yet been finalized. Game files can still be parsed with the experimental\nAPIs, but these APIs may change in the future based on feedback. Since the\nbinary format is not used for game files, the\n[binary::TokenReader](crate::binary::TokenReader) is not considered\nexperimental)\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": [
+      {
+        "content": "The `data` pointer must be non-null.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be valid for reads for `len * mem::size_of::<T>()` many bytes.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be properly aligned.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The entire memory range of the slice must be contained within a single allocated object.",
+        "fn_name": "from_raw_parts",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The `data` pointer must be non-null even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Not Null"
+      },
+      {
+        "content": "The `data` pointer must be aligned even for zero-length slices or slices of ZSTs.",
+        "fn_name": "from_raw_parts",
+        "type": "Aligned"
+      },
+      {
+        "content": "The `data` pointer must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts",
+        "type": "Initialized"
+      },
+      {
+        "content": "The memory referenced by the returned slice must not be mutated for the duration of lifetime `'a`, except inside an `UnsafeCell`.",
+        "fn_name": "from_raw_parts",
+        "type": "Exclusive"
+      },
+      {
+        "content": "The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the total size `len * mem::size_of::<T>()` to `data` must not \"wrap around\" the address space.",
+        "fn_name": "from_raw_parts",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/text/reader.rs/skip_container/538",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/text/reader.rs",
+    "start_line": 538,
+    "end_line": 657,
+    "start_byte": 20817,
+    "end_byte": 25702,
+    "name": "skip_container",
+    "raw_code": "pub fn skip_container(&mut self) -> Result<(), ReaderError> {\n        enum SkipState {\n            None,\n            Quote,\n            Comment,\n        }\n\n        let mut state = SkipState::None;\n        let mut depth = 1;\n        let mut ptr = self.buf.start;\n        loop {\n            let end = self.buf.end;\n            unsafe {\n                'refill: loop {\n                    match state {\n                        SkipState::None => 'new_state: loop {\n                            while end.offset_from(ptr) > 8 {\n                                // process 8 bytes at a time, which reduced\n                                // latency of this function in EU4 saves by 50%\n                                // (a 7% reduction overall).\n                                let data = ptr.cast::<u64>().read_unaligned();\n                                let has_quote = contains_zero_byte(data ^ repeat_byte(b'\"'));\n                                let has_comment = contains_zero_byte(data ^ repeat_byte(b'#'));\n                                if has_quote || has_comment {\n                                    break;\n                                }\n\n                                let has_close = contains_zero_byte(data ^ repeat_byte(b'}'));\n                                let closes = if has_close {\n                                    count_chunk(data, b'}') as i32\n                                } else {\n                                    0\n                                };\n\n                                let new_depth = depth - closes;\n                                if new_depth < 1 {\n                                    break;\n                                }\n                                depth = new_depth;\n\n                                let has_open = contains_zero_byte(data ^ repeat_byte(b'{'));\n                                let opens = if has_open {\n                                    count_chunk(data, b'{') as i32\n                                } else {\n                                    0\n                                };\n\n                                depth += opens;\n                                ptr = ptr.add(8);\n                            }\n\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            let val = *ptr;\n                            ptr = ptr.add(1);\n                            match val {\n                                b'{' => depth += 1,\n                                b'}' => {\n                                    depth -= 1;\n                                    if depth == 0 {\n                                        self.buf.advance_to(ptr);\n                                        return Ok(());\n                                    }\n                                }\n                                b'\"' => {\n                                    state = SkipState::Quote;\n                                    break 'new_state;\n                                }\n                                b'#' => {\n                                    state = SkipState::Comment;\n                                    break 'new_state;\n                                }\n                                _ => {}\n                            }\n                        },\n                        SkipState::Quote => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\\\' {\n                                if end.offset_from(ptr) <= 2 {\n                                    break 'refill;\n                                }\n                                ptr = ptr.add(2);\n                            } else if *ptr != b'\"' {\n                                ptr = ptr.add(1);\n                            } else {\n                                ptr = ptr.add(1);\n                                state = SkipState::None;\n                                break;\n                            }\n                        },\n                        SkipState::Comment => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\n' {\n                                ptr = ptr.add(1);\n                                state = SkipState::None;\n                                break;\n                            }\n\n                            ptr = ptr.add(1)\n                        },\n                    }\n                }\n            }\n\n            self.buf.advance_to(ptr);\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Err(e) => return Err(self.buffer_error(e)),\n                Ok(_) => ptr = self.buf.start,\n            }\n        }\n    }",
+    "code_with_hints": "pub fn skip_container(&mut self) -> Result<(), ReaderError> {\n        enum SkipState {\n            None,\n            Quote,\n            Comment,\n        }\n\n        let mut state: SkipState = SkipState::None;\n        let mut depth: i32 = 1;\n        let mut ptr: *const u8 = self.buf.start;\n        loop {\n            let end: *const u8 = self.buf.end;\n            unsafe {\n                'refill: loop {\n                    match state {\n                        SkipState::None => 'new_state: loop {\n                            while end.offset_from(origin: ptr) > 8 {\n                                // process 8 bytes at a time, which reduced\n                                // latency of this function in EU4 saves by 50%\n                                // (a 7% reduction overall).\n                                let data: u64 = ptr.cast::<u64>().read_unaligned();\n                                let has_quote: bool = contains_zero_byte(data ^ repeat_byte(b'\"'));\n                                let has_comment: bool = contains_zero_byte(data ^ repeat_byte(b'#'));\n                                if has_quote || has_comment {\n                                    break;\n                                }\n\n                                let has_close: bool = contains_zero_byte(data ^ repeat_byte(b'}'));\n                                let closes: i32 = if has_close {\n                                    count_chunk(value: data, byte: b'}') as i32\n                                } else {\n                                    0\n                                };\n\n                                let new_depth: i32 = depth - closes;\n                                if new_depth < 1 {\n                                    break;\n                                }\n                                depth = new_depth;\n\n                                let has_open: bool = contains_zero_byte(data ^ repeat_byte(b'{'));\n                                let opens: i32 = if has_open {\n                                    count_chunk(value: data, byte: b'{') as i32\n                                } else {\n                                    0\n                                };\n\n                                depth += opens;\n                                ptr = ptr.add(count: 8);\n                            }\n\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            let val: u8 = *ptr;\n                            ptr = ptr.add(count: 1);\n                            match val {\n                                b'{' => depth += 1,\n                                b'}' => {\n                                    depth -= 1;\n                                    if depth == 0 {\n                                        self.buf.advance_to(ptr);\n                                        return Ok(());\n                                    }\n                                }\n                                b'\"' => {\n                                    state = SkipState::Quote;\n                                    break 'new_state;\n                                }\n                                b'#' => {\n                                    state = SkipState::Comment;\n                                    break 'new_state;\n                                }\n                                _ => {}\n                            }\n                        },\n                        SkipState::Quote => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\\\' {\n                                if end.offset_from(origin: ptr) <= 2 {\n                                    break 'refill;\n                                }\n                                ptr = ptr.add(count: 2);\n                            } else if *ptr != b'\"' {\n                                ptr = ptr.add(count: 1);\n                            } else {\n                                ptr = ptr.add(count: 1);\n                                state = SkipState::None;\n                                break;\n                            }\n                        },\n                        SkipState::Comment => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\n' {\n                                ptr = ptr.add(count: 1);\n                                state = SkipState::None;\n                                break;\n                            }\n\n                            ptr = ptr.add(count: 1)\n                        },\n                    }\n                }\n            }\n\n            self.buf.advance_to(ptr);\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Err(e: BufferError) => return Err(self.buffer_error(e)),\n                Ok(_) => ptr = self.buf.start,\n            }\n        }\n    }",
+    "code_with_type": "pub fn skip_container(&mut self) -> Result<(), ReaderError> {\n        enum SkipState {\n            None,\n            Quote,\n            Comment,\n        }\n\n        let mut state: SkipState = SkipState::None;\n        let mut depth: i32 = 1;\n        let mut ptr: *const u8 = self.buf.start;\n        loop {\n            let end: *const u8 = self.buf.end;\n            unsafe {\n                'refill: loop {\n                    match state {\n                        SkipState::None => 'new_state: loop {\n                            while end.offset_from(ptr) > 8 {\n                                // process 8 bytes at a time, which reduced\n                                // latency of this function in EU4 saves by 50%\n                                // (a 7% reduction overall).\n                                let data: u64 = ptr.cast::<u64>().read_unaligned();\n                                let has_quote: bool = contains_zero_byte(data ^ repeat_byte(b'\"'));\n                                let has_comment: bool = contains_zero_byte(data ^ repeat_byte(b'#'));\n                                if has_quote || has_comment {\n                                    break;\n                                }\n\n                                let has_close: bool = contains_zero_byte(data ^ repeat_byte(b'}'));\n                                let closes: i32 = if has_close {\n                                    count_chunk(data, b'}') as i32\n                                } else {\n                                    0\n                                };\n\n                                let new_depth: i32 = depth - closes;\n                                if new_depth < 1 {\n                                    break;\n                                }\n                                depth = new_depth;\n\n                                let has_open: bool = contains_zero_byte(data ^ repeat_byte(b'{'));\n                                let opens: i32 = if has_open {\n                                    count_chunk(data, b'{') as i32\n                                } else {\n                                    0\n                                };\n\n                                depth += opens;\n                                ptr = ptr.add(8);\n                            }\n\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            let val: u8 = *ptr;\n                            ptr = ptr.add(1);\n                            match val {\n                                b'{' => depth += 1,\n                                b'}' => {\n                                    depth -= 1;\n                                    if depth == 0 {\n                                        self.buf.advance_to(ptr);\n                                        return Ok(());\n                                    }\n                                }\n                                b'\"' => {\n                                    state = SkipState::Quote;\n                                    break 'new_state;\n                                }\n                                b'#' => {\n                                    state = SkipState::Comment;\n                                    break 'new_state;\n                                }\n                                _ => {}\n                            }\n                        },\n                        SkipState::Quote => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\\\' {\n                                if end.offset_from(ptr) <= 2 {\n                                    break 'refill;\n                                }\n                                ptr = ptr.add(2);\n                            } else if *ptr != b'\"' {\n                                ptr = ptr.add(1);\n                            } else {\n                                ptr = ptr.add(1);\n                                state = SkipState::None;\n                                break;\n                            }\n                        },\n                        SkipState::Comment => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\n' {\n                                ptr = ptr.add(1);\n                                state = SkipState::None;\n                                break;\n                            }\n\n                            ptr = ptr.add(1)\n                        },\n                    }\n                }\n            }\n\n            self.buf.advance_to(ptr);\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Err(e: BufferError) => return Err(self.buffer_error(e)),\n                Ok(_) => ptr = self.buf.start,\n            }\n        }\n    }",
+    "code_with_param": "pub fn skip_container(&mut self) -> Result<(), ReaderError> {\n        enum SkipState {\n            None,\n            Quote,\n            Comment,\n        }\n\n        let mut state = SkipState::None;\n        let mut depth = 1;\n        let mut ptr = self.buf.start;\n        loop {\n            let end = self.buf.end;\n            unsafe {\n                'refill: loop {\n                    match state {\n                        SkipState::None => 'new_state: loop {\n                            while end.offset_from(origin: ptr) > 8 {\n                                // process 8 bytes at a time, which reduced\n                                // latency of this function in EU4 saves by 50%\n                                // (a 7% reduction overall).\n                                let data = ptr.cast::<u64>().read_unaligned();\n                                let has_quote = contains_zero_byte(data ^ repeat_byte(b'\"'));\n                                let has_comment = contains_zero_byte(data ^ repeat_byte(b'#'));\n                                if has_quote || has_comment {\n                                    break;\n                                }\n\n                                let has_close = contains_zero_byte(data ^ repeat_byte(b'}'));\n                                let closes = if has_close {\n                                    count_chunk(value: data, byte: b'}') as i32\n                                } else {\n                                    0\n                                };\n\n                                let new_depth = depth - closes;\n                                if new_depth < 1 {\n                                    break;\n                                }\n                                depth = new_depth;\n\n                                let has_open = contains_zero_byte(data ^ repeat_byte(b'{'));\n                                let opens = if has_open {\n                                    count_chunk(value: data, byte: b'{') as i32\n                                } else {\n                                    0\n                                };\n\n                                depth += opens;\n                                ptr = ptr.add(count: 8);\n                            }\n\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            let val = *ptr;\n                            ptr = ptr.add(count: 1);\n                            match val {\n                                b'{' => depth += 1,\n                                b'}' => {\n                                    depth -= 1;\n                                    if depth == 0 {\n                                        self.buf.advance_to(ptr);\n                                        return Ok(());\n                                    }\n                                }\n                                b'\"' => {\n                                    state = SkipState::Quote;\n                                    break 'new_state;\n                                }\n                                b'#' => {\n                                    state = SkipState::Comment;\n                                    break 'new_state;\n                                }\n                                _ => {}\n                            }\n                        },\n                        SkipState::Quote => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\\\' {\n                                if end.offset_from(origin: ptr) <= 2 {\n                                    break 'refill;\n                                }\n                                ptr = ptr.add(count: 2);\n                            } else if *ptr != b'\"' {\n                                ptr = ptr.add(count: 1);\n                            } else {\n                                ptr = ptr.add(count: 1);\n                                state = SkipState::None;\n                                break;\n                            }\n                        },\n                        SkipState::Comment => loop {\n                            if ptr == end {\n                                break 'refill;\n                            }\n\n                            if *ptr == b'\\n' {\n                                ptr = ptr.add(count: 1);\n                                state = SkipState::None;\n                                break;\n                            }\n\n                            ptr = ptr.add(count: 1)\n                        },\n                    }\n                }\n            }\n\n            self.buf.advance_to(ptr);\n            match self.buf.fill_buf(&mut self.reader) {\n                Ok(0) => return Err(self.eof_error()),\n                Err(e) => return Err(self.buffer_error(e)),\n                Ok(_) => ptr = self.buf.start,\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<(), ReaderError>",
+    "comment": "/// Advance through the containing block until the closing token is consumed\n///\n/// ```rust\n/// use jomini::{Scalar, text::{TokenReader, Token, Operator}};\n/// let mut reader = TokenReader::new(&b\"foo={{bar={}}} qux=1\"[..]);\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"foo\")));\n/// assert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\n/// assert_eq!(reader.read().unwrap(), Token::Open);\n/// assert!(reader.skip_container().is_ok());\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"qux\")));\n/// assert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"1\")));\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 47,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An text lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "SkipState",
+        "item_type": "enum",
+        "offset_in_fn": 75,
+        "declaration": "SkipState {\n            None,\n            Quote,\n            Comment,\n        }",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "offset_from",
+        "item_type": "function",
+        "offset_in_fn": 500,
+        "declaration": "pub const unsafe fn offset_from(self, origin: *const T) -> isize\nwhere\n    T: Sized,",
+        "documentation": "Calculates the distance between two pointers. The returned value is in\nunits of T: the distance in bytes divided by `mem::size_of::<T>()`.\n\nThis is equivalent to `(self as isize - origin as isize) / (mem::size_of::<T>() as isize)`,\nexcept that it has a lot more opportunities for UB, in exchange for the compiler\nbetter understanding what you are doing.\n\nThe primary motivation of this method is for computing the `len` of an array/slice\nof `T` that you are currently representing as a \"start\" and \"end\" pointer\n(and \"end\" is \"one past the end\" of the array).\nIn that case, `end.offset_from(start)` gets you the length of the array.\n\nAll of the following safety requirements are trivially satisfied for this usecase.\n\n[`offset`]: #method.offset\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* `self` and `origin` must either\n\n  * point to the same address, or\n  * both be *derived from* a pointer to the same [allocated object], and the memory range between\n    the two pointers must be in bounds of that object. (See below for an example.)\n\n* The distance between the pointers, in bytes, must be an exact multiple\n  of the size of `T`.\n\nAs a consequence, the absolute distance between the pointers, in bytes, computed on\nmathematical integers (without \"wrapping around\"), cannot overflow an `isize`. This is\nimplied by the in-bounds requirement, and the fact that no allocated object can be larger\nthan `isize::MAX` bytes.\n\nThe requirement for pointers to be derived from the same allocated object is primarily\nneeded for `const`-compatibility: the distance between pointers into *different* allocated\nobjects is not known at compile-time. However, the requirement also exists at\nruntime and may be exploited by optimizations. If you wish to compute the difference between\npointers that are not guaranteed to be from the same allocation, use `(self as isize -\norigin as isize) / mem::size_of::<T>()`.\n\n[`add`]: #method.add\n[allocated object]: crate::ptr#allocated-object\n\n# Panics\n\nThis function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [0; 5];\nlet ptr1: *const i32 = &a[1];\nlet ptr2: *const i32 = &a[3];\nunsafe {\n    assert_eq!(ptr2.offset_from(ptr1), 2);\n    assert_eq!(ptr1.offset_from(ptr2), -2);\n    assert_eq!(ptr1.offset(2), ptr2);\n    assert_eq!(ptr2.offset(-2), ptr1);\n}\n```\n\n*Incorrect* usage:\n\n```rust,no_run\nlet ptr1 = Box::into_raw(Box::new(0u8)) as *const u8;\nlet ptr2 = Box::into_raw(Box::new(1u8)) as *const u8;\nlet diff = (ptr2 as isize).wrapping_sub(ptr1 as isize);\n// Make ptr2_other an \"alias\" of ptr2.add(1), but derived from ptr1.\nlet ptr2_other = (ptr1 as *const u8).wrapping_offset(diff).wrapping_offset(1);\nassert_eq!(ptr2 as usize, ptr2_other as usize);\n// Since ptr2_other and ptr2 are derived from pointers to different objects,\n// computing their offset is undefined behavior, even though\n// they point to addresses that are in-bounds of the same object!\nunsafe {\n    let one = ptr2_other.offset_from(ptr2); // Undefined Behavior! \u26a0\ufe0f\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "read_unaligned",
+        "item_type": "function",
+        "offset_in_fn": 801,
+        "declaration": "pub const unsafe fn read_unaligned(self) -> T\nwhere\n    T: Sized,",
+        "documentation": "Reads the value from `self` without moving it. This leaves the\nmemory in `self` unchanged.\n\nUnlike `read`, the pointer may be unaligned.\n\nSee [`ptr::read_unaligned`] for safety concerns and examples.\n\n[`ptr::read_unaligned`]: crate::ptr::read_unaligned()"
+      },
+      {
+        "src_mod": "util",
+        "name": "contains_zero_byte",
+        "item_type": "function",
+        "offset_in_fn": 867,
+        "declaration": "pub(crate) fn contains_zero_byte(x: u64) -> bool",
+        "documentation": "From the memchr crate which bases its implementation on several others"
+      },
+      {
+        "src_mod": "util",
+        "name": "repeat_byte",
+        "item_type": "function",
+        "offset_in_fn": 893,
+        "declaration": "pub(crate) const fn repeat_byte(b: u8) -> u64",
+        "documentation": ""
+      },
+      {
+        "src_mod": "util",
+        "name": "count_chunk",
+        "item_type": "function",
+        "offset_in_fn": 1339,
+        "declaration": "pub(crate) const fn count_chunk(value: u64, byte: u8) -> u64",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 2152,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!(*ptr.add(1), b'2');\n    assert_eq!(*ptr.add(2), b'3');\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "advance_to",
+        "item_type": "function",
+        "offset_in_fn": 2686,
+        "declaration": "pub fn advance_to(&mut self, ptr: *const u8)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "fill_buf",
+        "item_type": "function",
+        "offset_in_fn": 4665,
+        "declaration": "pub fn fill_buf(&mut self, reader: impl Read) -> Result<usize, BufferError>",
+        "documentation": "This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`\nwill only call the underlying read if the buffer is currently empty,\nthis function will copy over the bytes that haven't been consumed to the\nstart."
+      },
+      {
+        "src_mod": "",
+        "name": "eof_error",
+        "item_type": "function",
+        "offset_in_fn": 4735,
+        "declaration": "pub(crate) fn eof_error(&self) -> ReaderError",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "buffer_error",
+        "item_type": "function",
+        "offset_in_fn": 4791,
+        "declaration": "fn buffer_error(&self, e: BufferError) -> ReaderError",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 27,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n    utf8: Utf8Bom,\n}",
+      "documentation": "Scan a [Read] implementation for text [Token]s\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::text::{TokenReader, Token};\nlet data = b\"foo={{ id=3 } {} { id = 4 }}\";\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::text::ReaderError>(())\n```\n\nUnlike a [TextTape](crate::TextTape), which will skip ghost objects, pair\nopen and close tokens together, and recognize if a container is an object,\narray, or mixed -- the tokens yielded from a [TokenReader] are not fully\nformed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers and deserializers that operate over a stream\nof data.\n\nThe [TokenReader] is considered **experimental**, as it uses a different\nparsing algorithm geared towards parsing large save files. Ergonomic\nequivalents for more esoteric game syntax (like parameter definitions) have\nnot yet been finalized. Game files can still be parsed with the experimental\nAPIs, but these APIs may change in the future based on feedback. Since the\nbinary format is not used for game files, the\n[binary::TokenReader](crate::binary::TokenReader) is not considered\nexperimental)\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": [
+      {
+        "content": "`self` and `origin` must point to the same address or both be derived from a pointer to the same allocated object.",
+        "fn_name": "offset_from",
+        "type": "Allocated"
+      },
+      {
+        "content": "The memory range between `self` and `origin` must be within the bounds of the allocated object.",
+        "fn_name": "offset_from",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The distance between `self` and `origin`, in bytes, must be an exact multiple of the size of `T`.",
+        "fn_name": "offset_from",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The absolute distance between `self` and `origin`, in bytes, computed on mathematical integers (without \"wrapping around\"), cannot overflow an `isize`.",
+        "fn_name": "offset_from",
+        "type": "Overflow"
+      },
+      {
+        "content": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without \"wrapping around\"), must fit in an `isize`.",
+        "fn_name": "add",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+        "fn_name": "add",
+        "type": "Allocated"
+      },
+      {
+        "content": "The entire memory range between `self` and the result must be within the bounds of the allocated object.",
+        "fn_name": "add",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The memory range must not \"wrap around\" the edge of the address space.",
+        "fn_name": "add",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/text/reader.rs/skip_unquoted_value/678",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/text/reader.rs",
+    "start_line": 678,
+    "end_line": 715,
+    "start_byte": 26781,
+    "end_byte": 28092,
+    "name": "skip_unquoted_value",
+    "raw_code": "pub fn skip_unquoted_value(&mut self) -> Result<(), ReaderError> {\n        loop {\n            unsafe {\n                let mut ptr = self.buf.start;\n                let end = self.buf.end;\n\n                if end.offset_from(ptr) >= 4 {\n                    let word = ptr.cast::<u32>().read_unaligned().to_le();\n\n                    // 50% of EU4 values followed by this whitespace sequence\n                    if word == 0x0909090A {\n                        // \\n\\t\\t\\t\n                        ptr = ptr.add(4);\n                    }\n                }\n\n                while ptr < end {\n                    match *ptr {\n                        b'{' => {\n                            self.buf.advance_to(ptr.add(1));\n                            return self.skip_container();\n                        }\n                        b' ' | b'\\t' | b'\\n' | b'\\r' | b';' => {\n                            ptr = ptr.add(1);\n                        }\n                        _ => return Ok(()),\n                    }\n                }\n\n                self.buf.advance_to(end);\n                match self.buf.fill_buf(&mut self.reader) {\n                    Ok(0) => return Ok(()),\n                    Err(e) => return Err(self.buffer_error(e)),\n                    Ok(_) => {}\n                }\n            }\n        }\n    }",
+    "code_with_hints": "pub fn skip_unquoted_value(&mut self) -> Result<(), ReaderError> {\n        loop {\n            unsafe {\n                let mut ptr: *const u8 = self.buf.start;\n                let end: *const u8 = self.buf.end;\n\n                if end.offset_from(origin: ptr) >= 4 {\n                    let word: u32 = ptr.cast::<u32>().read_unaligned().to_le();\n\n                    // 50% of EU4 values followed by this whitespace sequence\n                    if word == 0x0909090A {\n                        // \\n\\t\\t\\t\n                        ptr = ptr.add(count: 4);\n                    }\n                }\n\n                while ptr < end {\n                    match *ptr {\n                        b'{' => {\n                            self.buf.advance_to(ptr: ptr.add(count: 1));\n                            return self.skip_container();\n                        }\n                        b' ' | b'\\t' | b'\\n' | b'\\r' | b';' => {\n                            ptr = ptr.add(count: 1);\n                        }\n                        _ => return Ok(()),\n                    }\n                }\n\n                self.buf.advance_to(ptr: end);\n                match self.buf.fill_buf(&mut self.reader) {\n                    Ok(0) => return Ok(()),\n                    Err(e: BufferError) => return Err(self.buffer_error(e)),\n                    Ok(_) => {}\n                }\n            }\n        }\n    }",
+    "code_with_type": "pub fn skip_unquoted_value(&mut self) -> Result<(), ReaderError> {\n        loop {\n            unsafe {\n                let mut ptr: *const u8 = self.buf.start;\n                let end: *const u8 = self.buf.end;\n\n                if end.offset_from(ptr) >= 4 {\n                    let word: u32 = ptr.cast::<u32>().read_unaligned().to_le();\n\n                    // 50% of EU4 values followed by this whitespace sequence\n                    if word == 0x0909090A {\n                        // \\n\\t\\t\\t\n                        ptr = ptr.add(4);\n                    }\n                }\n\n                while ptr < end {\n                    match *ptr {\n                        b'{' => {\n                            self.buf.advance_to(ptr.add(1));\n                            return self.skip_container();\n                        }\n                        b' ' | b'\\t' | b'\\n' | b'\\r' | b';' => {\n                            ptr = ptr.add(1);\n                        }\n                        _ => return Ok(()),\n                    }\n                }\n\n                self.buf.advance_to(end);\n                match self.buf.fill_buf(&mut self.reader) {\n                    Ok(0) => return Ok(()),\n                    Err(e: BufferError) => return Err(self.buffer_error(e)),\n                    Ok(_) => {}\n                }\n            }\n        }\n    }",
+    "code_with_param": "pub fn skip_unquoted_value(&mut self) -> Result<(), ReaderError> {\n        loop {\n            unsafe {\n                let mut ptr = self.buf.start;\n                let end = self.buf.end;\n\n                if end.offset_from(origin: ptr) >= 4 {\n                    let word = ptr.cast::<u32>().read_unaligned().to_le();\n\n                    // 50% of EU4 values followed by this whitespace sequence\n                    if word == 0x0909090A {\n                        // \\n\\t\\t\\t\n                        ptr = ptr.add(count: 4);\n                    }\n                }\n\n                while ptr < end {\n                    match *ptr {\n                        b'{' => {\n                            self.buf.advance_to(ptr: ptr.add(count: 1));\n                            return self.skip_container();\n                        }\n                        b' ' | b'\\t' | b'\\n' | b'\\r' | b';' => {\n                            ptr = ptr.add(count: 1);\n                        }\n                        _ => return Ok(()),\n                    }\n                }\n\n                self.buf.advance_to(ptr: end);\n                match self.buf.fill_buf(&mut self.reader) {\n                    Ok(0) => return Ok(()),\n                    Err(e) => return Err(self.buffer_error(e)),\n                    Ok(_) => {}\n                }\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<(), ReaderError>",
+    "comment": "/// Skip any trailing data associated with the unquoted value. Useful for\n/// skipping an unquoted value that may be serving as a header.\n///\n/// In the below example the `rgb { 1 2 3 }` will first be parsed as\n/// unquoted `rgb`, but the `{ 1 2 3 }` needs to be skipped as well as it is\n/// tied to `rgb`.\n///\n/// ```rust\n/// use jomini::{Scalar, text::{TokenReader, Token, Operator}};\n/// let mut reader = TokenReader::new(&b\"color = rgb { 1 2 3 }  foo=bar\"[..]);\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"color\")));\n/// assert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"rgb\")));\n/// assert!(reader.skip_unquoted_value().is_ok());\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"foo\")));\n/// assert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"bar\")));\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 52,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An text lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "offset_from",
+        "item_type": "function",
+        "offset_in_fn": 213,
+        "declaration": "pub const unsafe fn offset_from(self, origin: *const T) -> isize\nwhere\n    T: Sized,",
+        "documentation": "Calculates the distance between two pointers. The returned value is in\nunits of T: the distance in bytes divided by `mem::size_of::<T>()`.\n\nThis is equivalent to `(self as isize - origin as isize) / (mem::size_of::<T>() as isize)`,\nexcept that it has a lot more opportunities for UB, in exchange for the compiler\nbetter understanding what you are doing.\n\nThe primary motivation of this method is for computing the `len` of an array/slice\nof `T` that you are currently representing as a \"start\" and \"end\" pointer\n(and \"end\" is \"one past the end\" of the array).\nIn that case, `end.offset_from(start)` gets you the length of the array.\n\nAll of the following safety requirements are trivially satisfied for this usecase.\n\n[`offset`]: #method.offset\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* `self` and `origin` must either\n\n  * point to the same address, or\n  * both be *derived from* a pointer to the same [allocated object], and the memory range between\n    the two pointers must be in bounds of that object. (See below for an example.)\n\n* The distance between the pointers, in bytes, must be an exact multiple\n  of the size of `T`.\n\nAs a consequence, the absolute distance between the pointers, in bytes, computed on\nmathematical integers (without \"wrapping around\"), cannot overflow an `isize`. This is\nimplied by the in-bounds requirement, and the fact that no allocated object can be larger\nthan `isize::MAX` bytes.\n\nThe requirement for pointers to be derived from the same allocated object is primarily\nneeded for `const`-compatibility: the distance between pointers into *different* allocated\nobjects is not known at compile-time. However, the requirement also exists at\nruntime and may be exploited by optimizations. If you wish to compute the difference between\npointers that are not guaranteed to be from the same allocation, use `(self as isize -\norigin as isize) / mem::size_of::<T>()`.\n\n[`add`]: #method.add\n[allocated object]: crate::ptr#allocated-object\n\n# Panics\n\nThis function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [0; 5];\nlet ptr1: *const i32 = &a[1];\nlet ptr2: *const i32 = &a[3];\nunsafe {\n    assert_eq!(ptr2.offset_from(ptr1), 2);\n    assert_eq!(ptr1.offset_from(ptr2), -2);\n    assert_eq!(ptr1.offset(2), ptr2);\n    assert_eq!(ptr2.offset(-2), ptr1);\n}\n```\n\n*Incorrect* usage:\n\n```rust,no_run\nlet ptr1 = Box::into_raw(Box::new(0u8)) as *const u8;\nlet ptr2 = Box::into_raw(Box::new(1u8)) as *const u8;\nlet diff = (ptr2 as isize).wrapping_sub(ptr1 as isize);\n// Make ptr2_other an \"alias\" of ptr2.add(1), but derived from ptr1.\nlet ptr2_other = (ptr1 as *const u8).wrapping_offset(diff).wrapping_offset(1);\nassert_eq!(ptr2 as usize, ptr2_other as usize);\n// Since ptr2_other and ptr2 are derived from pointers to different objects,\n// computing their offset is undefined behavior, even though\n// they point to addresses that are in-bounds of the same object!\nunsafe {\n    let one = ptr2_other.offset_from(ptr2); // Undefined Behavior! \u26a0\ufe0f\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "read_unaligned",
+        "item_type": "function",
+        "offset_in_fn": 286,
+        "declaration": "pub const unsafe fn read_unaligned(self) -> T\nwhere\n    T: Sized,",
+        "documentation": "Reads the value from `self` without moving it. This leaves the\nmemory in `self` unchanged.\n\nUnlike `read`, the pointer may be unaligned.\n\nSee [`ptr::read_unaligned`] for safety concerns and examples.\n\n[`ptr::read_unaligned`]: crate::ptr::read_unaligned()"
+      },
+      {
+        "src_mod": "",
+        "name": "to_le",
+        "item_type": "function",
+        "offset_in_fn": 303,
+        "declaration": "pub const fn to_le(self) -> Self",
+        "documentation": "Converts `self` to little endian from the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n    assert_eq!(n.to_le(), n)\n} else {\n    assert_eq!(n.to_le(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 505,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!(*ptr.add(1), b'2');\n    assert_eq!(*ptr.add(2), b'3');\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "advance_to",
+        "item_type": "function",
+        "offset_in_fn": 692,
+        "declaration": "pub fn advance_to(&mut self, ptr: *const u8)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "skip_container",
+        "item_type": "function",
+        "offset_in_fn": 756,
+        "declaration": "pub fn skip_container(&mut self) -> Result<(), ReaderError>",
+        "documentation": "Advance through the containing block until the closing token is consumed\n\n```rust\nuse jomini::{Scalar, text::{TokenReader, Token, Operator}};\nlet mut reader = TokenReader::new(&b\"foo={{bar={}}} qux=1\"[..]);\nassert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"foo\")));\nassert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\nassert_eq!(reader.read().unwrap(), Token::Open);\nassert!(reader.skip_container().is_ok());\nassert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"qux\")));\nassert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\nassert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"1\")));\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "fill_buf",
+        "item_type": "function",
+        "offset_in_fn": 1095,
+        "declaration": "pub fn fill_buf(&mut self, reader: impl Read) -> Result<usize, BufferError>",
+        "documentation": "This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`\nwill only call the underlying read if the buffer is currently empty,\nthis function will copy over the bytes that haven't been consumed to the\nstart."
+      },
+      {
+        "src_mod": "",
+        "name": "buffer_error",
+        "item_type": "function",
+        "offset_in_fn": 1214,
+        "declaration": "fn buffer_error(&self, e: BufferError) -> ReaderError",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 32,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n    utf8: Utf8Bom,\n}",
+      "documentation": "Scan a [Read] implementation for text [Token]s\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::text::{TokenReader, Token};\nlet data = b\"foo={{ id=3 } {} { id = 4 }}\";\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::text::ReaderError>(())\n```\n\nUnlike a [TextTape](crate::TextTape), which will skip ghost objects, pair\nopen and close tokens together, and recognize if a container is an object,\narray, or mixed -- the tokens yielded from a [TokenReader] are not fully\nformed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers and deserializers that operate over a stream\nof data.\n\nThe [TokenReader] is considered **experimental**, as it uses a different\nparsing algorithm geared towards parsing large save files. Ergonomic\nequivalents for more esoteric game syntax (like parameter definitions) have\nnot yet been finalized. Game files can still be parsed with the experimental\nAPIs, but these APIs may change in the future based on feedback. Since the\nbinary format is not used for game files, the\n[binary::TokenReader](crate::binary::TokenReader) is not considered\nexperimental)\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": [
+      {
+        "content": "`self` and `origin` must point to the same address or both be derived from a pointer to the same allocated object.",
+        "fn_name": "offset_from",
+        "type": "Allocated"
+      },
+      {
+        "content": "The memory range between `self` and `origin` must be within the bounds of the allocated object.",
+        "fn_name": "offset_from",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The distance between `self` and `origin`, in bytes, must be an exact multiple of the size of `T`.",
+        "fn_name": "offset_from",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The absolute distance between `self` and `origin`, in bytes, computed on mathematical integers (without \"wrapping around\"), cannot overflow an `isize`.",
+        "fn_name": "offset_from",
+        "type": "Overflow"
+      },
+      {
+        "content": "The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without \"wrapping around\"), must fit in an `isize`.",
+        "fn_name": "add",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
+        "fn_name": "add",
+        "type": "Allocated"
+      },
+      {
+        "content": "The entire memory range between `self` and the result must be within the bounds of the allocated object.",
+        "fn_name": "add",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The memory range must not \"wrap around\" the edge of the address space.",
+        "fn_name": "add",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/text/reader.rs/read/748",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/text/reader.rs",
+    "start_line": 748,
+    "end_line": 755,
+    "start_byte": 29415,
+    "end_byte": 29706,
+    "name": "read",
+    "raw_code": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s = std::ptr::addr_of!(self);\n        match unsafe { self.next_opt() } {\n            (Some(x), _) => Ok(x),\n            (None, None) => Err(unsafe { (*s).eof_error() }),\n            (None, Some(e)) => Err(e),\n        }\n    }",
+    "code_with_hints": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s: *const &mut TokenReader<R> = std::ptr::addr_of!(self);\n        match unsafe { self.next_opt() } {\n            (Some(x: Token), _) => Ok(x),\n            (None, None) => Err(unsafe { (*s).eof_error() }),\n            (None, Some(e: ReaderError)) => Err(e),\n        }\n    }",
+    "code_with_type": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s: *const &mut TokenReader<R> = std::ptr::addr_of!(self);\n        match unsafe { self.next_opt() } {\n            (Some(x: Token), _) => Ok(x),\n            (None, None) => Err(unsafe { (*s).eof_error() }),\n            (None, Some(e: ReaderError)) => Err(e),\n        }\n    }",
+    "code_with_param": "pub fn read(&mut self) -> Result<Token, ReaderError> {\n        let s = std::ptr::addr_of!(self);\n        match unsafe { self.next_opt() } {\n            (Some(x), _) => Ok(x),\n            (None, None) => Err(unsafe { (*s).eof_error() }),\n            (None, Some(e)) => Err(e),\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<Token, ReaderError>",
+    "comment": "/// Read the next token in the stream. Will error if not enough data remains\n/// to decode a token.\n///\n/// ```rust\n/// use jomini::{Scalar, text::{TokenReader, Token, ReaderErrorKind, Operator}};\n/// let mut reader = TokenReader::new(&b\"date=1444.11.11\"[..]);\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"date\")));\n/// assert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"1444.11.11\")));\n/// assert!(matches!(reader.read().unwrap_err().kind(), ReaderErrorKind::Eof));\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "reader",
+        "name": "Token",
+        "item_type": "enum",
+        "offset_in_fn": 33,
+        "declaration": "Token<'a> {\n    /// '{' or '['\n    Open,\n\n    /// '{' or ']'\n    Close,\n\n    /// An operator (eg: `foo=bar`)\n    Operator(Operator),\n\n    /// value that is not surrounded by quotes\n    Unquoted(Scalar<'a>),\n\n    /// value that is quoted\n    Quoted(Scalar<'a>),\n}",
+        "documentation": "Text token, the raw form of [TextToken](crate::text::TextToken)\n\nThis binary tokens contains the yielded raw tokens, and won't match open and\nclose tokens, nor does it make a determination if open and close represents\nan array, object, or both."
+      },
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 40,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An text lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "next_opt",
+        "item_type": "function",
+        "offset_in_fn": 125,
+        "declaration": "unsafe fn next_opt(&mut self) -> (Option<Token>, Option<ReaderError>)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "eof_error",
+        "item_type": "function",
+        "offset_in_fn": 221,
+        "declaration": "pub(crate) fn eof_error(&self) -> ReaderError",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n    utf8: Utf8Bom,\n}",
+      "documentation": "Scan a [Read] implementation for text [Token]s\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::text::{TokenReader, Token};\nlet data = b\"foo={{ id=3 } {} { id = 4 }}\";\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::text::ReaderError>(())\n```\n\nUnlike a [TextTape](crate::TextTape), which will skip ghost objects, pair\nopen and close tokens together, and recognize if a container is an object,\narray, or mixed -- the tokens yielded from a [TokenReader] are not fully\nformed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers and deserializers that operate over a stream\nof data.\n\nThe [TokenReader] is considered **experimental**, as it uses a different\nparsing algorithm geared towards parsing large save files. Ergonomic\nequivalents for more esoteric game syntax (like parameter definitions) have\nnot yet been finalized. Game files can still be parsed with the experimental\nAPIs, but these APIs may change in the future based on feedback. Since the\nbinary format is not used for game files, the\n[binary::TokenReader](crate::binary::TokenReader) is not considered\nexperimental)\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "jomini-0.27.0/src/text/reader.rs/next/780",
+    "repo_name": "jomini-0.27.0",
+    "relative_file": "src/text/reader.rs",
+    "start_line": 780,
+    "end_line": 786,
+    "start_byte": 30631,
+    "end_byte": 30870,
+    "name": "next",
+    "raw_code": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        match unsafe { self.next_opt() } {\n            (Some(x), _) => Ok(Some(x)),\n            (None, None) => Ok(None),\n            (None, Some(e)) => Err(e),\n        }\n    }",
+    "code_with_hints": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        match unsafe { self.next_opt() } {\n            (Some(x: Token), _) => Ok(Some(x)),\n            (None, None) => Ok(None),\n            (None, Some(e: ReaderError)) => Err(e),\n        }\n    }",
+    "code_with_type": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        match unsafe { self.next_opt() } {\n            (Some(x: Token), _) => Ok(Some(x)),\n            (None, None) => Ok(None),\n            (None, Some(e: ReaderError)) => Err(e),\n        }\n    }",
+    "code_with_param": "pub fn next(&mut self) -> Result<Option<Token>, ReaderError> {\n        match unsafe { self.next_opt() } {\n            (Some(x), _) => Ok(Some(x)),\n            (None, None) => Ok(None),\n            (None, Some(e)) => Err(e),\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<Option<Token>, ReaderError>",
+    "comment": "/// Read a token, returning none when all the data has been consumed\n///\n/// ```rust\n/// use jomini::{Scalar, text::{TokenReader, Token, Operator}};\n/// let mut reader = TokenReader::new(&b\"date=1444.11.11\"[..]);\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"date\")));\n/// assert_eq!(reader.read().unwrap(), Token::Operator(Operator::Equal));\n/// assert_eq!(reader.read().unwrap(), Token::Unquoted(Scalar::new(b\"1444.11.11\")));\n/// assert_eq!(reader.next().unwrap(), None);\n/// ```\n",
+    "attributes": "#[inline]\n#[allow(clippy::should_implement_trait)]\n",
+    "detail_info": [
+      {
+        "src_mod": "reader",
+        "name": "Token",
+        "item_type": "enum",
+        "offset_in_fn": 40,
+        "declaration": "Token<'a> {\n    /// '{' or '['\n    Open,\n\n    /// '{' or ']'\n    Close,\n\n    /// An operator (eg: `foo=bar`)\n    Operator(Operator),\n\n    /// value that is not surrounded by quotes\n    Unquoted(Scalar<'a>),\n\n    /// value that is quoted\n    Quoted(Scalar<'a>),\n}",
+        "documentation": "Text token, the raw form of [TextToken](crate::text::TextToken)\n\nThis binary tokens contains the yielded raw tokens, and won't match open and\nclose tokens, nor does it make a determination if open and close represents\nan array, object, or both."
+      },
+      {
+        "src_mod": "reader",
+        "name": "ReaderError",
+        "item_type": "struct",
+        "offset_in_fn": 48,
+        "declaration": "ReaderError {\n    position: usize,\n    kind: ReaderErrorKind,\n}",
+        "documentation": "An text lexing error over a `Read` implementation"
+      },
+      {
+        "src_mod": "",
+        "name": "next_opt",
+        "item_type": "function",
+        "offset_in_fn": 91,
+        "declaration": "unsafe fn next_opt(&mut self) -> (Option<Token>, Option<ReaderError>)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "TokenReader",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "TokenReader<R> {\n    reader: R,\n    buf: BufferWindow,\n    utf8: Utf8Bom,\n}",
+      "documentation": "Scan a [Read] implementation for text [Token]s\n\nExample of computing the max nesting depth using a [TokenReader].\n\n```rust\nuse jomini::text::{TokenReader, Token};\nlet data = b\"foo={{ id=3 } {} { id = 4 }}\";\nlet mut reader = TokenReader::new(&data[..]);\nlet mut max_depth = 0;\nlet mut current_depth = 0;\nwhile let Some(token) = reader.next()? {\n  match token {\n    Token::Open => {\n      current_depth += 1;\n      max_depth = max_depth.max(current_depth);\n    }\n    Token::Close => current_depth -= 1,\n    _ => {}\n  }\n}\nassert_eq!(max_depth, 2);\n# Ok::<(), jomini::text::ReaderError>(())\n```\n\nUnlike a [TextTape](crate::TextTape), which will skip ghost objects, pair\nopen and close tokens together, and recognize if a container is an object,\narray, or mixed -- the tokens yielded from a [TokenReader] are not fully\nformed. This is a much more raw view of the data that can be used to\nconstruct higher level parsers and deserializers that operate over a stream\nof data.\n\nThe [TokenReader] is considered **experimental**, as it uses a different\nparsing algorithm geared towards parsing large save files. Ergonomic\nequivalents for more esoteric game syntax (like parameter definitions) have\nnot yet been finalized. Game files can still be parsed with the experimental\nAPIs, but these APIs may change in the future based on feedback. Since the\nbinary format is not used for game files, the\n[binary::TokenReader](crate::binary::TokenReader) is not considered\nexperimental)\n\n[TokenReader] operates over a fixed size buffer, so using a\n[BufRead](std::io::BufRead) affords no benefits. An error will be returned\nfor tokens that are impossible to fit within the buffer (eg: if the provided\nwith 100 byte buffer but there is a binary string that is 101 bytes long)."
+    },
+    "constraints": []
+  }
+]

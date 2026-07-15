@@ -1,0 +1,74 @@
+[
+  {
+    "sample_label": "bitm-0.4.2/src/rank_select/mod.rs/try_rank/322",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe calls are:\n\n```rust\nr += unsafe{self.ranks.get_unchecked(index: block)};\n```\n\nand\n\n```rust\nr += unsafe{self.content.get_unchecked(index: w)}.count_ones();\n```\n\nThe contract in question applies to `get_unchecked`, so these are the relevant sites.\n\n---\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `block: usize = index / 512;`\n- `word_idx: usize = index / 64;`\n- `for w: usize in block * (512 / 64)..word_idx { ... }`\n- `self.ranks.get_unchecked(index: block)`\n- `self.content.get_unchecked(index: w)`\n\nThe contract says:\n\n> `index` must be in bounds for the tree.\n\nSo we need to check whether the indices used with `get_unchecked` are guaranteed valid.\n\n---\n\n## 3. Step-by-step data flow analysis\n\n### First unsafe call: `self.ranks.get_unchecked(index: block)`\n\n- `block` is computed as `index / 512`.\n- The function only does:\n  ```rust\n  let word_idx = index / 64;\n  let word_offset = index as u8 % 64;\n  let block = index / 512;\n  ```\n- There is **no explicit bound check** ensuring that `block` is within `self.ranks.len()`.\n\nThe only safe guard is:\n```rust\nself.content.get(index: word_idx)?\n```\nThis checks that `word_idx` is within bounds of `self.content`, but it does **not** prove that `block` is in bounds of `self.ranks`.\n\nIf `index` is large enough, `block` can exceed the valid range of `self.ranks`, causing out-of-bounds access through `get_unchecked`.\n\nSo the contract is **not guaranteed** here.\n\n---\n\n### Second unsafe call: `self.content.get_unchecked(index: w)`\n\n- The loop is:\n  ```rust\n  for w: usize in block * (512 / 64)..word_idx\n  ```\n  which means:\n  - start = `block * 8`\n  - end = `word_idx`\n\nSince `word_idx = index / 64`, the loop iterates over word indices below the current word.\n\nHowever, there is only a check that `self.content.get(word_idx)?` succeeds, meaning `word_idx` is in bounds.\nThat still does **not** guarantee every `w` in the range is valid unless the range is proven to stay within bounds.\n\n- If `word_idx` is in bounds, then smaller `w` values are typically also in bounds, but this assumes:\n  - `block * 8 <= word_idx`\n  - and the content length is at least `word_idx + 1`\n\nThe code does not explicitly establish a relation between `block`, `word_idx`, and `self.content.len()` that would prove safety in all cases from the given information alone.\n\nSo this unsafe access is also not fully guaranteed by the code as provided.\n\n---\n\n## 4. Final determination\n\nBecause `block` is passed to `self.ranks.get_unchecked` without a direct bounds check, the required contract\n\n> `\"index` must be in bounds for the tree\"\n\nis **not proven to hold**.\n\n## Answer: No"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nr += unsafe{self.ranks.get_unchecked(index: block)};\n...\nr += unsafe{self.content.get_unchecked(index: w)}.count_ones();\n```\n\n2. **Expressions related to the contract**\n- `block = index / 512`\n- `word_idx = index / 64`\n- loop range: `for w in block * (512 / 64)..word_idx`\n- the unsafe `get_unchecked` index values:\n  - `block` for `self.ranks`\n  - `w` for `self.content`\n\n3. **Step-by-step analysis**\n- The contract for `get_unchecked` is that the index must be in bounds.\n- For `self.content.get_unchecked(w)`:\n  - The loop uses `w in block * 8 .. word_idx`.\n  - Since `word_idx = index / 64`, if `index` is arbitrary, `word_idx` may exceed `self.content.len()`.\n  - Although `try_rank` first checks `self.content.get(word_idx)?`, ensuring `word_idx` is in bounds for that access, it does **not** prove that every `w` in the loop is valid unless the underlying assumptions about `content` and `ranks` lengths hold.\n- For `self.ranks.get_unchecked(block)`:\n  - `block = index / 512`.\n  - There is no explicit bounds check on `block`.\n  - The code does not establish that `block < self.ranks.len()`.\n- Therefore, from the provided code alone, the unsafe index passed to `get_unchecked` is not guaranteed to be in bounds for the tree.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "bitm-0.4.2/src/rank_select/select.rs/select64/93",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\nunsafe { SELECT_U8.get_unchecked(index: (((n >> place) & 0xFF) | (byte_rank << 8)) as usize) }\n```\n\n## 2. Expressions highly related to the contract\n\nThe contract for `get_unchecked` is:\n\n- `index` must be in bounds for the tree.\n\nRelevant expressions:\n- `SELECT_U8`\n- `(((n >> place) & 0xFF) | (byte_rank << 8)) as usize`\n- `place`\n- `byte_rank`\n- `n`\n- `rank`\n\n## 3. Step-by-step data flow analysis\n\n`get_unchecked` is called on `SELECT_U8`, which appears to be a lookup table. For the contract to hold, the computed index must always be valid for that table.\n\nLet\u2019s inspect the index computation:\n\n```rust\n(((n >> place) & 0xFF) | (byte_rank << 8)) as usize\n```\n\n- `(n >> place) & 0xFF` extracts one byte from `n`, so this part is in `0..=255`.\n- `byte_rank << 8` shifts `byte_rank` into the upper byte(s), and `byte_rank` is computed as:\n  ```rust\n  let byte_rank: u64 = rank.0 - (((byte_sums.0 << 8) >> place) & 0xFF);\n  ```\n  Since `rank` is arbitrary `u8`, and the code does not explicitly validate the resulting value against the lookup table size, this can produce values large enough to make the combined index exceed the bounds of `SELECT_U8`.\n\nThe function relies on a mathematically valid select-table construction. However, the code as shown does not prove that the resulting index is always within bounds for all possible inputs `n` and `rank`. Since both are external inputs and `rank` is arbitrary, there is no explicit runtime check ensuring the computed index is bounded.\n\nTherefore, from the provided code alone, the safety contract of `get_unchecked` is not guaranteed.\n\n## 4. Final determination\n\nNo"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nplace + unsafe { SELECT_U8.get_unchecked(index: (((n >> place) & 0xFF) | (byte_rank << 8)) as usize) }\n```\n\n2. **Expressions related to the contract**\n- `SELECT_U8`\n- `(((n >> place) & 0xFF) | (byte_rank << 8)) as usize`\n- `place`\n- `byte_rank`\n- `rank`\n- `n`\n\n3. **Step-by-step analysis**\n- The unsafe contract for `get_unchecked` requires the `index` to be in bounds.\n- Here, `index` is computed as:\n  ```rust\n  (((n >> place) & 0xFF) | (byte_rank << 8)) as usize\n  ```\n- The function assumes a carefully constructed selection table lookup. However, the contract must hold for all possible inputs unless the function itself enforces the needed preconditions.\n- `rank` is a `u8`, so it can be any value from 0 to 255. There is no explicit validation that `rank` is within the number of ones in `n`.\n- `byte_rank` is derived from `rank` and byte sums, and `place` is derived from `geq_step8.count_ones() * 8`. While this is intended to produce a valid lookup key for the select table, the code does not prove at the type level that the computed index is always within bounds.\n- The lookup table `SELECT_U8` is accessed via `get_unchecked`, which means safety depends entirely on the computed index always being valid.\n- Since the provided function does not check that `rank` is a valid rank for `n`, there are inputs where the selection logic can produce an out-of-range table index, violating the `get_unchecked` contract.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "bitm-0.4.2/src/rank_select/utils.rs/partition_point_with_index/20",
+    "result": "sound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `get_unchecked` is called here:\n\n```rust\nif f(unsafe { tab.get_unchecked(index: mid) }, mid) {\n```\n\n---\n\n## 2. Expressions related to the contract\n\nThe contract says:\n\n- `index` must be in bounds for the tree.\n\nRelevant expressions:\n\n- `tab`: the slice being indexed\n- `mid`: the index passed to `get_unchecked`\n- `size = tab.len()`\n- `left = 0`\n- `right = size`\n- `mid = left + size / 2`\n- loop condition: `while size > 0`\n- updates:\n  - `left = mid + 1`\n  - `right = mid`\n  - `size = right - left`\n\n---\n\n## 3. Step-by-step analysis\n\nWe need to determine whether `mid` is always a valid index into `tab`.\n\n### Initial state\n- `size = tab.len()`\n- `left = 0`\n- `right = size`\n\nSo initially, the invariant is intended to be:\n\n- `0 <= left <= right <= tab.len()`\n\n### Loop condition\nThe loop runs only while `size > 0`.\n\nSince `size = right - left`, this means `right > left`.\n\n### Mid computation\n```rust\nlet mid: usize = left + size / 2;\n```\n\nBecause `size > 0`, we have `size / 2 < size` or possibly `0` when `size = 1`, but still:\n\n- `mid >= left`\n- `mid < left + size = right`\n\nSo `mid` lies in the interval `[left, right)`.\n\n### Inductive invariant\nThe comments state the intended invariants:\n\n- `0 <= left <= left + size = right <= self.len()`\n\nThus:\n\n- `right <= tab.len()`\n- `left <= mid < right`\n\nCombining those:\n\n- `mid < right <= tab.len()`\n\nTherefore `mid` is always strictly less than `tab.len()`, and since it is a `usize`, it is also non-negative.\n\nSo `mid` is always in bounds for `tab`.\n\n---\n\n## 4. Final determination\n\nThe contract of `get_unchecked` is satisfied.\n\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `get_unchecked` is called here:\n\n```rust\nif f(unsafe { tab.get_unchecked(index: mid) }, mid) {\n```\n\n---\n\n## 2. Contract-related expressions\n\nThe contract says:\n\n- `index` must be in bounds\n\nRelevant expressions:\n- `tab`\n- `mid`\n- `size`\n- `left`\n- `right`\n- `tab.len()`\n- `let mid: usize = left + size / 2;`\n\n---\n\n## 3. Step-by-step analysis\n\n- `tab` is a slice, so its valid indices are `0..tab.len()`.\n- The function initializes:\n  - `size = tab.len()`\n  - `left = 0`\n  - `right = size`\n- The loop runs while `size > 0`.\n\nWe need to check whether `mid` is always a valid index into `tab`.\n\n### Initial iteration\n- `mid = left + size / 2`\n- Since `left = 0` and `size = tab.len()`, we get:\n  - `mid < tab.len()` whenever `size > 0`\n- So the first access is in bounds.\n\n### Loop invariants\nThe comments state:\n- `0 <= left <= left + size = right <= self.len()`\n\nThis implies:\n- `right <= tab.len()`\n- `left <= right`\n- therefore `left < right` when `size > 0`\n\nSince:\n- `mid = left + size / 2`\n- and `size = right - left`\n\nwe have:\n- `mid >= left`\n- `mid < right` when `size > 0`\n\nBecause `right <= tab.len()`, it follows that:\n- `mid < tab.len()`\n\nSo every time `get_unchecked` is called, `mid` is within bounds.\n\nAlso, the function\u2019s binary-search-style updates preserve the invariants:\n- if `f(tab[mid], mid)` is true, `left = mid + 1`\n- else `right = mid`\n- then `size = right - left`\n\nThis maintains the valid range for the next iteration.\n\n---\n\n## 4. Final determination\n\nYes."
+          }
+        ]
+      }
+    ]
+  }
+]
