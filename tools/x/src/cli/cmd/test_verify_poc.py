@@ -7,6 +7,7 @@ from cli.cmd.verify_poc import (
     INJECTION_STATE_FILE,
     ensure_cargo_feature,
     inject_testcase_at_callsite,
+    symbolize_testcase_constants,
     testcase_injection,
 )
 
@@ -82,6 +83,57 @@ class VerifyPocInjectionTests(unittest.TestCase):
             source = (crate / "src/lib.rs").read_text(encoding="utf-8")
             self.assertNotIn("let _ = 1;", source)
             self.assertEqual(source.count("let _ = 2;"), 1)
+
+    def test_symbolize_testcase_constants_lifts_scalar_literals_only(self) -> None:
+        injection = testcase_injection("src-lib-rs-1-1", "rule-447")
+        testcase = f'''#[cfg(feature = "{injection.feature}")]
+#[no_mangle]
+pub extern "C" fn {injection.function}() {{
+    let data = vec![0u8; 8];
+    let pair = (1usize, 2usize);
+    let first = pair.0;
+    let flag = true;
+    let ch = 'x';
+    let text = "literal 9 stays concrete";
+    // comment 10 stays concrete
+}}
+'''
+        transformed, mapping = symbolize_testcase_constants(
+            testcase=testcase,
+            injection=injection,
+        )
+        self.assertEqual(mapping["symbol_count"], 6)
+        self.assertIn('klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_000', transformed)
+        self.assertIn("vec![__unsat_rerun_sym_000; __unsat_rerun_sym_001]", transformed)
+        self.assertIn("let pair = (__unsat_rerun_sym_002, __unsat_rerun_sym_003);", transformed)
+        self.assertIn("let first = pair.0;", transformed)
+        self.assertIn("let flag = __unsat_rerun_sym_004;", transformed)
+        self.assertIn("let ch = __unsat_rerun_sym_005;", transformed)
+        self.assertIn('"literal 9 stays concrete"', transformed)
+        self.assertIn("// comment 10 stays concrete", transformed)
+
+    def test_symbolize_testcase_constants_does_not_bound_large_integers(self) -> None:
+        injection = testcase_injection("src-lib-rs-2-1", "rule-447")
+        testcase = f'''#[cfg(feature = "{injection.feature}")]
+#[no_mangle]
+pub extern "C" fn {injection.function}() {{
+    let content = vec![0x6A_21_55_79_10_90_32_F3u64; 1];
+    let _index = 512usize;
+}}
+'''
+        transformed, mapping = symbolize_testcase_constants(
+            testcase=testcase,
+            injection=injection,
+        )
+        self.assertEqual(mapping["symbol_count"], 3)
+        self.assertIsNone(mapping["symbols"][0]["upper_bound"])
+        self.assertEqual(mapping["symbols"][1]["upper_bound"], 16)
+        self.assertEqual(mapping["symbols"][2]["upper_bound"], 8192)
+        self.assertNotIn("122359801931345637168", transformed)
+        self.assertIn(
+            "let content = vec![__unsat_rerun_sym_000; __unsat_rerun_sym_001];",
+            transformed,
+        )
 
 
 if __name__ == "__main__":

@@ -28,6 +28,293 @@ class TestcaseInjection:
     line: int = 0
 
 
+def _is_ident_continue(ch: str) -> bool:
+    return ch == "_" or ch.isalnum()
+
+
+def _raw_string_len(text: str, pos: int) -> int:
+    start = pos
+    if pos < len(text) and text[pos] == "b":
+        pos += 1
+    if pos >= len(text) or text[pos] != "r":
+        return 0
+    pos += 1
+    hashes = 0
+    while pos < len(text) and text[pos] == "#":
+        hashes += 1
+        pos += 1
+    if pos >= len(text) or text[pos] != '"':
+        return 0
+    pos += 1
+    end = text.find('"' + ("#" * hashes), pos)
+    if end < 0:
+        return len(text) - start
+    return end + 1 + hashes - start
+
+
+def _quoted_literal_len(text: str, pos: int, quote: str) -> int:
+    i = pos + 1
+    while i < len(text):
+        if text[i] == "\\":
+            i += 2
+            continue
+        if text[i] == quote:
+            return i + 1 - pos
+        if text[i] == "\n":
+            return i - pos
+        i += 1
+    return len(text) - pos
+
+
+def _line_comment_len(text: str, pos: int) -> int:
+    end = text.find("\n", pos)
+    return len(text) - pos if end < 0 else end - pos
+
+
+def _block_comment_len(text: str, pos: int) -> int:
+    depth = 1
+    i = pos + 2
+    while i < len(text) and depth > 0:
+        if text.startswith("/*", i):
+            depth += 1
+            i += 2
+        elif text.startswith("*/", i):
+            depth -= 1
+            i += 2
+        else:
+            i += 1
+    return i - pos
+
+
+def _number_literal_len(text: str, pos: int) -> int:
+    i = pos
+    if text.startswith(("0x", "0X", "0o", "0O", "0b", "0B"), pos):
+        i += 2
+        while i < len(text) and (text[i].isalnum() or text[i] == "_"):
+            i += 1
+        return i - pos
+
+    while i < len(text) and (text[i].isdigit() or text[i] == "_"):
+        i += 1
+    if (
+        i + 1 < len(text)
+        and text[i] == "."
+        and text[i + 1] != "."
+        and text[i + 1].isdigit()
+    ):
+        i += 1
+        while i < len(text) and (text[i].isdigit() or text[i] == "_"):
+            i += 1
+    if i < len(text) and text[i] in "eE":
+        j = i + 1
+        if j < len(text) and text[j] in "+-":
+            j += 1
+        if j < len(text) and text[j].isdigit():
+            i = j + 1
+            while i < len(text) and (text[i].isdigit() or text[i] == "_"):
+                i += 1
+    while i < len(text) and (text[i].isalnum() or text[i] == "_"):
+        i += 1
+    return i - pos
+
+
+def _integer_literal_value(literal: str) -> int | None:
+    match = re.match(
+        r"(0[xX][0-9A-Fa-f_]+|0[oO][0-7_]+|0[bB][01_]+|[0-9][0-9_]*)(.*)\Z",
+        literal,
+    )
+    if not match:
+        return None
+    suffix = match.group(2)
+    if suffix.startswith((".", "e", "E", "f")):
+        return None
+    digits = match.group(1).replace("_", "")
+    try:
+        return int(digits, 0)
+    except ValueError:
+        return None
+
+
+def _rerun_sym_integer_upper_bound(literal: str) -> int | None:
+    value = _integer_literal_value(literal)
+    if value is None:
+        return None
+    if value > 1_000_000:
+        return None
+    return max(16, value * 16)
+
+
+def _find_function_body_span(testcase: str, function_name: str) -> tuple[int, int]:
+    match = re.search(rf"\bfn\s+{re.escape(function_name)}\s*\(\s*\)", testcase)
+    if not match:
+        raise RuntimeError(f"could not find generated testcase function {function_name}()")
+    open_brace = testcase.find("{", match.end())
+    if open_brace < 0:
+        raise RuntimeError(f"generated testcase function {function_name}() has no body")
+
+    depth = 0
+    i = open_brace
+    while i < len(testcase):
+        raw_len = _raw_string_len(testcase, i)
+        if raw_len:
+            i += raw_len
+            continue
+        if testcase.startswith("//", i):
+            i += _line_comment_len(testcase, i)
+            continue
+        if testcase.startswith("/*", i):
+            i += _block_comment_len(testcase, i)
+            continue
+        if testcase.startswith('b"', i):
+            i += 1 + _quoted_literal_len(testcase, i + 1, '"')
+            continue
+        if testcase[i] == '"':
+            i += _quoted_literal_len(testcase, i, '"')
+            continue
+        if testcase.startswith("b'", i):
+            i += 1 + _quoted_literal_len(testcase, i + 1, "'")
+            continue
+        if testcase[i] == "'":
+            i += _quoted_literal_len(testcase, i, "'")
+            continue
+        if testcase[i] == "{":
+            depth += 1
+        elif testcase[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return open_brace, i
+        i += 1
+    raise RuntimeError(f"generated testcase function {function_name}() body is unterminated")
+
+
+def _transform_body_constants(
+    body: str, *, symbol_prefix: str
+) -> tuple[str, list[dict[str, Any]]]:
+    out: list[str] = []
+    symbols: list[dict[str, Any]] = []
+    i = 0
+
+    def replace(literal: str, kind: str, start: int) -> str:
+        name = f"{symbol_prefix}_{len(symbols):03d}"
+        line = body.count("\n", 0, start) + 1
+        last_newline = body.rfind("\n", 0, start)
+        col = start + 1 if last_newline < 0 else start - last_newline
+        symbols.append(
+            {
+                "name": name,
+                "literal": literal,
+                "kind": kind,
+                "body_line": line,
+                "body_col": col,
+                "upper_bound": _rerun_sym_integer_upper_bound(literal)
+                if kind == "number"
+                else None,
+            }
+        )
+        return name
+
+    while i < len(body):
+        raw_len = _raw_string_len(body, i)
+        if raw_len:
+            out.append(body[i : i + raw_len])
+            i += raw_len
+            continue
+        if body.startswith("//", i):
+            n = _line_comment_len(body, i)
+            out.append(body[i : i + n])
+            i += n
+            continue
+        if body.startswith("/*", i):
+            n = _block_comment_len(body, i)
+            out.append(body[i : i + n])
+            i += n
+            continue
+        if body.startswith('b"', i):
+            n = 1 + _quoted_literal_len(body, i + 1, '"')
+            out.append(body[i : i + n])
+            i += n
+            continue
+        if body[i] == '"':
+            n = _quoted_literal_len(body, i, '"')
+            out.append(body[i : i + n])
+            i += n
+            continue
+        if body.startswith("b'", i):
+            n = 1 + _quoted_literal_len(body, i + 1, "'")
+            literal = body[i : i + n]
+            out.append(replace(literal, "byte-char", i))
+            i += n
+            continue
+        if body[i] == "'":
+            n = _quoted_literal_len(body, i, "'")
+            literal = body[i : i + n]
+            if len(literal) > 1 and literal.endswith("'"):
+                out.append(replace(literal, "char", i))
+                i += n
+                continue
+        if (
+            body[i].isdigit()
+            and (i == 0 or not _is_ident_continue(body[i - 1]))
+            and (i == 0 or body[i - 1] != ".")
+        ):
+            n = _number_literal_len(body, i)
+            literal = body[i : i + n]
+            out.append(replace(literal, "number", i))
+            i += n
+            continue
+        if body[i].isalpha() or body[i] == "_":
+            j = i + 1
+            while j < len(body) and _is_ident_continue(body[j]):
+                j += 1
+            word = body[i:j]
+            if word in {"true", "false"}:
+                out.append(replace(word, "bool", i))
+            else:
+                out.append(word)
+            i = j
+            continue
+        out.append(body[i])
+        i += 1
+    return "".join(out), symbols
+
+
+def symbolize_testcase_constants(
+    *, testcase: str, injection: TestcaseInjection
+) -> tuple[str, dict[str, Any]]:
+    open_brace, close_brace = _find_function_body_span(testcase, injection.function)
+    body = testcase[open_brace + 1 : close_brace]
+    symbol_prefix = "__unsat_rerun_sym"
+    transformed_body, symbols = _transform_body_constants(
+        body, symbol_prefix=symbol_prefix
+    )
+    indent_match = re.search(r"\n([ \t]*)\S", body)
+    indent = indent_match.group(1) if indent_match else "    "
+    declarations = "".join(
+        f"\n{indent}let mut {item['name']} = {item['literal']};"
+        f"\n{indent}klee_ext_bind::make_symbolic!(&mut {item['name']}, \"{item['name']}\");"
+        + (
+            f"\n{indent}klee_ext_bind::assume!({item['name']} <= {item['upper_bound']});"
+            if item.get("upper_bound") is not None
+            else ""
+        )
+        for item in symbols
+    )
+    updated = (
+        testcase[: open_brace + 1]
+        + declarations
+        + transformed_body
+        + testcase[close_brace:]
+    )
+    return updated, {
+        "schema_version": 1,
+        "mode": "rerun-sym",
+        "function": injection.function,
+        "feature": injection.feature,
+        "symbol_count": len(symbols),
+        "symbols": symbols,
+    }
+
+
 def testcase_injection(callsite: str, rule: str) -> TestcaseInjection:
     key = f"{callsite}::{rule}"
     slug = re.sub(r"[^a-z0-9]+", "-", f"{callsite}-{rule}".lower()).strip("-")

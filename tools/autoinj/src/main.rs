@@ -336,6 +336,15 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
         };
         injector.visit_file_mut(&mut ast);
         if !injector.inserted {
+            if injection.raw_pointer_deref {
+                eprintln!(
+                    "warning: skipping raw pointer deref callsite {} at {}:{} because no source-level dereference expression was found",
+                    injection.id,
+                    injection.line,
+                    injection.col,
+                );
+                continue;
+            }
             bail!(
                 "no call expression found at {}:{} in {}",
                 injection.line,
@@ -835,6 +844,11 @@ fn lift_method_call_parts(
     lift_stmts.append(&mut tail_stmts);
     if matches!(callee_method, "get_unchecked" | "get_unchecked_mut") && bind_first_tail_arg_as_u64
     {
+        let receiver = (*node.receiver).clone();
+        let bind_len_stmt: syn::Stmt = parse_quote! {
+            klee_ext_bind::bind_arg_u64(1, (#receiver).len() as u64);
+        };
+        lift_stmts.push(bind_len_stmt);
         if let Some(index_arg) = tail_arg_names.first() {
             let index_ident = syn::Ident::new(index_arg, Span::call_site());
             let bind_stmt: syn::Stmt = parse_quote! {
@@ -1114,6 +1128,41 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
     }
 
     #[test]
+    fn inject_file_skips_raw_pointer_target_without_source_deref() -> Result<()> {
+        let tmp = TempDir::new("skip-implicit-raw-deref")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub fn init(content: &[u64], rank: &[u64]) {
+    let _ = Select::new(&content, &rank);
+}
+
+struct Select;
+impl Select {
+    fn new(_: &[u64], _: &[u64]) -> Self { Select }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-2-25".to_string(),
+                line: 2,
+                col: 25,
+                callee_name: Some("core::ptr::__raw_ptr_deref__".to_string()),
+                raw_pointer_deref: true,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        assert!(!injected.contains("klee_ext_bind::raw_pointer_deref!"));
+        assert!(!injected.contains("klee_ext_bind::callsite!"));
+        Ok(())
+    }
+
+    #[test]
     fn inject_file_lifts_complex_call_arguments_before_callsite() -> Result<()> {
         let tmp = TempDir::new("lift-complex-args")?;
         let source = tmp.path().join("lib.rs");
@@ -1188,6 +1237,48 @@ fn make_value() -> u8 { 0 }
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-30\");"));
         assert!(compact.contains("=ptr.add(index);"));
         assert!(compact.contains("core::ptr::write(__klee_ret_src_lib_rs_3_30_add,make_value())"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_binds_slice_get_unchecked_len_and_index() -> Result<()> {
+        let tmp = TempDir::new("slice-get-unchecked-bindings")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub struct Rank {
+    ranks: Box<[u32]>,
+}
+
+impl Rank {
+    pub fn read(&self, block: usize) -> u32 {
+        unsafe { *self.ranks.get_unchecked(block) }
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-7-19".to_string(),
+                line: 7,
+                col: 19,
+                callee_name: Some("core::slice::<impl [T]>::get_unchecked".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(
+            compact.contains("let__klee_arg0=&self.ranks;"),
+            "unexpected injection:\n{injected}"
+        );
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,(__klee_arg0).len()asu64);"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64(2,blockasu64);"));
+        assert!(compact.contains("=__klee_arg0.get_unchecked(block);"));
         Ok(())
     }
 

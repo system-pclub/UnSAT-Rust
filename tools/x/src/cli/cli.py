@@ -223,6 +223,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate and inject LLM testcase PoCs, but skip compose-rerun.",
     )
     verify_parser.add_argument(
+        "--skip-rerun-sym",
+        action="store_true",
+        help="Disable the final rerun-sym fallback after concrete compose-rerun misses.",
+    )
+    verify_parser.add_argument(
+        "--stop-callsite-if-violated",
+        action="store_true",
+        help=(
+            "In matrix mode, check each callsite's rules sequentially and skip "
+            "remaining rules for that callsite after the first confirmed violation."
+        ),
+    )
+    verify_parser.add_argument(
         "--model",
         default="gpt-5.4-mini",
         help="Model used for concrete testcase generation (default: gpt-5.4-mini).",

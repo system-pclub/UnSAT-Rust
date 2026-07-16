@@ -27,6 +27,9 @@ pub unsafe extern "C" fn klee_make_symbolic(
 ) {
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn klee_assume(_condition: usize) {}
+
 /// No-op Miri runtime shims used only to let `--cfg=miri` test binaries link
 /// while emitting LLVM IR for KLEE. KLEE handles these as externals/no-ops when
 /// interpreting the linked IR.

@@ -28,6 +28,7 @@ extern "C" {
     /// KLEE special function: mark `[ptr, ptr+size)` as a symbolic value named
     /// `name`.
     fn klee_make_symbolic(ptr: *mut c_void, size: usize, name: *const c_char);
+    fn klee_assume(condition: usize);
 }
 
 #[inline(always)]
@@ -83,15 +84,18 @@ macro_rules! raw_pointer_deref {
 /// Prefer the [`make_symbolic!`] macro.
 #[inline(always)]
 pub fn make_symbolic_raw(ptr: *mut c_void, size: usize, name_nul: &'static [u8]) {
-    debug_assert_eq!(
-        name_nul.last().copied(),
-        Some(0u8),
-        "name_nul must be null-terminated"
-    );
     // Safety: KLEE fills the region with a fresh symbolic value; the caller
     // ensures `ptr` points to at least `size` writable bytes.
+    // The public macro passes `concat!($name, "\0").as_bytes()`, so `name_nul`
+    // is null-terminated without needing a debug assertion that would pull
+    // generic Option helpers into the KLEE bitcode.
     let name_ptr = name_nul as *const [u8] as *const u8;
     unsafe { klee_make_symbolic(ptr, size, name_ptr as *const c_char) }
+}
+
+#[inline(always)]
+pub fn assume_raw(condition: bool) {
+    unsafe { klee_assume(if condition { 1 } else { 0 }) }
 }
 
 /// Mark `$value` (passed as `&mut`) as a KLEE symbolic variable named
@@ -109,5 +113,12 @@ macro_rules! make_symbolic {
             ::core::mem::size_of_val($value),
             concat!($name, "\0").as_bytes(),
         )
+    };
+}
+
+#[macro_export]
+macro_rules! assume {
+    ($condition:expr) => {
+        $crate::assume_raw($condition)
     };
 }

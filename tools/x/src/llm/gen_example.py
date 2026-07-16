@@ -41,7 +41,9 @@ def get_rust_file_paths(root: str | Path) -> list[Path]:
     )
 
 
-def read_rust_files_as_context(root: str | Path) -> str:
+def read_rust_files_as_context(
+    root: str | Path, *, exclude_generated_testcases: bool = False
+) -> str:
     root = Path(root).resolve()
     files = get_rust_file_paths(root)
 
@@ -49,6 +51,8 @@ def read_rust_files_as_context(root: str | Path) -> str:
     for path in files:
         rel = path.relative_to(root)
         content = path.read_text(encoding="utf-8", errors="replace")
+        if exclude_generated_testcases:
+            content = _without_generated_testcases(content)
         chunks.append(
             f"\n<file path=\"{rel}\">\n"
             f"```rust\n{content}\n```\n"
@@ -474,7 +478,9 @@ def build_witness_guided_rust_context(
         raise ValueError(f"unsupported Rust context mode: {mode}")
 
     baseline_files = get_rust_file_paths(root)
-    baseline_text = read_rust_files_as_context(root)
+    baseline_text = read_rust_files_as_context(
+        root, exclude_generated_testcases=True
+    )
     if mode == "full":
         chars = len(baseline_text)
         return RustContext(
@@ -643,7 +649,7 @@ compiler/tool feedback. Do not repeat the same mistake.
 """
     return f"""
 Generate one small in-crate Rust testcase that concretely reproduces the
-soundness violation found by KLEE.
+reported soundness violation.
 
 Requirements:
 - Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
@@ -678,20 +684,20 @@ Requirements:
 {safety_requirement}
 </safety requirement>
 
-<klee witness and reproduction target>
-{klee_witness or "No additional KLEE witness was available."}
-</klee witness and reproduction target>
+<structured reproduction target>
+{klee_witness or "No additional structured target was available."}
+</structured reproduction target>
 
 Important:
 - The testcase must make the target unsafe callee arguments violate the rule
-  above in the same way KLEE did.
-- If the witness says a relation such as `index < len` was violated, choose
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
   concrete inputs that make `index >= len` at the unsafe callsite.
-- If the witness says two pointers must be from different allocations, do not
+- If the target says two pointers must be from different allocations, do not
   use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
   from a different safe allocation or safe API state if possible.
-- Prefer reproducing the concrete argument relation shown in the KLEE witness
-  over writing a merely plausible API call.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
 
 {feedback_block}
 
