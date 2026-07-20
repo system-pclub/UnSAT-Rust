@@ -99,6 +99,7 @@ fn run(cargo_dir: &Path, meta_json: &Path, dest_dir: &Path) -> Result<()> {
     }
 
     copy_crate(cargo_dir, dest_dir)?;
+    rebase_relative_dependency_paths(cargo_dir, dest_dir)?;
     add_klee_ext_bind_dependency(dest_dir)?;
 
     let mut meta: Meta = serde_json::from_str(
@@ -143,6 +144,53 @@ fn copy_crate(src: &Path, dst: &Path) -> Result<()> {
                     dest_path.display()
                 )
             })?;
+        }
+    }
+    Ok(())
+}
+
+fn rebase_relative_dependency_paths(source_dir: &Path, dest_dir: &Path) -> Result<()> {
+    let manifest_path = dest_dir.join("Cargo.toml");
+    let manifest_text = fs::read_to_string(&manifest_path)?;
+    let mut doc = manifest_text.parse::<DocumentMut>()?;
+    rebase_paths_in_table(doc.as_table_mut(), false, source_dir, dest_dir)?;
+    fs::write(&manifest_path, doc.to_string())?;
+    Ok(())
+}
+
+fn rebase_paths_in_table(
+    table: &mut Table,
+    dependency_context: bool,
+    source_dir: &Path,
+    dest_dir: &Path,
+) -> Result<()> {
+    for (key, item) in table.iter_mut() {
+        let key = key.get();
+        let nested_dependency_context = dependency_context
+            || matches!(
+                key,
+                "dependencies" | "dev-dependencies" | "build-dependencies" | "patch" | "replace"
+            );
+        if dependency_context && key == "path" {
+            if let Some(path) = item.as_str() {
+                let path = Path::new(path);
+                if path.is_relative() {
+                    let target = source_dir.join(path);
+                    *item = value(relative_path(dest_dir, &target)?);
+                }
+            }
+            continue;
+        }
+        match item {
+            Item::Table(child) => {
+                rebase_paths_in_table(child, nested_dependency_context, source_dir, dest_dir)?
+            }
+            Item::ArrayOfTables(children) => {
+                for child in children.iter_mut() {
+                    rebase_paths_in_table(child, nested_dependency_context, source_dir, dest_dir)?;
+                }
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -273,6 +321,9 @@ fn target_path(target: &Target) -> Option<&str> {
 fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     let source = fs::read_to_string(path)?;
     let mut ast = syn::parse_file(&source)?;
+    let mut raw_pointer_collector = RawPointerPlaceCollector::default();
+    raw_pointer_collector.visit_file(&ast);
+    let raw_pointer_places = raw_pointer_collector.places;
     let mut next_temp_index = 0usize;
     let mut macro_collector = MacroRangeCollector::default();
     macro_collector.visit_file(&ast);
@@ -333,6 +384,7 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
             injection: &injection,
             inserted: false,
             next_temp_index,
+            raw_pointer_places: &raw_pointer_places,
         };
         injector.visit_file_mut(&mut ast);
         if !injector.inserted {
@@ -449,9 +501,34 @@ struct Injector<'a> {
     injection: &'a Injection,
     inserted: bool,
     next_temp_index: usize,
+    raw_pointer_places: &'a BTreeSet<String>,
 }
 
 impl VisitMut for Injector<'_> {
+    fn visit_item_fn_mut(&mut self, function: &mut syn::ItemFn) {
+        let inserted_before = self.inserted;
+        visit_mut::visit_item_fn_mut(self, function);
+        if !inserted_before && self.inserted {
+            preserve_target_caller_symbol(&mut function.attrs);
+        }
+    }
+
+    fn visit_impl_item_fn_mut(&mut self, function: &mut syn::ImplItemFn) {
+        let inserted_before = self.inserted;
+        visit_mut::visit_impl_item_fn_mut(self, function);
+        if !inserted_before && self.inserted {
+            preserve_target_caller_symbol(&mut function.attrs);
+        }
+    }
+
+    fn visit_trait_item_fn_mut(&mut self, function: &mut syn::TraitItemFn) {
+        let inserted_before = self.inserted;
+        visit_mut::visit_trait_item_fn_mut(self, function);
+        if !inserted_before && self.inserted {
+            preserve_target_caller_symbol(&mut function.attrs);
+        }
+    }
+
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         if self.inserted {
             return;
@@ -470,6 +547,7 @@ impl VisitMut for Injector<'_> {
                 let mut rewriter = RawPointerDerefRewriter {
                     injection: self.injection,
                     inserted: false,
+                    raw_pointer_places: self.raw_pointer_places,
                 };
                 rewriter.visit_stmt_mut(&mut block.stmts[index]);
                 if rewriter.inserted {
@@ -502,6 +580,11 @@ impl VisitMut for Injector<'_> {
             index += 1;
         }
     }
+}
+
+fn preserve_target_caller_symbol(attrs: &mut Vec<syn::Attribute>) {
+    attrs.retain(|attr| !attr.path().is_ident("inline"));
+    attrs.push(parse_quote! { #[inline(never)] });
 }
 
 struct CallRewrite {
@@ -537,6 +620,7 @@ fn stmt_matches_raw_deref_location(stmt: &syn::Stmt, injection: &Injection) -> b
 struct RawPointerDerefRewriter<'a> {
     injection: &'a Injection,
     inserted: bool,
+    raw_pointer_places: &'a BTreeSet<String>,
 }
 
 impl VisitMut for RawPointerDerefRewriter<'_> {
@@ -548,6 +632,7 @@ impl VisitMut for RawPointerDerefRewriter<'_> {
         if let syn::Expr::Unary(unary) = expr {
             if matches!(unary.op, syn::UnOp::Deref(_))
                 && span_matches(unary.span(), self.injection)
+                && is_known_raw_pointer_operand(&unary.expr, self.raw_pointer_places)
             {
                 let pointer = (*unary.expr).clone();
                 let literal = syn::LitStr::new(&self.injection.id, Span::call_site());
@@ -560,6 +645,61 @@ impl VisitMut for RawPointerDerefRewriter<'_> {
         }
 
         visit_mut::visit_expr_mut(self, expr);
+    }
+}
+
+#[derive(Default)]
+struct RawPointerPlaceCollector {
+    places: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for RawPointerPlaceCollector {
+    fn visit_field(&mut self, field: &'ast syn::Field) {
+        if matches!(field.ty, syn::Type::Ptr(_)) {
+            if let Some(ident) = &field.ident {
+                self.places.insert(ident.to_string());
+            }
+        }
+        visit::visit_field(self, field);
+    }
+
+    fn visit_fn_arg(&mut self, arg: &'ast syn::FnArg) {
+        if let syn::FnArg::Typed(arg) = arg {
+            if matches!(*arg.ty, syn::Type::Ptr(_)) {
+                if let syn::Pat::Ident(ident) = &*arg.pat {
+                    self.places.insert(ident.ident.to_string());
+                }
+            }
+        }
+        visit::visit_fn_arg(self, arg);
+    }
+
+    fn visit_pat_type(&mut self, pat: &'ast syn::PatType) {
+        if matches!(*pat.ty, syn::Type::Ptr(_)) {
+            if let syn::Pat::Ident(ident) = &*pat.pat {
+                self.places.insert(ident.ident.to_string());
+            }
+        }
+        visit::visit_pat_type(self, pat);
+    }
+}
+
+fn is_known_raw_pointer_operand(expr: &syn::Expr, places: &BTreeSet<String>) -> bool {
+    match expr {
+        syn::Expr::Cast(cast) => matches!(&*cast.ty, syn::Type::Ptr(_)),
+        syn::Expr::MethodCall(call) => call.method == "cast" && call.args.is_empty(),
+        syn::Expr::Path(path) => path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| places.contains(&segment.ident.to_string())),
+        syn::Expr::Field(field) => match &field.member {
+            syn::Member::Named(ident) => places.contains(&ident.to_string()),
+            syn::Member::Unnamed(_) => false,
+        },
+        syn::Expr::Group(group) => is_known_raw_pointer_operand(&group.expr, places),
+        syn::Expr::Paren(paren) => is_known_raw_pointer_operand(&paren.expr, places),
+        _ => false,
     }
 }
 
@@ -611,9 +751,11 @@ impl VisitMut for CallRewriter<'_> {
             }
             syn::Expr::MethodCall(node)
                 if method_call_expr_matches_location(node, self.injection)
-                    && (method_call_matches_callee(node, self.injection.callee_name.as_deref())
-                        || (span_starts_at_location(node.span(), self.injection)
-                            && !source_statement_contains_callee(self.injection))) =>
+                    && (method_call_matches_callee(
+                        node,
+                        self.injection.callee_name.as_deref(),
+                    ) || (span_starts_at_location(node.span(), self.injection)
+                        && !source_statement_contains_callee(self.injection))) =>
             {
                 let mut next_temp_index = self.next_temp_index;
                 let callee_method = self
@@ -630,7 +772,7 @@ impl VisitMut for CallRewriter<'_> {
                 };
                 let mutable_receiver = effective_method.ends_with("_mut")
                     || effective_method.ends_with("_unsafe")
-                    || effective_method == "as_mut_ptr";
+                    || matches!(effective_method, "as_mut_ptr" | "copy_within");
                 let bind_receiver_in_place = effective_method == "set_len";
                 let ret_ident =
                     callsite_ret_ident(&self.injection.id, self.injection.callee_name.as_deref());
@@ -710,9 +852,7 @@ fn source_statement_contains_callee(injection: &Injection) -> bool {
     let Some(source) = injection.source_line.as_deref() else {
         return false;
     };
-    let end = source
-        .find([';', '}'])
-        .unwrap_or(source.len());
+    let end = source.find([';', '}']).unwrap_or(source.len());
     source[..end].contains(callee)
 }
 
@@ -779,6 +919,15 @@ fn lift_call_args_only(
             arg_names.push(name);
             continue;
         }
+        if matches!(arg, syn::Expr::Path(_)) {
+            // Qualified constants can be const-generic arguments after MIR
+            // lowering (for example `_mm_prefetch(ptr, _MM_HINT_T0)`). Turning
+            // them into `let` temporaries makes the reconstructed source fail
+            // const checking, while leaving a path expression in place emits
+            // no side-effecting IR between the marker and target call.
+            arg_names.push(String::new());
+            continue;
+        }
 
         let index = *next_temp_index;
         *next_temp_index += 1;
@@ -820,20 +969,22 @@ fn lift_method_call_parts(
         // make a valid auto-borrowed method call invalid (for example moving a
         // Box out of &self before calling slice::get_unchecked). Borrow the place
         // so method-call autoderef/autoref keeps the original ownership.
-        let receiver_is_place = matches!(original, syn::Expr::Field(_) | syn::Expr::Index(_));
-        let lift_stmt: syn::Stmt = if receiver_is_place
-            && is_raw_pointer_value_receiver_method(callee_method)
-        {
-            parse_quote! { let #ident = #original; }
-        } else if receiver_is_place && mutable_receiver {
-            parse_quote! { let #ident = &mut #original; }
-        } else if receiver_is_place {
-            parse_quote! { let #ident = &#original; }
+        let receiver_is_place = is_place_expr(&original);
+        if receiver_is_place && mutable_receiver {
+            // Keep mutable place receivers in the call expression. Rust's
+            // two-phase borrow permits arguments such as
+            // `self.buf.copy_within(self.range(), 0)` to inspect `self`
+            // before activating the receiver borrow; lifting `&mut self.buf`
+            // ahead of the arguments rejects otherwise valid source.
         } else {
-            parse_quote! { let #ident = #original; }
-        };
-        node.receiver = Box::new(parse_quote! { #ident });
-        lift_stmts.push(lift_stmt);
+            let lift_stmt: syn::Stmt = if receiver_is_place {
+                parse_quote! { let #ident = &#original; }
+            } else {
+                parse_quote! { let #ident = #original; }
+            };
+            node.receiver = Box::new(parse_quote! { #ident });
+            lift_stmts.push(lift_stmt);
+        }
     }
 
     let bind_first_tail_arg_as_u64 = node
@@ -867,19 +1018,14 @@ fn lift_method_call_parts(
     }
 }
 
-fn is_raw_pointer_value_receiver_method(method: &str) -> bool {
-    matches!(
-        method,
-        "add"
-            | "sub"
-            | "offset"
-            | "byte_add"
-            | "byte_sub"
-            | "byte_offset"
-            | "wrapping_add"
-            | "wrapping_sub"
-            | "wrapping_offset"
-    )
+fn is_place_expr(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::Field(_) | syn::Expr::Index(_) | syn::Expr::Path(_) => true,
+        syn::Expr::Unary(unary) => matches!(unary.op, syn::UnOp::Deref(_)),
+        syn::Expr::Group(group) => is_place_expr(&group.expr),
+        syn::Expr::Paren(paren) => is_place_expr(&paren.expr),
+        _ => false,
+    }
 }
 
 fn is_scalar_index_bind_candidate(expr: &syn::Expr) -> bool {
@@ -920,8 +1066,7 @@ fn span_matches(span: Span, injection: &Injection) -> bool {
 fn span_starts_at_location(span: Span, injection: &Injection) -> bool {
     let start = span.start();
     let start_col = start.column + 1;
-    start.line == injection.line
-        && start_col.abs_diff(injection.col) <= 1
+    start.line == injection.line && start_col.abs_diff(injection.col) <= 1
 }
 
 fn contains(start: LineColumn, end: LineColumn, line: usize, col: usize) -> bool {
@@ -1128,6 +1273,41 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
     }
 
     #[test]
+    fn inject_file_keeps_inline_always_target_as_callable_symbol() -> Result<()> {
+        let tmp = TempDir::new("preserve-target-caller")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"struct Values(Vec<u8>);
+impl Values {
+    #[inline(always)]
+    pub fn get(&self, index: usize) -> &u8 {
+        unsafe { self.0.get_unchecked(index) }
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-5-18".to_string(),
+                line: 5,
+                col: 18,
+                callee_name: Some("core::slice::<impl [T]>::get_unchecked".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        assert!(!injected.contains("inline(always)"));
+        assert!(injected.contains("inline(never)"));
+        assert!(injected.contains("klee_ext_bind::callsite!"));
+        Ok(())
+    }
+
+    #[test]
     fn inject_file_skips_raw_pointer_target_without_source_deref() -> Result<()> {
         let tmp = TempDir::new("skip-implicit-raw-deref")?;
         let source = tmp.path().join("lib.rs");
@@ -1172,6 +1352,7 @@ impl Select {
     unsafe {
         core::ptr::write(ptr.add(index), make_value())
     }
+
 }
 
 fn make_value() -> u8 { 0 }
@@ -1200,6 +1381,39 @@ fn make_value() -> u8 { 0 }
             compact.contains("core::ptr::write(__klee_arg0,__klee_arg1"),
             "unexpected injection:\n{injected}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_keeps_qualified_constant_call_argument_in_place() -> Result<()> {
+        let tmp = TempDir::new("const-call-argument")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"const HINT: i32 = 3;
+unsafe fn prefetch(_ptr: *const i8, _hint: i32) {}
+fn run(ptr: *const i8) {
+    unsafe { prefetch(ptr, crate::HINT) }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-4-14".to_string(),
+                line: 4,
+                col: 14,
+                callee_name: Some("prefetch".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("prefetch(ptr,crate::HINT)"));
+        assert!(!compact.contains("let__klee_arg0=crate::HINT"));
         Ok(())
     }
 
@@ -1321,10 +1535,12 @@ impl Rank {
 
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
-        assert!(compact
-            .contains("letmut__klee_ret_src_lib_rs_3_15_read_unaligned=ptr::read_unaligned(data);"));
-        assert!(compact
-            .contains("letmut__klee_ret_src_lib_rs_4_15_read_unaligned=ptr::read_unaligned(data);"));
+        assert!(compact.contains(
+            "letmut__klee_ret_src_lib_rs_3_15_read_unaligned=ptr::read_unaligned(data);"
+        ));
+        assert!(compact.contains(
+            "letmut__klee_ret_src_lib_rs_4_15_read_unaligned=ptr::read_unaligned(data);"
+        ));
         assert!(!compact.contains(
             "let__klee_ret_src_lib_rs_4_15_read_unaligned=__klee_ret_src_lib_rs_3_15_read_unaligned;"
         ));
@@ -1424,7 +1640,7 @@ fn consume(_: &mut u8) {}
     }
 
     #[test]
-    fn inject_file_copies_raw_pointer_field_receiver() -> Result<()> {
+    fn inject_file_borrows_raw_pointer_field_receiver_without_moving_it() -> Result<()> {
         let tmp = TempDir::new("raw-pointer-field-receiver")?;
         let source = tmp.path().join("lib.rs");
         write(
@@ -1457,8 +1673,7 @@ impl Window {
 
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
-        assert!(compact.contains("let__klee_arg0=self.end;"));
-        assert!(!compact.contains("let__klee_arg0=&self.end;"));
+        assert!(compact.contains("let__klee_arg0=&self.end;"));
         assert!(compact.contains("=__klee_arg0.add(r);"));
         Ok(())
     }
@@ -1503,6 +1718,72 @@ impl Interpreter {
     }
 
     #[test]
+    fn inject_file_does_not_treat_box_deref_as_raw_pointer_deref() -> Result<()> {
+        let tmp = TempDir::new("box-deref-is-not-raw")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"struct Error(Box<u8>);
+impl Error {
+    fn into_inner(self) -> u8 {
+        *self.0
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-4-9".to_string(),
+                line: 4,
+                col: 9,
+                callee_name: Some("core::ptr::__raw_ptr_deref__".to_string()),
+                raw_pointer_deref: true,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        assert!(!injected.contains("raw_pointer_deref!"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_preserves_mutable_field_receiver_for_copy_within() -> Result<()> {
+        let tmp = TempDir::new("copy-within-receiver")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"struct Buffer { buf: Vec<u8> }
+impl Buffer {
+    fn shift(&mut self) {
+        self.buf.copy_within(1.., 0);
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-4-9".to_string(),
+                line: 4,
+                col: 9,
+                callee_name: Some("core::ptr::__raw_ptr_deref__".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(!compact.contains("let__klee_arg0="));
+        assert!(compact.contains("self.buf.copy_within"));
+        Ok(())
+    }
+
+    #[test]
     fn inject_file_mutably_borrows_unsafe_field_receiver() -> Result<()> {
         let tmp = TempDir::new("unsafe-field-receiver")?;
         let source = tmp.path().join("lib.rs");
@@ -1530,9 +1811,7 @@ fn pop(interpreter: &mut Interpreter) -> u8 {
                 col: 14,
                 // mirscan can report an inlined unsafe callee while the source
                 // location names the enclosing unsafe method.
-                callee_name: Some(
-                    "std::option::Option::<T>::unwrap_unchecked".to_string(),
-                ),
+                callee_name: Some("std::option::Option::<T>::unwrap_unchecked".to_string()),
                 raw_pointer_deref: false,
                 source_line: None,
             }],
@@ -1541,10 +1820,10 @@ fn pop(interpreter: &mut Interpreter) -> u8 {
         let injected = fs::read_to_string(source)?;
         let compact = injected.replace(char::is_whitespace, "");
         assert!(
-            compact.contains("let__klee_arg0=&mutinterpreter.stack;"),
+            !compact.contains("let__klee_arg0="),
             "unexpected injection:\n{injected}"
         );
-        assert!(compact.contains("=__klee_arg0.pop_unsafe();"));
+        assert!(compact.contains("=interpreter.stack.pop_unsafe();"));
         Ok(())
     }
 
@@ -1569,6 +1848,47 @@ fn pop(interpreter: &mut Interpreter) -> u8 {
         assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn copy_rebases_relative_dependency_paths_but_not_lib_paths() -> Result<()> {
+        let tmp = TempDir::new("rebase-path-dependency")?;
+        let source_crate = tmp.path().join("source/crate");
+        let dependency = tmp.path().join("source/local-dep");
+        let dest_crate = tmp.path().join("generated/deep/crate");
+        write(
+            &dependency.join("Cargo.toml"),
+            "[package]\nname='local-dep'\nversion='0.1.0'\n",
+        )?;
+        write(
+            &source_crate.join("Cargo.toml"),
+            r#"[package]
+name = "fixture"
+version = "0.1.0"
+
+[lib]
+path = "custom.rs"
+
+[dependencies.local-dep]
+path = "../local-dep"
+"#,
+        )?;
+        write(&source_crate.join("custom.rs"), "pub fn fixture() {}\n")?;
+
+        copy_crate(&source_crate, &dest_crate)?;
+        rebase_relative_dependency_paths(&source_crate, &dest_crate)?;
+
+        let manifest = fs::read_to_string(dest_crate.join("Cargo.toml"))?;
+        let doc = manifest.parse::<DocumentMut>()?;
+        let rebased = doc["dependencies"]["local-dep"]["path"]
+            .as_str()
+            .ok_or_else(|| anyhow!("missing rebased dependency path"))?;
+        assert_eq!(
+            dest_crate.join(rebased).canonicalize()?,
+            dependency.canonicalize()?
+        );
+        assert_eq!(doc["lib"]["path"].as_str(), Some("custom.rs"));
         Ok(())
     }
 }

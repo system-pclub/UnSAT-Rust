@@ -144,6 +144,57 @@ def _rerun_sym_integer_upper_bound(literal: str) -> int | None:
     return max(16, value * 16)
 
 
+def _array_const_ranges(text: str) -> list[tuple[int, int]]:
+    """Return array-length regions, excluding macro brackets such as vec![...]."""
+    ranges: list[tuple[int, int]] = []
+    stack: list[dict[str, Any]] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    i = 0
+    while i < len(text):
+        raw_len = _raw_string_len(text, i)
+        if raw_len:
+            i += raw_len
+            continue
+        if text.startswith("//", i):
+            i += _line_comment_len(text, i)
+            continue
+        if text.startswith("/*", i):
+            i += _block_comment_len(text, i)
+            continue
+        if text.startswith('b"', i):
+            i += 1 + _quoted_literal_len(text, i + 1, '"')
+            continue
+        if text[i] == '"':
+            i += _quoted_literal_len(text, i, '"')
+            continue
+        if text.startswith("b'", i):
+            i += 1 + _quoted_literal_len(text, i + 1, "'")
+            continue
+        if text[i] == "'":
+            i += _quoted_literal_len(text, i, "'")
+            continue
+        if text[i] in "([{":
+            j = i - 1
+            while j >= 0 and text[j].isspace():
+                j -= 1
+            stack.append(
+                {
+                    "delimiter": text[i],
+                    "macro": text[i] == "[" and j >= 0 and text[j] == "!",
+                    "semicolon": None,
+                }
+            )
+        elif text[i] == ";" and stack and stack[-1]["delimiter"] == "[":
+            stack[-1]["semicolon"] = i
+        elif text[i] in pairs and stack and stack[-1]["delimiter"] == pairs[text[i]]:
+            opened = stack.pop()
+            semicolon = opened["semicolon"]
+            if text[i] == "]" and semicolon is not None and not opened["macro"]:
+                ranges.append((semicolon + 1, i))
+        i += 1
+    return ranges
+
+
 def _find_function_body_span(testcase: str, function_name: str) -> tuple[int, int]:
     match = re.search(rf"\bfn\s+{re.escape(function_name)}\s*\(\s*\)", testcase)
     if not match:
@@ -192,6 +243,7 @@ def _transform_body_constants(
 ) -> tuple[str, list[dict[str, Any]]]:
     out: list[str] = []
     symbols: list[dict[str, Any]] = []
+    array_const_ranges = _array_const_ranges(body)
     i = 0
 
     def replace(literal: str, kind: str, start: int) -> str:
@@ -259,7 +311,10 @@ def _transform_body_constants(
         ):
             n = _number_literal_len(body, i)
             literal = body[i : i + n]
-            out.append(replace(literal, "number", i))
+            if any(start <= i < end for start, end in array_const_ranges):
+                out.append(literal)
+            else:
+                out.append(replace(literal, "number", i))
             i += n
             continue
         if body[i].isalpha() or body[i] == "_":
@@ -584,6 +639,15 @@ def inject_testcase_at_callsite(
     if not source_path.is_file() or crate_dir.resolve() not in source_path.parents:
         raise RuntimeError(f"invalid callsite source path: {source_path}")
     source = source_path.read_text(encoding="utf-8")
+    manifest_path = crate_dir / "Cargo.toml"
+    if manifest_path.is_file():
+        manifest = manifest_path.read_text(encoding="utf-8")
+        if re.search(r'^\s*edition\s*=\s*["\']2024["\']', manifest, re.M):
+            testcase = re.sub(
+                r"#\s*\[\s*no_mangle\s*\]",
+                "#[unsafe(no_mangle)]",
+                testcase,
+            )
     begin = BEGIN_MARKER + injection.key
     end = END_MARKER + injection.key
     generated = f"{begin}\n{testcase.rstrip()}\n{end}"

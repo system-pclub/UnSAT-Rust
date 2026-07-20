@@ -51,6 +51,33 @@ pub fn raw_pointer_deref_raw(site_id_nul: &'static [u8], pointer: *const c_void)
     unsafe { klee_ext_raw_pointer_deref(name_ptr as *const c_char, pointer) }
 }
 
+pub trait RawPointerValue: Copy {
+    fn as_const_void(self) -> *const c_void;
+}
+
+impl<T> RawPointerValue for *const T {
+    #[inline(always)]
+    fn as_const_void(self) -> *const c_void {
+        self.cast::<c_void>()
+    }
+}
+
+impl<T> RawPointerValue for *mut T {
+    #[inline(always)]
+    fn as_const_void(self) -> *const c_void {
+        self.cast::<c_void>() as *const c_void
+    }
+}
+
+#[inline(always)]
+pub fn raw_pointer_deref_typed<P: RawPointerValue>(
+    site_id_nul: &'static [u8],
+    pointer: P,
+) -> P {
+    raw_pointer_deref_raw(site_id_nul, pointer.as_const_void());
+    pointer
+}
+
 #[inline(always)]
 pub fn bind_arg_u64(index: u64, value: u64) {
     unsafe { klee_ext_bind_arg_u64(index, value) }
@@ -67,14 +94,9 @@ macro_rules! callsite {
 /// unchanged for the surrounding `*pointer` source expression.
 #[macro_export]
 macro_rules! raw_pointer_deref {
-    ($site_id:literal, $pointer:expr) => {{
-        let __klee_raw_pointer = $pointer;
-        $crate::raw_pointer_deref_raw(
-            concat!($site_id, "\0").as_bytes(),
-            __klee_raw_pointer as *const ::core::ffi::c_void,
-        );
-        __klee_raw_pointer
-    }};
+    ($site_id:literal, $pointer:expr) => {
+        $crate::raw_pointer_deref_typed(concat!($site_id, "\0").as_bytes(), $pointer)
+    };
 }
 
 // ── klee_make_symbolic ───────────────────────────────────────────────────────

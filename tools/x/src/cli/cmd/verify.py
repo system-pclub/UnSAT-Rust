@@ -703,6 +703,131 @@ def _matrix_callsite_rows(
     return rows
 
 
+def _missing_callsite_bodies(
+    *, targets: list[object], ll_path: Path
+) -> list[dict[str, Any]]:
+    """Return MIRScan callsites whose injected caller has no emitted body.
+
+    Prefer autoinj's unique string marker inside the caller.  For callsites
+    autoinj cannot rewrite (for example some macro-expanded/raw-deref sites),
+    fall back to LLVM definition debug metadata for the same source function.
+    """
+    rows = _matrix_callsite_rows(
+        targets=targets,
+        ll_path=ll_path,
+        requested_callsite=None,
+    )
+    unresolved = [row for row in rows if not row["present_in_llvm_ir"]]
+    if not unresolved:
+        return []
+
+    definitions = _llvm_ir_defined_source_functions(ll_path)
+    return [
+        row
+        for row in unresolved
+        if not _row_has_defined_source_function(row, definitions)
+    ]
+
+
+_LLVM_DI_FILE_RE = re.compile(
+    r'^!(\d+) = !DIFile\(filename: "([^"]*)", directory: "([^"]*)"'
+)
+_LLVM_DI_SUBPROGRAM_RE = re.compile(
+    r'^!\d+ = (?:distinct )?!DISubprogram\(name: "([^"]*)".*?'
+    r"file: !(\d+), line: \d+.*?spFlags: ([^)]*)"
+)
+
+
+def _llvm_ir_defined_source_functions(ll_path: Path) -> set[tuple[str, str]]:
+    """Index defined Rust functions by normalized source path and debug name."""
+    files: dict[str, tuple[str, str]] = {}
+    subprograms: list[tuple[str, str]] = []
+    try:
+        with ll_path.open("r", encoding="utf-8", errors="ignore") as llvm_ir:
+            for line in llvm_ir:
+                file_match = _LLVM_DI_FILE_RE.match(line)
+                if file_match:
+                    files[file_match.group(1)] = (
+                        file_match.group(2),
+                        file_match.group(3),
+                    )
+                    continue
+                if "DISubprogram(" not in line or "DISPFlagDefinition" not in line:
+                    continue
+                subprogram_match = _LLVM_DI_SUBPROGRAM_RE.match(line)
+                if subprogram_match and "DISPFlagDefinition" in subprogram_match.group(3):
+                    subprograms.append(
+                        (subprogram_match.group(1), subprogram_match.group(2))
+                    )
+    except OSError:
+        return set()
+
+    definitions: set[tuple[str, str]] = set()
+    for function_name, file_id in subprograms:
+        source = files.get(file_id)
+        if source is None:
+            continue
+        filename, directory = source
+        source_path = f"{directory.rstrip('/')}/{filename}" if directory else filename
+        definitions.add((source_path.replace("\\", "/"), function_name))
+    return definitions
+
+
+def _caller_leaf_name(caller_name: object) -> str:
+    if not isinstance(caller_name, str):
+        return ""
+    if ">::" in caller_name:
+        leaf = caller_name.rsplit(">::", 1)[-1]
+    else:
+        leaf = caller_name.rsplit("::", 1)[-1]
+    return leaf.split("<", 1)[0]
+
+
+def _row_has_defined_source_function(
+    row: dict[str, Any], definitions: set[tuple[str, str]]
+) -> bool:
+    source_path = row.get("path")
+    leaf_name = _caller_leaf_name(row.get("caller"))
+    if not isinstance(source_path, str) or not source_path or not leaf_name:
+        return False
+    normalized_path = source_path.replace("\\", "/")
+    for defined_path, defined_name in definitions:
+        if not (
+            defined_path == normalized_path
+            or defined_path.endswith("/" + normalized_path)
+        ):
+            continue
+        if defined_name == leaf_name or defined_name.startswith(leaf_name + "<"):
+            return True
+    return False
+
+
+def _validate_callsite_bodies(*, meta_path: Path, ll_path: Path) -> int:
+    current_meta = _load_json(meta_path)
+    report = current_meta.get("report")
+    if not isinstance(report, dict):
+        raise RuntimeError(f"missing report object in {meta_path}")
+    targets = report.get("targets")
+    if not isinstance(targets, list):
+        raise RuntimeError(f"missing targets in {meta_path}")
+
+    missing = _missing_callsite_bodies(targets=targets, ll_path=ll_path)
+    if missing:
+        details = "\n".join(
+            "  - "
+            f"{row['callsite_id']}: caller={row.get('caller') or '<unknown>'} "
+            f"at {row.get('path') or '<unknown>'}:"
+            f"{row.get('line') or 0}:{row.get('col') or 0}"
+            for row in missing
+        )
+        raise RuntimeError(
+            f"{len(missing)} of {len(targets)} MIRScan callsites have no caller "
+            "body in linked LLVM IR (a generic caller may need a minimal unit-test "
+            f"instantiation):\n{details}"
+        )
+    return len(targets)
+
+
 def _assign_matrix_rules_to_callsites(
     *,
     callsites: list[dict[str, Any]],
@@ -1903,9 +2028,11 @@ def run(args: argparse.Namespace) -> int:
     )
 
     if args.skip_klee:
+        callsite_count = _validate_callsite_bodies(meta_path=meta_path, ll_path=ll_path)
         print(f"[verify] crate={cargo_dir}")
         print(f"[verify] injected-crate={injected_dir}")
         print(f"[verify] llvm-ir={ll_path}")
+        print(f"[verify] llvm-callsite-bodies={callsite_count}/{callsite_count}")
         print("[verify] mirscan, autoinj, and LLVM IR generation succeeded; skipping KLEE")
         return 0
 

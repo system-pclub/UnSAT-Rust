@@ -284,8 +284,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify_parser.add_argument(
         "--test",
-        action="store_true",
-        help="Compile tests for llvmir generation instead of the main crate.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Compile the library unit-test harness for llvmir generation "
+            "(default: enabled; use --no-test to compile only the main crate)."
+        ),
     )
     verify_parser.set_defaults(func=_run_verify)
     

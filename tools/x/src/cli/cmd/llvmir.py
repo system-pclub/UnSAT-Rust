@@ -29,7 +29,21 @@ def _emit_llvm_rustflags(
 
 def _build_std_args(*, test: bool = False, panic_abort: bool = False) -> list[str]:
     if test and panic_abort:
-        return ["-Zbuild-std=std,panic_abort,test"]
+        return [
+            "-Zbuild-std=std,panic_abort,test",
+            (
+                "-Zbuild-std-features="
+                "std_detect_file_io,std_detect_dlsym_getauxval"
+            ),
+        ]
+    if panic_abort:
+        return [
+            "-Zbuild-std=std,panic_abort",
+            (
+                "-Zbuild-std-features="
+                "std_detect_file_io,std_detect_dlsym_getauxval"
+            ),
+        ]
     return ["-Zbuild-std"]
 
 
@@ -106,7 +120,10 @@ def compile_test_with_emit_llvm(
         panic_abort_tests=panic_abort,
     )
 
-    cmd = ["cargo", "test", "--no-run"]
+    # Only the library unit-test harness is part of verify's execution model.
+    # Building every test target can both introduce duplicate mains and make
+    # LLVM IR generation depend on unrelated, broken integration tests.
+    cmd = ["cargo", "test", "--lib", "--no-run"]
     if features:
         cmd += ["--features", ",".join(features)]
     if panic_abort:
@@ -204,37 +221,6 @@ def _find_llvm_ir(deps_dir: Path, crate_name: str) -> Path:
     raise FileNotFoundError(f"LLVM IR file not found for crate '{crate_name}' in {deps_dir}")
 
 
-def _find_test_llvm_irs(deps_dir: Path, main_ir: Path, crate_name: str) -> list[Path]:
-    """Find integration/unit test harness IR files in *deps_dir*.
-
-    Cargo names integration test crates after the test target, not the package,
-    so package-name lookup misses them. Keep this conservative: include .ll
-    files that are newer than or as new as the selected package IR and are not
-    obvious dependency/runtime crates.
-    """
-    skip_prefixes = {
-        "alloc-",
-        "compiler_builtins-",
-        "core-",
-        "klee_ext_bind-",
-        "libc-",
-        "std-",
-        "test-",
-    }
-    found: list[Path] = []
-    main_mtime = main_ir.stat().st_mtime
-    for entry in deps_dir.iterdir():
-        if entry.suffix != ".ll" or entry == main_ir:
-            continue
-        if entry.name.startswith(crate_name + "-"):
-            continue
-        if any(entry.name.startswith(prefix) for prefix in skip_prefixes):
-            continue
-        if entry.stat().st_mtime + 1 < main_mtime:
-            continue
-        found.append(entry)
-    return sorted(found)
-
 def _llvm_ir_defines_main(path: Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -247,84 +233,64 @@ def _llvm_ir_defines_main(path: Path) -> bool:
     return False
 
 
+def _find_library_test_harness_llvm_ir(deps_dir: Path, crate_name: str) -> Path:
+    """Find the package's library unit-test harness IR.
+
+    ``cargo test --no-run`` may emit several independent test executables.  The
+    library unit-test harness keeps the package crate name and defines ``main``;
+    integration-test and binary-test harnesses use other target names.
+    """
+    matches = [
+        entry
+        for entry in deps_dir.iterdir()
+        if entry.suffix == ".ll"
+        and entry.name.startswith(crate_name + "-")
+        and _llvm_ir_defines_main(entry)
+    ]
+    if matches:
+        return max(matches, key=lambda path: path.stat().st_mtime)
+    raise FileNotFoundError(
+        f"Library unit-test harness LLVM IR not found for crate '{crate_name}' "
+        f"in {deps_dir}"
+    )
+
+
+def _is_incompatible_panic_runtime(path: Path, *, panic_abort: bool) -> bool:
+    if panic_abort:
+        return path.name.startswith("panic_unwind-")
+    return path.name.startswith("panic_abort-")
+
+
 def _collect_test_link_llvm_irs(
     deps_dir: Path,
     *,
-    test_irs: list[Path],
-    main_ir: Path,
-    crate_name: str,
-    build_std: bool,
+    harness_ir: Path,
+    panic_abort: bool,
 ) -> list[Path]:
-    """Collect IR needed by a test harness without linking duplicate mains.
+    """Collect one library unit-test harness and every emitted library IR.
 
-    Cargo emits the test harness as its own crate. It references the package
-    rlib and dependency crates, but the old test-mode linker only used the
-    harness plus std/core, which leaves dependency globals unresolved (for
-    example ahash's random-state OnceBox). Link the harness, the package lib
-    IR, and ordinary dependency IRs; skip alternate executable harnesses and
-    build-std support crates that duplicate panic/runtime symbols.
+    Other unit/integration-test harnesses are separate executables and therefore
+    bring another ``main``.  All non-harness IRs are linked, including build-std
+    support libraries: those modules can own generic Rust monomorphizations
+    referenced by the package.  Only the panic runtime incompatible with the
+    selected compilation strategy is excluded.
     """
-    selected: list[Path] = []
-    selected_set: set[Path] = set()
-
-    def add(path: Path) -> None:
-        if path not in selected_set:
-            selected.append(path)
-            selected_set.add(path)
-
-    for path in test_irs:
-        add(path)
-
-    skip_prefixes = {
-        "addr2line-",
-        "adler2-",
-        "bencher-",
-        "alloc-",
-        "compiler_builtins-",
-        "core-",
-        "getopts-",
-        "gimli-",
-        "memchr-",
-        "miniz_oxide-",
-        "object-",
-        "panic_abort-",
-        "panic_unwind-",
-        "proc_macro-",
-        "rustc_demangle-",
-        "rustc_std_workspace_",
-        "std_detect-",
-        "std-",
-        "unicode_width-",
-        "unwind-",
-    }
-
-    newest_by_crate: dict[str, Path] = {}
-    for path in deps_dir.glob("*.ll"):
-        crate_prefix = path.stem.rsplit("-", 1)[0]
-        current = newest_by_crate.get(crate_prefix)
-        if current is None or path.stat().st_mtime > current.stat().st_mtime:
-            newest_by_crate[crate_prefix] = path
-
-    for path in sorted(newest_by_crate.values()):
-        if path in selected_set:
-            continue
-        name = path.name
-        if any(name.startswith(prefix) for prefix in skip_prefixes):
-            continue
-        if not build_std and name.startswith(("alloc-", "compiler_builtins-", "core-", "std-", "test-")):
+    selected = [harness_ir]
+    for path in sorted(deps_dir.glob("*.ll")):
+        if path == harness_ir:
             continue
         if _llvm_ir_defines_main(path):
             continue
-        add(path)
-
-    if main_ir not in selected_set and not _llvm_ir_defines_main(main_ir):
-        add(main_ir)
+        if _is_incompatible_panic_runtime(path, panic_abort=panic_abort):
+            continue
+        selected.append(path)
 
     logger.info(
         "Selected test LLVM IR paths: %s",
         [path.name for path in selected],
     )
     return selected
+
 
 def _link_llvm_irs(llvm_ir_paths: list[Path], output_path: Path, bitcode: bool = False) -> None:
     """Link multiple LLVM IR files into one using llvm-link."""
@@ -453,63 +419,33 @@ def ensure_linked_llvm_ir_file(
         all_deps_dir = cargo_dir / "target" / "debug" / "deps"
 
     lls: list[Path] = []
-    main_ir = _find_llvm_ir(all_deps_dir, crate_name)
     if test:
-        # For library unit tests Cargo emits a package-named test harness IR
-        # (for example bevy_hecs-<hash>.ll) that itself defines main and
-        # contains monomorphizations from #[cfg(test)] modules. Prefer that
-        # harness when present; otherwise fall back to integration-test
-        # harnesses named after files under tests/.
-        if _llvm_ir_defines_main(main_ir):
-            lls.extend(
-                _collect_test_link_llvm_irs(
-                    all_deps_dir,
-                    test_irs=[main_ir],
-                    main_ir=main_ir,
-                    crate_name=crate_name,
-                    build_std=build_std,
-                )
+        harness_ir = _find_library_test_harness_llvm_ir(all_deps_dir, crate_name)
+        lls.extend(
+            _collect_test_link_llvm_irs(
+                all_deps_dir,
+                harness_ir=harness_ir,
+                panic_abort=panic_abort,
             )
-        else:
-            test_irs = _find_test_llvm_irs(all_deps_dir, main_ir, crate_name)
-            if test_irs:
-                lls.extend(
-                    _collect_test_link_llvm_irs(
-                        all_deps_dir,
-                        test_irs=test_irs,
-                        main_ir=main_ir,
-                        crate_name=crate_name,
-                        build_std=build_std,
-                    )
-                )
-            else:
-                lls.append(main_ir)
+        )
     else:
+        main_ir = _find_llvm_ir(all_deps_dir, crate_name)
         # A library IR can contain calls to non-inlined dependency
         # monomorphizations (for example hashbrown helpers). Linking only the
         # package plus core/alloc/std leaves those as declarations and makes a
         # concrete KLEE rerun stop before reaching the target callsite.
-        lls.extend(
-            _collect_test_link_llvm_irs(
-                all_deps_dir,
-                test_irs=[main_ir],
-                main_ir=main_ir,
-                crate_name=crate_name,
-                build_std=build_std,
-            )
-        )
-    if build_std:
-        for link in ("core", "alloc", "std", "compiler_builtins"):
-            try:
-                link_path = _find_llvm_ir(all_deps_dir, link)
-                if link_path not in lls:
-                    lls.append(link_path)
-            except FileNotFoundError:
-                logger.warning(f"Could not find LLVM IR for '{link}' in {all_deps_dir}, skipping it.")
+        lls.append(main_ir)
+        for path in sorted(all_deps_dir.glob("*.ll")):
+            if path == main_ir or _llvm_ir_defines_main(path):
+                continue
+            if _is_incompatible_panic_runtime(path, panic_abort=panic_abort):
+                continue
+            lls.append(path)
 
     _link_llvm_irs(lls, output_path)
     metadata_path.write_text(json.dumps(build_config, sort_keys=True), encoding="utf-8")
     return output_path
+
 
 def run(args: argparse.Namespace) -> int:
     cargo_dir = Path(args.cargo_dir).resolve()
