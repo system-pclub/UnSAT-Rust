@@ -1,0 +1,63 @@
+[package]
+name = "jomini"
+version = "0.27.0"
+authors = ["Nick Babcock <nbabcock19@hotmail.com>"]
+license = "MIT"
+readme = "README.md"
+edition = "2018"
+repository = "https://github.com/rakaly/jomini"
+categories = ["parsing"]
+description = "Low level, performance oriented parser for save and game files from EU4, CK3, HOI4, Vic3, Imperator, and other PDS titles"
+keywords = ["eu4", "ck3", "ironman", "clausewitz"]
+exclude = ["/.github", "/assets"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[workspace]
+members = ["jomini_derive"]
+
+[dependencies]
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+jomini_derive = { path = "jomini_derive", version = "^0.2.4", optional = true }
+itoa = { version = "1.0", optional = true }
+
+[features]
+default = ["derive", "faster_writer"]
+derive = ["serde/derive", "jomini_derive"]
+json = ["serde", "serde_json"]
+faster_writer = ["dep:itoa"]
+
+[dev-dependencies]
+attohttpc = { version = "0.28", features = ["tls-vendored"] }
+encoding_rs = "0.8"
+criterion = "< 0.4"
+quickcheck = "1"
+quickcheck_macros = "1"
+flate2 = "1"
+serde_with = "3.8.1"
+rstest = "0.19.0"
+
+[[bin]]
+name = "json"
+required-features = ["json"]
+
+[[bench]]
+name = "jomini_bench"
+harness = false
+
+[profile.bench]
+lto = true
+codegen-units = 1
+debug = true
+
+[profile.release]
+lto = true
+codegen-units = 1
+debug = true
+
+[lints.rust]
+# suppress unoptimized cfg lint as it's not a "feature", but a mode
+# that's useful to drop into to fuzz against 
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(unoptimized_build)'] }
