@@ -1,0 +1,700 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-utilities-rs-11-14-rule-603-23988d9c46")]`.
+- Define `pub extern "C" fn __unsat_poc_src_utilities_rs_11_14_rule_603_23988d9c46()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "compose_slice_as_ptr1"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "utilities::typed_to_bytes",
+    "path": "src/utilities.rs",
+    "line_start": 10,
+    "line_end": 10,
+    "body_end": 12,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "&[u8]"
+  },
+  "callee": {
+    "name": "std::slice::from_raw_parts",
+    "path": "rust/library/core/src/slice/raw.rs",
+    "line_start": 6,
+    "line_end": 123,
+    "body_end": 123,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&'a [T]"
+  },
+  "callsite": {
+    "line": 11,
+    "col": 14,
+    "path": "src/utilities.rs",
+    "id": "src-utilities-rs-11-14"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "function",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+Adding that size to `data` must not wrap around the address space.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-utilities-rs-11-14
+
+Rule id: rule-603
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"binary","op":">=","left":{"type":"simplified_var","name":"memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).end"},"right":{"type":"simplified_var","name":"memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).start"}},"original":{"type":"binary","op":">=","left":{"type":"call","name":"get_field","args":[{"type":"call","name":"memory_range","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":0}]},{"type":"binary","op":"*","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}}]},{"type":"literal","value":"end"}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"memory_range","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":0}]},{"type":"binary","op":"*","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}}]},{"type":"literal","value":"start"}]}}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+on: chown
+KLEE: WARNING: undefined reference to function: chroot
+KLEE: WARNING: undefined reference to function: clock_gettime
+KLEE: WARNING: undefined reference to function: close
+KLEE: WARNING: undefined reference to function: closedir
+KLEE: WARNING: undefined reference to function: connect
+KLEE: WARNING: undefined reference to function: copy_file_range
+KLEE: WARNING: undefined reference to function: copysignl
+KLEE: WARNING: undefined reference to function: cos
+KLEE: WARNING: undefined reference to function: dirfd
+KLEE: WARNING: undefined reference to function: dl_iterate_phdr
+KLEE: WARNING: undefined reference to function: dlsym
+KLEE: WARNING: undefined reference to function: dup2
+KLEE: WARNING: undefined reference to variable: environ
+KLEE: WARNING: undefined reference to function: execvp
+KLEE: WARNING: undefined reference to function: exp
+KLEE: WARNING: undefined reference to function: expf
+KLEE: WARNING: undefined reference to function: fchmod
+KLEE: WARNING: undefined reference to function: fchown
+KLEE: WARNING: undefined reference to function: fcntl
+KLEE: WARNING: undefined reference to function: fdatasync
+KLEE: WARNING: undefined reference to function: fdopendir
+KLEE: WARNING: undefined reference to function: flock
+KLEE: WARNING: undefined reference to function: freeaddrinfo
+KLEE: WARNING: undefined reference to function: fstat64
+KLEE: WARNING: undefined reference to function: fstatat64
+KLEE: WARNING: undefined reference to function: fsync
+KLEE: WARNING: undefined reference to function: ftruncate64
+KLEE: WARNING: undefined reference to function: futimens
+KLEE: WARNING: undefined reference to function: gai_strerror
+KLEE: WARNING: undefined reference to function: getaddrinfo
+KLEE: WARNING: undefined reference to function: getauxval
+KLEE: WARNING: undefined reference to function: getenv
+KLEE: WARNING: undefined reference to function: getpeername
+KLEE: WARNING: undefined reference to function: getpwuid_r
+KLEE: WARNING: undefined reference to function: getrandom
+KLEE: WARNING: undefined reference to function: getsockname
+KLEE: WARNING: undefined reference to function: getsockopt
+KLEE: WARNING: undefined reference to function: gnu_get_libc_version
+KLEE: WARNING: undefined reference to function: ioctl
+KLEE: WARNING: undefined reference to function: isatty
+KLEE: WARNING: undefined reference to function: klee_ext_callsite
+KLEE: WARNING: undefined reference to function: lchown
+KLEE: WARNING: undefined reference to function: linkat
+KLEE: WARNING: undefined reference to function: listen
+KLEE: WARNING: undefined reference to function: log
+KLEE: WARNING: undefined reference to function: lseek64
+KLEE: WARNING: undefined reference to function: lstat64
+KLEE: WARNING: undefined reference to function: memmove
+KLEE: WARNING: undefined reference to function: memset
+KLEE: WARNING: undefined reference to function: meshopt_analyzeOverdraw
+KLEE: WARNING: undefined reference to function: meshopt_analyzeVertexCache
+KLEE: WARNING: undefined reference to function: meshopt_analyzeVertexFetch
+KLEE: WARNING: undefined reference to function: meshopt_buildMeshlets
+KLEE: WARNING: undefined reference to function: meshopt_buildMeshletsBound
+KLEE: WARNING: undefined reference to function: meshopt_computeClusterBounds
+KLEE: WARNING: undefined reference to function: meshopt_computeMeshletBounds
+KLEE: WARNING: undefined reference to function: meshopt_encodeIndexBuffer
+KLEE: WARNING: undefined reference to function: meshopt_encodeIndexBufferBound
+KLEE: WARNING: undefined reference to function: meshopt_generateShadowIndexBuffer
+KLEE: WARNING: undefined reference to function: meshopt_generateShadowIndexBufferMulti
+KLEE: WARNING: undefined reference to function: meshopt_generateVertexRemapMulti
+KLEE: WARNING: undefined reference to function: meshopt_optimizeMeshlet
+KLEE: WARNING: undefined reference to function: meshopt_optimizeOverdraw
+KLEE: WARNING: undefined reference to function: meshopt_optimizeVertexCache
+KLEE: WARNING: undefined reference to function: meshopt_optimizeVertexCacheFifo
+KLEE: WARNING: undefined reference to function: meshopt_optimizeVertexFetchRemap
+KLEE: WARNING: undefined reference to function: meshopt_remapIndexBuffer
+KLEE: WARNING: undefined reference to function: meshopt_simplify
+KLEE: WARNING: undefined reference to function: meshopt_simplifyScale
+KLEE: WARNING: undefined reference to function: meshopt_simplifySloppy
+KLEE: WARNING: undefined reference to function: meshopt_simplifyWithAttributes
+KLEE: WARNING: undefined reference to function: meshopt_stripify
+KLEE: WARNING: undefined reference to function: meshopt_unstripify
+KLEE: WARNING: undefined reference to function: mkdir
+KLEE: WARNING: undefined reference to function: mmap64
+KLEE: WARNING: undefined reference to function: mprotect
+KLEE: WARNING: undefined reference to function: munmap
+KLEE: WARNING: undefined reference to function: nanosleep
+KLEE: WARNING: undefined reference to function: open
+KLEE: WARNING: undefined reference to function: open64
+KLEE: WARNING: undefined reference to function: openat64
+KLEE: WARNING: undefined reference to function: opendir
+KLEE: WARNING: undefined reference to function: pause
+KLEE: WARNING: undefined reference to function: pidfd_getpid
+KLEE: WARNING: undefined reference to function: pidfd_spawnp
+KLEE: WARNING: undefined reference to function: pipe2
+KLEE: WARNING: undefined reference to function: poll
+KLEE: WARNING: undefined reference to function: posix_memalign
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir_np
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_adddup2
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_destroy
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_destroy
+KLEE: WARNING: undefined reference to function: posix_spawnattr_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setflags
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setpgroup
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setsigdefault
+KLEE: WARNING: undefined reference to function: posix_spawnp
+KLEE: WARNING: undefined reference to function: pread64
+KLEE: WARNING: undefined reference to function: preadv
+KLEE: WARNING: undefined reference to function: pthread_atfork
+KLEE: WARNING: undefined reference to function: pthread_attr_destroy
+KLEE: WARNING: undefined reference to function: pthread_attr_getguardsize
+KLEE: WARNING: undefined reference to function: pthread_attr_getstack
+KLEE: WARNING: undefined reference to function: pthread_attr_init
+KLEE: WARNING: undefined reference to function: pthread_attr_setstacksize
+KLEE: WARNING: undefined reference to function: pthread_create
+KLEE: WARNING: undefined reference to function: pthread_detach
+KLEE: WARNING: undefined reference to function: pthread_getattr_np
+KLEE: WARNING: undefined reference to function: pthread_join
+KLEE: WARNING: undefined reference to function: pthread_key_create
+KLEE: WARNING: undefined reference to function: pthread_key_delete
+KLEE: WARNING: undefined reference to function: pthread_mutex_lock
+KLEE: WARNING: undefined reference to function: pthread_mutex_unlock
+KLEE: WARNING: undefined reference to function: pthread_self
+KLEE: WARNING: undefined reference to function: pthread_setname_np
+KLEE: WARNING: undefined reference to function: pthread_setspecific
+KLEE: WARNING: undefined reference to function: pwrite64
+KLEE: WARNING: undefined reference to function: pwritev
+KLEE: WARNING: undefined reference to function: read
+KLEE: WARNING: undefined reference to function: readdir64
+KLEE: WARNING: undefined reference to function: readlink
+KLEE: WARNING: undefined reference to function: readv
+KLEE: WARNING: undefined reference to function: realpath
+KLEE: WARNING: undefined reference to function: recv
+KLEE: WARNING: undefined reference to function: recvfrom
+KLEE: WARNING: undefined reference to function: recvmsg
+KLEE: WARNING: undefined reference to function: rename
+KLEE: WARNING: undefined reference to function: rmdir
+KLEE: WARNING: undefined reference to function: sched_getaffinity
+KLEE: WARNING: undefined reference to function: sched_yield
+KLEE: WARNING: undefined reference to function: send
+KLEE: WARNING: undefined reference to function: sendfile64
+KLEE: WARNING: undefined reference to function: sendmsg
+KLEE: WARNING: undefined reference to function: sendto
+KLEE: WARNING: undefined reference to function: setenv
+KLEE: WARNING: undefined reference to function: setgid
+KLEE: WARNING: undefined reference to function: setgroups
+KLEE: WARNING: undefined reference to function: setpgid
+KLEE: WARNING: undefined reference to function: setsockopt
+KLEE: WARNING: undefined reference to function: setuid
+KLEE: WARNING: undefined reference to function: shutdown
+KLEE: WARNING: undefined reference to function: sigaction
+KLEE: WARNING: undefined reference to function: sigaddset
+KLEE: WARNING: undefined reference to function: sigaltstack
+KLEE: WARNING: undefined reference to function: sigemptyset
+KLEE: WARNING: undefined reference to function: signal
+KLEE: WARNING: undefined reference to function: sin
+KLEE: WARNING: undefined reference to function: sinf
+KLEE: WARNING: undefined reference to function: socket
+KLEE: WARNING: undefined reference to function: socketpair
+KLEE: WARNING: undefined reference to function: splice
+KLEE: WARNING: undefined reference to function: stat64
+KLEE: WARNING: undefined reference to function: statx
+KLEE: WARNING: undefined reference to function: strlen
+KLEE: WARNING: undefined reference to function: symlink
+KLEE: WARNING: undefined reference to function: syscall
+KLEE: WARNING: undefined reference to function: sysconf
+KLEE: WARNING: undefined reference to function: unlink
+KLEE: WARNING: undefined reference to function: unlinkat
+KLEE: WARNING: undefined reference to function: unsetenv
+KLEE: WARNING: undefined reference to function: waitid
+KLEE: WARNING: undefined reference to function: waitpid
+KLEE: WARNING: undefined reference to function: write
+KLEE: WARNING: undefined reference to function: writev
+KLEE: WARNING: undefined reference to function: fork (UNSAFE)!
+KLEE: WARNING: undefined reference to function: kill (UNSAFE)!
+KLEE: [compose-verify] entry function: __unsat_poc_src_utilities_rs_11_14_rule_603_23988d9c46
+KLEE: WARNING: executable has module level assembly (ignoring)
+KLEE: WARNING: Unable to load symbol(_ZN10std_detect6detect5cache5CACHE17h0392a91fa475321eE) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_ZN13unicode_width6tables9charwidth8TABLES_017h0e029ea46fe51935E) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_ZN13unicode_width6tables9charwidth8TABLES_117h2ef831a45e1ff38bE) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_ZN13unicode_width6tables9charwidth8TABLES_217he7d18a4b42fbb1b4E) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(__rust_no_alloc_shim_is_unstable) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_RNvCsfjvCHufmGpt_7___rustc39___rust_alloc_error_handler_should_panic) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING ONCE: calling external: _ZN4core3ptr9const_ptr33_$LT$impl$u20$$BP$const$u20$T$GT$4cast17h72873ee2cca7de04E(123781433524224) at src/utilities.rs:10 27
+KLEE: ERROR: src/utilities.rs:10: failed external call: _ZN4core3ptr9const_ptr33_$LT$impl$u20$$BP$const$u20$T$GT$4cast17h72873ee2cca7de04E
+KLEE: NOTE: now ignoring this error at this location
+
+KLEE: done: total instructions = 26
+KLEE: done: completed paths = 0
+KLEE: done: partially completed paths = 1
+KLEE: done: generated tests = 1
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/error.rs">
+```rust
+/// A type alias for handling errors throughout meshopt
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// An error that can occur
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// An error that occurred interfacing with native code through FFI.
+    #[error("native error: {0}")]
+    Native(i32),
+
+    /// An error that occurred while accessing or allocating memory
+    #[error("memory error: {0}")]
+    Memory(std::borrow::Cow<'static, str>),
+
+    /// An error that occurred while parsing a data source
+    #[error("parse error: {0}")]
+    Parse(String),
+
+    /// An error that occurred while working with a file path.
+    #[error("path error: {0}")]
+    Path(std::path::PathBuf),
+
+    /// Generally, these errors correspond to bugs in this library.
+    #[error("BUG: Please report this bug with a backtrace to https://github.com/gwihlidal/meshopt-rs\n{0}")]
+    Bug(String),
+
+    /// An error occurred while reading/writing a configuration
+    #[error("config error: {0}")]
+    Config(String),
+
+    /// An unexpected I/O error occurred.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    // An error occurred while parsing a number in a free-form query.
+    //Number,
+}
+
+impl Error {
+    #[inline]
+    pub(crate) fn memory(msg: &'static str) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub(crate) fn memory_dynamic(msg: String) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[inline]
+pub(crate) fn error_or<T>(code: i32, ok: T) -> Result<T> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+// BEGIN - Embark standard lints v5 for Rust 1.55+
+// do not change or add/remove here, but one can add exceptions after this section
+// for more info see: <https://github.com/EmbarkStudios/rust-ecosystem/issues/59>
+#![deny(unsafe_code)]
+#![warn(
+    clippy::all,
+    clippy::await_holding_lock,
+    clippy::char_lit_as_u8,
+    clippy::checked_conversions,
+    clippy::dbg_macro,
+    clippy::debug_assert_with_mut_call,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::doc_markdown,
+    clippy::empty_enum,
+    clippy::enum_glob_use,
+    clippy::exit,
+    clippy::expl_impl_clone_on_copy,
+    clippy::explicit_deref_methods,
+    clippy::explicit_into_iter_loop,
+    clippy::fallible_impl_from,
+    clippy::filter_map_next,
+    clippy::flat_map_option,
+    clippy::float_cmp_const,
+    clippy::fn_params_excessive_bools,
+    clippy::from_iter_instead_of_collect,
+    clippy::if_let_mutex,
+    clippy::implicit_clone,
+    clippy::imprecise_flops,
+    clippy::inefficient_to_string,
+    clippy::invalid_upcast_comparisons,
+    clippy::large_digit_groups,
+    clippy::large_stack_arrays,
+    clippy::large_types_passed_by_value,
+    clippy::let_unit_value,
+    clippy::linkedlist,
+    clippy::lossy_float_literal,
+    clippy::macro_use_imports,
+    clippy::manual_ok_or,
+    clippy::map_err_ignore,
+    clippy::map_flatten,
+    clippy::map_unwrap_or,
+    clippy::match_on_vec_items,
+    clippy::match_same_arms,
+    clippy::match_wild_err_arm,
+    clippy::match_wildcard_for_single_variants,
+    clippy::mem_forget,
+    clippy::mismatched_target_os,
+    clippy::missing_enforced_import_renames,
+    clippy::mut_mut,
+    clippy::mutex_integer,
+    clippy::needless_borrow,
+    clippy::needless_continue,
+    clippy::needless_for_each,
+    clippy::option_option,
+    clippy::path_buf_push_overwrite,
+    clippy::ptr_as_ptr,
+    clippy::rc_mutex,
+    clippy::ref_option_ref,
+    clippy::rest_pat_in_fully_bound_structs,
+    clippy::same_functions_in_if_condition,
+    clippy::semicolon_if_nothing_returned,
+    clippy::single_match_else,
+    clippy::string_add_assign,
+    clippy::string_add,
+    clippy::string_lit_as_bytes,
+    clippy::string_to_string,
+    clippy::todo,
+    clippy::trait_duplication_in_bounds,
+    clippy::unimplemented,
+    clippy::unnested_or_patterns,
+    clippy::unused_self,
+    clippy::useless_transmute,
+    clippy::verbose_file_reads,
+    clippy::zero_sized_map_values,
+    future_incompatible,
+    nonstandard_style,
+    rust_2018_idioms
+)]
+// END - Embark standard lints v0.5 for Rust 1.55+
+// crate-specific exceptions:
+// This crate is doing a lot of FFI and byte munging
+#![allow(unsafe_code)]
+
+pub mod analyze;
+pub mod clusterize;
+pub mod encoding;
+pub mod error;
+pub mod ffi;
+pub mod optimize;
+pub mod packing;
+pub mod remap;
+pub mod shadow;
+pub mod simplify;
+pub mod stripify;
+pub mod utilities;
+
+pub use crate::{
+    analyze::*, clusterize::*, encoding::*, error::*, optimize::*, packing::*, remap::*, shadow::*,
+    simplify::*, stripify::*, utilities::*,
+};
+use std::marker::PhantomData;
+
+/// Vertex attribute stream, similar to `glVertexPointer`
+///
+/// Each element takes size bytes, with stride controlling
+/// the spacing between successive elements.
+#[derive(Debug, Copy, Clone)]
+pub struct VertexStream<'a> {
+    /// Pointer to buffer which contains vertex data.
+    pub data: *const u8,
+    /// Space between vertices inside the buffer (in bytes).
+    pub stride: usize,
+    /// The size in bytes of the vertex attribute this Stream is representing.
+    pub size: usize,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a> VertexStream<'a> {
+    /// Create a `VertexStream` for a buffer consisting only of elements of type `T`.
+    pub fn new<T>(ptr: *const T) -> VertexStream<'a> {
+        /* body omitted: interface retained */
+    }
+
+    /// Create a `VertexStream` for a buffer that contains elements of type `VertexType`.
+    ///
+    /// The buffer pointed to by `ptr` starts with one value of `T`, the next value of T
+    /// is `*(ptr + stride)`.
+    ///
+    /// (The `VertexType` does not need to be a concrete type,
+    /// it is only used here to avoid casts on the caller side).
+    pub fn new_with_stride<T, VertexType>(
+        ptr: *const VertexType,
+        stride: usize,
+    ) -> VertexStream<'a> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/packing.rs">
+```rust
+use crate::{quantize_half, quantize_snorm};
+use float_cmp::ApproxEqUlps;
+
+pub trait DecodePosition {
+    fn decode_position(&self) -> [f32; 3];
+}
+
+impl DecodePosition for [f32; 3] {
+    fn decode_position(&self) -> [f32; 3] {
+        /* body omitted: interface retained */
+    }
+}
+
+pub trait FromVertex {
+    fn fill_from_vertex(&mut self, vertex: &Vertex);
+}
+
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(C)]
+pub struct PackedVertex {
+    /// Unsigned 16-bit value, use pos_offset/pos_scale to unpack
+    pub p: [u16; 4],
+
+    /// Normalized signed 8-bit value
+    pub n: [i8; 4],
+
+    /// Unsigned 16-bit value, use uv_offset/uv_scale to unpack
+    pub t: [u16; 2],
+}
+
+impl FromVertex for PackedVertex {
+    fn fill_from_vertex(&mut self, vertex: &Vertex) {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(C)]
+pub struct PackedVertexOct {
+    pub p: [u16; 3],
+    pub n: [u8; 2], // octahedron encoded normal, aliases .pw
+    pub t: [u16; 2],
+}
+
+impl FromVertex for PackedVertexOct {
+    fn fill_from_vertex(&mut self, vertex: &Vertex) {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialOrd)]
+#[repr(C)]
+/// A basic Vertex type that can be used with most mesh processing functions.
+/// You don't _need_ to use this type, you can use your own type by implementing
+/// the `DecodePosition` trait and making a [`VertexDataAdapter`] from slices of it.
+pub struct Vertex {
+    pub p: [f32; 3],
+    pub n: [f32; 3],
+    pub t: [f32; 2],
+}
+
+impl PartialEq for Vertex {
+    fn eq(&self, other: &Vertex) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Eq for Vertex {}
+
+impl Vertex {}
+
+impl DecodePosition for Vertex {
+    fn decode_position(&self) -> [f32; 3] {
+        /* body omitted: interface retained */
+    }
+}
+
+pub fn pack_vertices<T: FromVertex + Default + Clone>(input: &[Vertex]) -> Vec<T> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/utilities.rs">
+```rust
+use crate::{Error, Result};
+use std::io::{Cursor, Read};
+#[inline(always)]
+pub fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+pub fn typed_to_bytes<T: Sized>(typed: &[T]) -> &[u8] {
+    unsafe {
+        let __klee_arg1 = typed.as_ptr().cast();
+        let __klee_arg2 = std::mem::size_of_val(typed);
+        klee_ext_bind::callsite!("src-utilities-rs-11-14");
+        let mut __klee_ret_src_utilities_rs_11_14_from_raw_parts = std::slice::from_raw_parts(
+            __klee_arg1,
+            __klee_arg2,
+        );
+        __klee_ret_src_utilities_rs_11_14_from_raw_parts
+    }
+}
+pub fn convert_indices_32_to_16(indices: &[u32]) -> Result<Vec<u16>> {
+    /* body omitted: interface retained */
+}
+pub fn convert_indices_16_to_32(indices: &[u16]) -> Result<Vec<u32>> {
+    /* body omitted: interface retained */
+}
+/// Quantize a float in [0..1] range into an N-bit fixed point unorm value.
+///
+/// Assumes reconstruction function (q / (2^N-1)), which is the case for
+/// fixed-function normalized fixed point conversion.
+///
+/// Maximum reconstruction error: 1/2^(N+1).
+#[inline(always)]
+pub fn quantize_unorm(v: f32, n: i32) -> i32 {
+    /* body omitted: interface retained */
+}
+/// Quantize a float in [-1..1] range into an N-bit fixed point snorm value.
+///
+/// Assumes reconstruction function (q / (2^(N-1)-1)), which is the case for
+/// fixed-function normalized fixed point conversion (except early OpenGL versions).
+///
+/// Maximum reconstruction error: 1/2^N.
+#[inline(always)]
+pub fn quantize_snorm(v: f32, n: u32) -> i32 {
+    /* body omitted: interface retained */
+}
+#[repr(C)]
+union FloatUInt {
+    fl: f32,
+    ui: u32,
+}
+/// Quantize a float into half-precision floating point value.
+/// Generates +-inf for overflow, preserves NaN, flushes denormals to zero, rounds to nearest.
+/// Representable magnitude range: [6e-5; 65504].
+/// Maximum relative reconstruction error: 5e-4.
+#[inline(always)]
+pub fn quantize_half(v: f32) -> u16 {
+    /* body omitted: interface retained */
+}
+/// Quantize a float into a floating point value with a limited number of significant mantissa bits.
+/// Generates +-inf for overflow, preserves NaN, flushes denormals to zero, rounds to nearest.
+/// Assumes N is in a valid mantissa precision range, which is 1..23
+#[inline(always)]
+pub fn quantize_float(v: f32, n: i32) -> f32 {
+    /* body omitted: interface retained */
+}
+#[inline(always)]
+pub fn rcp_safe(v: f32) -> f32 {
+    /* body omitted: interface retained */
+}
+pub struct VertexDataAdapter<'a> {
+    pub reader: Cursor<&'a [u8]>,
+    pub vertex_count: usize,
+    pub vertex_stride: usize,
+    pub position_offset: usize,
+}
+impl<'a> VertexDataAdapter<'a> {
+    pub fn new(
+        data: &'a [u8],
+        vertex_stride: usize,
+        position_offset: usize,
+    ) -> Result<VertexDataAdapter<'a>> {
+        /* body omitted: interface retained */
+    }
+    pub fn xyz_f32_at(&mut self, vertex: usize) -> Result<[f32; 3]> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn pos_ptr(&self) -> *const f32 {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> Read for VertexDataAdapter<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::result::Result<usize, std::io::Error> {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(test)]
+mod tests {
+    use crate::{typed_to_bytes, Vertex, VertexDataAdapter};
+    use memoffset::offset_of;
+    #[test]
+    fn test_xyz_f32_at() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

@@ -1,0 +1,36 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-stack-rs-77-24-raw-ptr-deref-ef09de0a68")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_stack_rs_77_24_raw_ptr_deref_ef09de0a68() {
+    use crate::{
+        instructions::stack::exchange,
+        primitives::{Bytes, U256},
+        Contract, DummyHost, Gas, Interpreter,
+    };
+
+    let bytecode = Bytes::from([0xE8, 0x00]);
+    let contract = Contract::new(
+        Bytes::new(),
+        crate::primitives::Bytecode::LegacyRaw(bytecode.clone()),
+        None,
+        Default::default(),
+        None,
+        Default::default(),
+        U256::ZERO,
+    );
+
+    let mut interp = Interpreter::new(contract, 10_000, false);
+    interp.is_eof = true;
+    interp.gas = Gas::new(10_000);
+    interp.instruction_pointer = interp.bytecode.as_ptr();
+
+    interp.stack.push(U256::from(1)).unwrap();
+    interp.stack.push(U256::from(5)).unwrap();
+    interp.stack.push(U256::from(10)).unwrap();
+    interp.stack.push(U256::from(15)).unwrap();
+    interp.stack.push(U256::from(0)).unwrap();
+
+    let mut host = DummyHost::default();
+    exchange(&mut interp, &mut host);
+}
+```

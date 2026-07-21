@@ -1,0 +1,67 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-22-40-raw-ptr-deref-1ddccceaa1")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_22_40_raw_ptr_deref_1ddccceaa1() {
+    use crate::{
+        gas::Gas,
+        instructions::contract::eofcreate,
+        interpreter::{Contract, Interpreter},
+        interpreter_action::{EOFCreateInputs, EOFCreateKind, InterpreterAction},
+        primitives::{Address, Bytes, Eof, U256},
+        DummyHost,
+    };
+
+    let mut interpreter = Interpreter::new(
+        Contract::new(
+            Bytes::new(),
+            Default::default(),
+            None,
+            Address::ZERO,
+            None,
+            Address::ZERO,
+            U256::ZERO,
+        ),
+        1_000_000,
+        false,
+    );
+
+    interpreter.is_eof = true;
+    interpreter.is_static = false;
+    interpreter.instruction_result = crate::InstructionResult::Continue;
+    interpreter.gas = Gas::new(1_000_000);
+
+    interpreter.contract.bytecode = Bytes::from_static(&[0x00]);
+    interpreter.contract.target_address = Address::ZERO;
+
+    let eof = Eof::decode(Bytes::from_static(&[0xEF, 0x00, 0x01, 0x00]))
+        .unwrap_or_else(|_| panic!("expected valid EOF for testcase"));
+    interpreter.is_eof = true;
+    interpreter.contract.bytecode = Bytes::from_static(&[0xEF, 0x00, 0x01, 0x00]);
+
+    interpreter.instruction_pointer = 1usize as *const u8;
+
+    interpreter.stack.push(U256::from(0u64)).ok();
+    interpreter.stack.push(U256::from(0u64)).ok();
+    interpreter.stack.push(U256::from(0u64)).ok();
+    interpreter.stack.push(U256::from(0u64)).ok();
+
+    interpreter.next_action = InterpreterAction::None;
+    interpreter.shared_memory = crate::EMPTY_SHARED_MEMORY.clone();
+
+    let mut host = DummyHost::default();
+
+    let _ = eof;
+    eofcreate(&mut interpreter, &mut host);
+
+    let _ = EOFCreateInputs::new_opcode(
+        Address::ZERO,
+        Address::ZERO,
+        U256::ZERO,
+        Eof::decode(Bytes::from_static(&[0xEF, 0x00, 0x01, 0x00]))
+            .unwrap_or_else(|_| panic!("expected valid EOF for testcase")),
+        1_000_000,
+        Bytes::new(),
+    );
+    let _ = EOFCreateKind::default();
+}
+```

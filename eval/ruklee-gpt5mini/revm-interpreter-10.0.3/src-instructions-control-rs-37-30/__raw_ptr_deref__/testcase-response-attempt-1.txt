@@ -1,0 +1,24 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-37-30-raw-ptr-deref-5d761ddacd")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_37_30_raw_ptr_deref_5d761ddacd() {
+    use crate::{instructions::control::rjumpv, DummyHost, Gas, Interpreter, InstructionResult};
+    use revm_primitives::{Bytecode, Bytes, U256};
+
+    let mut host = DummyHost::default();
+
+    let mut interp = Interpreter::new_bytecode(Bytecode::LegacyRaw(Bytes::from([
+        0x5f, // placeholder bytecode; only the instruction pointer is used by rjumpv
+    ])));
+    interp.is_eof = true;
+    interp.gas = Gas::new(1_000);
+
+    interp.stack.push(U256::from(0u64)).ok();
+
+    interp.instruction_pointer = Bytes::from([0u8]).as_ptr();
+
+    rjumpv(&mut interp, &mut host);
+
+    let _ = InstructionResult::Continue;
+}
+```

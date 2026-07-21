@@ -1,0 +1,538 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894")]`.
+- Define `pub extern "C" fn __unsat_poc_src_compressor_rs_137_16_rule_324_a674c47894()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "compressor::f8_impl",
+    "path": "src/compressor.rs",
+    "line_start": 97,
+    "line_end": 98,
+    "body_end": 150,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "core::ptr::read_unaligned",
+    "path": "rust/library/core/src/ptr/mod.rs",
+    "line_start": 1384,
+    "line_end": 1459,
+    "body_end": 1459,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "T"
+  },
+  "callsite": {
+    "line": 137,
+    "col": 16,
+    "path": "src/compressor.rs",
+    "id": "src-compressor-rs-137-16"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "function",
+      "instantiated_ty": "<M as ppv_lite86::Machine>::u128x1",
+      "layout_control": "external",
+      "external_sources": [
+        "<M as ppv_lite86::Machine>::u128x1"
+      ]
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+`src` must point to a properly initialized value of type `T`.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-compressor-rs-137-16
+
+Rule id: rule-324
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"simplified_var","name":"is_initialized(memory_range(get_arg(0),get_type_at_func(0).size))"},"original":{"type":"call","name":"is_initialized","args":[{"type":"call","name":"memory_range","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":0}]},{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}]}]}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/jh-0.1.0':
+stdout: 
+stderr:    Compiling jh v0.1.0 (/workspaces/UnSAT-Rust/crates_inj/jh-0.1.0)
+error[E0433]: failed to resolve: could not find `dispatch` in `simd`
+   --> src/compressor.rs:300:40
+    |
+300 |     crate::compressor::f8_impl::<simd::dispatch::Portable>(simd::dispatch::Portable, &mut state.cv, data.as_ptr());
+    |                                        ^^^^^^^^ could not find `dispatch` in `simd`
+
+error[E0433]: failed to resolve: could not find `dispatch` in `simd`
+   --> src/compressor.rs:300:66
+    |
+300 |     crate::compressor::f8_impl::<simd::dispatch::Portable>(simd::dispatch::Portable, &mut state.cv, data.as_ptr());
+    |                                                                  ^^^^^^^^ could not find `dispatch` in `simd`
+
+warning: unexpected `cfg` condition value: `std`
+   --> src/compressor.rs:181:1
+    |
+181 | / dispatch!(
+182 | |     mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+183 | |     f8_impl(mach, state, data); } }
+184 | | );
+    | |_^
+    |
+    = note: expected values for `feature` are: `unsat-poc-src-compressor-rs-112-16-rule-324-9e9bf585b2`, `unsat-poc-src-compressor-rs-113-16-rule-324-c54aada4b7`, `unsat-poc-src-compressor-rs-114-16-rule-324-12bbddbee5`, `unsat-poc-src-compressor-rs-115-16-rule-324-c735177de4`, `unsat-poc-src-compressor-rs-135-16-rule-324-bd61d2bed7`, `unsat-poc-src-compressor-rs-136-16-rule-324-bdf7cb5743`, and `unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `dispatch` crate for guidance on how handle this unexpected cfg
+    = help: the macro `dispatch` may come from an old version of the `ppv_lite86` crate, try updating your dependency with `cargo update -p ppv_lite86`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+    = note: this warning originates in the macro `dispatch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `std`
+   --> src/compressor.rs:181:1
+    |
+181 | / dispatch!(
+182 | |     mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+183 | |     f8_impl(mach, state, data); } }
+184 | | );
+    | |_^
+    |
+    = note: expected values for `feature` are: `unsat-poc-src-compressor-rs-112-16-rule-324-9e9bf585b2`, `unsat-poc-src-compressor-rs-113-16-rule-324-c54aada4b7`, `unsat-poc-src-compressor-rs-114-16-rule-324-12bbddbee5`, `unsat-poc-src-compressor-rs-115-16-rule-324-c735177de4`, `unsat-poc-src-compressor-rs-135-16-rule-324-bd61d2bed7`, `unsat-poc-src-compressor-rs-136-16-rule-324-bdf7cb5743`, and `unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `dispatch` crate for guidance on how handle this unexpected cfg
+    = help: the macro `dispatch` may come from an old version of the `ppv_lite86` crate, try updating your dependency with `cargo update -p ppv_lite86`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the macro `dispatch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `jh` (lib) generated 2 warnings
+error: could not compile `jh` (lib) due to 2 previous errors; 2 warnings emitted
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894', '-Zbuild-std', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling jh v0.1.0 (/workspaces/UnSAT-Rust/crates_inj/jh-0.1.0)
+error[E0433]: failed to resolve: could not find `dispatch` in `simd`
+   --> src/compressor.rs:300:40
+    |
+300 |     crate::compressor::f8_impl::<simd::dispatch::Portable>(simd::dispatch::Portable, &mut state.cv, data.as_ptr());
+    |                                        ^^^^^^^^ could not find `dispatch` in `simd`
+
+error[E0433]: failed to resolve: could not find `dispatch` in `simd`
+   --> src/compressor.rs:300:66
+    |
+300 |     crate::compressor::f8_impl::<simd::dispatch::Portable>(simd::dispatch::Portable, &mut state.cv, data.as_ptr());
+    |                                                                  ^^^^^^^^ could not find `dispatch` in `simd`
+
+warning: unexpected `cfg` condition value: `std`
+   --> src/compressor.rs:181:1
+    |
+181 | / dispatch!(
+182 | |     mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+183 | |     f8_impl(mach, state, data); } }
+184 | | );
+    | |_^
+    |
+    = note: expected values for `feature` are: `unsat-poc-src-compressor-rs-112-16-rule-324-9e9bf585b2`, `unsat-poc-src-compressor-rs-113-16-rule-324-c54aada4b7`, `unsat-poc-src-compressor-rs-114-16-rule-324-12bbddbee5`, `unsat-poc-src-compressor-rs-115-16-rule-324-c735177de4`, `unsat-poc-src-compressor-rs-135-16-rule-324-bd61d2bed7`, `unsat-poc-src-compressor-rs-136-16-rule-324-bdf7cb5743`, and `unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `dispatch` crate for guidance on how handle this unexpected cfg
+    = help: the macro `dispatch` may come from an old version of the `ppv_lite86` crate, try updating your dependency with `cargo update -p ppv_lite86`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+    = note: this warning originates in the macro `dispatch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `std`
+   --> src/compressor.rs:181:1
+    |
+181 | / dispatch!(
+182 | |     mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+183 | |     f8_impl(mach, state, data); } }
+184 | | );
+    | |_^
+    |
+    = note: expected values for `feature` are: `unsat-poc-src-compressor-rs-112-16-rule-324-9e9bf585b2`, `unsat-poc-src-compressor-rs-113-16-rule-324-c54aada4b7`, `unsat-poc-src-compressor-rs-114-16-rule-324-12bbddbee5`, `unsat-poc-src-compressor-rs-115-16-rule-324-c735177de4`, `unsat-poc-src-compressor-rs-135-16-rule-324-bd61d2bed7`, `unsat-poc-src-compressor-rs-136-16-rule-324-bdf7cb5743`, and `unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `dispatch` crate for guidance on how handle this unexpected cfg
+    = help: the macro `dispatch` may come from an old version of the `ppv_lite86` crate, try updating your dependency with `cargo update -p ppv_lite86`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the macro `dispatch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `jh` (lib) generated 2 warnings
+error: could not compile `jh` (lib) due to 2 previous errors; 2 warnings emitted
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/compressor.rs">
+```rust
+#![allow(non_upper_case_globals)]
+use core::ptr;
+use digest::generic_array::{typenum::U64, GenericArray};
+use simd::{dispatch, vec128_storage, AndNot, Machine, Swap64, VZip, Vec2};
+#[rustfmt::skip]
+macro_rules! unroll7 {
+    ($j:ident, $body:block) => {
+        { const $j : usize = 0; $body } { const $j : usize = 1; $body } { const $j :
+        usize = 2; $body } { const $j : usize = 3; $body } { const $j : usize = 4; $body
+        } { const $j : usize = 5; $body } { const $j : usize = 6; $body }
+    };
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct X8<M: Machine>(
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+);
+impl<M: Machine> X8<M> {
+    #[inline(always)]
+    fn zip(self) -> (M::u128x2, M::u128x2, M::u128x2, M::u128x2) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn unzip((a, b, c, d): (M::u128x2, M::u128x2, M::u128x2, M::u128x2)) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+/// two Sboxes computed in parallel; each Sbox implements S0 and S1, selected by a constant bit
+#[inline(always)]
+fn ss<M: Machine>(state: X8<M>, mut k: M::u128x2) -> X8<M> {
+    /* body omitted: interface retained */
+}
+#[inline(always)]
+fn l<M: Machine>(mut y: X8<M>) -> X8<M> {
+    /* body omitted: interface retained */
+}
+union X2Bytes<M: Machine> {
+    x2: M::u128x2,
+    bytes: [u8; 32],
+}
+#[doc(hidden)]
+#[inline(never)]
+pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {
+    #[allow(clippy::cast_ptr_alignment)]
+    let data = data as *const M::u128x1;
+    let mut y = X8::<
+        M,
+    >(
+        mach.unpack(state[0]),
+        mach.unpack(state[1]),
+        mach.unpack(state[2]),
+        mach.unpack(state[3]),
+        mach.unpack(state[4]),
+        mach.unpack(state[5]),
+        mach.unpack(state[6]),
+        mach.unpack(state[7]),
+    );
+    unsafe {
+        klee_ext_bind::callsite!("src-compressor-rs-112-16");
+        let mut __klee_ret_src_compressor_rs_112_16_read_unaligned = ptr::read_unaligned(
+            data,
+        );
+        y.0 ^= __klee_ret_src_compressor_rs_112_16_read_unaligned;
+        let __klee_arg0 = 1;
+        klee_ext_bind::callsite!("src-compressor-rs-113-36");
+        let mut __klee_ret_src_compressor_rs_113_36_offset = data.offset(__klee_arg0);
+        klee_ext_bind::callsite!("src-compressor-rs-113-16");
+        let mut __klee_ret_src_compressor_rs_113_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_113_36_offset,
+        );
+        y.1 ^= __klee_ret_src_compressor_rs_113_16_read_unaligned;
+        let __klee_arg1 = 2;
+        klee_ext_bind::callsite!("src-compressor-rs-114-36");
+        let mut __klee_ret_src_compressor_rs_114_36_offset = data.offset(__klee_arg1);
+        klee_ext_bind::callsite!("src-compressor-rs-114-16");
+        let mut __klee_ret_src_compressor_rs_114_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_114_36_offset,
+        );
+        y.2 ^= __klee_ret_src_compressor_rs_114_16_read_unaligned;
+        let __klee_arg2 = 3;
+        klee_ext_bind::callsite!("src-compressor-rs-115-36");
+        let mut __klee_ret_src_compressor_rs_115_36_offset = data.offset(__klee_arg2);
+        klee_ext_bind::callsite!("src-compressor-rs-115-16");
+        let mut __klee_ret_src_compressor_rs_115_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_115_36_offset,
+        );
+        y.3 ^= __klee_ret_src_compressor_rs_115_16_read_unaligned;
+    }
+    for rc in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {
+        unroll7!(
+            j, { y = ss(y, unsafe { X2Bytes::< M > { bytes : rc[j] } .x2 }); y = l(y);
+            let f = match j { 0 => M::u128x1::swap1, 1 => M::u128x1::swap2, 2 =>
+            M::u128x1::swap4, 3 => M::u128x1::swap8, 4 => M::u128x1::swap16, 5 =>
+            M::u128x1::swap32, 6 => M::u128x1::swap64, _ => unreachable!(), }; y = X8(y
+            .0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7)); }
+        );
+    }
+    unsafe {
+        klee_ext_bind::callsite!("src-compressor-rs-135-16");
+        let mut __klee_ret_src_compressor_rs_135_16_read_unaligned = ptr::read_unaligned(
+            data,
+        );
+        y.4 ^= __klee_ret_src_compressor_rs_135_16_read_unaligned;
+        let __klee_arg3 = 1;
+        klee_ext_bind::callsite!("src-compressor-rs-136-36");
+        let mut __klee_ret_src_compressor_rs_136_36_offset = data.offset(__klee_arg3);
+        klee_ext_bind::callsite!("src-compressor-rs-136-16");
+        let mut __klee_ret_src_compressor_rs_136_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_136_36_offset,
+        );
+        y.5 ^= __klee_ret_src_compressor_rs_136_16_read_unaligned;
+        let __klee_arg4 = 2;
+        klee_ext_bind::callsite!("src-compressor-rs-137-36");
+        let mut __klee_ret_src_compressor_rs_137_36_offset = data.offset(__klee_arg4);
+        klee_ext_bind::callsite!("src-compressor-rs-137-16");
+        let mut __klee_ret_src_compressor_rs_137_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_137_36_offset,
+        );
+        y.6 ^= __klee_ret_src_compressor_rs_137_16_read_unaligned;
+        let __klee_arg5 = 3;
+        klee_ext_bind::callsite!("src-compressor-rs-138-36");
+        let mut __klee_ret_src_compressor_rs_138_36_offset = data.offset(__klee_arg5);
+        klee_ext_bind::callsite!("src-compressor-rs-138-16");
+        let mut __klee_ret_src_compressor_rs_138_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_138_36_offset,
+        );
+        y.7 ^= __klee_ret_src_compressor_rs_138_16_read_unaligned;
+    }
+    *state = [
+        y.0.into(),
+        y.1.into(),
+        y.2.into(),
+        y.3.into(),
+        y.4.into(),
+        y.5.into(),
+        y.6.into(),
+        y.7.into(),
+    ];
+}
+dispatch!(
+    mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+        /* body omitted: interface retained */
+    } }
+);
+pub(crate) union Compressor {
+    cv: [vec128_storage; 8],
+    bytes: [u8; 128],
+}
+impl Compressor {
+    #[inline]
+    pub(crate) fn new(bytes: [u8; 128]) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub(crate) fn update(&mut self, data: &GenericArray<u8, U64>) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub(crate) fn finalize(&self) -> &[u8; 128] {
+        /* body omitted: interface retained */
+    }
+}
+impl Clone for Compressor {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! Implementation of the [JH] cryptographic hash function.
+//!
+//! There are 4 standard versions of the JH hash function:
+//!
+//! * [JH-224][Jh224]
+//! * [JH-256][Jh256]
+//! * [JH-384][Jh384]
+//! * [JH-512][Jh512]
+//!
+//! # Examples
+//!
+//! Hash functionality is usually accessed via the [`Digest`] trait:
+//!
+//! ```
+//! use hex_literal::hex;
+//! use jh::{Digest, Jh256};
+//!
+//! // create a JH-256 object
+//! let mut hasher = Jh256::new();
+//!
+//! // write input message
+//! hasher.update(b"hello");
+//!
+//! // read hash digest
+//! let result = hasher.finalize();
+//!
+//! let expected = hex!("94fd3f4c564957c6754265676bf8b244c707d3ffb294e18af1f2e4f9b8306089");
+//! assert_eq!(result[..], expected[..]);
+//! ```
+//! Also see [RustCrypto/hashes] readme.
+//!
+//! [JH]: https://en.wikipedia.org/wiki/JH_(hash_function)
+//! [RustCrypto/hashes]: https://github.com/RustCrypto/hashes
+#![no_std]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/RustCrypto/media/6ee8e381/logo.svg",
+    html_favicon_url = "https://raw.githubusercontent.com/RustCrypto/media/6ee8e381/logo.svg"
+)]
+#![warn(missing_docs, rust_2018_idioms)]
+
+mod compressor;
+mod consts;
+
+// This function is exported only for benchmarks
+pub use compressor::f8_impl;
+
+pub use digest::{self, Digest};
+
+use crate::compressor::Compressor;
+use core::fmt;
+use digest::{
+    block_buffer::Eager,
+    core_api::{
+        AlgorithmName, Block, Buffer, BufferKindUser, CoreWrapper, CtVariableCoreWrapper,
+        TruncSide, UpdateCore, VariableOutputCore,
+    },
+    crypto_common::{BlockSizeUser, OutputSizeUser},
+    generic_array::typenum::{Unsigned, U28, U32, U48, U64},
+    HashMarker, InvalidOutputSize, Output,
+};
+
+/// Core JH hasher state
+#[derive(Clone)]
+pub struct JhCore {
+    state: Compressor,
+    block_len: u64,
+}
+
+impl HashMarker for JhCore {}
+
+impl BlockSizeUser for JhCore {
+    type BlockSize = U64;
+}
+
+impl BufferKindUser for JhCore {
+    type BufferKind = Eager;
+}
+
+impl OutputSizeUser for JhCore {
+    type OutputSize = U64;
+}
+
+impl UpdateCore for JhCore {
+    #[inline]
+    fn update_blocks(&mut self, blocks: &[Block<Self>]) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl VariableOutputCore for JhCore {
+    const TRUNC_SIDE: TruncSide = TruncSide::Right;
+
+    #[inline]
+    fn new(output_size: usize) -> Result<Self, InvalidOutputSize> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn finalize_variable_core(&mut self, buffer: &mut Buffer<Self>, out: &mut Output<Self>) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl AlgorithmName for JhCore {
+    fn write_alg_name(f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl fmt::Debug for JhCore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Jh-224 hasher state
+pub type Jh224 = CoreWrapper<CtVariableCoreWrapper<JhCore, U28>>;
+/// Jh-256 hasher state
+pub type Jh256 = CoreWrapper<CtVariableCoreWrapper<JhCore, U32>>;
+/// Jh-384 hasher state
+pub type Jh384 = CoreWrapper<CtVariableCoreWrapper<JhCore, U48>>;
+/// Jh-512 hasher state
+pub type Jh512 = CoreWrapper<CtVariableCoreWrapper<JhCore, U64>>;
+
+#[cfg(test)]
+mod tests {
+    use super::{Digest, Jh256};
+
+    #[test]
+    fn instantiate_compressor_f8() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

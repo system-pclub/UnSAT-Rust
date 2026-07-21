@@ -1,0 +1,45 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-87-43-raw-ptr-deref-a860496241")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_87_43_raw_ptr_deref_a860496241() {
+    use crate::{
+        interpreter::Interpreter,
+        primitives::{Address, Bytes, Eof, U256},
+        DummyHost, Gas, InstructionResult, InterpreterAction, InterpreterResult,
+    };
+    use std::sync::Arc;
+
+    let mut interpreter = Interpreter::default();
+    let mut host = DummyHost::default();
+
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.is_eof = true;
+    interpreter.is_eof_init = true;
+    interpreter.instruction_pointer = core::ptr::null();
+
+    interpreter.contract.bytecode = Eof::default().into();
+    interpreter.contract.hash = None;
+    interpreter.contract.target_address = Address::ZERO;
+    interpreter.contract.bytecode_address = None;
+    interpreter.contract.caller = Address::ZERO;
+    interpreter.contract.call_value = U256::ZERO;
+
+    interpreter.bytecode = Bytes::new();
+    interpreter.gas = Gas::new(1_000_000);
+    interpreter.next_action = InterpreterAction::None;
+    interpreter.shared_memory = crate::EMPTY_SHARED_MEMORY;
+    interpreter.return_data_buffer = Bytes::new();
+
+    let eof = Eof::default();
+    interpreter.contract.bytecode = Arc::new(eof).into();
+
+    interpreter.stack.push(U256::from(0u64)).ok();
+    interpreter.stack.push(U256::from(0u64)).ok();
+
+    interpreter.instruction_pointer = 1usize as *const u8;
+
+    crate::instructions::contract::return_contract(&mut interpreter, &mut host);
+
+    let _ = InterpreterResult::new(InstructionResult::Continue, Bytes::new(), Gas::new(0));
+}
+```

@@ -1,0 +1,30 @@
+```rust
+#[cfg(feature = "unsat-poc-src-lib-rs-593-23-rule-447-1c417c214b")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_lib_rs_593_23_rule_447_1c417c214b() {
+    struct BadIter {
+        done: bool,
+    }
+
+    impl Iterator for BadIter {
+        type Item = u8;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.done {
+                None
+            } else {
+                self.done = true;
+                Some(9)
+            }
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (1, Some(1))
+        }
+    }
+
+    let mut v = StackVec::<[u8; 8]>::from_buf([1, 2, 3, 4, 5, 6, 7, 8]);
+    v.length = 9;
+    v.insert_many(5, BadIter { done: false });
+}
+```

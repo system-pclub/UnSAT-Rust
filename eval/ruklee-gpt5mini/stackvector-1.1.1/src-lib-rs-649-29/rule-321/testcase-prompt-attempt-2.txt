@@ -1,0 +1,1376 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-lib-rs-649-29-rule-321-81f76cba51")]`.
+- Define `pub extern "C" fn __unsat_poc_src_lib_rs_649_29_rule_321_81f76cba51()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "compose_slice_as_ptr2"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "StackVec",
+    "path": "src/lib.rs",
+    "line_start": 321,
+    "body_end": 321,
+    "is_public": true
+  },
+  "caller": {
+    "name": "StackVec::<A>::into_inner",
+    "path": "src/lib.rs",
+    "line_start": 642,
+    "line_end": 643,
+    "body_end": 653,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "std::result::Result<A, StackVec<A>>"
+  },
+  "callee": {
+    "name": "std::ptr::read",
+    "path": "rust/library/core/src/ptr/mod.rs",
+    "line_start": 1231,
+    "line_end": 1341,
+    "body_end": 1341,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "T"
+  },
+  "callsite": {
+    "line": 649,
+    "col": 29,
+    "path": "src/lib.rs",
+    "id": "src-lib-rs-649-29"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "function",
+      "instantiated_ty": "A",
+      "layout_control": "external",
+      "external_sources": [
+        "A"
+      ]
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+`src` must be valid for reads.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-lib-rs-649-29
+
+Rule id: rule-321
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"simplified_var","name":"is_valid_for(memory_range(get_arg(0),get_type_at_func(0).size),'read')"},"original":{"type":"call","name":"is_valid_for","args":[{"type":"call","name":"memory_range","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":0}]},{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}]},{"type":"literal","value":"read"}]}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+GT$10read_error17h19a4ae325fff1ae5E
+KLEE: WARNING: undefined reference to function: _ZN93_$LT$core..result..Result$LT$T$C$$LP$$RP$$GT$$u20$as$u20$object..read..ReadError$LT$T$GT$$GT$10read_error17h605c55e4a2763357E
+KLEE: WARNING: undefined reference to function: _ZN95_$LT$core..ops..control_flow..ControlFlow$LT$B$C$C$GT$$u20$as$u20$core..ops..try_trait..Try$GT$11from_output17h27e48e344e5eee44E
+KLEE: WARNING: undefined reference to function: _ZN95_$LT$core..ops..control_flow..ControlFlow$LT$B$C$C$GT$$u20$as$u20$core..ops..try_trait..Try$GT$6branch17hdf7873412410b239E
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line5Lines13find_location17hc436b0d48ee84f3bE
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line5Lines4file17h27b564f3b0df6201E
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line5Lines6ranges17h8705c404906f6b3aE
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line9LazyLines3new17h71d7a040eb951607E
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line9path_push17hbbcfbec662244ca4E
+KLEE: WARNING: undefined reference to function: __cxa_thread_atexit_impl
+KLEE: WARNING: undefined reference to function: __res_init
+KLEE: WARNING: undefined reference to variable: __rust_no_alloc_shim_is_unstable
+KLEE: WARNING: undefined reference to function: __xpg_strerror_r
+KLEE: WARNING: undefined reference to function: accept4
+KLEE: WARNING: undefined reference to function: bind
+KLEE: WARNING: undefined reference to function: chdir
+KLEE: WARNING: undefined reference to function: chmod
+KLEE: WARNING: undefined reference to function: chown
+KLEE: WARNING: undefined reference to function: chroot
+KLEE: WARNING: undefined reference to function: clock_gettime
+KLEE: WARNING: undefined reference to function: close
+KLEE: WARNING: undefined reference to function: closedir
+KLEE: WARNING: undefined reference to function: connect
+KLEE: WARNING: undefined reference to function: copy_file_range
+KLEE: WARNING: undefined reference to function: copysignl
+KLEE: WARNING: undefined reference to function: dirfd
+KLEE: WARNING: undefined reference to function: dl_iterate_phdr
+KLEE: WARNING: undefined reference to function: dlsym
+KLEE: WARNING: undefined reference to function: dup2
+KLEE: WARNING: undefined reference to variable: environ
+KLEE: WARNING: undefined reference to function: execvp
+KLEE: WARNING: undefined reference to function: fchmod
+KLEE: WARNING: undefined reference to function: fchown
+KLEE: WARNING: undefined reference to function: fcntl
+KLEE: WARNING: undefined reference to function: fdatasync
+KLEE: WARNING: undefined reference to function: fdopendir
+KLEE: WARNING: undefined reference to function: flock
+KLEE: WARNING: undefined reference to function: freeaddrinfo
+KLEE: WARNING: undefined reference to function: fstat64
+KLEE: WARNING: undefined reference to function: fstatat64
+KLEE: WARNING: undefined reference to function: fsync
+KLEE: WARNING: undefined reference to function: ftruncate64
+KLEE: WARNING: undefined reference to function: futimens
+KLEE: WARNING: undefined reference to function: gai_strerror
+KLEE: WARNING: undefined reference to function: getaddrinfo
+KLEE: WARNING: undefined reference to function: getauxval
+KLEE: WARNING: undefined reference to function: getenv
+KLEE: WARNING: undefined reference to function: getpeername
+KLEE: WARNING: undefined reference to function: getpwuid_r
+KLEE: WARNING: undefined reference to function: getrandom
+KLEE: WARNING: undefined reference to function: getsockname
+KLEE: WARNING: undefined reference to function: getsockopt
+KLEE: WARNING: undefined reference to function: gnu_get_libc_version
+KLEE: WARNING: undefined reference to function: ioctl
+KLEE: WARNING: undefined reference to function: isatty
+KLEE: WARNING: undefined reference to function: klee_ext_callsite
+KLEE: WARNING: undefined reference to function: lchown
+KLEE: WARNING: undefined reference to function: linkat
+KLEE: WARNING: undefined reference to function: listen
+KLEE: WARNING: undefined reference to function: lseek64
+KLEE: WARNING: undefined reference to function: lstat64
+KLEE: WARNING: undefined reference to function: memmove
+KLEE: WARNING: undefined reference to function: memset
+KLEE: WARNING: undefined reference to function: mkdir
+KLEE: WARNING: undefined reference to function: mmap64
+KLEE: WARNING: undefined reference to function: mprotect
+KLEE: WARNING: undefined reference to function: munmap
+KLEE: WARNING: undefined reference to function: nanosleep
+KLEE: WARNING: undefined reference to function: open64
+KLEE: WARNING: undefined reference to function: openat64
+KLEE: WARNING: undefined reference to function: opendir
+KLEE: WARNING: undefined reference to function: pause
+KLEE: WARNING: undefined reference to function: pidfd_getpid
+KLEE: WARNING: undefined reference to function: pidfd_spawnp
+KLEE: WARNING: undefined reference to function: pipe2
+KLEE: WARNING: undefined reference to function: poll
+KLEE: WARNING: undefined reference to function: posix_memalign
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir_np
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_adddup2
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_destroy
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_destroy
+KLEE: WARNING: undefined reference to function: posix_spawnattr_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setflags
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setpgroup
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setsigdefault
+KLEE: WARNING: undefined reference to function: posix_spawnp
+KLEE: WARNING: undefined reference to function: pread64
+KLEE: WARNING: undefined reference to function: preadv
+KLEE: WARNING: undefined reference to function: pthread_attr_destroy
+KLEE: WARNING: undefined reference to function: pthread_attr_getguardsize
+KLEE: WARNING: undefined reference to function: pthread_attr_getstack
+KLEE: WARNING: undefined reference to function: pthread_attr_init
+KLEE: WARNING: undefined reference to function: pthread_attr_setstacksize
+KLEE: WARNING: undefined reference to function: pthread_create
+KLEE: WARNING: undefined reference to function: pthread_detach
+KLEE: WARNING: undefined reference to function: pthread_getattr_np
+KLEE: WARNING: undefined reference to function: pthread_join
+KLEE: WARNING: undefined reference to function: pthread_key_create
+KLEE: WARNING: undefined reference to function: pthread_key_delete
+KLEE: WARNING: undefined reference to function: pthread_self
+KLEE: WARNING: undefined reference to function: pthread_setname_np
+KLEE: WARNING: undefined reference to function: pthread_setspecific
+KLEE: WARNING: undefined reference to function: pwrite64
+KLEE: WARNING: undefined reference to function: pwritev
+KLEE: WARNING: undefined reference to function: read
+KLEE: WARNING: undefined reference to function: readdir64
+KLEE: WARNING: undefined reference to function: readlink
+KLEE: WARNING: undefined reference to function: readv
+KLEE: WARNING: undefined reference to function: realpath
+KLEE: WARNING: undefined reference to function: recv
+KLEE: WARNING: undefined reference to function: recvfrom
+KLEE: WARNING: undefined reference to function: recvmsg
+KLEE: WARNING: undefined reference to function: rename
+KLEE: WARNING: undefined reference to function: rmdir
+KLEE: WARNING: undefined reference to function: sched_getaffinity
+KLEE: WARNING: undefined reference to function: sched_yield
+KLEE: WARNING: undefined reference to function: send
+KLEE: WARNING: undefined reference to function: sendfile64
+KLEE: WARNING: undefined reference to function: sendmsg
+KLEE: WARNING: undefined reference to function: sendto
+KLEE: WARNING: undefined reference to function: setenv
+KLEE: WARNING: undefined reference to function: setgid
+KLEE: WARNING: undefined reference to function: setgroups
+KLEE: WARNING: undefined reference to function: setpgid
+KLEE: WARNING: undefined reference to function: setsockopt
+KLEE: WARNING: undefined reference to function: setuid
+KLEE: WARNING: undefined reference to function: shutdown
+KLEE: WARNING: undefined reference to function: sigaction
+KLEE: WARNING: undefined reference to function: sigaddset
+KLEE: WARNING: undefined reference to function: sigaltstack
+KLEE: WARNING: undefined reference to function: sigemptyset
+KLEE: WARNING: undefined reference to function: signal
+KLEE: WARNING: undefined reference to function: socket
+KLEE: WARNING: undefined reference to function: socketpair
+KLEE: WARNING: undefined reference to function: splice
+KLEE: WARNING: undefined reference to function: stat64
+KLEE: WARNING: undefined reference to function: statx
+KLEE: WARNING: undefined reference to function: strlen
+KLEE: WARNING: undefined reference to function: symlink
+KLEE: WARNING: undefined reference to function: syscall
+KLEE: WARNING: undefined reference to function: sysconf
+KLEE: WARNING: undefined reference to function: unlink
+KLEE: WARNING: undefined reference to function: unlinkat
+KLEE: WARNING: undefined reference to function: unsetenv
+KLEE: WARNING: undefined reference to function: waitid
+KLEE: WARNING: undefined reference to function: waitpid
+KLEE: WARNING: undefined reference to function: write
+KLEE: WARNING: undefined reference to function: writev
+KLEE: WARNING: undefined reference to function: fork (UNSAFE)!
+KLEE: WARNING: undefined reference to function: kill (UNSAFE)!
+KLEE: [compose-verify] entry function: __unsat_poc_src_lib_rs_649_29_rule_321_81f76cba51
+KLEE: WARNING: executable has module level assembly (ignoring)
+KLEE: WARNING: Unable to load symbol(__rust_no_alloc_shim_is_unstable) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_RNvCsfjvCHufmGpt_7___rustc39___rust_alloc_error_handler_should_panic) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: [ext.exec] klee_ext_callsite site='src-lib-rs-649-29' target='src-lib-rs-649-29'
+KLEE: [ext.callsite] reached 'src-lib-rs-649-29'
+KLEE: [ext.callsite] deferring 'src-lib-rs-649-29' until target call _ZN4core3ptr4read17h3870d743ad8213b8E
+KLEE: [ext.dsl] function type[0] T specialized from callee debug info as A (size=4 align=1)
+KLEE: [ext.callsite] completing deferred 'src-lib-rs-649-29' before target call
+KLEE: [ext.call] values:
+  __klee_call_arg0 = 139256806768648
+
+KLEE: [ext.dsl] path constraints:
+(query [] false)
+
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=139256806768648)
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_type_at_func(0) -> type@5802811685389707597
+KLEE: [ext.dsl] "size" -> size
+KLEE: [ext.dsl] get_field(get_type_at_func(0), "size") -> 4
+KLEE: [ext.dsl] memory_range(get_arg(0), get_field(get_type_at_func(0), "size")) -> range(139256806768648,4)
+KLEE: [ext.dsl] is_valid_for(memory_range(get_arg(0), get_field(get_type_at_func(0), "size")), "read") -> true
+KLEE: [ext.dsl] simplified_var(is_valid_for(memory_range(get_arg(0),get_type_at_func(0).size),'read')) <= is_valid_for(memory_range(get_arg(0), get_field(get_type_at_func(0), "size")), "read") -> simplified(is_valid_for(memory_range(get_arg(0),get_type_at_func(0).size),'read')=true)
+KLEE: [ext.dsl] resolved constraint expr: true
+KLEE: [ext.dsl] resolved constraint is constant: width=1 value=true
+KLEE: [ext.dsl] resolved constraint uses certain symbol: false
+KLEE: [ext.dsl] violation query uses certain symbol: false
+KLEE: [ext.dsl] SAT(constraints AND NOT resolved constraint): unsat
+KLEE: [ext.dsl] at callsite 'src-lib-rs-649-29': query solved
+KLEE: [ext.callsite] continuing after non-violating occurrence of 'src-lib-rs-649-29' during compose-rerun
+
+KLEE: done: total instructions = 504
+KLEE: done: completed paths = 1
+KLEE: done: partially completed paths = 0
+KLEE: done: generated tests = 1
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+//! Vector-like class allocated entirely on the stack.
+//!
+//! Shallow wrapper around an underlying `Array`, which panics if the
+//! array bounds are exceeded.
+//!
+//! # no_std support
+//!
+//! By default, `smallvec` depends on `libstd`. However, it can be configured to use the unstable
+//! `liballoc` API instead, for use on platforms that have `liballoc` but not `libstd`.  This
+//! configuration is currently unstable and is not guaranteed to work on all versions of Rust.
+//!
+//! To depend on `smallvec` without `libstd`, use `default-features = false` in the `smallvec`
+//! section of Cargo.toml to disable its `"std"` feature.
+//!
+//! Adapted from Servo's smallvec:
+//!     https://github.com/servo/rust-smallve
+//!
+//! StackVec is distributed under the same terms as the smallvec and
+//! lexical, that is, it is dual licensed under either the MIT or Apache
+//! 2.0 license.
+#![cfg_attr(not(feature = "std"), no_std)]
+#[cfg(all(test, not(feature = "std")))]
+#[macro_use]
+extern crate alloc;
+#[cfg(all(not(test), not(feature = "std")))]
+extern crate alloc;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+extern crate unreachable;
+use unreachable::UncheckedOptionExt;
+/// Facade around the core features for name mangling.
+pub(crate) mod lib {
+    #[cfg(feature = "std")]
+    pub(crate) use std::*;
+    #[cfg(not(feature = "std"))]
+    pub(crate) use core::*;
+    #[cfg(all(test, not(feature = "std")))]
+    pub(crate) use alloc::{borrow, boxed, rc};
+}
+use lib::borrow::{Borrow, BorrowMut};
+use lib::{cmp, fmt, hash, iter, mem, ops, ptr, slice};
+#[cfg(feature = "std")]
+use lib::io;
+trait PointerMethods {
+    unsafe fn padd(self, count: usize) -> Self;
+}
+impl<T> PointerMethods for *const T {
+    #[inline(always)]
+    unsafe fn padd(self, count: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> PointerMethods for *mut T {
+    #[inline(always)]
+    unsafe fn padd(self, count: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+/// Types that can be used as the backing store for a StackVec
+pub unsafe trait Array {
+    /// The type of the array's elements.
+    type Item;
+    /// Returns the number of items the array can hold.
+    fn size() -> usize;
+    /// Returns a pointer to the first element of the array.
+    fn ptr(&self) -> *const Self::Item;
+    /// Returns a mutable pointer to the first element of the array.
+    fn ptr_mut(&mut self) -> *mut Self::Item;
+}
+macro_rules! impl_array {
+    ($($size:expr),+) => {
+        $(unsafe impl < T > Array for [T; $size] { type Item = T; fn size() -> usize {
+            /* body omitted: interface retained */
+        } fn ptr(& self) -> * const T {
+            /* body omitted: interface retained */
+        } fn ptr_mut(& mut self) -> *
+        mut T {
+            /* body omitted: interface retained */
+        } })+
+    };
+}
+impl_array! {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 24, 32, 36, 0x40, 0x80,
+    0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000,
+    0x40000, 0x80000, 0x100000
+}
+/// Common operations implemented by both `Vec` and `StackVec`.
+///
+/// This can be used to write generic code that works with both `Vec` and `StackVec`.
+///
+/// ## Example
+///
+/// ```rust
+/// use stackvector::{VecLike, StackVec};
+///
+/// fn initialize<V: VecLike<u8>>(v: &mut V) {
+///     for i in 0..5 {
+///         v.push(i);
+///     }
+/// }
+///
+/// let mut vec = Vec::new();
+/// initialize(&mut vec);
+///
+/// let mut stack_vec = StackVec::<[u8; 8]>::new();
+/// initialize(&mut stack_vec);
+/// ```
+pub trait VecLike<
+    T,
+>: ops::Index<
+        usize,
+        Output = T,
+    > + ops::IndexMut<
+        usize,
+    > + ops::Index<
+        ops::Range<usize>,
+        Output = [T],
+    > + ops::IndexMut<
+        ops::Range<usize>,
+    > + ops::Index<
+        ops::RangeFrom<usize>,
+        Output = [T],
+    > + ops::IndexMut<
+        ops::RangeFrom<usize>,
+    > + ops::Index<
+        ops::RangeTo<usize>,
+        Output = [T],
+    > + ops::IndexMut<
+        ops::RangeTo<usize>,
+    > + ops::Index<
+        ops::RangeFull,
+        Output = [T],
+    > + ops::IndexMut<ops::RangeFull> + ops::DerefMut<Target = [T]> + Extend<T> {
+    /// Append an element to the vector.
+    fn push(&mut self, value: T);
+    /// Pop an element from the end of the vector.
+    fn pop(&mut self) -> Option<T>;
+}
+#[allow(deprecated)]
+impl<T> VecLike<T> for Vec<T> {
+    #[inline]
+    fn push(&mut self, value: T) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn pop(&mut self) -> Option<T> {
+        /* body omitted: interface retained */
+    }
+}
+/// Trait to be implemented by a collection that can be extended from a slice
+///
+/// ## Example
+///
+/// ```rust
+/// use stackvector::{ExtendFromSlice, StackVec};
+///
+/// fn initialize<V: ExtendFromSlice<u8>>(v: &mut V) {
+///     v.extend_from_slice(b"Test!");
+/// }
+///
+/// let mut vec = Vec::new();
+/// initialize(&mut vec);
+/// assert_eq!(&vec, b"Test!");
+///
+/// let mut stack_vec = StackVec::<[u8; 8]>::new();
+/// initialize(&mut stack_vec);
+/// assert_eq!(&stack_vec as &[_], b"Test!");
+/// ```
+pub trait ExtendFromSlice<T> {
+    /// Extends a collection from a slice of its element type
+    fn extend_from_slice(&mut self, other: &[T]);
+}
+impl<T: Clone> ExtendFromSlice<T> for Vec<T> {
+    fn extend_from_slice(&mut self, other: &[T]) {
+        /* body omitted: interface retained */
+    }
+}
+/// An iterator that removes the items from a `StackVec` and yields them by value.
+///
+/// Returned from [`StackVec::drain`][1].
+///
+/// [1]: struct.StackVec.html#method.drain
+pub struct Drain<'a, T: 'a> {
+    iter: slice::IterMut<'a, T>,
+}
+impl<'a, T: 'a> Iterator for Drain<'a, T> {
+    type Item = T;
+    #[inline]
+    fn next(&mut self) -> Option<T> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, T: 'a> DoubleEndedIterator for Drain<'a, T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<T> {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, T> ExactSizeIterator for Drain<'a, T> {}
+impl<'a, T: 'a> Drop for Drain<'a, T> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+/// Set the length of the vec when the `SetLenOnDrop` value goes out of scope.
+///
+/// Copied from https://github.com/rust-lang/rust/pull/36355
+struct SetLenOnDrop<'a> {
+    len: &'a mut usize,
+    local_len: usize,
+}
+impl<'a> SetLenOnDrop<'a> {
+    #[inline]
+    fn new(len: &'a mut usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn increment_len(&mut self, increment: usize) {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> Drop for SetLenOnDrop<'a> {
+    #[inline]
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+struct DropOnPanic<T> {
+    start: *mut T,
+    skip: ops::Range<usize>,
+    len: usize,
+}
+impl<T> Drop for DropOnPanic<T> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+/// A `Vec`-like container that stores elements on the stack.
+///
+/// The amount of data that a `StackVec` can store inline depends on its backing store. The backing
+/// store can be any type that implements the `Array` trait; usually it is a small fixed-sized
+/// array.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.
+///
+/// ## Example
+///
+/// ```rust,should_panic
+/// use stackvector::StackVec;
+/// let mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector
+///
+/// // The vector can hold up to 4 items without spilling onto the heap.
+/// v.extend(0..4);
+/// assert_eq!(v.len(), 4);
+///
+/// // Pushing another element will force the buffer to spill and panic:
+/// v.push(4);
+/// ```
+pub struct StackVec<A: Array> {
+    pub data: mem::MaybeUninit<A>,
+    pub length: usize,
+}
+impl<A: Array> StackVec<A> {
+    /// Construct an empty vector
+    #[inline]
+    pub fn new() -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+    /// Construct a new `StackVec` from a `Vec<A::Item>`.
+    ///
+    /// Elements will be copied to the inline buffer if vec.len() <= A::size().
+    ///
+    /// ```rust
+    /// use stackvector::StackVec;
+    ///
+    /// let vec = vec![1, 2, 3, 4, 5];
+    /// let stack_vec: StackVec<[_; 5]> = StackVec::from_vec(vec);
+    ///
+    /// assert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);
+    /// ```
+    #[inline(never)]
+    pub fn from_vec(vec: Vec<A::Item>) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+    /// Construct a new `StackVec` from a `Vec<A::Item>` without bounds checking.
+    #[allow(deprecated)]
+    pub unsafe fn from_vec_unchecked(mut vec: Vec<A::Item>) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+    /// Constructs a new `StackVec` on the stack from an `A` without
+    /// copying elements.
+    ///
+    /// ```rust
+    /// use stackvector::StackVec;
+    ///
+    /// let buf = [1, 2, 3, 4, 5];
+    /// let stack_vec: StackVec<_> = StackVec::from_buf(buf);
+    ///
+    /// assert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);
+    /// ```
+    #[inline]
+    pub fn from_buf(buf: A) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+    /// Constructs a new `StackVec` on the stack from an `A` without
+    /// copying elements. Also sets the length, which must be less or
+    /// equal to the size of `buf`.
+    ///
+    /// ```rust
+    /// use stackvector::StackVec;
+    ///
+    /// let buf = [1, 2, 3, 4, 5, 0, 0, 0];
+    /// let stack_vec: StackVec<_> = StackVec::from_buf_and_len(buf, 5);
+    ///
+    /// assert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);
+    /// ```
+    #[inline]
+    pub fn from_buf_and_len(buf: A, len: usize) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+    /// Constructs a new `StackVec` on the stack from an `A` without
+    /// copying elements. Also sets the length. The user is responsible
+    /// for ensuring that `len <= A::size()`.
+    ///
+    /// ```rust
+    /// use stackvector::StackVec;
+    ///
+    /// let buf = [1, 2, 3, 4, 5, 0, 0, 0];
+    /// let stack_vec: StackVec<_> = unsafe {
+    ///     StackVec::from_buf_and_len_unchecked(buf, 5)
+    /// };
+    ///
+    /// assert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);
+    /// ```
+    #[inline]
+    pub unsafe fn from_buf_and_len_unchecked(buf: A, len: usize) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+    /// Sets the length of a vector.
+    ///
+    /// This will explicitly set the size of the vector, without actually
+    /// modifying its buffers, so it is up to the caller to ensure that the
+    /// vector is actually the specified size.
+    #[inline]
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// The number of elements stored in the vector.
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// If the vector is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// The number of items the vector can hold.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Empty the vector and return an iterator over its former contents.
+    #[inline(never)]
+    pub fn drain(&mut self) -> Drain<A::Item> {
+        /* body omitted: interface retained */
+    }
+    /// Append an item to the vector.
+    #[inline(never)]
+    pub fn push(&mut self, value: A::Item) {
+        /* body omitted: interface retained */
+    }
+    /// Remove an item from the end of the vector and return it, or None if empty.
+    #[inline(never)]
+    pub fn pop(&mut self) -> Option<A::Item> {
+        /* body omitted: interface retained */
+    }
+    /// Shorten the vector, keeping the first `len` elements and dropping the rest.
+    ///
+    /// If `len` is greater than or equal to the vector's current length, this has no
+    /// effect.
+    /// `shrink_to_fit` after truncating.
+    #[inline(never)]
+    pub fn truncate(&mut self, len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Extracts a slice containing the entire vector.
+    ///
+    /// Equivalent to `&s[..]`.
+    #[inline]
+    pub fn as_slice(&self) -> &[A::Item] {
+        /* body omitted: interface retained */
+    }
+    /// Extracts a mutable slice of the entire vector.
+    ///
+    /// Equivalent to `&mut s[..]`.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [A::Item] {
+        /* body omitted: interface retained */
+    }
+    /// Remove the element at position `index`, replacing it with the last element.
+    ///
+    /// This does not preserve ordering, but is O(1).
+    ///
+    /// Panics if `index` is out of bounds.
+    #[inline]
+    pub fn swap_remove(&mut self, index: usize) -> A::Item {
+        /* body omitted: interface retained */
+    }
+    /// Remove all elements from the vector.
+    #[inline]
+    pub fn clear(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Remove and return the element at position `index`, shifting all elements after it to the
+    /// left.
+    ///
+    /// Panics if `index` is out of bounds.
+    #[inline(never)]
+    pub fn remove(&mut self, index: usize) -> A::Item {
+        /* body omitted: interface retained */
+    }
+    /// Insert an element at position `index`, shifting all elements after it to the right.
+    ///
+    /// Panics if `index` is out of bounds.
+    #[inline(never)]
+    pub fn insert(&mut self, index: usize, element: A::Item) {
+        /* body omitted: interface retained */
+    }
+    /// Insert multiple elements at position `index`, shifting all following elements toward the
+    /// back.
+    #[inline(never)]
+    pub fn insert_many<I: iter::IntoIterator<Item = A::Item>>(
+        &mut self,
+        index: usize,
+        iterable: I,
+    ) {
+        /* body omitted: interface retained */
+    }
+    /// Convert a StackVec to a Vec.
+    pub fn into_vec(self) -> Vec<A::Item> {
+        /* body omitted: interface retained */
+    }
+    /// Convert the StackVec into an `A`.
+    #[inline(never)]
+    pub fn into_inner(self) -> Result<A, Self> {
+        if self.len() != A::size() {
+            Err(self)
+        } else {
+            unsafe {
+                let this = mem::ManuallyDrop::new(self);
+                let __klee_arg12 = this.as_ptr() as *const A;
+                klee_ext_bind::callsite!("src-lib-rs-649-29");
+                let mut __klee_ret_src_lib_rs_649_29_read = ptr::read(__klee_arg12);
+                let array = __klee_ret_src_lib_rs_649_29_read;
+                Ok(array)
+            }
+        }
+    }
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// In other words, remove all elements `e` such that `f(&e)` returns `false`.
+    /// This method operates in place and preserves the order of the retained
+    /// elements.
+    pub fn retain<F: FnMut(&mut A::Item) -> bool>(&mut self, mut f: F) {
+        /* body omitted: interface retained */
+    }
+    /// Removes consecutive duplicate elements.
+    pub fn dedup(&mut self)
+    where
+        A::Item: PartialEq<A::Item>,
+    {
+        self.dedup_by(|a, b| a == b);
+    }
+    /// Removes consecutive duplicate elements using the given equality relation.
+    #[inline(never)]
+    pub fn dedup_by<F>(&mut self, mut same_bucket: F)
+    where
+        F: FnMut(&mut A::Item, &mut A::Item) -> bool,
+    {
+        /* body omitted: interface retained */
+    }
+    /// Removes consecutive elements that map to the same key.
+    pub fn dedup_by_key<F, K>(&mut self, mut key: F)
+    where
+        F: FnMut(&mut A::Item) -> K,
+        K: PartialEq<K>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> StackVec<A>
+where
+    A::Item: Copy,
+{
+    /// Copy the elements from a slice into a new `StackVec`.
+    ///
+    /// For slices of `Copy` types, this is more efficient than `StackVec::from(slice)`.
+    #[inline(never)]
+    pub fn from_slice(slice: &[A::Item]) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Copy elements from a slice into the vector at position `index`, shifting any following
+    /// elements toward the back.
+    ///
+    /// For slices of `Copy` types, this is more efficient than `insert`.
+    #[inline(never)]
+    pub fn insert_from_slice(&mut self, index: usize, slice: &[A::Item]) {
+        /* body omitted: interface retained */
+    }
+    /// Copy elements from a slice and append them to the vector.
+    ///
+    /// For slices of `Copy` types, this is more efficient than `extend`.
+    #[inline]
+    pub fn extend_from_slice(&mut self, slice: &[A::Item]) {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> StackVec<A>
+where
+    A::Item: Clone,
+{
+    /// Resizes the vector so that its length is equal to `len`.
+    ///
+    /// If `len` is less than the current length, the vector simply truncated.
+    ///
+    /// If `len` is greater than the current length, `value` is appended to the
+    /// vector until its length equals `len`.
+    pub fn resize(&mut self, len: usize, value: A::Item) {
+        /* body omitted: interface retained */
+    }
+    /// Creates a `StackVec` with `n` copies of `elem`.
+    /// ```
+    /// use stackvector::StackVec;
+    ///
+    /// let v = StackVec::<[char; 128]>::from_elem('d', 2);
+    /// assert_eq!(v, StackVec::from_buf(['d', 'd']));
+    /// ```
+    #[inline(never)]
+    pub fn from_elem(elem: A::Item, n: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> ops::Deref for StackVec<A> {
+    type Target = [A::Item];
+    #[inline]
+    fn deref(&self) -> &[A::Item] {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> ops::DerefMut for StackVec<A> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [A::Item] {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> AsRef<[A::Item]> for StackVec<A> {
+    #[inline]
+    fn as_ref(&self) -> &[A::Item] {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> AsMut<[A::Item]> for StackVec<A> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [A::Item] {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Borrow<[A::Item]> for StackVec<A> {
+    #[inline]
+    fn borrow(&self) -> &[A::Item] {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> BorrowMut<[A::Item]> for StackVec<A> {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut [A::Item] {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "std")]
+impl<A: Array<Item = u8>> io::Write for StackVec<A> {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, A: Array> From<&'a [A::Item]> for StackVec<A>
+where
+    A::Item: Clone,
+{
+    #[inline]
+    fn from(slice: &'a [A::Item]) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> From<Vec<A::Item>> for StackVec<A> {
+    #[inline]
+    fn from(vec: Vec<A::Item>) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> From<A> for StackVec<A> {
+    #[inline]
+    fn from(array: A) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+}
+macro_rules! impl_index {
+    ($index_type:ty, $output_type:ty) => {
+        impl < A : Array > ops::Index <$index_type > for StackVec < A > { type Output =
+        $output_type; #[inline] fn index(& self, index : $index_type) -> &$output_type {
+            /* body omitted: interface retained */
+        } } impl < A : Array > ops::IndexMut <$index_type > for
+        StackVec < A > { #[inline] fn index_mut(& mut self, index : $index_type) -> & mut
+        $output_type {
+            /* body omitted: interface retained */
+        } }
+    };
+}
+impl_index!(usize, A::Item);
+impl_index!(ops::Range < usize >, [A::Item]);
+impl_index!(ops::RangeFrom < usize >, [A::Item]);
+impl_index!(ops::RangeFull, [A::Item]);
+impl_index!(ops::RangeTo < usize >, [A::Item]);
+#[cfg(has_range_inclusive)]
+impl_index!(ops::RangeInclusive < usize >, [A::Item]);
+#[cfg(has_range_inclusive)]
+impl_index!(ops::RangeToInclusive < usize >, [A::Item]);
+impl<A: Array> ExtendFromSlice<A::Item> for StackVec<A>
+where
+    A::Item: Copy,
+{
+    fn extend_from_slice(&mut self, other: &[A::Item]) {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> VecLike<A::Item> for StackVec<A> {
+    #[inline]
+    fn push(&mut self, value: A::Item) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn pop(&mut self) -> Option<A::Item> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> iter::FromIterator<A::Item> for StackVec<A> {
+    fn from_iter<I: iter::IntoIterator<Item = A::Item>>(iterable: I) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Extend<A::Item> for StackVec<A> {
+    fn extend<I: iter::IntoIterator<Item = A::Item>>(&mut self, iterable: I) {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> fmt::Debug for StackVec<A>
+where
+    A::Item: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Default for StackVec<A> {
+    #[inline]
+    fn default() -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Drop for StackVec<A> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Clone for StackVec<A>
+where
+    A::Item: Clone,
+{
+    fn clone(&self) -> StackVec<A> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array, B: Array> PartialEq<StackVec<B>> for StackVec<A>
+where
+    A::Item: PartialEq<B::Item>,
+{
+    #[inline]
+    fn eq(&self, other: &StackVec<B>) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn ne(&self, other: &StackVec<B>) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Eq for StackVec<A>
+where
+    A::Item: Eq,
+{}
+impl<A: Array> PartialOrd for StackVec<A>
+where
+    A::Item: PartialOrd,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &StackVec<A>) -> Option<cmp::Ordering> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Ord for StackVec<A>
+where
+    A::Item: Ord,
+{
+    #[inline]
+    fn cmp(&self, other: &StackVec<A>) -> cmp::Ordering {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> hash::Hash for StackVec<A>
+where
+    A::Item: hash::Hash,
+{
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        /* body omitted: interface retained */
+    }
+}
+unsafe impl<A: Array> Send for StackVec<A>
+where
+    A::Item: Send,
+{}
+/// An iterator that consumes a `StackVec` and yields its items by value.
+///
+/// Returned from [`StackVec::into_iter`][1].
+///
+/// [1]: struct.StackVec.html#method.into_iter
+pub struct IntoIter<A: Array> {
+    data: StackVec<A>,
+    current: usize,
+    end: usize,
+}
+impl<A: Array> Drop for IntoIter<A> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> Iterator for IntoIter<A> {
+    type Item = A::Item;
+    #[inline]
+    fn next(&mut self) -> Option<A::Item> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> DoubleEndedIterator for IntoIter<A> {
+    #[inline]
+    fn next_back(&mut self) -> Option<A::Item> {
+        /* body omitted: interface retained */
+    }
+}
+impl<A: Array> ExactSizeIterator for IntoIter<A> {}
+impl<A: Array> IntoIterator for StackVec<A> {
+    type IntoIter = IntoIter<A>;
+    type Item = A::Item;
+    fn into_iter(mut self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, A: Array> IntoIterator for &'a StackVec<A> {
+    type IntoIter = slice::Iter<'a, A::Item>;
+    type Item = &'a A::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, A: Array> IntoIterator for &'a mut StackVec<A> {
+    type IntoIter = slice::IterMut<'a, A::Item>;
+    type Item = &'a mut A::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+/// Creates a [`StackVec`] containing the arguments.
+///
+/// `stackvec!` allows `StackVec`s to be defined with the same syntax as array expressions.
+/// There are two forms of this macro:
+///
+/// - Create a [`StackVec`] containing a given list of elements:
+///
+/// ```
+/// # #[macro_use] extern crate stackvector;
+/// # use stackvector::StackVec;
+/// # fn main() {
+/// let v: StackVec<[_; 128]> = stackvec![1, 2, 3];
+/// assert_eq!(v[0], 1);
+/// assert_eq!(v[1], 2);
+/// assert_eq!(v[2], 3);
+/// # }
+/// ```
+///
+/// - Create a [`StackVec`] from a given element and size:
+///
+/// ```
+/// # #[macro_use] extern crate stackvector;
+/// # use stackvector::StackVec;
+/// # fn main() {
+/// let v: StackVec<[_; 0x8000]> = stackvec![1; 3];
+/// assert_eq!(v, StackVec::from_buf([1, 1, 1]));
+/// # }
+/// ```
+///
+/// Note that unlike array expressions this syntax supports all elements
+/// which implement [`Clone`] and the number of elements doesn't have to be
+/// a constant.
+///
+/// This will use `clone` to duplicate an expression, so one should be careful
+/// using this with types having a nonstandard `Clone` implementation. For
+/// example, `stackvec![Rc::new(1); 5]` will create a vector of five references
+/// to the same boxed integer value, not five references pointing to independently
+/// boxed integers.
+#[macro_export]
+macro_rules! stackvec {
+    (@ one $x:expr) => {
+        1usize
+    };
+    ($elem:expr; $n:expr) => {
+        { $crate::StackVec::from_elem($elem, $n) }
+    };
+    ($($x:expr),*$(,) *) => {
+        { #[allow(unused_mut)] { let mut vec = $crate::StackVec::new(); $(vec.push($x);)*
+        vec } }
+    };
+}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::lib::borrow::ToOwned;
+    use crate::lib::boxed::Box;
+    use crate::lib::iter::FromIterator;
+    use crate::lib::rc::Rc;
+    struct BadBoundsIterator1(u8);
+    impl BadBoundsIterator1 {
+        pub fn new() -> Self {
+            /* body omitted: interface retained */
+        }
+    }
+    impl Iterator for BadBoundsIterator1 {
+        type Item = u8;
+        fn next(&mut self) -> Option<Self::Item> {
+            /* body omitted: interface retained */
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            /* body omitted: interface retained */
+        }
+    }
+    struct BadBoundsIterator2(u8);
+    impl BadBoundsIterator2 {
+        pub fn new() -> Self {
+            /* body omitted: interface retained */
+        }
+    }
+    impl Iterator for BadBoundsIterator2 {
+        type Item = u8;
+        fn next(&mut self) -> Option<Self::Item> {
+            /* body omitted: interface retained */
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            /* body omitted: interface retained */
+        }
+    }
+    struct BadSizeHint(u8);
+    impl BadSizeHint {
+        pub fn new(start: u8) -> Self {
+            /* body omitted: interface retained */
+        }
+    }
+    impl Iterator for BadSizeHint {
+        type Item = u8;
+        fn next(&mut self) -> Option<Self::Item> {
+            /* body omitted: interface retained */
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            /* body omitted: interface retained */
+        }
+    }
+    #[test]
+    pub fn test_zero() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[should_panic]
+    pub fn test_panic() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    pub fn test_inline() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[should_panic]
+    pub fn test_spill() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[should_panic]
+    pub fn test_double_spill() {
+        /* body omitted: interface retained */
+    }
+    /// https://github.com/servo/rust-smallvec/issues/4
+    #[test]
+    fn issue_4() {
+        /* body omitted: interface retained */
+    }
+    /// https://github.com/servo/rust-smallvec/issues/5
+    #[test]
+    fn issue_5() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn drain_test() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn drain_rev_test() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn into_iter() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn into_iter_rev() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn into_iter_drop() {
+        /* body omitted: interface retained */
+    }  }
+    }
+    #[test]
+    fn test_capacity() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_truncate() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_insert_many() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_insert_many_buggy_iterator() {
+        /* body omitted: interface retained */
+    }
+    #[should_panic]
+    #[test]
+    fn test_insert_many_panic_buggy_iterator() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_insert_from_slice() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_extend_from_slice() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[should_panic]
+    fn test_drop_panic_smallvec() {
+        /* body omitted: interface retained */
+    }.push(DropPanic);
+    }
+    #[test]
+    fn test_eq() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_ord() {
+        /* body omitted: interface retained */
+    }
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_hash() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_as_ref() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_as_mut() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_borrow() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_borrow_mut() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_from() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_from_slice() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_exact_size_iterator() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn veclike_deref_slice() {
+        /* body omitted: interface retained */
+    }[test]
+    fn test_into_inner() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_from_vec() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_retain() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_dedup() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_resize() {
+        /* body omitted: interface retained */
+    }
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_write() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

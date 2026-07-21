@@ -1,0 +1,1125 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-rank-select-select-rs-115-26-rule-572-d0f6b60ca9")]`.
+- Define `pub extern "C" fn __unsat_poc_src_rank_select_select_rs_115_26_rule_572_d0f6b60ca9()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "rank_select::select::select64",
+    "path": "src/rank_select/select.rs",
+    "line_start": 78,
+    "line_end": 94,
+    "body_end": 125,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "u8"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 625,
+    "line_end": 657,
+    "body_end": 657,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&<I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 115,
+    "col": 26,
+    "path": "src/rank_select/select.rs",
+    "id": "src-rank_select-select-rs-115-26"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "usize",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+Calling this method with an out-of-bounds index is undefined behavior, even if the resulting reference is not used.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-rank_select-select-rs-115-26
+
+Rule id: rule-572
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"binary","op":"<","left":{"type":"simplified_var","name":"get_arg(2)"},"right":{"type":"simplified_var","name":"get_arg(1)"}},"original":{"type":"binary","op":"<","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":2}]},"right":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]}}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("../README.md")]
+
+mod rank_select;
+
+pub use rank_select::{RankSimple, ArrayWithRankSimple, RankSelect101111, ArrayWithRank101111,
+     Rank, Select, Select0, SelectForRank101111, Select0ForRank101111, select64, optimal_combined_sampling,
+     BinaryRankSearch, CombinedSampling, ConstCombinedSamplingDensity, AdaptiveCombinedSamplingDensity, };
+
+mod bitvec;
+pub use bitvec::*;
+
+/// Returns ceil of `n/d`.
+#[inline(always)] pub const fn ceiling_div(n: usize, d: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+/// Returns the largest `how_many`-bit number, i.e. 0..01..1 mask with `how_many` ones. `how_many` must be in range [0, 63].
+#[inline(always)] pub const fn n_lowest_bits(how_many: u8) -> u64 {
+    /* body omitted: interface retained */
+}
+
+/// Returns the largest `how_many`-bit number, i.e. 0..01..1 mask with `how_many` ones. `how_many` must be in range [1, 64].
+#[inline(always)] pub const fn n_lowest_bits_1_64(how_many: u8) -> u64 {
+    /* body omitted: interface retained */
+}
+
+/// Returns the largest `how_many`-bit number, i.e. 0..01..1 mask with `how_many` ones. `how_many` must be in range [0, 64].
+/// 
+/// It is a bit slower than [`n_lowest_bits`] and [`n_lowest_bits_1_64`].
+#[inline(always)] pub const fn n_lowest_bits_0_64(how_many: u8) -> u64 {
+    /* body omitted: interface retained */
+}
+
+/// Calculates the minimal number of bits needed to store values from `0` to given `max_value`.
+///
+/// # Example
+///
+/// ```
+/// use bitm::bits_to_store;
+///
+/// assert_eq!(bits_to_store(0u8), 0);
+/// assert_eq!(bits_to_store(1u16), 1);
+/// assert_eq!(bits_to_store(7u32), 3);
+/// assert_eq!(bits_to_store(8u64), 4);
+/// ```
+#[inline] pub fn bits_to_store<V: Into<u64>>(max_value: V) -> u8 {
+    /* body omitted: interface retained */
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_div_up() {
+        /* body omitted: interface retained */
+    }
+
+    #[test]
+    fn test_n_lowest() {
+        /* body omitted: interface retained */
+    }
+
+    #[test]
+    fn test_bits_to_store() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/rank_select/mod.rs">
+```rust
+mod utils;
+mod select;
+use std::ops::Deref;
+use self::select::{U64_PER_L1_ENTRY, U64_PER_L2_ENTRY, U64_PER_L2_RECORDS};
+pub use self::select::{
+    Select, Select0, BinaryRankSearch, CombinedSampling, ConstCombinedSamplingDensity,
+    AdaptiveCombinedSamplingDensity, SelectForRank101111, Select0ForRank101111, select64,
+    optimal_combined_sampling,
+};
+use super::{ceiling_div, n_lowest_bits};
+use dyn_size_of::GetSize;
+/// Trait for rank queries on bit vector.
+/// Rank query returns the number of ones (or zeros) in requested number of the first bits.
+pub trait Rank {
+    /// Returns the number of ones in first `index` bits or [`None`] if `index` is out of bounds.
+    fn try_rank(&self, index: usize) -> Option<usize>;
+    /// Returns the number of ones in first `index` bits or panics if `index` is out of bounds.
+    #[inline]
+    fn rank(&self, index: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of ones in first `index` bits.
+    /// The result is undefined if `index` is out of bounds.
+    #[inline]
+    unsafe fn rank_unchecked(&self, index: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of zeros in first `index` bits or [`None`] if `index` is out of bounds.
+    #[inline]
+    fn try_rank0(&self, index: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of zeros in first `index` bits or panics if `index` is out of bounds.
+    #[inline]
+    fn rank0(&self, index: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of ones in first `index` bits.
+    /// The result is undefined if `index` is out of bounds.
+    #[inline]
+    unsafe fn rank0_unchecked(&self, index: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Returns number of bits set (to one) in `content` whose length does not exceeds 8.
+#[inline]
+fn count_bits_in(content: &[u64]) -> usize {
+    /* body omitted: interface retained */
+}
+/// Returns number of bits set (to one) in `content` whose length does not exceeds 8.
+/// Returns number of bits set (to one) in `content` whose length does not exceeds 8.
+/// The structure that holds bit vector `content` and `ranks` structure that takes no more than 3.125% extra space.
+/// It can return the number of ones (or zeros) in first `index` bits of the `content` (see `rank` and `rank0` method) in *O(1)* time.
+/// In addition, it supports select queries utilizing binary search over ranks (see [`BinaryRankSearch`])
+/// or (optionally, at the cost of extra space overhead; about 0.39% with default settings)
+/// combined sampling (which is usually faster; see [`CombinedSampling`]).
+///
+/// Any type that implements the [`Deref`] trait with `Target = [u64]` can be used as a bit vector.
+/// It is recommended to use this structure with bit vectors allocated with alignment to the CPU cache line or 64 bytes.
+/// Such a vector can be constructed, for example, by compiling `bitm` with the `aligned-vec` feature and using implementation
+/// of [`crate::BitVec`] trait for `aligned_vec::ABox<[u64]>`, for example: `ABox::with_zeroed_bits(number_of_bits)`.
+///
+/// The structure supports vectors up to 2<sup>64</sup> bits and its design is based on a 3-level (compact due to relative addressing)
+/// index that samples rank responses every 512 bits and is CPU cache friendly as the first level is small
+/// (each its entry covers 2<sup>32</sup> bits) and the other two are interleaved.
+///
+/// It uses modified version of the structure described in the paper:
+/// - Zhou D., Andersen D.G., Kaminsky M. (2013) "Space-Efficient, High-Performance Rank and Select Structures on Uncompressed Bit Sequences".
+///   In: Bonifaci V., Demetrescu C., Marchetti-Spaccamela A. (eds) Experimental Algorithms. SEA 2013.
+///   Lecture Notes in Computer Science, vol 7933. Springer, Berlin, Heidelberg. <https://doi.org/10.1007/978-3-642-38527-8_15>
+///
+/// The modification consists of different level 2 entries that hold 4 rank values (r0 <= r1 <= r2 <= r3) relative to level 1 entry.
+/// The content of level 2 entry, listing from the least significant bits, is:
+/// - original: r0 stored on 32 bits, r1-r0 on 10 bits, r2-r1 on 10 bits, r3-r2 on 10 bits;
+/// - our: r0 stored on 32 bits, r3-r0 on 11 bits, r2-r0 on 11 bits, r1-r0 on 10 bits.
+/// With this layout, we can read the corresponding value in the rank query without branching.
+///
+/// Another modification that makes our implementation unique is the ability of the select support structure to adapt
+/// the sampling density to the content of the bit vector (see [`CombinedSampling`] and [`AdaptiveCombinedSamplingDensity`]).
+///
+/// For in-word selection, the structure uses the [`select64`] function.
+#[derive(Clone)]
+pub struct RankSelect101111<
+    Select = BinaryRankSearch,
+    Select0 = BinaryRankSearch,
+    BV = Box<[u64]>,
+> {
+    pub content: BV,
+    pub l1ranks: Box<[usize]>,
+    pub l2ranks: Box<[u64]>,
+    select: Select,
+    select0: Select0,
+}
+impl<S, S0, BV> RankSelect101111<S, S0, BV> {
+    /// Returns reference to structure that support select (one) operation.
+    #[inline]
+    pub fn select_support(&self) -> &S {
+        /* body omitted: interface retained */
+    }
+    /// Returns reference to structure that support select zero operation.
+    #[inline]
+    pub fn select0_support(&self) -> &S0 {
+        /* body omitted: interface retained */
+    }
+}
+impl<S: GetSize, S0: GetSize, BV: GetSize> GetSize for RankSelect101111<S, S0, BV> {
+    fn size_bytes_dyn(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    const USES_DYN_MEM: bool = true;
+}
+impl<
+    S: SelectForRank101111,
+    S0: Select0ForRank101111,
+    BV: Deref<Target = [u64]>,
+> From<BV> for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn from(value: BV) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<S: SelectForRank101111, S0, BV: Deref<Target = [u64]>> Select
+for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn try_select(&self, rank: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn select_unchecked(&self, rank: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl<S, S0: Select0ForRank101111, BV: Deref<Target = [u64]>> Select0
+for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn try_select0(&self, rank: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn select0_unchecked(&self, rank: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl<S: SelectForRank101111, S0: Select0ForRank101111, BV: Deref<Target = [u64]>> Rank
+for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn try_rank(&self, index: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn rank_unchecked(&self, index: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl<
+    S: SelectForRank101111,
+    S0: Select0ForRank101111,
+    BV: Deref<Target = [u64]>,
+> RankSelect101111<S, S0, BV> {
+    pub fn build(content: BV) -> (Self, usize) {
+        /* body omitted: interface retained */
+    }
+}
+impl<
+    S: SelectForRank101111,
+    S0: Select0ForRank101111,
+    BV: Deref<Target = [u64]>,
+> AsRef<[u64]> for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn as_ref(&self) -> &[u64] {
+        /* body omitted: interface retained */
+    }
+}
+/// Alias for backward compatibility. [`RankSelect101111`] with [`BinaryRankSearch`] (which does not introduce a space overhead) for select queries.
+pub type ArrayWithRank101111 = RankSelect101111<BinaryRankSearch, BinaryRankSearch>;
+/// The structure that holds array of bits `content` and `ranks` structure that takes no more than 6.25% extra space.
+/// It can returns the number of ones in first `index` bits of the `content` (see `rank` method) in *O(1)* time.
+/// Only `content` with less than 2<sup>32</sup> bit ones is supported.
+/// Any type that implements the [`Deref`] trait with `Target = [u64]` can be used as a bit vector.
+///
+/// Usually [`RankSelect101111`] should be preferred to [`ArrayWithRankSimple`].
+#[derive(Clone)]
+pub struct RankSimple<BV = Box<[u64]>> {
+    pub content: BV,
+    pub ranks: Box<[u32]>,
+}
+impl<BV: GetSize> GetSize for RankSimple<BV> {
+    fn size_bytes_dyn(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    const USES_DYN_MEM: bool = true;
+}
+impl<BV: Deref<Target = [u64]>> From<BV> for RankSimple<BV> {
+    #[inline]
+    fn from(value: BV) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<BV: Deref<Target = [u64]>> RankSimple<BV> {
+    /// Constructs `ArrayWithRankSimple` and count number of bits set in `content`. Returns both.
+    pub fn build(content: BV) -> (Self, u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn try_rank(&self, index: usize) -> Option<u32> {
+        /* body omitted: interface retained */
+    }
+    pub fn rank(&self, index: usize) -> u32 {
+        /* body omitted: interface retained */
+    }
+}
+impl<BV: Deref<Target = [u64]>> AsRef<[u64]> for RankSimple<BV> {
+    #[inline]
+    fn as_ref(&self) -> &[u64] {
+        /* body omitted: interface retained */
+    }
+}
+impl<BV: Deref<Target = [u64]>> Rank for RankSimple<BV> {
+    #[inline]
+    fn try_rank(&self, index: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn rank(&self, index: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Alias for backward compatibility.
+pub type ArrayWithRankSimple = RankSimple;
+#[cfg(test)]
+mod tests {
+    use crate::BitAccess;
+    use super::*;
+    fn check_all_ones<ArrayWithRank: AsRef<[u64]> + Rank + Select>(a: &ArrayWithRank) {
+        /* body omitted: interface retained */
+    }
+    fn check_all_zeros<ArrayWithRank: AsRef<[u64]> + Rank + Select0>(a: &ArrayWithRank) {
+        /* body omitted: interface retained */
+    }
+    fn test_empty_array_rank<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select + Select0,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_empty_array_rank_101111() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_empty_array_rank_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    fn test_array_with_rank<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select + Select0,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn array_with_rank_101111() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn array_with_rank_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn array_with_rank_simple_instantiates_try_rank() {
+        /* body omitted: interface retained */
+    }
+    fn test_big_array_with_rank<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select + Select0,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn big_array_with_rank_101111() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn big_array_with_rank_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    fn test_content<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select + Select0,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn content_101111() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn content_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    fn array_64bit<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select + Select0,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_101111_binary() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    fn array_64bit_filled<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_filled_101111() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_filled_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    fn array_64bit_halffilled<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select + Select0,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_halffilled_101111_binary() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_halffilled_101111_combined() {
+        /* body omitted: interface retained */
+    }
+    fn array_64bit_zeroed_first<
+        ArrayWithRank: From<Box<[u64]>> + AsRef<[u64]> + Rank + Select,
+    >() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_zeroed_first_101111() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    #[ignore = "uses much memory and time"]
+    fn array_64bit_zeroed_first_101111_combined() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/rank_select/select.rs">
+```rust
+use dyn_size_of::GetSize;
+#[cfg(all(target_arch = "x86", target_feature = "bmi2"))]
+use core::arch::x86 as arch;
+#[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+use core::arch::x86_64 as arch;
+use crate::ceiling_div;
+use super::utils::partition_point_with_index;
+pub const BITS_PER_L1_ENTRY: usize = 1 << 32;
+pub const U64_PER_L1_ENTRY: usize = 1 << (32 - 6);
+pub const U64_PER_L2_ENTRY: usize = 32;
+pub const BITS_PER_L2_ENTRY: usize = U64_PER_L2_ENTRY * 64;
+pub const U64_PER_L2_RECORDS: usize = 8;
+pub const BITS_PER_L2_RECORDS: u64 = U64_PER_L2_RECORDS as u64 * 64;
+pub const L2_ENTRIES_PER_L1_ENTRY: usize = U64_PER_L1_ENTRY / U64_PER_L2_ENTRY;
+/// Trait implemented by the types that support select (one) queries,
+/// i.e. can (quickly) find the position of the n-th one in the bitmap.
+pub trait Select {
+    /// Returns the position of the `rank`-th one (counting from 0) in `self` or [`None`] if there are no such many ones in `self`.
+    fn try_select(&self, rank: usize) -> Option<usize>;
+    /// Returns the position of the `rank`-th one (counting from 0) in `self` or panics if there are no such many ones in `self`.
+    #[inline(always)]
+    fn select(&self, rank: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the position of the `rank`-th one (counting from 0) in `self`.
+    /// The result is undefined if there are no such many ones in `self`.
+    #[inline(always)]
+    unsafe fn select_unchecked(&self, rank: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Trait implemented by the types that support select zero queries,
+/// i.e. can (quickly) find the position of the n-th zero in the bitmap.
+pub trait Select0 {
+    /// Returns the position of the `rank`-th zero (counting from 0) in `self` or [`None`] if there are no such many zeros in `self`.
+    fn try_select0(&self, rank: usize) -> Option<usize>;
+    /// Returns the position of the `rank`-th zero (counting from 0) in `self` or panics if there are no such many zeros in `self`.
+    #[inline(always)]
+    fn select0(&self, rank: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the position of the `rank`-th zero (counting from 0) in `self`.
+    /// The result is undefined if there are no such many zeros in `self`.
+    #[inline(always)]
+    unsafe fn select0_unchecked(&self, rank: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Trait implemented by strategies for select (ones) operations for `ArrayWithRank101111`.
+pub trait SelectForRank101111 {
+    fn new(
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self;
+    fn select(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize>;
+    #[inline(always)]
+    unsafe fn select_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Trait implemented by strategies for select zeros operations for `ArrayWithRank101111`.
+pub trait Select0ForRank101111 {
+    fn new0(
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self;
+    fn select0(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize>;
+    #[inline(always)]
+    unsafe fn select0_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Returns the position of the `rank`-th (counting from 0) one in the bit representation of `n`,
+/// i.e. the index of the one with the given rank.
+///
+/// On x86-64 CPU with the BMI2 instruction set, it uses the method described in:
+/// - Prashant Pandey, Michael A. Bender, Rob Johnson, and Rob Patro,
+///   "A General-Purpose Counting Filter: Making Every Bit Count",
+///   In Proceedings of the 2017 ACM International Conference on Management of Data (SIGMOD '17).
+///   Association for Computing Machinery, New York, NY, USA, 775–787. <https://doi.org/10.1145/3035918.3035963>
+/// - Prashant Pandey, Michael A. Bender, Rob Johnson, "A Fast x86 Implementation of Select", arXiv:1706.00990
+///
+/// If BMI2 is not available, the implementation uses the broadword selection algorithm by Vigna, improved by Gog and Petri, and Vigna:
+/// - Sebastiano Vigna, "Broadword Implementation of Rank/Select Queries", WEA, 2008
+/// - Simon Gog, Matthias Petri, "Optimized succinct data structures for massive data". Software: Practice and Experience 44, 2014
+/// - Sebastiano Vigna, The selection problem <https://sux4j.di.unimi.it/select.php>
+///
+/// The implementation is based on the one contained in folly library by Meta.
+#[inline(never)]
+pub fn select64(n: u64, rank: u8) -> u8 {
+    #[cfg(
+        all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "bmi2")
+    )] { unsafe { arch::_pdep_u64(1u64 << rank, n) }.trailing_zeros() as u8 }
+    #[cfg(
+        not(
+            all(
+                any(target_arch = "x86", target_arch = "x86_64"),
+                target_feature = "bmi2"
+            )
+        )
+    )]
+    {
+        use std::num::Wrapping as W;
+        let rank = W(rank as u64);
+        const ONES_STEP4: W<u64> = W(0x1111111111111111);
+        const ONES_STEP8: W<u64> = W(0x0101010101010101);
+        const MSB_STEP8: W<u64> = W(0x80 * ONES_STEP8.0);
+        let mut s = W(n);
+        s = s - ((s & W(0xA) * ONES_STEP4) >> 1);
+        s = (s & W(0x3) * ONES_STEP4) + ((s >> 2) & W(0x3) * ONES_STEP4);
+        s = (s + (s >> 4)) & W(0xF) * ONES_STEP8;
+        let byte_sums = s * ONES_STEP8;
+        let step8 = rank * ONES_STEP8;
+        let geq_step8 = ((step8 | MSB_STEP8) - byte_sums) & MSB_STEP8;
+        let place = geq_step8.0.count_ones() as u8 * 8;
+        let byte_rank = rank.0 - (((byte_sums.0 << 8) >> place) & 0xFF);
+        place
+            + unsafe {
+                let __klee_arg0 = (((n >> place) & 0xFF) | (byte_rank << 8)) as usize;
+                klee_ext_bind::bind_arg_u64(1, (SELECT_U8).len() as u64);
+                klee_ext_bind::bind_arg_u64(2, __klee_arg0 as u64);
+                klee_ext_bind::callsite!("src-rank_select-select-rs-115-26");
+                let mut __klee_ret_src_rank_select_select_rs_115_26_get_unchecked = SELECT_U8
+                    .get_unchecked(__klee_arg0);
+                __klee_ret_src_rank_select_select_rs_115_26_get_unchecked
+            }
+    }
+}
+/// A select strategy for [`RankSelect101111`](crate::RankSelect101111)
+/// that does not introduce any overhead (on space or construction speed)
+/// and is based on a binary search over ranks.
+#[derive(Clone, Copy)]
+pub struct BinaryRankSearch;
+impl GetSize for BinaryRankSearch {}
+/// Find index of L1 chunk that contains `rank`-th one (or zero if `ONE` is `false`)
+/// and decrease `rank` by number of ones (or zeros) in previous chunks.
+#[inline]
+fn select_l1<const ONE: bool>(l1ranks: &[usize], rank: &mut usize) -> usize {
+    /* body omitted: interface retained */
+}
+#[inline(always)]
+fn consider_l2entry<const ONE: bool>(
+    l2_index: usize,
+    mut l2_entry: u64,
+    rank: &mut usize,
+) -> usize {
+    /* body omitted: interface retained */
+}
+/// Select from `l2ranks` entry pointed by `l2_index`, without `l2_entry` entry bounds checking.
+#[inline(always)]
+unsafe fn select_from_l2_unchecked<const ONE: bool>(
+    content: &[u64],
+    l2ranks: &[u64],
+    l2_index: usize,
+    mut rank: usize,
+) -> usize {
+    /* body omitted: interface retained */
+}
+/// Select from `l2ranks` entry pointed by `l2_index`, without `l2_entry` entry bounds checking.
+#[inline(always)]
+unsafe fn select_from_l2<const ONE: bool>(
+    content: &[u64],
+    l2ranks: &[u64],
+    l2_index: usize,
+    mut rank: usize,
+) -> Option<usize> {
+    /* body omitted: interface retained */
+}
+impl BinaryRankSearch {
+    #[inline(always)]
+    fn select_l2index<const ONE: bool>(
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: &mut usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl SelectForRank101111 for BinaryRankSearch {
+    #[inline]
+    fn new(
+        _content: &[u64],
+        _l1ranks: &[usize],
+        _l2ranks: &[u64],
+        _total_rank: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn select(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn select_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl Select0ForRank101111 for BinaryRankSearch {
+    #[inline]
+    fn new0(
+        _content: &[u64],
+        _l1ranks: &[usize],
+        _l2ranks: &[u64],
+        _total_rank: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn select0(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn select0_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+/// Calculates such a sampling density of select values that provides an approximately constant space overhead
+/// (independent of set/unset bits ratio in the vector) of [`CombinedSampling`].
+///
+/// The parameters describe the bit vector and the desired result range:
+/// - `n` -- numbers of ones (for select) or zeros (for select0) in the vector,
+/// - `len` -- length of the vector in bits,
+/// - `max_result` -- the largest possible result, returned only and always for n >= 75%len
+///                   (must be in range [7, 31]).
+///
+/// The result is the base 2 logarithm of the recommended sampling, and it is always in range [7, `max_result`].
+/// The actual sampling is 2 times denser, but every second sample sometimes cannot be recorded accurately.
+/// The minimum value is 7, as we never sample two bits in the same 64-bit word.
+///
+/// A good value for `max_result` is 13, which leads to about 0.39% space overhead,
+/// and, for n = 50%u, results in sampling positions of every 2^12(/2)=4096(/2) ones (or zeros for select0).
+/// As `max_result` decreases, the speed of select queries increases
+/// at the cost of higher space overhead (which doubles with each decrease by 1).
+pub const fn optimal_combined_sampling(mut n: usize, len: usize, max_result: u8) -> u8 {
+    /* body omitted: interface retained */
+}
+/// Trait that determines the sampling density of select values by [`CombinedSampling`].
+pub trait CombinedSamplingDensity: Copy {
+    type SamplingDensity: Copy;
+    /// Returns density for given parameters of bit vector:
+    /// - `number_of_items` -- numbers of ones (for select) or zeros (for select0) in the vector,
+    /// - `len` -- length of the vector in bits.
+    fn density_for(number_of_items: usize, len: usize) -> Self::SamplingDensity;
+    fn items_per_sample_log2(density: Self::SamplingDensity) -> u8;
+    /// Returns number of bit ones or zeros (in the case of select0) per each sample (entry).
+    #[inline(always)]
+    fn items_per_sample(density: Self::SamplingDensity) -> u32 {
+        /* body omitted: interface retained */
+    }
+    /// Returns `index` divided by [`Self::items_per_sample(density)`].
+    #[inline(always)]
+    fn divide(index: usize, density: Self::SamplingDensity) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn is_in_second_half(index: usize, density: Self::SamplingDensity) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+/// Specifies a constant sampling of select values by [`CombinedSampling`], given as
+/// the base 2 logarithm (which can be calculated by [`optimal_combined_sampling`] function).
+/// The actual sampling is 2 times denser, but every second sample sometimes cannot be recorded accurately.
+///
+/// `VALUE_LOG2` must be in range [7, 31].
+/// Default value 13 means sampling positions of every 2^13(/2)=8192(/2) ones (or zeros for select0),
+/// which leads to about 0.20% space overhead in vectors filled with bit ones in about half.
+/// As sampling decreases, the speed of select queries increases at the expense of higher
+/// space overhead (which doubles with each decrease by 1).
+#[derive(Clone, Copy)]
+pub struct ConstCombinedSamplingDensity<const VALUE_LOG2: u8 = 13>;
+impl<const VALUE_LOG2: u8> CombinedSamplingDensity
+for ConstCombinedSamplingDensity<VALUE_LOG2> {
+    type SamplingDensity = ();
+    #[inline(always)]
+    fn density_for(_number_of_items: usize, _len: usize) -> Self::SamplingDensity {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn items_per_sample_log2(_density: Self::SamplingDensity) -> u8 {
+        /* body omitted: interface retained */
+    }
+}
+/// Specifies adaptive sampling of select values by [`CombinedSampling`].
+///
+/// The sampling density is calculated based on the content of the bit vector
+/// using the [`optimal_combined_sampling`] function, with the given `MAX_RESULT` parameter.
+/// `MAX_RESULT` must be in range [7, 31].
+/// As `MAX_RESULT` decreases, the speed of select queries increases
+/// at the cost of higher space overhead (which doubles with each decrease by 1).
+/// Its value 13 leads to about 0.39% space overhead, and, for vectors filled with bit ones in about half,
+/// results in sampling positions of every 2^12(/2)=4096(/2) ones (or zeros for select0).
+#[derive(Clone, Copy)]
+pub struct AdaptiveCombinedSamplingDensity<const MAX_RESULT: u8 = 13>;
+impl<const MAX_RESULT: u8> CombinedSamplingDensity
+for AdaptiveCombinedSamplingDensity<MAX_RESULT> {
+    type SamplingDensity = u8;
+    #[inline(always)]
+    fn density_for(number_of_items: usize, len: usize) -> Self::SamplingDensity {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn items_per_sample_log2(density: Self::SamplingDensity) -> u8 {
+        /* body omitted: interface retained */
+    }
+}
+/// Fast select strategy for [`RankSelect101111`](crate::RankSelect101111) with about 0.39% space overhead.
+///
+/// Space/speed trade-off can be adjusted by the template parameter, by giving one of:
+/// - [`AdaptiveCombinedSamplingDensity`] (default) -- works well with a wide range of bit vectors,
+/// - [`ConstCombinedSamplingDensity`] -- recommended for vectors with a known ratio of set/unset bits;
+///                with default parameters, recommended for vectors filled with bit ones in about half.
+///
+/// The implementation generally follows the paper:
+/// - Zhou D., Andersen D.G., Kaminsky M. (2013) "Space-Efficient, High-Performance Rank and Select Structures on Uncompressed Bit Sequences".
+///   In: Bonifaci V., Demetrescu C., Marchetti-Spaccamela A. (eds) Experimental Algorithms. SEA 2013.
+///   Lecture Notes in Computer Science, vol 7933. Springer, Berlin, Heidelberg. <https://doi.org/10.1007/978-3-642-38527-8_15>
+/// However, our implementation can automatically adjust the sampling density according to the content of the vector
+/// (see [`AdaptiveCombinedSamplingDensity`]).
+///
+/// Combined Sampling was proposed in:
+/// - G. Navarro, E. Providel, "Fast, small, simple rank/select on bitmaps",
+///   in: R. Klasing (Ed.), Experimental Algorithms, Springer Berlin Heidelberg, Berlin, Heidelberg, 2012, pp. 295–306
+#[derive(Clone)]
+pub struct CombinedSampling<
+    D: CombinedSamplingDensity = AdaptiveCombinedSamplingDensity,
+> {
+    /// Bit indices (relative to level 1) of every d-th (d depends on D) one (or zero in the case of select 0) in content,
+    /// starting from the first one.
+    select: Box<[u32]>,
+    /// [`select_begin`] indices that begin descriptions of subsequent first-level entries.
+    select_begin: Box<[usize]>,
+    /// Sampling density (ZST for const density).
+    density: D::SamplingDensity,
+}
+impl<D: CombinedSamplingDensity> GetSize for CombinedSampling<D>
+where
+    D::SamplingDensity: GetSize,
+{
+    fn size_bytes_dyn(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    const USES_DYN_MEM: bool = true;
+}
+impl<D: CombinedSamplingDensity> CombinedSampling<D> {
+    #[inline]
+    fn new<const ONE: bool>(
+        content: &[u64],
+        l1ranks: &[usize],
+        total_rank: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn select<const ONE: bool>(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    unsafe fn select_unchecked<const ONE: bool>(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn decode_shift(&self, mut s: u32, rank: usize) -> u32 {
+        /* body omitted: interface retained */
+    }
+}
+impl<D: CombinedSamplingDensity> SelectForRank101111 for CombinedSampling<D> {
+    fn new(
+        content: &[u64],
+        l1ranks: &[usize],
+        _l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn select(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn select_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl<D: CombinedSamplingDensity> Select0ForRank101111 for CombinedSampling<D> {
+    fn new0(
+        content: &[u64],
+        l1ranks: &[usize],
+        _l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn select0(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn select0_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_optimal_combined_sampling_14() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_optimal_combined_sampling_15() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn test_select64() {
+        /* body omitted: interface retained */
+    }
+}
+/// For any n<256 and rank<8, the value at index 256*rank+n is the index of the (rank+1)-th one in the bit representation of n, or 8.
+#[cfg(
+    not(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "bmi2"))
+)]
+const SELECT_U8: [u8; 2048] = [
+    8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 8, 8, 8, 1, 8, 2, 2, 1, 8, 3, 3, 1, 3, 2, 2, 1, 8, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1,
+    4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1,
+    6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1,
+    3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 7, 7, 1, 7, 2, 2, 1,
+    7, 3, 3, 1, 3, 2, 2, 1, 7, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 7, 5, 5, 1,
+    5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1,
+    7, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1, 6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1,
+    3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 8, 8, 8, 8, 8, 8, 2, 8, 8, 8, 3, 8, 3, 3, 2, 8, 8, 8, 4,
+    8, 4, 4, 2, 8, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 5, 8, 5, 5, 2, 8, 5, 5, 3, 5, 3, 3, 2,
+    8, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 6, 8, 6, 6, 2, 8, 6, 6, 3,
+    6, 3, 3, 2, 8, 6, 6, 4, 6, 4, 4, 2, 6, 4, 4, 3, 4, 3, 3, 2, 8, 6, 6, 5, 6, 5, 5, 2,
+    6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 7,
+    8, 7, 7, 2, 8, 7, 7, 3, 7, 3, 3, 2, 8, 7, 7, 4, 7, 4, 4, 2, 7, 4, 4, 3, 4, 3, 3, 2,
+    8, 7, 7, 5, 7, 5, 5, 2, 7, 5, 5, 3, 5, 3, 3, 2, 7, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3,
+    4, 3, 3, 2, 8, 7, 7, 6, 7, 6, 6, 2, 7, 6, 6, 3, 6, 3, 3, 2, 7, 6, 6, 4, 6, 4, 4, 2,
+    6, 4, 4, 3, 4, 3, 3, 2, 7, 6, 6, 5, 6, 5, 5, 2, 6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4,
+    5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 3,
+    8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 4, 8, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5,
+    8, 5, 5, 3, 8, 8, 8, 5, 8, 5, 5, 4, 8, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 3, 8, 8, 8, 6, 8, 6, 6, 4, 8, 6, 6, 4, 6, 4, 4, 3, 8, 8, 8, 6,
+    8, 6, 6, 5, 8, 6, 6, 5, 6, 5, 5, 3, 8, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 3, 8, 8, 8, 7, 8, 7, 7, 4, 8, 7, 7, 4,
+    7, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 3, 8, 7, 7, 5, 7, 5, 5, 4,
+    7, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 3, 8, 7, 7, 6,
+    7, 6, 6, 4, 7, 6, 6, 4, 6, 4, 4, 3, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 3,
+    7, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5, 8, 5, 5, 4, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 4,
+    8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 6, 8, 6, 6, 5, 8, 6, 6, 5,
+    6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 7,
+    8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 4, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6,
+    7, 6, 6, 5, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 5,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 5, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7,
+];
+```
+</file>
+</rust context>

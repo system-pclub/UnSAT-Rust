@@ -1,0 +1,2537 @@
+<rust context>
+
+<file path="src/array.rs">
+```rust
+use crate::node::{Color, EMPTY_REF};
+use crate::tree::Tree;
+
+pub struct StackNode {
+    index: u32,
+    left: u32,
+    right: u32,
+}
+
+impl<T: Clone + PartialEq + Eq + PartialOrd + Ord> Tree<T> {
+    pub fn with_sorted_array(empty: T, slice: &[T], extra_capacity: usize) -> Self {
+        let n = slice.len();
+        let mut tree = Tree::new(empty, n + extra_capacity);
+
+        if n == 0 {
+            return tree;
+        }
+
+        let mut visited: Vec<bool> = vec![false; n];
+
+        let si = 0;
+        let mid = n >> 1;
+        visited[mid] = true;
+        tree.insert_root(slice[si + mid].clone());
+
+        let log = (n + 1).ilog2();
+        let s0 = n >> 1;
+
+        let mut j = 1;
+        for i in 1..log {
+            let color = if i & 1 == 0 { Color::Black } else { Color::Red };
+            let mut s = s0;
+
+            let ni = 1 << (i - 1);
+            for _ in 0..ni {
+                let p = ((j - 1) >> 1) + 1;
+
+                let parent = tree.mut_node(p);
+                parent.left = j + 1;
+                parent.right = j + 2;
+
+                let lt = s >> i;
+                let left = tree.store.get_free_index();
+                let left_node = tree.mut_node(left);
+                left_node.parent = p;
+                left_node.color = color;
+                left_node.value = slice[si + lt].clone();
+
+                s += n;
+
+                let rt = s >> i;
+                let right = tree.store.get_free_index();
+                let right_node = tree.mut_node(right);
+                right_node.parent = p;
+                right_node.color = color;
+                right_node.value = slice[si + rt].clone();
+
+                s += n;
+
+                j += 2;
+                visited[lt] = true;
+                visited[rt] = true;
+            }
+        }
+
+        for i in 0..n {
+            if !visited[i] {
+                tree.insert(slice[si + i].clone());
+            }
+        }
+
+        tree
+    }
+
+    pub fn ordered_list(&self) -> Vec<T> {
+        if self.root == EMPTY_REF {
+            return Vec::new();
+        }
+
+        let height = self.height();
+        let mut list = Vec::with_capacity(1 << height);
+        let mut stack = Vec::with_capacity(height);
+
+        self.fill_ordered_list_with_stack(&mut list, &mut stack);
+
+        list
+    }
+
+    #[inline]
+    pub fn fill_ordered_list(&self, list: &mut Vec<T>) {
+        let height = self.height();
+        let mut stack = Vec::with_capacity(height);
+        self.fill_ordered_list_with_stack(list, &mut stack);
+    }
+
+    pub fn fill_ordered_list_with_stack(&self, list: &mut Vec<T>, stack: &mut Vec<StackNode>) {
+        list.clear();
+        stack.clear();
+
+        let root_node = self.node(self.root);
+        stack.push(StackNode { index: self.root, left: root_node.left, right: root_node.right });
+
+        while !stack.is_empty() {
+            let last_stack_index = stack.len() - 1;
+            let s = &mut stack[last_stack_index];
+
+            if s.left != EMPTY_REF {
+                let index = s.left;
+                s.left = EMPTY_REF; // to skip next time
+
+                // go down left
+                let node = self.node(index);
+                let left = node.left;
+                let right = node.right;
+                stack.push(StackNode { index, left, right });
+            } else {
+                if s.index != EMPTY_REF {
+                    let index = s.index;
+                    s.index = EMPTY_REF; // to skip next time
+
+                    // add value
+                    list.push(self.node(index).value.clone());
+                }
+
+                if s.right != EMPTY_REF {
+                    let index = s.right;
+                    s.right = EMPTY_REF; // to skip next time
+
+                    // go down right
+                    let node = self.node(index);
+                    let left = node.left;
+                    let right = node.right;
+                    stack.push(StackNode { index, left, right });
+                } else {
+                    // go up
+                    stack.pop();
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn first_by_order(&self) -> u32 {
+        if self.root == EMPTY_REF {
+            EMPTY_REF
+        } else {
+            self.find_left_minimum(self.root)
+        }
+    }
+
+    pub fn next_by_order(&self, index: u32) -> u32 {
+        let this = self.node(index);
+        if this.right != EMPTY_REF {
+            self.find_left_minimum(this.right)
+        } else {
+            // first parent bigger
+            let mut i = this.parent;
+            while i != EMPTY_REF {
+                let node = self.node(i);
+                if node.value > this.value {
+                    return i;
+                } else {
+                    i = node.parent;
+                }
+            }
+
+            // last element
+            EMPTY_REF
+        }
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+pub mod store;
+pub mod tree;
+pub mod node;
+pub mod array;
+```
+</file>
+
+<file path="src/node.rs">
+```rust
+pub const EMPTY_REF: u32 = u32::MAX;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum Color {
+    Red,
+    Black
+}
+
+pub struct Node<T> {
+    pub parent: u32,
+    pub left: u32,
+    pub right: u32,
+    pub color: Color,
+    pub value: T
+}
+```
+</file>
+
+<file path="src/store.rs">
+```rust
+use crate::node::{Color, EMPTY_REF, Node};
+
+pub struct Store<T> {
+    pub(super) buffer: Vec<Node<T>>,
+    pub(super) unused: Vec<u32>,
+    empty: T,
+}
+
+impl<T: Clone> Store<T> {
+
+    #[inline(always)]
+    pub(super) fn new(empty: T, capacity: usize) -> Self {
+        let capacity = capacity.max(8);
+        let mut store = Self {
+            buffer: Vec::with_capacity(capacity),
+            unused: Vec::with_capacity(capacity),
+            empty,
+        };
+        store.reserve(capacity);
+        store
+    }
+
+    #[inline]
+    fn reserve(&mut self, length: usize) {
+        let n = self.buffer.len() as u32;
+        let l = length as u32;
+        for i in 0..l {
+            let node = Node {
+                parent: EMPTY_REF,
+                left: EMPTY_REF,
+                right: EMPTY_REF,
+                color: Color::Red,
+                value: self.empty.clone(),
+            };
+            self.buffer.push(node);
+            self.unused.push(n + l - i - 1);
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_free_index(&mut self) -> u32 {
+        if self.unused.is_empty() {
+            let extra_capacity = self.unused.capacity() >> 1;
+            self.reserve(extra_capacity);
+        }
+        self.unused.pop().unwrap()
+    }
+
+
+    #[inline(always)]
+    pub fn put_back(&mut self, index: u32) {
+        self.unused.push(index)
+    }
+}
+```
+</file>
+
+<file path="src/tree.rs">
+```rust
+use std::cmp::Ordering;
+use crate::node::{Color, EMPTY_REF, Node};
+use crate::store::Store;
+pub struct Tree<T> {
+    pub store: Store<T>,
+    pub root: u32,
+    nil_index: u32,
+}
+impl<T: Clone + PartialEq + Eq + PartialOrd + Ord> Tree<T> {
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.root == EMPTY_REF
+    }
+    #[inline(always)]
+    pub fn new(empty: T, capacity: usize) -> Self {
+        let mut store = Store::new(empty, capacity);
+        let nil_index = store.get_free_index();
+        Self {
+            store,
+            root: EMPTY_REF,
+            nil_index,
+        }
+    }
+    pub fn clear_all(&mut self) {
+        if self.root == EMPTY_REF {
+            return;
+        }
+        self.store.put_back(self.root);
+        self.root = EMPTY_REF;
+        let mut n = 1;
+        while n > 0 {
+            let i0 = self.store.unused.len() - n;
+            n = 0;
+            for i in i0..self.store.unused.len() {
+                let index = self.store.unused[i];
+                let node = self.node(index);
+                let left = node.left;
+                let right = node.right;
+                if left != EMPTY_REF {
+                    self.store.put_back(left);
+                    n += 1;
+                }
+                if right != EMPTY_REF {
+                    self.store.put_back(right);
+                    n += 1;
+                }
+            }
+        }
+    }
+    #[inline(always)]
+    pub fn is_black(&self, index: u32) -> bool {
+        index == EMPTY_REF || self.node(index).color == Color::Black
+    }
+    #[inline(never)]
+    pub fn node(&self, index: u32) -> &Node<T> {
+        unsafe {
+            let __klee_arg0 = &self.store.buffer;
+            let __klee_arg1 = index as usize;
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
+            klee_ext_bind::bind_arg_u64(2, __klee_arg1 as u64);
+            klee_ext_bind::callsite!("src-tree-rs-65-13");
+            let mut __klee_ret_src_tree_rs_65_13_get_unchecked = __klee_arg0
+                .get_unchecked(__klee_arg1);
+            __klee_ret_src_tree_rs_65_13_get_unchecked
+        }
+    }
+    #[inline(never)]
+    pub fn mut_node(&mut self, index: u32) -> &mut Node<T> {
+        unsafe {
+            let __klee_arg2 = &mut self.store.buffer;
+            let __klee_arg3 = index as usize;
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg2).len() as u64);
+            klee_ext_bind::bind_arg_u64(2, __klee_arg3 as u64);
+            klee_ext_bind::callsite!("src-tree-rs-72-13");
+            let mut __klee_ret_src_tree_rs_72_13_get_unchecked_mut = __klee_arg2
+                .get_unchecked_mut(__klee_arg3);
+            __klee_ret_src_tree_rs_72_13_get_unchecked_mut
+        }
+    }
+    #[inline(always)]
+    fn create_nil_node(&mut self, parent: u32) {
+        let node = self.mut_node(self.nil_index);
+        node.parent = parent;
+        node.left = EMPTY_REF;
+        node.right = EMPTY_REF;
+        node.color = Color::Red;
+    }
+    fn rotate_right(&mut self, index: u32) {
+        let n = self.node(index);
+        let p = n.parent;
+        let lt_index = n.left;
+        let lt_right = self.node(lt_index).right;
+        if lt_right != EMPTY_REF {
+            self.mut_node(lt_right).parent = index;
+            self.mut_node(index).left = lt_right;
+        } else {
+            self.mut_node(index).left = EMPTY_REF;
+        }
+        self.mut_node(index).parent = lt_index;
+        self.mut_node(lt_index).right = index;
+        self.replace_parents_child(p, index, lt_index);
+    }
+    fn rotate_left(&mut self, index: u32) {
+        let n = self.node(index);
+        let p = n.parent;
+        let rt_index = n.right;
+        let rt_left = self.node(rt_index).left;
+        if rt_left != EMPTY_REF {
+            self.mut_node(rt_left).parent = index;
+            self.mut_node(index).right = rt_left;
+        } else {
+            self.mut_node(index).right = EMPTY_REF;
+        }
+        self.mut_node(index).parent = rt_index;
+        self.mut_node(rt_index).left = index;
+        self.replace_parents_child(p, index, rt_index);
+    }
+    #[inline(always)]
+    fn replace_parents_child(&mut self, parent: u32, old_child: u32, new_child: u32) {
+        self.mut_node(new_child).parent = parent;
+        if parent == EMPTY_REF {
+            self.root = new_child;
+            return;
+        }
+        let p = self.mut_node(parent);
+        debug_assert!(
+            p.left == old_child || p.right == old_child,
+            "Node is not a child of its parent"
+        );
+        if p.left == old_child {
+            p.left = new_child;
+        } else {
+            p.right = new_child;
+        }
+    }
+    #[inline(always)]
+    fn remove_parents_child(&mut self, parent: u32, old_child: u32) {
+        let p = self.mut_node(parent);
+        debug_assert!(
+            p.left == old_child || p.right == old_child,
+            "Node is not a child of its parent"
+        );
+        if p.left == old_child {
+            p.left = EMPTY_REF;
+        } else {
+            p.right = EMPTY_REF;
+        }
+    }
+    pub fn insert_if_not_exist(&mut self, value: T) -> bool {
+        if self.root == EMPTY_REF {
+            self.insert_root(value);
+            return true;
+        }
+        let mut index = self.root;
+        let mut p_index = self.root;
+        let mut is_left = false;
+        while index != EMPTY_REF {
+            let node = self.node(index);
+            p_index = index;
+            if node.value == value {
+                return false;
+            }
+            is_left = value < node.value;
+            if is_left {
+                is_left = true;
+                index = node.left;
+            } else {
+                index = node.right;
+            }
+        }
+        _ = self.insert_with_parent(value, p_index, is_left);
+        true
+    }
+    pub fn insert(&mut self, value: T) {
+        if self.root == EMPTY_REF {
+            self.insert_root(value);
+            return;
+        }
+        let mut index = self.root;
+        let mut p_index = self.root;
+        let mut is_left = false;
+        while index != EMPTY_REF {
+            let node = self.node(index);
+            p_index = index;
+            debug_assert!(node.value != value);
+            is_left = value < node.value;
+            if is_left {
+                is_left = true;
+                index = node.left;
+            } else {
+                index = node.right;
+            }
+        }
+        _ = self.insert_with_parent(value, p_index, is_left);
+    }
+    #[inline(always)]
+    pub fn insert_root(&mut self, value: T) {
+        let new_index = self.store.get_free_index();
+        let new_node = self.mut_node(new_index);
+        new_node.parent = EMPTY_REF;
+        new_node.left = EMPTY_REF;
+        new_node.right = EMPTY_REF;
+        new_node.color = Color::Black;
+        new_node.value = value;
+        self.root = new_index;
+    }
+    #[inline]
+    pub fn insert_with_parent(&mut self, value: T, p_index: u32, is_left: bool) -> u32 {
+        let new_index = self.store.get_free_index();
+        let new_node = self.mut_node(new_index);
+        new_node.parent = p_index;
+        new_node.left = EMPTY_REF;
+        new_node.right = EMPTY_REF;
+        new_node.color = Color::Red;
+        new_node.value = value;
+        let parent = self.mut_node(p_index);
+        if is_left {
+            parent.left = new_index;
+        } else {
+            parent.right = new_index;
+        }
+        if parent.color == Color::Red {
+            self.fix_red_black_properties_after_insert(new_index, p_index);
+        }
+        new_index
+    }
+    pub fn fix_red_black_properties_after_insert(
+        &mut self,
+        n_index: u32,
+        p_origin: u32,
+    ) {
+        let mut p_index = p_origin;
+        let g_index = self.node(p_index).parent;
+        if g_index == EMPTY_REF {
+            self.mut_node(p_index).color = Color::Black;
+            return;
+        }
+        let u_index = self.get_uncle(p_index);
+        if u_index != EMPTY_REF && self.node(u_index).color == Color::Red {
+            self.mut_node(p_index).color = Color::Black;
+            self.mut_node(g_index).color = Color::Red;
+            self.mut_node(u_index).color = Color::Black;
+            let gg_index = self.node(g_index).parent;
+            if gg_index != EMPTY_REF && self.node(gg_index).color == Color::Red {
+                self.fix_red_black_properties_after_insert(g_index, gg_index);
+            }
+        } else if p_index == self.node(g_index).left {
+            if n_index == self.node(p_index).right {
+                self.rotate_left(p_index);
+                p_index = n_index;
+            }
+            self.rotate_right(g_index);
+            self.mut_node(p_index).color = Color::Black;
+            self.mut_node(g_index).color = Color::Red;
+        } else {
+            if n_index == self.node(p_index).left {
+                self.rotate_right(p_index);
+                p_index = n_index;
+            }
+            self.rotate_left(g_index);
+            self.mut_node(p_index).color = Color::Black;
+            self.mut_node(g_index).color = Color::Red;
+        }
+    }
+    #[inline]
+    fn get_uncle(&self, p_index: u32) -> u32 {
+        let parent = self.node(p_index);
+        if parent.parent == EMPTY_REF {
+            return EMPTY_REF;
+        }
+        let grandparent = self.node(parent.parent);
+        debug_assert!(
+            grandparent.left == p_index || grandparent.right == p_index,
+            "Parent is not a child of its grandparent"
+        );
+        if grandparent.left == p_index { grandparent.right } else { grandparent.left }
+    }
+    pub fn delete(&mut self, value: &T) {
+        let mut index = self.root;
+        while index != EMPTY_REF {
+            let node = self.node(index);
+            match node.value.cmp(value) {
+                Ordering::Equal => {
+                    break;
+                }
+                Ordering::Less => {
+                    index = node.right;
+                }
+                Ordering::Greater => {
+                    index = node.left;
+                }
+            }
+        }
+        if index == EMPTY_REF {
+            debug_assert!(false, "value is not found");
+            return;
+        }
+        _ = self.delete_index(index);
+    }
+    pub fn delete_if_exist(&mut self, value: &T) {
+        let mut index = self.root;
+        while index != EMPTY_REF {
+            let node = self.node(index);
+            match node.value.cmp(value) {
+                Ordering::Equal => {
+                    _ = self.delete_index(index);
+                    return;
+                }
+                Ordering::Less => {
+                    index = node.right;
+                }
+                Ordering::Greater => {
+                    index = node.left;
+                }
+            }
+        }
+    }
+    pub fn delete_index(&mut self, index: u32) -> u32 {
+        let moved_up_node: u32;
+        let deleted_node_color: Color;
+        let node = self.node(index);
+        let is_root = index == self.root;
+        let is_single = node.left == EMPTY_REF || node.right == EMPTY_REF;
+        if is_single {
+            deleted_node_color = node.color;
+            moved_up_node = self.delete_node_with_zero_or_one_child(index);
+        } else {
+            let successor_index = self.find_left_minimum(node.right);
+            let successor = self.node(successor_index);
+            deleted_node_color = successor.color;
+            self.mut_node(index).value = successor.value.clone();
+            moved_up_node = self.delete_node_with_zero_or_one_child(successor_index);
+        }
+        if moved_up_node == EMPTY_REF || deleted_node_color != Color::Black {
+            return if is_single {
+                self.parent(index)
+            } else if is_root {
+                self.root
+            } else {
+                index
+            };
+        }
+        self.fix_red_black_properties_after_delete(moved_up_node);
+        if moved_up_node == self.nil_index {
+            let p_index = self.node(moved_up_node).parent;
+            if p_index != EMPTY_REF {
+                self.remove_parents_child(p_index, moved_up_node);
+            }
+        }
+        if is_single { self.parent(index) } else if is_root { self.root } else { index }
+    }
+    #[inline(always)]
+    fn parent(&self, index: u32) -> u32 {
+        let parent = self.node(index).parent;
+        if parent == EMPTY_REF { self.root } else { parent }
+    }
+    fn delete_node_with_zero_or_one_child(&mut self, n_index: u32) -> u32 {
+        self.store.put_back(n_index);
+        let node = self.node(n_index);
+        let nd_left = node.left;
+        let nd_right = node.right;
+        let nd_parent = node.parent;
+        let nd_color = node.color;
+        if nd_left != EMPTY_REF {
+            self.replace_parents_child(nd_parent, n_index, nd_left);
+            nd_left
+        } else if nd_right != EMPTY_REF {
+            self.replace_parents_child(nd_parent, n_index, nd_right);
+            nd_right
+        } else {
+            if nd_parent != EMPTY_REF {
+                if nd_color == Color::Black {
+                    self.create_nil_node(nd_parent);
+                    self.replace_parents_child(nd_parent, n_index, self.nil_index);
+                    self.nil_index
+                } else {
+                    self.remove_parents_child(nd_parent, n_index);
+                    EMPTY_REF
+                }
+            } else {
+                self.root = EMPTY_REF;
+                EMPTY_REF
+            }
+        }
+    }
+    fn fix_red_black_properties_after_delete(&mut self, n_index: u32) {
+        if n_index == self.root {
+            return;
+        }
+        let mut s_index = self.get_sibling(n_index);
+        if self.node(s_index).color == Color::Red {
+            self.handle_red_sibling(n_index, s_index);
+            s_index = self.get_sibling(n_index);
+        }
+        let sibling = self.node(s_index);
+        if self.is_black(sibling.left) && self.is_black(sibling.right) {
+            self.mut_node(s_index).color = Color::Red;
+            let p_index = self.node(n_index).parent;
+            let parent = self.mut_node(p_index);
+            if parent.color == Color::Red {
+                parent.color = Color::Black;
+            } else {
+                self.fix_red_black_properties_after_delete(p_index);
+            }
+        } else {
+            self.handle_black_sibling_with_at_least_one_red_child(n_index, s_index);
+        }
+    }
+    fn handle_black_sibling_with_at_least_one_red_child(
+        &mut self,
+        n_index: u32,
+        s_origin: u32,
+    ) {
+        let p_index = self.node(n_index).parent;
+        let mut s_index = s_origin;
+        let (mut sibling_left, mut sibling_right) = {
+            let sibling = self.node(s_origin);
+            (sibling.left, sibling.right)
+        };
+        let node_is_left_child = n_index == self.node(p_index).left;
+        if node_is_left_child && self.is_black(sibling_right) {
+            if sibling_left != EMPTY_REF {
+                self.mut_node(sibling_left).color = Color::Black;
+            }
+            self.mut_node(s_index).color = Color::Red;
+            self.rotate_right(s_index);
+            s_index = self.node(p_index).right;
+            let sibling = self.node(s_index);
+            sibling_left = sibling.left;
+            sibling_right = sibling.right;
+        } else if !node_is_left_child && self.is_black(sibling_left) {
+            if sibling_right != EMPTY_REF {
+                self.mut_node(sibling_right).color = Color::Black;
+            }
+            self.mut_node(s_index).color = Color::Red;
+            self.rotate_left(s_index);
+            s_index = self.node(p_index).left;
+            let sibling = self.node(s_index);
+            sibling_left = sibling.left;
+            sibling_right = sibling.right;
+        }
+        self.mut_node(s_index).color = self.node(p_index).color;
+        self.mut_node(p_index).color = Color::Black;
+        if node_is_left_child {
+            if sibling_right != EMPTY_REF {
+                self.mut_node(sibling_right).color = Color::Black;
+            }
+            self.rotate_left(p_index)
+        } else {
+            if sibling_left != EMPTY_REF {
+                self.mut_node(sibling_left).color = Color::Black;
+            }
+            self.rotate_right(p_index)
+        }
+    }
+    fn handle_red_sibling(&mut self, n_index: u32, s_index: u32) {
+        self.mut_node(s_index).color = Color::Black;
+        let p_index = self.node(n_index).parent;
+        let parent = self.mut_node(p_index);
+        parent.color = Color::Red;
+        if n_index == parent.left {
+            self.rotate_left(p_index)
+        } else {
+            self.rotate_right(p_index)
+        }
+    }
+    #[inline(always)]
+    fn get_sibling(&self, n_index: u32) -> u32 {
+        let p_index = self.node(n_index).parent;
+        let parent = self.node(p_index);
+        debug_assert!(n_index == parent.left || n_index == parent.right);
+        if n_index == parent.left { parent.right } else { parent.left }
+    }
+    pub fn find_left_minimum(&self, n_index: u32) -> u32 {
+        let mut i = n_index;
+        let mut left = self.node(i).left;
+        while left != EMPTY_REF {
+            let new_left = self.node(i).left;
+            i = left;
+            left = new_left;
+        }
+        i
+    }
+    pub fn find(&self, value: T) -> Option<T> {
+        let mut index = self.root;
+        while index != EMPTY_REF {
+            let node = self.node(index);
+            match node.value.cmp(&value) {
+                Ordering::Equal => {
+                    return Some(node.value.clone());
+                }
+                Ordering::Less => {
+                    index = node.right;
+                }
+                Ordering::Greater => {
+                    index = node.left;
+                }
+            }
+        }
+        None
+    }
+    pub fn find_index(&self, value: T) -> u32 {
+        let mut index = self.root;
+        while index != EMPTY_REF {
+            let node = self.node(index);
+            match node.value.cmp(&value) {
+                Ordering::Equal => {
+                    return index;
+                }
+                Ordering::Less => {
+                    index = node.right;
+                }
+                Ordering::Greater => {
+                    index = node.left;
+                }
+            }
+        }
+        EMPTY_REF
+    }
+    pub fn height(&self) -> usize {
+        if self.root == EMPTY_REF {
+            return 0;
+        }
+        let mut node = self.node(self.root);
+        let mut height = 1;
+        while node.left != EMPTY_REF {
+            node = self.node(node.left);
+            if node.color == Color::Black {
+                height += 1;
+            }
+        }
+        height << 1
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn node_accessors_instantiate_unchecked_paths() {
+        let mut tree = Tree::new(0_i32, 1);
+        let mut index = 0_u32;
+        let _ = tree.node(index);
+        tree.mut_node(index).value = 1;
+        let _ = tree.node(index);
+    }
+}
+
+```
+</file>
+
+<file path="tests/array_tests.rs">
+```rust
+#[cfg(test)]
+mod tests {
+    use rand::seq::SliceRandom;
+    use i_tree::node::EMPTY_REF;
+    use i_tree::tree::Tree;
+
+    #[test]
+    fn test_ordered_list_0() {
+        let mut list = vec![6, 3, 4, 8, 1];
+        let mut tree = Tree::new(0, list.len());
+        for a in list.iter() {
+            tree.insert(a.clone());
+        }
+
+        let ordered = tree.ordered_list();
+        list.sort_unstable();
+
+        assert_eq!(ordered, list);
+    }
+
+    #[test]
+    fn test_ordered_list_random() {
+        let n = 100;
+        let mut list: Vec<_> = (0..n).collect();
+        let sorted = list.clone();
+        let mut tree = Tree::new(0, list.len());
+        for _ in 0..10000 {
+            list.shuffle(&mut rand::thread_rng());
+            tree.clear_all();
+            for a in list.iter() {
+                tree.insert(a.clone());
+            }
+
+            let ordered = tree.ordered_list();
+            assert_eq!(ordered, sorted);
+        }
+    }
+
+    #[test]
+    fn test_init_0() {
+        let list = vec![0];
+        let tree = Tree::with_sorted_array(0, &list, 0);
+        let ordered = tree.ordered_list();
+        assert_eq!(ordered, list);
+    }
+
+    #[test]
+    fn test_init_1() {
+        let list = vec![0, 1];
+        let tree = Tree::with_sorted_array(0, &list, 0);
+        let ordered = tree.ordered_list();
+        assert_eq!(ordered, list);
+    }
+
+    #[test]
+    fn test_init_2() {
+        let list: Vec<_> = (0..2).collect();
+        let tree = Tree::with_sorted_array(0, &list, 0);
+        let ordered = tree.ordered_list();
+        assert_eq!(ordered, list);
+    }
+
+    #[test]
+    fn test_init_sequence() {
+        for i in 3..=3000 {
+            let list: Vec<_> = (0..i).collect();
+            let tree = Tree::with_sorted_array(0, &list, 0);
+            let ordered = tree.ordered_list();
+            assert_eq!(ordered, list);
+        }
+    }
+
+    #[test]
+    fn test_next_by_order_0() {
+        test_next_by_order(&[0]);
+    }
+
+    #[test]
+    fn test_next_by_order_1() {
+        test_next_by_order(&[0, 1]);
+    }
+
+    #[test]
+    fn test_next_by_order_2() {
+        let vec: Vec<_> = (0..2).collect();
+        test_next_by_order(&vec);
+    }
+
+    #[test]
+    fn test_next_by_order_sequence() {
+        for i in 3..=1000 {
+            let vec: Vec<_> = (0..i).collect();
+            test_next_by_order(&vec);
+        }
+    }
+
+    fn test_next_by_order(list: &[i32]) {
+        let tree = Tree::with_sorted_array(0, &list, 0);
+        let mut n_index = tree.first_by_order();
+        let mut ordered = Vec::with_capacity(list.len());
+        while n_index != EMPTY_REF {
+            ordered.push(tree.node(n_index).value.clone());
+            n_index = tree.next_by_order(n_index);
+        }
+
+        assert_eq!(ordered, list);
+    }
+}
+```
+</file>
+
+<file path="tests/edge/cross_solver.rs">
+```rust
+use i_float::fix_float::FixMath;
+use i_float::fix_vec::FixVec;
+use i_float::int::point::IntPoint;
+use i_float::triangle::Triangle;
+use rand::Rng;
+
+pub(crate) enum CrossType {
+    Pure,
+    Overlap,
+    SameEnd,
+    NotCross,
+    Equal,
+}
+
+pub(crate) struct RandomEdge {
+    pub(crate) a: IntPoint,
+    pub(crate) b: IntPoint,
+}
+
+impl RandomEdge {
+    fn sqr_length(&self) -> i64 {
+        let dx = (self.a.x - self.b.x) as i64;
+        let dy = (self.a.y - self.b.y) as i64;
+        dx * dx + dy * dy
+    }
+}
+
+pub(crate) struct CrossSolver;
+
+impl CrossSolver {
+    fn is_cross_edge(e0: &RandomEdge, e1: &RandomEdge) -> CrossType {
+        let a0 = FixVec::new_point(e0.a);
+        let b0 = FixVec::new_point(e0.b);
+        let a1 = FixVec::new_point(e1.a);
+        let b1 = FixVec::new_point(e1.b);
+        Self::is_cross(a0, b0, a1, b1)
+    }
+
+    fn is_cross(a0: FixVec, b0: FixVec, a1: FixVec, b1: FixVec) -> CrossType {
+        // box cross
+
+        // all x from 1 is less all x from 0
+        let boundary_test = a1.x < a0.x && b1.x < a0.x && a1.x < b0.x && b1.x < b0.x
+            // all x from 0 is less all x from 1
+            || a0.x < a1.x && b0.x < a1.x && a0.x < b1.x && b0.x < b1.x
+            // all y from 1 is less all y from 0
+            || a1.y < a0.y && b1.y < a0.y && a1.y < b0.y && b1.y < b0.y
+            // all y from 0 is less all y from 1
+            || a0.y < a1.y && b0.y < a1.y && a0.y < b1.y && b0.y < b1.y;
+
+        if boundary_test {
+            return CrossType::NotCross;
+        }
+
+        // cross
+
+        let a0b0a1 = Triangle::clock_direction(a0, b0, a1);
+        let a0b0b1 = Triangle::clock_direction(a0, b0, b1);
+
+        let a1b1a0 = Triangle::clock_direction(a1, b1, a0);
+        let a1b1b0 = Triangle::clock_direction(a1, b1, b0);
+
+        let is_end0 = a0 == a1 || a0 == b1;
+        let is_end1 = b0 == a1 || b0 == b1;
+
+        if is_end0 && is_end1 {
+            return CrossType::Equal;
+        }
+
+        let is_collinear = a0b0a1 == 0 && a0b0b1 == 0 && a1b1a0 == 0 && a1b1b0 == 0;
+
+        if (is_end0 || is_end1) && is_collinear {
+            let dot_product = if is_end0 {
+                let e = if a0 == a1 { b1 } else { a1 };
+                (a0 - b0).dot_product(a0 - e)
+            } else {
+                let e = if b0 == a1 { b1 } else { a1 };
+                (b0 - a0).dot_product(b0 - e)
+            };
+
+            return if dot_product < 0 {
+                CrossType::SameEnd
+            } else {
+                CrossType::Overlap
+            };
+        } else if is_collinear {
+            return CrossType::Overlap;
+        } else if is_end0 || is_end1 {
+            return CrossType::SameEnd;
+        }
+
+        let not_same0 = a0b0a1 != a0b0b1;
+        let not_same1 = a1b1a0 != a1b1b0;
+
+        if not_same0 && not_same1 {
+            CrossType::Pure
+        } else {
+            CrossType::NotCross
+        }
+    }
+
+    pub(crate) fn random_segments(range: std::ops::Range<i32>, length: std::ops::Range<i32>, count: usize) -> Vec<RandomEdge> {
+        let mut result = Vec::with_capacity(count);
+
+        let min_sqr_length = (length.start as i64).sqr();
+        let max_sqr_length = (length.end as i64).sqr();
+        let sqr_length = min_sqr_length..max_sqr_length;
+
+        for _ in 0..count {
+            let mut not_find = true;
+            let mut e = Self::random_edge(range.clone(), sqr_length.clone());
+            while not_find {
+                not_find = false;
+                'outer:
+                for ei in result.iter() {
+                    match Self::is_cross_edge(&e, ei) {
+                        CrossType::Pure | CrossType::Overlap | CrossType::Equal => {
+                            not_find = true;
+                            e = Self::random_edge(range.clone(), sqr_length.clone());
+                            break 'outer;
+                        }
+                        _ => {
+                            not_find = false;
+                        }
+                    }
+                }
+            }
+
+            result.push(e);
+        }
+
+        result
+    }
+
+    fn random_edge(range: std::ops::Range<i32>, sqr_length_range: std::ops::Range<i64>) -> RandomEdge {
+        let mut rng = rand::thread_rng();
+
+        let x0 = rng.gen_range(range.clone());
+        let y0 = rng.gen_range(range.clone());
+        let mut x1 = rng.gen_range(range.clone());
+        let mut y1 = rng.gen_range(range.clone());
+
+        let mut edge = RandomEdge { a: IntPoint::new(x0, y0), b: IntPoint::new(x1, y1) };
+
+        let mut sqr_length = edge.sqr_length();
+
+        while sqr_length_range.contains(&sqr_length) {
+            x1 = rng.gen_range(range.clone());
+            y1 = rng.gen_range(range.clone());
+            edge = RandomEdge { a: IntPoint::new(x0, y0), b: IntPoint::new(x1, y1) };
+            sqr_length = edge.sqr_length()
+        }
+
+        edge
+    }
+}
+```
+</file>
+
+<file path="tests/edge/direct_scan.rs">
+```rust
+use i_float::int::point::IntPoint;
+use crate::edge::segment::IdSegment;
+
+pub(super) struct DirectScan {
+    buffer: Vec<IdSegment>,
+}
+
+impl DirectScan {
+    pub(super) fn new() -> Self {
+        DirectScan { buffer: Vec::new() }
+    }
+
+    pub(super) fn insert(&mut self, item: IdSegment) {
+        self.buffer.push(item);
+    }
+
+    pub(super) fn find_under(&mut self, p: &IntPoint, stop: i32) -> Option<IdSegment> {
+        let mut i = 0;
+        let mut result: Option<IdSegment> = None;
+        while i < self.buffer.len() {
+            if self.buffer[i].segment.b.x <= stop {
+                self.buffer.smart_remove(i)
+            } else {
+                let segment = &self.buffer[i].segment;
+                if segment.is_under(&p) {
+                    if let Some(best_seg) = &result {
+                        if best_seg.segment.is_under_segment(segment) {
+                            result = Some(self.buffer[i].clone());
+                        }
+                    } else {
+                        result = Some(self.buffer[i].clone());
+                    }
+                }
+
+                i += 1
+            }
+        }
+
+        result
+    }
+}
+
+trait SmartRemove {
+    fn smart_remove(&mut self, index: usize);
+}
+
+impl<T> SmartRemove for Vec<T> {
+    fn smart_remove(&mut self, index: usize) {
+        if self.len() >= index {
+            self.swap_remove(index);
+        } else {
+            _ = self.pop()
+        }
+    }
+}
+```
+</file>
+
+<file path="tests/edge/direct_solver.rs">
+```rust
+use i_float::int::point::IntPoint;
+use crate::edge::direct_scan::DirectScan;
+use crate::edge::segment::IdSegment;
+
+pub(crate) struct DirectPointSolver;
+
+impl DirectPointSolver {
+    pub(crate) fn run(items: &Vec<IdSegment>, points: &Vec<IntPoint>) -> Vec<usize> {
+        let mut scan_list = DirectScan::new();
+
+        let mut result = Vec::with_capacity(items.len());
+
+        let mut i = 0;
+        for p in points {
+            while i < items.len() && items[i].segment.a.x <= p.x {
+                if !items[i].segment.is_vertical && items[i].segment.b.x > p.x {
+                    scan_list.insert(items[i].clone())
+                }
+                i += 1
+            }
+
+            if let Some(seg) = scan_list.find_under(p, p.x) {
+                result.push(seg.index);
+            } else {
+                result.push(usize::MAX);
+            }
+        }
+
+        result
+    }
+}
+```
+</file>
+
+<file path="tests/edge/mod.rs">
+```rust
+pub(crate) mod direct_scan;
+pub(crate) mod segment;
+pub(crate) mod tree_scan;
+pub(crate) mod direct_solver;
+pub(crate) mod tree_solver;
+pub(crate) mod cross_solver;
+```
+</file>
+
+<file path="tests/edge/segment.rs">
+```rust
+use i_float::int::point::IntPoint;
+use i_float::triangle::Triangle;
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct Segment {
+    pub(crate) a: IntPoint,
+    pub(crate) b: IntPoint,
+    pub(crate) is_vertical: bool,
+}
+
+impl Segment {
+    pub(crate) fn new(a: IntPoint, b: IntPoint) -> Self {
+        debug_assert!(a.x <= b.x);
+        Segment {
+            a,
+            b,
+            is_vertical: a.x == b.x,
+        }
+    }
+
+    pub(crate) fn is_under(&self, p: &IntPoint) -> bool {
+        debug_assert!(self.a.x <= p.x && p.x <= self.b.x);
+        debug_assert!(p != &self.a && p != &self.b);
+        Triangle::is_clockwise_point(self.a, p.clone(), self.b)
+    }
+
+    pub(crate) fn is_under_segment(&self, other: &Segment) -> bool {
+        if self.a == other.a {
+            Triangle::is_clockwise_point(self.a, other.b, self.b)
+        } else if self.a.x < other.a.x {
+            Triangle::is_clockwise_point(self.a, other.a, self.b)
+        } else {
+            Triangle::is_clockwise_point(other.a, other.b, self.a)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct IdSegment {
+    pub(crate) index: usize,
+    pub(crate) segment: Segment,
+}
+
+impl PartialOrd for IdSegment {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.segment.is_under_segment(&other.segment) {
+            Some(std::cmp::Ordering::Less)
+        } else {
+            Some(std::cmp::Ordering::Greater)
+        }
+    }
+}
+
+impl Eq for IdSegment {}
+
+impl Ord for IdSegment {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+```
+</file>
+
+<file path="tests/edge/tree_scan.rs">
+```rust
+use i_float::int::point::IntPoint;
+use i_tree::node::{Color, EMPTY_REF};
+use i_tree::tree::Tree;
+use crate::edge::segment::IdSegment;
+
+pub(super) struct TreeScan {
+    pub(super) tree: Tree<IdSegment>,
+}
+
+impl TreeScan {
+    pub(crate) fn insert(&mut self, item: IdSegment, stop: i32) {
+        let mut index = self.tree.root;
+        let mut p_index = EMPTY_REF;
+        let mut is_left = false;
+
+        while index != EMPTY_REF {
+            let node = self.tree.node(index);
+            p_index = index;
+            if node.value.segment.b.x <= stop {
+                let n_parent = node.parent;
+                _ = self.tree.delete_index(index);
+                if n_parent != EMPTY_REF {
+                    index = n_parent;
+                } else {
+                    index = self.tree.root;
+                    p_index = EMPTY_REF;
+                }
+            } else {
+                is_left = item < node.value;
+                if is_left {
+                    index = node.left;
+                } else {
+                    index = node.right;
+                }
+            }
+        }
+
+        let new_index = self.tree.store.get_free_index();
+        let new_node = self.tree.mut_node(new_index);
+        new_node.left = EMPTY_REF;
+        new_node.right = EMPTY_REF;
+        new_node.color = Color::Red;
+        new_node.value = item;
+        new_node.parent = p_index;
+
+        if p_index == EMPTY_REF {
+            self.tree.root = new_index;
+        } else {
+            if is_left {
+                self.tree.mut_node(p_index).left = new_index;
+            } else {
+                self.tree.mut_node(p_index).right = new_index;
+            }
+
+            if self.tree.node(p_index).color == Color::Red {
+                self.tree.fix_red_black_properties_after_insert(new_index, p_index);
+            }
+        }
+    }
+
+    pub(crate) fn find_under(&mut self, p: &IntPoint, stop: i32) -> Option<IdSegment> {
+        let mut index = self.tree.root;
+        let mut result: u32 = EMPTY_REF;
+        while index != EMPTY_REF {
+            let node = self.tree.node(index);
+            if node.value.segment.b.x <= stop {
+                let n_parent = node.parent;
+                _ = self.tree.delete_index(index);
+                if n_parent != EMPTY_REF {
+                    index = n_parent;
+                } else {
+                    index = self.tree.root;
+                }
+            } else {
+                if node.value.segment.is_under(p) {
+                    result = index;
+                    index = node.right;
+                } else {
+                    index = node.left;
+                }
+            }
+        }
+
+        if result == EMPTY_REF {
+            None
+        } else {
+            Some(self.tree.node(result).value.clone())
+        }
+    }
+}
+```
+</file>
+
+<file path="tests/edge/tree_solver.rs">
+```rust
+use i_float::int::point::IntPoint;
+use i_tree::tree::Tree;
+use crate::edge::segment::{IdSegment, Segment};
+use crate::edge::tree_scan::TreeScan;
+
+pub(crate) struct TreePointSolver;
+
+impl TreePointSolver {
+    pub(crate) fn run(items: &Vec<IdSegment>, points: &Vec<IntPoint>) -> Vec<usize> {
+        let mut scan_list = TreeScan {
+            tree: Tree::new(
+                IdSegment { index: 0, segment: Segment::new(IntPoint::new(0, 0), IntPoint::new(0, 0)) },
+                points.len(),
+            )
+        };
+
+        let mut result = Vec::with_capacity(items.len());
+
+        let mut i = 0;
+        for p in points.iter() {
+            while i < items.len() && items[i].segment.a.x <= p.x {
+                if !items[i].segment.is_vertical && items[i].segment.b.x > p.x {
+                    scan_list.insert(items[i].clone(), p.x);
+                }
+                i += 1;
+            }
+
+            if let Some(seg) = scan_list.find_under(p, p.x) {
+                result.push(seg.index);
+            } else {
+                result.push(usize::MAX);
+            }
+        }
+
+        result
+    }
+}
+```
+</file>
+
+<file path="tests/edge_tests.rs">
+```rust
+mod edge;
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use i_float::int::point::IntPoint;
+    use rand::Rng;
+    use crate::edge::cross_solver::CrossSolver;
+    use crate::edge::direct_solver::DirectPointSolver;
+    use crate::edge::segment::{IdSegment, Segment};
+    use crate::edge::tree_solver::TreePointSolver;
+
+    #[test]
+    fn test_00() {
+        let edges = vec![
+            IdSegment { index: 1, segment: Segment::new(IntPoint { x: 3, y: 3 }, IntPoint { x: 4, y: 2 }) },
+            IdSegment { index: 0, segment: Segment::new(IntPoint { x: 4, y: 1 }, IntPoint { x: 6, y: 7 }) },
+            IdSegment { index: 2, segment: Segment::new(IntPoint { x: 5, y: 1 }, IntPoint { x: 6, y: 0 }) },
+        ];
+
+        let points = vec![IntPoint { x: 3, y: 7 }, IntPoint { x: 5, y: 7 }];
+        let result0 = DirectPointSolver::run(&edges, &points);
+        let result1 = TreePointSolver::run(&edges, &points);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_01() {
+        let edges = vec![
+            IdSegment { index: 0, segment: Segment::new(IntPoint { x: 1, y: 5 }, IntPoint { x: 1, y: 6 }) },
+            IdSegment { index: 1, segment: Segment::new(IntPoint { x: 1, y: 5 }, IntPoint { x: 6, y: 0 }) },
+            IdSegment { index: 2, segment: Segment::new(IntPoint { x: 1, y: 3 }, IntPoint { x: 2, y: 2 }) },
+            IdSegment { index: 3, segment: Segment::new(IntPoint { x: 4, y: 4 }, IntPoint { x: 5, y: 5 }) },
+        ];
+
+        let points = vec![IntPoint { x: 1, y: 7 }];
+        let result0 = DirectPointSolver::run(&edges, &points);
+        let result1 = TreePointSolver::run(&edges, &points);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_02() {
+        let edges = vec![
+            IdSegment { index: 3, segment: Segment::new(IntPoint { x: 0, y: 3 }, IntPoint { x: 7, y: 6 }) },
+            IdSegment { index: 5, segment: Segment::new(IntPoint { x: 0, y: 5 }, IntPoint { x: 0, y: 5 }) },
+            IdSegment { index: 2, segment: Segment::new(IntPoint { x: 1, y: 0 }, IntPoint { x: 7, y: 5 }) },
+            IdSegment { index: 4, segment: Segment::new(IntPoint { x: 1, y: 4 }, IntPoint { x: 2, y: 4 }) },
+            IdSegment { index: 7, segment: Segment::new(IntPoint { x: 1, y: 4 }, IntPoint { x: 2, y: 5 }) },
+            IdSegment { index: 6, segment: Segment::new(IntPoint { x: 2, y: 2 }, IntPoint { x: 2, y: 2 }) },
+            IdSegment { index: 0, segment: Segment::new(IntPoint { x: 3, y: 3 }, IntPoint { x: 4, y: 4 }) },
+            IdSegment { index: 1, segment: Segment::new(IntPoint { x: 3, y: 3 }, IntPoint { x: 4, y: 3 }) },
+        ];
+
+        let points = vec![
+            IntPoint { x: 2, y: 1 },
+            IntPoint { x: 3, y: 1 },
+            IntPoint { x: 6, y: 5 },
+            IntPoint { x: 6, y: 4 },
+            IntPoint { x: 6, y: 0 },
+        ];
+        let result0 = DirectPointSolver::run(&edges, &points);
+        let result1 = TreePointSolver::run(&edges, &points);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_single_random() {
+        let edges = random_edges(0..10, 2..6, 20);
+        let points = random_points(0..10, 20, &edges);
+
+        let result0 = DirectPointSolver::run(&edges, &points);
+        let result1 = TreePointSolver::run(&edges, &points);
+
+        assert_eq!(result0, result1, "Edges: {:?}\nPoints: {:?}", edges, points);
+    }
+
+    #[test]
+    fn test_small_random() {
+        for _ in 0..10000 {
+            let edges = random_edges(0..8, 2..6, 8);
+            let points = random_points(0..8, 5, &edges);
+
+            let result0 = DirectPointSolver::run(&edges, &points);
+            let result1 = TreePointSolver::run(&edges, &points);
+
+            let is_equal = result0 == result1;
+            if !is_equal {
+                assert_eq!(result0, result1, "Edges: {:?}\nPoints: {:?}", edges, points);
+            }
+        }
+    }
+
+    fn random_edges(range: std::ops::Range<i32>, length: std::ops::Range<i32>, count: usize) -> Vec<IdSegment> {
+        let list = CrossSolver::random_segments(range, length, count);
+        let mut result = Vec::with_capacity(list.len());
+
+        for i in 0..list.len() {
+            let e = &list[i];
+            let segment = if e.a.x <= e.b.x { Segment::new(e.a, e.b) } else { Segment::new(e.b, e.a) };
+            result.push(IdSegment { index: i, segment });
+        }
+
+        result.sort_by(|s0, s1| s0.segment.a.x.cmp(&s1.segment.a.x));
+
+        result
+    }
+
+    fn random_points(range: std::ops::Range<i32>, count: usize, exclude: &Vec<IdSegment>) -> Vec<IntPoint> {
+        let mut p_set: HashSet<IntPoint> = HashSet::with_capacity(2 * exclude.len());
+        for e in exclude.iter() {
+            p_set.insert(e.segment.a.clone());
+            p_set.insert(e.segment.b.clone());
+        }
+
+        let mut rng = rand::thread_rng();
+        let mut result = Vec::with_capacity(count);
+
+        while result.len() < count {
+            let p = IntPoint {
+                x: rng.gen_range(range.clone()),
+                y: rng.gen_range(range.clone()),
+            };
+            if !p_set.contains(&p) {
+                p_set.insert(p);
+                result.push(p);
+            }
+        }
+
+        result.sort_by(|a, b| a.x.cmp(&b.x));
+        result
+    }
+}
+```
+</file>
+
+<file path="tests/ordered_array_tests.rs">
+```rust
+#[cfg(test)]
+mod tests {
+    use rand::thread_rng;
+    use rand::seq::SliceRandom;
+    use i_tree::tree::Tree;
+
+    #[test]
+    fn test_00() {
+        let mut vec = vec![6, 3, 4, 8, 1];
+        let mut tree = Tree::new(0, vec.len());
+        for a in vec.iter() {
+            tree.insert(a.clone());
+        }
+
+        let ordered = tree.ordered_list();
+        vec.sort();
+
+        assert_eq!(vec, ordered);
+    }
+
+    #[test]
+    fn test_01() {
+        let n = 100;
+        let mut vec: Vec<i32> = (0..n as i32).collect();
+        let mut tree = Tree::new(0, n);
+        let mut rng = thread_rng();
+        for _ in 0..10000 {
+            tree.clear_all();
+            vec.shuffle(&mut rng);
+            for a in vec.iter() {
+                tree.insert(a.clone());
+            }
+
+            let ordered = tree.ordered_list();
+            vec.sort();
+
+            assert_eq!(vec, ordered);
+        }
+    }
+}
+```
+</file>
+
+<file path="tests/time/direct_scan.rs">
+```rust
+use crate::time::time_interval_value::TimeIntervalValue;
+use crate::time::time_value::TimeValue;
+
+pub(super) struct DirectScan {
+    buffer: Vec<TimeIntervalValue>,
+}
+
+impl DirectScan {
+    pub(super) fn new() -> Self {
+        DirectScan { buffer: Vec::new() }
+    }
+
+    pub(super) fn insert(&mut self, item: TimeIntervalValue) {
+        self.buffer.push(item);
+    }
+
+    pub(super) fn find_equal_or_lower(&mut self, t: &TimeValue) -> i32 {
+        let mut i = 0;
+        let mut result = i32::MIN;
+        while i < self.buffer.len() {
+            if self.buffer[i].end <= t.time {
+                self.buffer.smart_remove(i);
+            } else {
+                let value = self.buffer[i].value;
+                if value == t.value {
+                    return value;
+                } else if value < t.value {
+                    result = value.max(result);
+                }
+
+                i += 1
+            }
+        }
+
+        result
+    }
+}
+
+trait SmartRemove {
+    fn smart_remove(&mut self, index: usize);
+}
+
+impl<T> SmartRemove for Vec<T> {
+    fn smart_remove(&mut self, index: usize) {
+        if self.len() >= index {
+            self.swap_remove(index);
+        } else {
+            _ = self.pop()
+        }
+    }
+}
+```
+</file>
+
+<file path="tests/time/direct_solver.rs">
+```rust
+use crate::time::direct_scan::DirectScan;
+use crate::time::time_interval_value::TimeIntervalValue;
+use crate::time::time_value::TimeValue;
+
+pub(crate) struct DirectTimeSolver;
+
+impl DirectTimeSolver {
+    pub(crate) fn run(items: &[TimeIntervalValue], times: &[TimeValue]) -> Vec<i32> {
+        let mut scan_list = DirectScan::new();
+
+        let mut result = Vec::with_capacity(items.len());
+        let mut i = 0;
+        for t in times {
+            while i < items.len() && items[i].start <= t.time {
+                if items[i].end > t.time {
+                    scan_list.insert(items[i].clone());
+                }
+                i += 1
+            }
+
+            result.push(scan_list.find_equal_or_lower(t))
+        }
+
+        result
+    }
+}
+```
+</file>
+
+<file path="tests/time/generator.rs">
+```rust
+use rand::Rng;
+use crate::time::time_interval_value::TimeIntervalValue;
+use crate::time::time_value::TimeValue;
+
+pub(crate) struct TimeValueGenerator;
+
+impl TimeValueGenerator {
+    pub(crate) fn random_time_values(range: &std::ops::Range<i32>, time: &std::ops::Range<i32>, count: usize) -> Vec<TimeValue> {
+        let mut result = Vec::with_capacity(count);
+
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..count {
+            let value = rng.gen_range(range.clone());
+            let t = rng.gen_range(time.clone());
+            result.push(TimeValue { value, time: t })
+        }
+
+        result
+    }
+
+    pub(crate) fn random_time_ranges(range: &std::ops::Range<i32>, time: &std::ops::Range<i32>, count: usize) -> Vec<TimeIntervalValue> {
+        let mut result = Vec::with_capacity(count);
+        let mut rng = rand::thread_rng();
+        for _ in 0..count {
+            let value = rng.gen_range(range.clone());
+            let t0 = rng.gen_range(time.clone());
+            let t1 = rng.gen_range(time.clone());
+
+            let start: i32;
+            let end: i32;
+            if t0 == t1 {
+                start = t0;
+                end = t0 + 1;
+            } else if t0 < t1 {
+                start = t0;
+                end = t1;
+            } else {
+                start = t1;
+                end = t0;
+            }
+
+            result.push(TimeIntervalValue {
+                value,
+                start,
+                end,
+            })
+        }
+
+        result
+    }
+}
+```
+</file>
+
+<file path="tests/time/mod.rs">
+```rust
+pub(crate) mod time_interval_value;
+pub(crate) mod time_value;
+pub(crate) mod generator;
+mod direct_scan;
+pub(crate) mod direct_solver;
+mod tree_scan;
+pub(crate) mod tree_solver;
+```
+</file>
+
+<file path="tests/time/time_interval_value.rs">
+```rust
+use std::cmp::Ordering;
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct TimeIntervalValue {
+    pub(crate) value: i32,
+    pub(crate) start: i32,
+    pub(crate) end: i32,
+}
+
+impl PartialOrd<Self> for TimeIntervalValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.value < other.value {
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+impl Eq for TimeIntervalValue {}
+
+impl Ord for TimeIntervalValue {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.value < other.value {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+```
+</file>
+
+<file path="tests/time/time_value.rs">
+```rust
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(crate) struct TimeValue {
+    pub(crate) value: i32,
+    pub(crate) time: i32,
+}
+```
+</file>
+
+<file path="tests/time/tree_scan.rs">
+```rust
+use i_tree::node::{Color, EMPTY_REF};
+use i_tree::tree::Tree;
+use crate::time::time_interval_value::TimeIntervalValue;
+use crate::time::time_value::TimeValue;
+
+pub(super) struct TreeTimeScan {
+    tree: Tree<TimeIntervalValue>,
+}
+
+impl TreeTimeScan {
+    pub(super) fn new() -> Self {
+        let tree = Tree::new(TimeIntervalValue {
+            value: 0,
+            start: 0,
+            end: 0,
+        }, 16);
+
+        Self { tree }
+    }
+
+    pub(super) fn insert(&mut self, item: TimeIntervalValue, stop: i32) {
+        let mut index = self.tree.root;
+        let mut p_index = EMPTY_REF;
+        let mut is_left = false;
+
+        while index != EMPTY_REF {
+            let node = self.tree.node(index);
+            p_index = index;
+            if node.value.end <= stop {
+                index = self.tree.delete_index(index);
+                p_index = EMPTY_REF;
+            } else {
+                is_left = item < node.value;
+                if is_left {
+                    index = node.left;
+                } else {
+                    index = node.right;
+                }
+            }
+        }
+
+        let new_index = self.tree.store.get_free_index();
+
+        let new_node = self.tree.mut_node(new_index);
+        new_node.left = EMPTY_REF;
+        new_node.right = EMPTY_REF;
+        new_node.color = Color::Red;
+        new_node.value = item;
+        new_node.parent = p_index;
+
+        if p_index == EMPTY_REF {
+            new_node.parent = EMPTY_REF;
+            self.tree.root = new_index;
+        } else {
+            new_node.parent = p_index;
+
+            let parent = self.tree.mut_node(p_index);
+            if is_left {
+                parent.left = new_index;
+            } else {
+                parent.right = new_index;
+            }
+
+            if parent.color == Color::Red {
+                self.tree.fix_red_black_properties_after_insert(new_index, p_index);
+            }
+        }
+    }
+
+    pub(super) fn find_equal_or_lower(&mut self, t: &TimeValue) -> i32 {
+        let index = self.find_equal_or_lower_index(t);
+        if index != EMPTY_REF {
+            self.tree.node(index).value.value
+        } else {
+            i32::MIN
+        }
+    }
+
+    fn find_equal_or_lower_index(&mut self, t: &TimeValue) -> u32 {
+        let mut index = self.tree.root;
+        let mut result = EMPTY_REF;
+        while index != EMPTY_REF {
+            let node = self.tree.node(index);
+            if node.value.end <= t.time {
+                index = self.tree.delete_index(index);
+            } else {
+                if node.value.value == t.value {
+                    return index;
+                } else if node.value.value < t.value {
+                    result = index;
+                    index = node.right;
+                } else {
+                    index = node.left;
+                }
+            }
+        }
+
+        return result;
+    }
+}
+```
+</file>
+
+<file path="tests/time/tree_solver.rs">
+```rust
+use crate::time::time_interval_value::TimeIntervalValue;
+use crate::time::time_value::TimeValue;
+use crate::time::tree_scan::TreeTimeScan;
+
+pub(crate) struct TreeTimeSolver;
+
+impl TreeTimeSolver {
+    pub(crate) fn run(items: &[TimeIntervalValue], times: &[TimeValue]) -> Vec<i32> {
+        let mut scan_list = TreeTimeScan::new();
+
+        let mut result = Vec::with_capacity(items.len());
+
+        let mut i = 0;
+        for t in times {
+            while i < items.len() && items[i].start <= t.time {
+                if items[i].end > t.time {
+                    scan_list.insert(items[i].clone(), t.time);
+                }
+                i += 1
+            }
+
+            result.push(scan_list.find_equal_or_lower(t))
+        }
+
+        result
+    }
+}
+```
+</file>
+
+<file path="tests/time_tests.rs">
+```rust
+mod time;
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{HashMap, HashSet};
+    use crate::time::direct_solver::DirectTimeSolver;
+    use crate::time::generator::TimeValueGenerator;
+    use crate::time::time_interval_value::TimeIntervalValue;
+    use crate::time::time_value::TimeValue;
+    use crate::time::tree_solver::TreeTimeSolver;
+
+    #[test]
+    fn test_00() {
+        let items = [
+            TimeIntervalValue { value: 2, start: 0, end: 4 },
+            TimeIntervalValue { value: 6, start: 0, end: 4 },
+            TimeIntervalValue { value: 1, start: 0, end: 5 },
+        ];
+
+        let times = [
+            TimeValue { value: 1, time: 2 },
+            TimeValue { value: 5, time: 2 },
+            TimeValue { value: 7, time: 4 }
+        ];
+
+        let result0 = DirectTimeSolver::run(&items, &times);
+        let result1 = TreeTimeSolver::run(&items, &times);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_01() {
+        let items = [
+            TimeIntervalValue { value: 5, start: 1, end: 6 },
+            TimeIntervalValue { value: 9, start: 2, end: 7 },
+            TimeIntervalValue { value: 6, start: 3, end: 4 },
+            TimeIntervalValue { value: 0, start: 3, end: 8 },
+        ];
+
+        let times = [
+            TimeValue { value: 3, time: 3 },
+            TimeValue { value: 0, time: 6 }
+        ];
+
+        let result0 = DirectTimeSolver::run(&items, &times);
+        let result1 = TreeTimeSolver::run(&items, &times);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_02() {
+        let items = [
+            TimeIntervalValue { value: 5, start: 1, end: 7 },
+            TimeIntervalValue { value: 7, start: 2, end: 6 },
+            TimeIntervalValue { value: 0, start: 3, end: 6 },
+            TimeIntervalValue { value: 3, start: 3, end: 5 },
+            TimeIntervalValue { value: 0, start: 4, end: 5 },
+        ];
+
+        let times = [
+            TimeValue { value: 7, time: 2 },
+            TimeValue { value: 6, time: 4 },
+            TimeValue { value: 6, time: 5 },
+            TimeValue { value: 0, time: 5 },
+            TimeValue { value: 3, time: 7 },
+            TimeValue { value: 7, time: 7 },
+        ];
+
+        let result0 = DirectTimeSolver::run(&items, &times);
+        let result1 = TreeTimeSolver::run(&items, &times);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_single_random() {
+        let data = random_data(0..8, 0..8, 10);
+        let result0 = DirectTimeSolver::run(&data.0, &data.1);
+        let result1 = TreeTimeSolver::run(&data.0, &data.1);
+
+        assert_eq!(result0, result1);
+    }
+
+    #[test]
+    fn test_small_random() {
+        for _ in 0..100000 {
+            let data = random_data(0..8, 0..8, 3);
+            let result0 = DirectTimeSolver::run(&data.0, &data.1);
+            let result1 = TreeTimeSolver::run(&data.0, &data.1);
+
+            assert_eq!(result0, result1);
+        }
+    }
+
+    #[test]
+    fn test_big_random() {
+        for _ in 0..10000 {
+            let data = random_data(0..100, 0..100, 100);
+            let result0 = DirectTimeSolver::run(&data.0, &data.1);
+            let result1 = TreeTimeSolver::run(&data.0, &data.1);
+
+            assert_eq!(result0, result1);
+        }
+    }
+
+    fn random_data(range: std::ops::Range<i32>, time: std::ops::Range<i32>, count: usize) -> (Vec<TimeIntervalValue>, Vec<TimeValue>) {
+        let r_values = TimeValueGenerator::random_time_ranges(&range, &time, count);
+        let t_values = TimeValueGenerator::random_time_values(&range, &time, count);
+
+        let mut map: HashMap<i32, Vec<TimeIntervalValue>> = HashMap::new();
+
+        for r_value in r_values {
+            map.entry(r_value.value).or_insert_with(Vec::new).push(r_value);
+        }
+
+        let mut ranges = Vec::new();
+        for array in map.values() {
+            let mut t = -1;
+            for a in array {
+                if a.start < t {
+                    ranges.push(a.clone());
+                    t = a.end;
+                }
+            }
+        }
+
+        let times: HashSet<_> = t_values.into_iter().collect();
+        let mut times: Vec<_> = times.into_iter().collect();
+        times.sort_by(|a, b| a.time.cmp(&b.time));
+
+        (ranges, times)
+    }
+}
+```
+</file>
+
+<file path="tests/tree_tests.rs">
+```rust
+use i_tree::node::{Color, EMPTY_REF};
+use i_tree::tree::Tree;
+
+#[cfg(test)]
+mod tests {
+    use rand::prelude::SliceRandom;
+    use rand::thread_rng;
+    use i_tree::tree::Tree;
+    use crate::TreeValidation;
+
+    #[test]
+    fn test_00() {
+        let tree = Tree::new(0, 8);
+        let a = tree.find(1).unwrap_or(i32::MAX);
+        assert_eq!(a, i32::MAX);
+    }
+
+    #[test]
+    fn test_01() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(5);
+        let a0 = tree.find(1).unwrap_or(i32::MAX);
+        let a1 = tree.find(5).unwrap_or(i32::MAX);
+        let a2 = tree.find(7).unwrap_or(i32::MAX);
+        assert_eq!(a0, i32::MAX);
+        assert_eq!(a1, 5);
+        assert_eq!(a2, i32::MAX);
+    }
+
+    #[test]
+    fn test_02() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(5);
+        tree.insert(3);
+        tree.insert(1);
+        let a0 = tree.find(5).unwrap_or(i32::MAX);
+        let a1 = tree.find(3).unwrap_or(i32::MAX);
+        let a2 = tree.find(1).unwrap_or(i32::MAX);
+
+        assert_eq!(a0, 5);
+        assert_eq!(a1, 3);
+        assert_eq!(a2, 1);
+    }
+
+    #[test]
+    fn test_03() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(10);
+        tree.insert(15);
+        tree.insert(5);
+        tree.insert(4);
+
+        assert_eq!(tree.verify_red_property(tree.root), true);
+    }
+
+    #[test]
+    fn test_04() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(10);
+        tree.insert(15);
+        tree.insert(5);
+        tree.insert(4);
+        tree.insert(6);
+
+        tree.verify_height(tree.root);
+    }
+
+    #[test]
+    fn test_05() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(10);
+        tree.insert(20);
+        tree.insert(30);
+
+        let value = tree.node(tree.root).value;
+
+        assert_eq!(true, value == 20 || value == 10, "Rotation not performed correctly.");
+        assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+
+        tree.verify_height(tree.root);
+    }
+
+    #[test]
+    fn test_06() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(10);
+        tree.insert(15);
+        tree.insert(5);
+        tree.insert(4);
+        tree.insert(6);
+        tree.insert(20);
+
+        tree.delete(&15);
+
+        assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+        assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+
+        tree.verify_height(tree.root);
+    }
+
+    #[test]
+    fn test_7() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(40);
+        tree.insert(20);
+        tree.insert(60);
+        tree.insert(10);
+        tree.insert(30);
+        tree.insert(50);
+        tree.insert(70);
+
+        assert_eq!(tree.value(tree.root), 40, "Root data is incorrect.");
+        assert_eq!(tree.left_value(tree.root), 20, "Left child of root is incorrect.");
+        assert_eq!(tree.right_value(tree.root), 60, "Right child of root is incorrect.");
+    }
+
+    #[test]
+    fn test_8() {
+        let mut tree = Tree::new(0, 8);
+        tree.insert(2);
+        tree.insert(1);
+        tree.insert(6);
+        tree.insert(4);
+        tree.insert(3);
+        tree.insert(5);
+
+        tree.delete(&2);
+        tree.delete(&1);
+
+        assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+        assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+    }
+
+    #[test]
+    fn test_9a() {
+        let mut rng = thread_rng();
+        let mut values: Vec<i32> = (1..=100).collect();
+        for _ in 0..100 {
+            values.shuffle(&mut rng);
+            let mut tree = Tree::new(0, 128);
+            for i in 0..values.len() {
+                tree.insert(values[i])
+            }
+
+            for i in 0..20 {
+                tree.delete(&values[i])
+            }
+
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_9b() {
+        let mut rng = thread_rng();
+        let mut values: Vec<i32> = (1..=100).collect();
+        for _ in 0..100 {
+            values.shuffle(&mut rng);
+            let mut tree = Tree::new(0, 128);
+            for i in 0..values.len() {
+                tree.insert(values[i])
+            }
+
+            for i in 0..values.len() {
+                tree.delete(&values[i])
+            }
+
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_9c() {
+        let mut rng = thread_rng();
+        let mut values: Vec<i32> = (1..=100).collect();
+        for _ in 0..100 {
+            values.shuffle(&mut rng);
+            let mut tree = Tree::new(0, 128);
+            let mut j = 0;
+            while j < values.len() - 2 {
+                tree.insert(values[j]);
+                tree.insert(values[j + 1]);
+                tree.insert(values[j + 2]);
+                tree.delete(&values[j]);
+                tree.insert(values[j]);
+                j += 3
+            }
+
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_10() {
+        let mut rng = thread_rng();
+        let mut values: Vec<i32> = (1..=100).collect();
+        values.shuffle(&mut rng);
+        let mut tree = Tree::new(0, 128);
+        for i in 0..values.len() {
+            tree.insert(values[i])
+        }
+
+        for i in 0..values.len() {
+            let res = tree.find(values[i]).unwrap_or(i32::MAX);
+            assert_eq!(values[i], res, "Value not found after random insertions.");
+        }
+    }
+
+    #[test]
+    fn test_11() {
+        let mut rng = thread_rng();
+        let mut values: Vec<i32> = (1..=100).collect();
+        values.shuffle(&mut rng);
+        let mut tree = Tree::new(0, 128);
+        for i in 0..values.len() {
+            tree.insert(values[i])
+        }
+
+        let depth = tree.max_depth(tree.root);
+        let expected_max_depth = (2.0 * 101f64.log2()).round() as usize;
+        assert_eq!(true, depth <= expected_max_depth);
+    }
+
+    #[test]
+    fn test_12() {
+        for _ in 0..100 {
+            let mut tree = Tree::new(0, 16);
+            let mut rng = thread_rng();
+            let mut values: Vec<i32> = (1..=7).collect();
+            values.shuffle(&mut rng);
+            // print!("{:?}", &values);
+            for value in values.iter() {
+                tree.insert(value.clone());
+            }
+
+            for i in 0..3 {
+                tree.delete(&values[i]);
+            }
+
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_13() {
+        let mut tree = Tree::new(0, 16);
+        let mut rng = thread_rng();
+        let mut values: Vec<i32> = (1..=7).collect();
+        values.shuffle(&mut rng);
+        // print!("{:?}", &values);
+        let mut j = 0;
+        while j < values.len() - 2 {
+            tree.insert(values[j]);
+            tree.insert(values[j + 1]);
+            tree.insert(values[j + 2]);
+            tree.delete(&values[j]);
+            j += 3
+        }
+
+        assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+        assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+    }
+
+    #[test]
+    fn test_14() {
+        let mut tree = Tree::new(0, 16);
+        let values = vec![1, 6, 2, 5, 4];
+
+        for value in values.iter() {
+            tree.insert(value.clone());
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+
+        for i in 0..2 {
+            tree.delete(&values[i]);
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_15() {
+        let mut tree = Tree::new(0, 16);
+        let values = vec![5, 6, 1, 3, 4, 2];
+
+        for value in values.iter() {
+            tree.insert(value.clone());
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+
+        for i in 0..2 {
+            tree.delete(&values[i]);
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_16() {
+        let mut tree = Tree::new(0, 16);
+        let values = vec![4, 1, 6, 3, 2, 5];
+
+        for value in values.iter() {
+            tree.insert(value.clone());
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+
+        for i in 0..2 {
+            tree.delete(&values[i]);
+            assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+            assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+        }
+    }
+
+    #[test]
+    fn test_17() {
+        let mut tree = Tree::new(0, 16);
+
+        tree.insert(6);
+        tree.insert(7);
+        tree.insert(2);
+        tree.delete(&6);
+
+        tree.insert(1);
+        tree.insert(4);
+        tree.insert(3);
+        tree.delete(&1);
+
+        tree.insert(5);
+
+        assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+        assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+    }
+
+    #[test]
+    fn test_18() {
+        let mut tree = Tree::new(0, 16);
+
+        tree.insert(10);
+        tree.insert(20);
+
+        tree.delete(&10);
+        tree.insert(0);
+        tree.insert(3);
+        tree.insert(6);
+
+        tree.delete(&3);
+        tree.insert(2);
+
+        tree.delete(&2);
+        tree.insert(4);
+
+        tree.delete(&6);
+        tree.delete(&0);
+        tree.delete(&4);
+
+        tree.insert(8);
+
+        tree.delete(&20);
+        tree.delete(&8);
+
+        assert_eq!(true, tree.verify_red_property(tree.root), "Red node property violated after rotations.");
+        assert_eq!(true, tree.verify_black_height_consistency(tree.root), "Black height inconsistent after deletion.");
+    }
+}
+
+trait TreeValidation {
+    fn value(&self, index: u32) -> i32;
+    fn left_value(&self, index: u32) -> i32;
+    fn right_value(&self, index: u32) -> i32;
+    fn verify_red_property(&self, index: u32) -> bool;
+    fn verify_height(&self, index: u32) -> usize;
+    fn verify_black_height_consistency(&self, index: u32) -> bool;
+    fn black_height(&self, index: u32) -> (bool, usize);
+    fn max_depth(&self, index: u32) -> usize;
+}
+
+impl TreeValidation for Tree<i32> {
+    fn value(&self, index: u32) -> i32 {
+        if index == EMPTY_REF { return i32::MAX; }
+        self.node(index).value
+    }
+
+    fn left_value(&self, index: u32) -> i32 {
+        if index == EMPTY_REF { return i32::MAX; }
+        let node = self.node(index);
+        if node.left == EMPTY_REF { return i32::MAX; }
+
+        self.node(node.left).value
+    }
+
+    fn right_value(&self, index: u32) -> i32 {
+        if index == EMPTY_REF { return i32::MAX; }
+        let node = self.node(index);
+        if node.right == EMPTY_REF { return i32::MAX; }
+
+        self.node(node.right).value
+    }
+
+    fn verify_red_property(&self, index: u32) -> bool {
+        if index == EMPTY_REF { return true; }
+
+        let node = self.node(index);
+
+        if node.color == Color::Red {
+            let is_left_black = self.is_black(node.left);
+            let is_right_black = self.is_black(node.right);
+
+            if !(is_left_black && is_right_black) {
+                return false;
+            }
+        }
+
+        self.verify_red_property(node.left) && self.verify_red_property(node.right)
+    }
+
+    fn verify_height(&self, index: u32) -> usize {
+        if index == EMPTY_REF { return 1; }
+
+        let node = self.node(index);
+
+        let left_height = self.verify_height(node.left);
+        let right_height = self.verify_height(node.right);
+        assert_eq!(left_height, right_height, "Black height inconsistent.");
+
+        if node.color == Color::Black {
+            left_height + 1
+        } else {
+            left_height
+        }
+    }
+
+    fn verify_black_height_consistency(&self, index: u32) -> bool {
+        self.black_height(index).0
+    }
+
+    fn black_height(&self, index: u32) -> (bool, usize) {
+        if index == EMPTY_REF { return (true, 1); }
+        let node = self.node(index);
+        let (left_consistent, left_height) = self.black_height(node.left);
+        let (right_consistent, right_height) = self.black_height(node.right);
+
+        let consistent = left_consistent && right_consistent && left_height == right_height;
+
+        if node.color == Color::Black {
+            (consistent, left_height + 1)
+        } else {
+            (consistent, left_height)
+        }
+    }
+
+    fn max_depth(&self, index: u32) -> usize {
+        if index == EMPTY_REF { return 0; }
+        let node = self.node(index);
+
+        let left_depth = self.max_depth(node.left);
+        let right_depth = self.max_depth(node.right);
+        1 + left_depth.max(right_depth)
+    }
+}
+```
+</file>
+</rust context>

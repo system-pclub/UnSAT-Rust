@@ -1,0 +1,37 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-22-40-raw-ptr-deref-1ddccceaa1")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_22_40_raw_ptr_deref_1ddccceaa1() {
+    use crate::{
+        instructions::contract::eofcreate,
+        primitives::{Bytecode, Bytes, Eof},
+        DummyHost, Gas, Interpreter,
+    };
+    use std::sync::Arc;
+
+    let mut eof = Eof::default();
+    eof.body.is_data_filled = true;
+    eof.header.data_size = 0;
+    eof.body.code_section.push(Bytes::from([0x00]));
+    eof.body.types_section.push(revm_primitives::eof::TypesSection::new(0, 0, 0));
+    eof.header.code_sizes.push(1);
+
+    let mut interp = Interpreter::new_bytecode(Bytecode::Eof(Arc::new(eof)));
+    interp.is_eof = true;
+    interp.is_static = false;
+    interp.gas = Gas::new(100_000);
+
+    interp.stack.push(revm_primitives::U256::from(1)).unwrap();
+    interp.stack.push(revm_primitives::U256::from(0)).unwrap();
+    interp.stack.push(revm_primitives::U256::from(0)).unwrap();
+    interp.stack.push(revm_primitives::U256::from(0)).unwrap();
+
+    interp.instruction_pointer = interp.bytecode.as_ptr();
+    let ip = interp.instruction_pointer as usize;
+    let bad = (ip.wrapping_sub(1)) as *const u8;
+    interp.instruction_pointer = bad;
+
+    let mut host = DummyHost::default();
+    eofcreate(&mut interp, &mut host);
+}
+```

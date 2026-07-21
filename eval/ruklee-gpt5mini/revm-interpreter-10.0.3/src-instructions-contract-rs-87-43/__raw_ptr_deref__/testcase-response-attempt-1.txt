@@ -1,0 +1,46 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-87-43-raw-ptr-deref-a860496241")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_87_43_raw_ptr_deref_a860496241() {
+    use crate::{
+        instructions::contract::return_contract,
+        interpreter::Interpreter,
+        interpreter_action::{InterpreterAction},
+        host::DummyHost,
+        primitives::{Bytes, Eof, U256},
+        Contract, Gas, InstructionResult,
+    };
+    use std::sync::Arc;
+
+    let mut interpreter = Interpreter::default();
+    let mut host = DummyHost::default();
+
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.next_action = InterpreterAction::None;
+    interpreter.gas = Gas::new(1_000_000);
+    interpreter.is_eof_init = true;
+
+    interpreter.contract = Contract::default();
+    interpreter.contract.input = Bytes::new();
+    interpreter.bytecode = Bytes::new();
+
+    let eof = Eof::default();
+    interpreter.contract.bytecode = eof.clone().into();
+    interpreter.is_eof = true;
+    interpreter.contract.hash = None;
+
+    interpreter.shared_memory = crate::EMPTY_SHARED_MEMORY;
+    interpreter.stack.push(U256::from(0u64)).ok();
+    interpreter.stack.push(U256::from(0u64)).ok();
+
+    let mut eof_arc = Arc::new(eof);
+    if let Some(eof_mut) = Arc::get_mut(&mut eof_arc) {
+        eof_mut.body.container_section.clear();
+    }
+    interpreter.contract.bytecode = eof_arc.clone().into();
+
+    interpreter.instruction_pointer = 1usize as *const u8;
+
+    return_contract(&mut interpreter, &mut host);
+}
+```

@@ -1,0 +1,629 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-interpreter-shared-memory-rs-297-13-rule-572-a170f873fd")]`.
+- Define `pub extern "C" fn __unsat_poc_src_interpreter_shared_memory_rs_297_13_rule_572_a170f873fd()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "interpreter::shared_memory::SharedMemory",
+    "path": "src/interpreter/shared_memory.rs",
+    "line_start": 11,
+    "body_end": 11,
+    "is_public": true
+  },
+  "caller": {
+    "name": "interpreter::shared_memory::SharedMemory::context_memory",
+    "path": "src/interpreter/shared_memory.rs",
+    "line_start": 292,
+    "line_end": 294,
+    "body_end": 300,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "&[u8]"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 625,
+    "line_end": 657,
+    "body_end": 657,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&<I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 297,
+    "col": 13,
+    "path": "src/interpreter/shared_memory.rs",
+    "id": "src-interpreter-shared_memory-rs-297-13"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "std::ops::Range<usize>",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+Calling this method with an out-of-bounds index is undefined behavior, even if the resulting reference is not used.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-interpreter-shared_memory-rs-297-13
+
+Rule id: rule-572
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"binary","op":"<","left":{"type":"simplified_var","name":"get_arg(2)"},"right":{"type":"simplified_var","name":"get_arg(1)"}},"original":{"type":"binary","op":"<","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":2}]},"right":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]}}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+_error17h605c55e4a2763357E
+KLEE: WARNING: undefined reference to function: _ZN95_$LT$core..ops..control_flow..ControlFlow$LT$B$C$C$GT$$u20$as$u20$core..ops..try_trait..Try$GT$11from_output17h27e48e344e5eee44E
+KLEE: WARNING: undefined reference to function: _ZN95_$LT$core..ops..control_flow..ControlFlow$LT$B$C$C$GT$$u20$as$u20$core..ops..try_trait..Try$GT$6branch17hdf7873412410b239E
+KLEE: WARNING: undefined reference to function: _ZN98_$LT$core..slice..iter..ChunksExact$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$4next17h1ee3f057a4d2d2a4E
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line5Lines13find_location17hc436b0d48ee84f3bE
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line5Lines4file17h27b564f3b0df6201E
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line5Lines6ranges17h8705c404906f6b3aE
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line9LazyLines3new17h71d7a040eb951607E
+KLEE: WARNING: undefined reference to function: _ZN9addr2line4line9path_push17hbbcfbec662244ca4E
+KLEE: WARNING: undefined reference to function: _ZN9hashbrown3raw11Fallibility17capacity_overflow17h141a72bc8cd73b64E
+KLEE: WARNING: undefined reference to function: _ZN9hashbrown3raw11Fallibility9alloc_err17hcefa417962e289beE
+KLEE: WARNING: undefined reference to function: _ZN9hashbrown3raw13RawTableInner10ctrl_slice17hd5ee576306de0938E
+KLEE: WARNING: undefined reference to function: __cxa_thread_atexit_impl
+KLEE: WARNING: undefined reference to function: __res_init
+KLEE: WARNING: undefined reference to variable: __rust_no_alloc_shim_is_unstable
+KLEE: WARNING: undefined reference to function: __xpg_strerror_r
+KLEE: WARNING: undefined reference to function: accept4
+KLEE: WARNING: undefined reference to function: bind
+KLEE: WARNING: undefined reference to function: chdir
+KLEE: WARNING: undefined reference to function: chmod
+KLEE: WARNING: undefined reference to function: chown
+KLEE: WARNING: undefined reference to function: chroot
+KLEE: WARNING: undefined reference to function: clock_gettime
+KLEE: WARNING: undefined reference to function: close
+KLEE: WARNING: undefined reference to function: closedir
+KLEE: WARNING: undefined reference to function: connect
+KLEE: WARNING: undefined reference to function: copy_file_range
+KLEE: WARNING: undefined reference to function: copysignl
+KLEE: WARNING: undefined reference to function: dirfd
+KLEE: WARNING: undefined reference to function: dl_iterate_phdr
+KLEE: WARNING: undefined reference to function: dlsym
+KLEE: WARNING: undefined reference to function: dup2
+KLEE: WARNING: undefined reference to variable: environ
+KLEE: WARNING: undefined reference to function: execvp
+KLEE: WARNING: undefined reference to function: fchmod
+KLEE: WARNING: undefined reference to function: fchown
+KLEE: WARNING: undefined reference to function: fcntl
+KLEE: WARNING: undefined reference to function: fdatasync
+KLEE: WARNING: undefined reference to function: fdopendir
+KLEE: WARNING: undefined reference to function: flock
+KLEE: WARNING: undefined reference to function: freeaddrinfo
+KLEE: WARNING: undefined reference to function: fstat64
+KLEE: WARNING: undefined reference to function: fstatat64
+KLEE: WARNING: undefined reference to function: fsync
+KLEE: WARNING: undefined reference to function: ftruncate64
+KLEE: WARNING: undefined reference to function: futimens
+KLEE: WARNING: undefined reference to function: gai_strerror
+KLEE: WARNING: undefined reference to function: getaddrinfo
+KLEE: WARNING: undefined reference to function: getauxval
+KLEE: WARNING: undefined reference to function: getenv
+KLEE: WARNING: undefined reference to function: getpeername
+KLEE: WARNING: undefined reference to function: getpwuid_r
+KLEE: WARNING: undefined reference to function: getrandom
+KLEE: WARNING: undefined reference to function: getsockname
+KLEE: WARNING: undefined reference to function: getsockopt
+KLEE: WARNING: undefined reference to function: gnu_get_libc_version
+KLEE: WARNING: undefined reference to function: ioctl
+KLEE: WARNING: undefined reference to function: isatty
+KLEE: WARNING: undefined reference to function: klee_ext_callsite
+KLEE: WARNING: undefined reference to function: klee_ext_raw_pointer_deref
+KLEE: WARNING: undefined reference to function: lchown
+KLEE: WARNING: undefined reference to function: linkat
+KLEE: WARNING: undefined reference to function: listen
+KLEE: WARNING: undefined reference to function: lseek64
+KLEE: WARNING: undefined reference to function: lstat64
+KLEE: WARNING: undefined reference to function: memmove
+KLEE: WARNING: undefined reference to function: memset
+KLEE: WARNING: undefined reference to function: mkdir
+KLEE: WARNING: undefined reference to function: mmap64
+KLEE: WARNING: undefined reference to function: mprotect
+KLEE: WARNING: undefined reference to function: munmap
+KLEE: WARNING: undefined reference to function: nanosleep
+KLEE: WARNING: undefined reference to function: open
+KLEE: WARNING: undefined reference to function: open64
+KLEE: WARNING: undefined reference to function: openat64
+KLEE: WARNING: undefined reference to function: opendir
+KLEE: WARNING: undefined reference to function: pause
+KLEE: WARNING: undefined reference to function: pidfd_getpid
+KLEE: WARNING: undefined reference to function: pidfd_spawnp
+KLEE: WARNING: undefined reference to function: pipe2
+KLEE: WARNING: undefined reference to function: poll
+KLEE: WARNING: undefined reference to function: posix_memalign
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir_np
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_adddup2
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_destroy
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_destroy
+KLEE: WARNING: undefined reference to function: posix_spawnattr_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setflags
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setpgroup
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setsigdefault
+KLEE: WARNING: undefined reference to function: posix_spawnp
+KLEE: WARNING: undefined reference to function: pread64
+KLEE: WARNING: undefined reference to function: preadv
+KLEE: WARNING: undefined reference to function: pthread_attr_destroy
+KLEE: WARNING: undefined reference to function: pthread_attr_getguardsize
+KLEE: WARNING: undefined reference to function: pthread_attr_getstack
+KLEE: WARNING: undefined reference to function: pthread_attr_init
+KLEE: WARNING: undefined reference to function: pthread_attr_setstacksize
+KLEE: WARNING: undefined reference to function: pthread_create
+KLEE: WARNING: undefined reference to function: pthread_detach
+KLEE: WARNING: undefined reference to function: pthread_getattr_np
+KLEE: WARNING: undefined reference to function: pthread_join
+KLEE: WARNING: undefined reference to function: pthread_key_create
+KLEE: WARNING: undefined reference to function: pthread_key_delete
+KLEE: WARNING: undefined reference to function: pthread_mutex_lock
+KLEE: WARNING: undefined reference to function: pthread_mutex_unlock
+KLEE: WARNING: undefined reference to function: pthread_self
+KLEE: WARNING: undefined reference to function: pthread_setname_np
+KLEE: WARNING: undefined reference to function: pthread_setspecific
+KLEE: WARNING: undefined reference to function: pwrite64
+KLEE: WARNING: undefined reference to function: pwritev
+KLEE: WARNING: undefined reference to function: read
+KLEE: WARNING: undefined reference to function: readdir64
+KLEE: WARNING: undefined reference to function: readlink
+KLEE: WARNING: undefined reference to function: readv
+KLEE: WARNING: undefined reference to function: realpath
+KLEE: WARNING: undefined reference to function: recv
+KLEE: WARNING: undefined reference to function: recvfrom
+KLEE: WARNING: undefined reference to function: recvmsg
+KLEE: WARNING: undefined reference to function: rename
+KLEE: WARNING: undefined reference to function: rmdir
+KLEE: WARNING: undefined reference to function: sched_getaffinity
+KLEE: WARNING: undefined reference to function: sched_yield
+KLEE: WARNING: undefined reference to function: send
+KLEE: WARNING: undefined reference to function: sendfile64
+KLEE: WARNING: undefined reference to function: sendmsg
+KLEE: WARNING: undefined reference to function: sendto
+KLEE: WARNING: undefined reference to function: setenv
+KLEE: WARNING: undefined reference to function: setgid
+KLEE: WARNING: undefined reference to function: setgroups
+KLEE: WARNING: undefined reference to function: setpgid
+KLEE: WARNING: undefined reference to function: setsockopt
+KLEE: WARNING: undefined reference to function: setuid
+KLEE: WARNING: undefined reference to function: shutdown
+KLEE: WARNING: undefined reference to function: sigaction
+KLEE: WARNING: undefined reference to function: sigaddset
+KLEE: WARNING: undefined reference to function: sigaltstack
+KLEE: WARNING: undefined reference to function: sigemptyset
+KLEE: WARNING: undefined reference to function: signal
+KLEE: WARNING: undefined reference to function: socket
+KLEE: WARNING: undefined reference to function: socketpair
+KLEE: WARNING: undefined reference to function: splice
+KLEE: WARNING: undefined reference to function: stat64
+KLEE: WARNING: undefined reference to function: statx
+KLEE: WARNING: undefined reference to function: strlen
+KLEE: WARNING: undefined reference to function: symlink
+KLEE: WARNING: undefined reference to function: syscall
+KLEE: WARNING: undefined reference to function: sysconf
+KLEE: WARNING: undefined reference to function: unlink
+KLEE: WARNING: undefined reference to function: unlinkat
+KLEE: WARNING: undefined reference to function: unsetenv
+KLEE: WARNING: undefined reference to function: waitid
+KLEE: WARNING: undefined reference to function: waitpid
+KLEE: WARNING: undefined reference to function: write
+KLEE: WARNING: undefined reference to function: writev
+KLEE: WARNING: undefined reference to function: fork (UNSAFE)!
+KLEE: WARNING: undefined reference to function: kill (UNSAFE)!
+KLEE: [compose-verify] entry function: __unsat_poc_src_interpreter_shared_memory_rs_297_13_rule_572_a170f873fd
+KLEE: WARNING: executable has module level assembly (ignoring)
+KLEE: WARNING: Unable to load symbol(_ZN10std_detect6detect5cache5CACHE17h0392a91fa475321eE) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_ZN6memchr4arch6x86_646memchr11memchr2_raw2FN17h2c77f1c0630a543cE) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_ZN6memchr4arch6x86_646memchr9count_raw2FN17h994abf3eb753aaaeE) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(__rust_no_alloc_shim_is_unstable) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_RNvCsfjvCHufmGpt_7___rustc39___rust_alloc_error_handler_should_panic) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING ONCE: Alignment of memory from call "_RNvCsfjvCHufmGpt_7___rustc12___rust_alloc" is not modelled. Using alignment of 8.
+KLEE: WARNING ONCE: calling external: _ZN5alloc7raw_vec19RawVec$LT$T$C$A$GT$3ptr17h68e5c6b08e51454fE(125185615200280) at /workspaces/UnSAT-Rust/tools/rust/build/x86_64-unknown-linux-gnu/stage1/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:1760 6
+KLEE: ERROR: /workspaces/UnSAT-Rust/tools/rust/build/x86_64-unknown-linux-gnu/stage1/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:1759: failed external call: _ZN5alloc7raw_vec19RawVec$LT$T$C$A$GT$3ptr17h68e5c6b08e51454fE
+KLEE: NOTE: now ignoring this error at this location
+
+KLEE: done: total instructions = 2480
+KLEE: done: completed paths = 0
+KLEE: done: partially completed paths = 1
+KLEE: done: generated tests = 1
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/interpreter/shared_memory.rs">
+```rust
+use core::{cmp::min, fmt, ops::Range};
+use revm_primitives::{B256, U256};
+use std::vec::Vec;
+/// A sequential memory shared between calls, which uses
+/// a `Vec` for internal representation.
+/// A [SharedMemory] instance should always be obtained using
+/// the `new` static method to ensure memory safety.
+#[derive(Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SharedMemory {
+    /// The underlying buffer.
+    buffer: Vec<u8>,
+    /// Memory checkpoints for each depth.
+    /// Invariant: these are always in bounds of `data`.
+    checkpoints: Vec<usize>,
+    /// Invariant: equals `self.checkpoints.last()`
+    last_checkpoint: usize,
+    /// Memory limit. See [`CfgEnv`](revm_primitives::CfgEnv).
+    #[cfg(feature = "memory_limit")]
+    memory_limit: u64,
+}
+/// Empty shared memory.
+///
+/// Used as placeholder inside Interpreter when it is not running.
+pub const EMPTY_SHARED_MEMORY: SharedMemory = SharedMemory {
+    buffer: Vec::new(),
+    checkpoints: Vec::new(),
+    last_checkpoint: 0,
+    #[cfg(feature = "memory_limit")]
+    memory_limit: u64::MAX,
+};
+impl fmt::Debug for SharedMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl Default for SharedMemory {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl SharedMemory {
+    /// Creates a new memory instance that can be shared between calls.
+    ///
+    /// The default initial capacity is 4KiB.
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new memory instance that can be shared between calls with the given `capacity`.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new memory instance that can be shared between calls,
+    /// with `memory_limit` as upper bound for allocation size.
+    ///
+    /// The default initial capacity is 4KiB.
+    #[cfg(feature = "memory_limit")]
+    #[inline]
+    pub fn new_with_memory_limit(memory_limit: u64) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns `true` if the `new_size` for the current context memory will
+    /// make the shared buffer length exceed the `memory_limit`.
+    #[cfg(feature = "memory_limit")]
+    #[inline]
+    pub fn limit_reached(&self, new_size: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Prepares the shared memory for a new context.
+    #[inline]
+    pub fn new_context(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Prepares the shared memory for returning to the previous context.
+    #[inline(never)]
+    pub fn free_context(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length of the current memory range.
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns `true` if the current memory range is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns the gas cost for the current memory expansion.
+    #[inline]
+    pub fn current_expansion_cost(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+    /// Resizes the memory in-place so that `len` is equal to `new_len`.
+    #[inline]
+    pub fn resize(&mut self, new_size: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn slice(&self, offset: usize, size: usize) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns a byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn slice_range(&self, range @ Range { start, end }: Range<usize>) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns a byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn slice_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    pub fn get_byte(&self, offset: usize) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns a 32-byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    pub fn get_word(&self, offset: usize) -> B256 {
+        /* body omitted: interface retained */
+    }
+    /// Returns a U256 of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    pub fn get_u256(&self, offset: usize) -> U256 {
+        /* body omitted: interface retained */
+    }
+    /// Sets the `byte` at the given `index`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set_byte(&mut self, offset: usize, byte: u8) {
+        /* body omitted: interface retained */
+    }
+    /// Sets the given 32-byte `value` to the memory region at the given `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set_word(&mut self, offset: usize, value: &B256) {
+        /* body omitted: interface retained */
+    }
+    /// Sets the given U256 `value` to the memory region at the given `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set_u256(&mut self, offset: usize, value: U256) {
+        /* body omitted: interface retained */
+    }
+    /// Set memory region at given `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set(&mut self, offset: usize, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Set memory from data. Our memory offset+len is expected to be correct but we
+    /// are doing bound checks on data/data_offeset/len and zeroing parts that is not copied.
+    ///
+    /// # Panics
+    ///
+    /// Panics if memory is out of bounds.
+    #[cfg_attr(debug_assertions, track_caller)]
+    #[inline(never)]
+    pub fn set_data(
+        &mut self,
+        memory_offset: usize,
+        data_offset: usize,
+        len: usize,
+        data: &[u8],
+    ) {
+        /* body omitted: interface retained */
+    }
+    /// Copies elements from one part of the memory to another part of itself.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn copy(&mut self, dst: usize, src: usize, len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to the memory of the current context, the active memory.
+    #[inline(never)]
+    pub fn context_memory(&self) -> &[u8] {
+        unsafe {
+            let __klee_arg1 = &self.buffer;
+            let __klee_arg2 = self.last_checkpoint..self.buffer.len();
+            klee_ext_bind::callsite!("src-interpreter-shared_memory-rs-297-13");
+            let mut __klee_ret_src_interpreter_shared_memory_rs_297_13_get_unchecked = __klee_arg1
+                .get_unchecked(__klee_arg2);
+            __klee_ret_src_interpreter_shared_memory_rs_297_13_get_unchecked
+        }
+    }
+    /// Returns a mutable reference to the memory of the current context.
+    #[inline(never)]
+    pub fn context_memory_mut(&mut self) -> &mut [u8] {
+        let buf_len = self.buffer.len();
+        unsafe {
+            let __klee_arg3 = &mut self.buffer;
+            let __klee_arg4 = self.last_checkpoint..buf_len;
+            klee_ext_bind::callsite!("src-interpreter-shared_memory-rs-307-18");
+            let mut __klee_ret_src_interpreter_shared_memory_rs_307_18_get_unchecked_mut = __klee_arg3
+                .get_unchecked_mut(__klee_arg4);
+            __klee_ret_src_interpreter_shared_memory_rs_307_18_get_unchecked_mut
+        }
+    }
+}
+/// Returns number of words what would fit to provided number of bytes,
+/// i.e. it rounds up the number bytes to number of words.
+#[inline]
+pub const fn num_words(len: u64) -> u64 {
+    /* body omitted: interface retained */
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_num_words() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn new_free_context() {
+        /* body omitted: interface retained */
+    }
+    #[test]
+    fn resize() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! # revm-interpreter
+//!
+//! REVM Interpreter.
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc as std;
+
+#[macro_use]
+mod macros;
+
+// silence lint
+#[cfg(test)]
+use serde_json as _;
+
+#[cfg(test)]
+use walkdir as _;
+
+mod function_stack;
+pub mod gas;
+mod host;
+mod instruction_result;
+pub mod instructions;
+pub mod interpreter;
+pub mod interpreter_action;
+pub mod opcode;
+
+// Reexport primary types.
+pub use function_stack::{FunctionReturnFrame, FunctionStack};
+pub use gas::Gas;
+pub use host::{
+    AccountLoad, DummyHost, Eip7702CodeLoad, Host, SStoreResult, SelfDestructResult, StateLoad,
+};
+pub use instruction_result::*;
+pub use interpreter::{
+    analysis, num_words, Contract, Interpreter, InterpreterResult, SharedMemory, Stack,
+    EMPTY_SHARED_MEMORY, STACK_LIMIT,
+};
+pub use interpreter_action::{
+    CallInputs, CallOutcome, CallScheme, CallValue, CreateInputs, CreateOutcome, CreateScheme,
+    EOFCreateInputs, EOFCreateKind, InterpreterAction,
+};
+pub use opcode::{Instruction, OpCode, OPCODE_INFO_JUMPTABLE};
+pub use primitives::{MAX_CODE_SIZE, MAX_INITCODE_SIZE};
+
+#[doc(hidden)]
+pub use revm_primitives as primitives;
+```
+</file>
+</rust context>

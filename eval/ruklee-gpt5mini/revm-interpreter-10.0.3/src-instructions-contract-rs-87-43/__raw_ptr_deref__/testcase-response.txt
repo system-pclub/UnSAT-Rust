@@ -1,0 +1,39 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-87-43-raw-ptr-deref-a860496241")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_87_43_raw_ptr_deref_a860496241() {
+    use crate::{
+        instructions::contract::return_contract,
+        primitives::{Bytecode, Bytes, Eof},
+        DummyHost, Gas, Interpreter,
+    };
+    use std::sync::Arc;
+
+    let mut eof = Eof::decode(Bytes::from([
+        0xef, 0x00, 0x01, 0x01, 0x00, 0x04, 0x02, 0x00, 0x01, 0x00, 0x01, 0x04, 0x00, 0x00,
+        0x00, 0x00, 0x80, 0x00, 0x00, 0xfe,
+    ]))
+    .expect("valid eof");
+    eof.body.code_section.clear();
+    eof.body.types_section.clear();
+    eof.header.code_sizes.clear();
+    eof.header.code_sizes.push(1);
+    eof.body.code_section.push(Bytes::from([0xee]));
+    eof.body.types_section.push(Default::default());
+    eof.body.container_section = vec![Bytes::from([0x00])];
+
+    let mut interpreter = Interpreter::new_bytecode(Bytecode::Eof(Arc::new(eof)));
+    interpreter.is_eof_init = true;
+    interpreter.gas = Gas::new(10_000);
+
+    interpreter.shared_memory.new_context();
+    interpreter.shared_memory.resize(2);
+    interpreter.shared_memory.set_u256(0, crate::primitives::U256::from(1));
+
+    interpreter.stack.push(crate::primitives::U256::from(0)).unwrap();
+    interpreter.stack.push(crate::primitives::U256::from(0)).unwrap();
+
+    let mut host = DummyHost::default();
+    return_contract(&mut interpreter, &mut host);
+}
+```

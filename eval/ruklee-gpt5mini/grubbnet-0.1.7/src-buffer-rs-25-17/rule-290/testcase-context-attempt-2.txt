@@ -1,0 +1,83 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer.rs">
+```rust
+pub const MAX_BUFFER_SIZE: usize = 1024 * 16;
+/// A simple byte buffer, useful for storing bytes that are going to be consumed in packets.
+pub struct NetworkBuffer {
+    pub data: [u8; MAX_BUFFER_SIZE],
+    pub offset: usize,
+}
+impl NetworkBuffer {
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+    #[inline(never)]
+    pub fn drain(&mut self, count: usize) {
+        unsafe {
+            use std::ptr;
+            let __klee_arg0 = self.data.as_ptr();
+            let __klee_arg1 = count as isize;
+            klee_ext_bind::callsite!("src-buffer-rs-25-17");
+            let mut __klee_ret_src_buffer_rs_25_17_offset = __klee_arg0
+                .offset(__klee_arg1);
+            let __klee_arg2 = self.data.as_mut_ptr();
+            let __klee_arg3 = self.offset - count;
+            klee_ext_bind::callsite!("src-buffer-rs-24-13");
+            let mut __klee_ret_src_buffer_rs_24_13_copy = ptr::copy(
+                __klee_ret_src_buffer_rs_25_17_offset,
+                __klee_arg2,
+                __klee_arg3,
+            );
+        }
+        self.offset -= count;
+    }
+    pub fn clear(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+mod client;
+mod error;
+mod server;
+
+pub mod buffer;
+pub mod packet;
+
+#[cfg(feature = "crypto")]
+pub mod crypto;
+
+use mio::net::TcpStream;
+use std::io::Write;
+
+pub use client::{Client, ClientEvent};
+pub use error::{Error, Result};
+pub use mio::Token;
+pub use server::{Server, ServerEvent};
+
+pub enum PacketRecipient {
+    All,
+    Single(Token),
+    Exclude(Token),
+    ExcludeMany(Vec<Token>),
+    Include(Vec<Token>),
+}
+
+/// Send some bytes to a socket.
+/// Returns the number of bytes sent, or an `Error`.
+pub fn send_bytes(socket: &mut TcpStream, buffer: &[u8]) -> Result<usize> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

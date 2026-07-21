@@ -1,0 +1,326 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-tree-rs-72-13-rule-576-f020e3dff2")]`.
+- Define `pub extern "C" fn __unsat_poc_src_tree_rs_72_13_rule_576_f020e3dff2()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "tree::Tree",
+    "path": "src/tree.rs",
+    "line_start": 5,
+    "body_end": 5,
+    "is_public": true
+  },
+  "caller": {
+    "name": "tree::Tree::<T>::mut_node",
+    "path": "src/tree.rs",
+    "line_start": 70,
+    "line_end": 70,
+    "body_end": 74,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "&mut node::Node<T>"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked_mut",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 665,
+    "line_end": 699,
+    "body_end": 699,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&mut <I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 72,
+    "col": 13,
+    "path": "src/tree.rs",
+    "id": "src-tree-rs-72-13"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "node::Node<T>",
+      "layout_control": "external",
+      "external_sources": [
+        "node::Node<T>"
+      ]
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "usize",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+Calling this method with an out-of-bounds index is undefined behavior, even if the resulting reference is not used.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-tree-rs-72-13
+
+Rule id: rule-576
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"binary","op":"<","left":{"type":"simplified_var","name":"get_arg(2)"},"right":{"type":"simplified_var","name":"get_arg(1)"}},"original":{"type":"binary","op":"<","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":2}]},"right":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]}}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+pub mod store;
+pub mod tree;
+pub mod node;
+pub mod array;
+```
+</file>
+
+<file path="src/node.rs">
+```rust
+pub const EMPTY_REF: u32 = u32::MAX;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum Color {
+    Red,
+    Black
+}
+
+pub struct Node<T> {
+    pub parent: u32,
+    pub left: u32,
+    pub right: u32,
+    pub color: Color,
+    pub value: T
+}
+```
+</file>
+
+<file path="src/store.rs">
+```rust
+use crate::node::{Color, EMPTY_REF, Node};
+
+pub struct Store<T> {
+    pub(super) buffer: Vec<Node<T>>,
+    pub(super) unused: Vec<u32>,
+    empty: T,
+}
+
+impl<T: Clone> Store<T> {
+
+    #[inline(always)]
+    pub(super) fn new(empty: T, capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn reserve(&mut self, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    pub fn get_free_index(&mut self) -> u32 {
+        /* body omitted: interface retained */
+    }
+
+
+    #[inline(always)]
+    pub fn put_back(&mut self, index: u32) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/tree.rs">
+```rust
+use std::cmp::Ordering;
+use crate::node::{Color, EMPTY_REF, Node};
+use crate::store::Store;
+pub struct Tree<T> {
+    pub store: Store<T>,
+    pub root: u32,
+    nil_index: u32,
+}
+impl<T: Clone + PartialEq + Eq + PartialOrd + Ord> Tree<T> {
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn new(empty: T, capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn clear_all(&mut self) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn is_black(&self, index: u32) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn node(&self, index: u32) -> &Node<T> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn mut_node(&mut self, index: u32) -> &mut Node<T> {
+        unsafe {
+            let __klee_arg2 = &mut self.store.buffer;
+            let __klee_arg3 = index as usize;
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg2).len() as u64);
+            klee_ext_bind::bind_arg_u64(2, __klee_arg3 as u64);
+            klee_ext_bind::callsite!("src-tree-rs-72-13");
+            let mut __klee_ret_src_tree_rs_72_13_get_unchecked_mut = __klee_arg2
+                .get_unchecked_mut(__klee_arg3);
+            __klee_ret_src_tree_rs_72_13_get_unchecked_mut
+        }
+    }
+    #[inline(always)]
+    fn create_nil_node(&mut self, parent: u32) {
+        /* body omitted: interface retained */
+    }
+    fn rotate_right(&mut self, index: u32) {
+        /* body omitted: interface retained */
+    }
+    fn rotate_left(&mut self, index: u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn replace_parents_child(&mut self, parent: u32, old_child: u32, new_child: u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn remove_parents_child(&mut self, parent: u32, old_child: u32) {
+        /* body omitted: interface retained */
+    }
+    pub fn insert_if_not_exist(&mut self, value: T) -> bool {
+        /* body omitted: interface retained */
+    }
+    pub fn insert(&mut self, value: T) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn insert_root(&mut self, value: T) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn insert_with_parent(&mut self, value: T, p_index: u32, is_left: bool) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn fix_red_black_properties_after_insert(
+        &mut self,
+        n_index: u32,
+        p_origin: u32,
+    ) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn get_uncle(&self, p_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn delete(&mut self, value: &T) {
+        /* body omitted: interface retained */
+    }
+    pub fn delete_if_exist(&mut self, value: &T) {
+        /* body omitted: interface retained */
+    }
+    pub fn delete_index(&mut self, index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn parent(&self, index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    fn delete_node_with_zero_or_one_child(&mut self, n_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    fn fix_red_black_properties_after_delete(&mut self, n_index: u32) {
+        /* body omitted: interface retained */
+    }
+    fn handle_black_sibling_with_at_least_one_red_child(
+        &mut self,
+        n_index: u32,
+        s_origin: u32,
+    ) {
+        /* body omitted: interface retained */
+    }
+    fn handle_red_sibling(&mut self, n_index: u32, s_index: u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn get_sibling(&self, n_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn find_left_minimum(&self, n_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn find(&self, value: T) -> Option<T> {
+        /* body omitted: interface retained */
+    }
+    pub fn find_index(&self, value: T) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn height(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn node_accessors_instantiate_unchecked_paths() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

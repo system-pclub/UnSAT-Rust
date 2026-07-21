@@ -1,0 +1,55 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-53-48-rule-290-62a1cdf353")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_53_48_rule_290_62a1cdf353() {
+    use crate::{
+        instructions::control::rjumpv, DummyHost, Gas, Interpreter, InterpreterAction,
+        InterpreterResult, Contract, Stack, FunctionStack,
+    };
+    use crate::primitives::{Bytes, U256};
+
+    let bytecode = Bytes::from(vec![
+        0x5f, // PUSH0-like filler; exact opcode bytes are irrelevant for the callsite repro
+        0x5f,
+        0x5f,
+        0x5f,
+        0x5f,
+        0x5f,
+        0x5f,
+        0x5f,
+    ]);
+
+    let contract = Contract {
+        input: Bytes::new(),
+        bytecode: crate::primitives::Bytecode::LegacyRaw(bytecode.clone()),
+        hash: None,
+        target_address: Default::default(),
+        bytecode_address: None,
+        caller: Default::default(),
+        call_value: U256::ZERO,
+    };
+
+    let mut interp = Interpreter {
+        instruction_pointer: bytecode.as_ptr(),
+        gas: Gas::new(1_000_000),
+        contract,
+        instruction_result: InterpreterResult::default().result,
+        bytecode,
+        is_eof: true,
+        is_eof_init: false,
+        shared_memory: crate::EMPTY_SHARED_MEMORY,
+        stack: Stack::new(),
+        function_stack: FunctionStack::default(),
+        return_data_buffer: Bytes::new(),
+        is_static: false,
+        next_action: InterpreterAction::None,
+    };
+
+    let mut host = DummyHost::default();
+
+    interp.stack.push(U256::from(0u8)).ok();
+    interp.stack.push(U256::from(255u64)).ok();
+
+    rjumpv(&mut interp, &mut host);
+}
+```

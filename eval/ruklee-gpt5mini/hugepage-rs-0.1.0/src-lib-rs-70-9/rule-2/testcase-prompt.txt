@@ -1,0 +1,319 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-lib-rs-70-9-rule-2-d20f5fca3c")]`.
+- Define `pub extern "C" fn __unsat_poc_src_lib_rs_70_9_rule_2_d20f5fca3c()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "dealloc",
+    "path": "src/lib.rs",
+    "line_start": 57,
+    "line_end": 68,
+    "body_end": 72,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::alloc::GlobalAlloc::dealloc",
+    "path": "rust/library/core/src/alloc/global.rs",
+    "line_start": 155,
+    "line_end": 168,
+    "body_end": 168,
+    "require_template": false,
+    "is_unsafe": true,
+    "trait_name": "std::alloc::GlobalAlloc",
+    "return_ty": "()",
+    "symbol_match_hint": "GlobalAlloc::dealloc"
+  },
+  "callsite": {
+    "line": 70,
+    "col": 9,
+    "path": "src/lib.rs",
+    "id": "src-lib-rs-70-9"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "Self",
+      "owner": "impl",
+      "instantiated_ty": "allocator::HugePageAllocator",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+The `layout` must be the same layout that was used to allocate that block of memory.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-lib-rs-70-9
+
+Rule id: rule-2
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"binary","op":"&&","left":{"type":"binary","op":"==","left":{"type":"simplified_var","name":"get_arg(1).allocation.size"},"right":{"type":"simplified_var","name":"get_arg(2)"}},"right":{"type":"binary","op":"==","left":{"type":"simplified_var","name":"get_arg(1).allocation.layout.align"},"right":{"type":"simplified_var","name":"get_arg(3)"}}},"original":{"type":"binary","op":"&&","left":{"type":"binary","op":"==","left":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_field","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},{"type":"literal","value":"allocation"}]},{"type":"literal","value":"size"}]},"right":{"type":"call","name":"get_arg","args":[{"type":"literal","value":2}]}},"right":{"type":"binary","op":"==","left":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_field","args":[{"type":"call","name":"get_field","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},{"type":"literal","value":"allocation"}]},{"type":"literal","value":"layout"}]},{"type":"literal","value":"align"}]},"right":{"type":"call","name":"get_arg","args":[{"type":"literal","value":3}]}}}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/allocator.rs">
+```rust
+use libc::{
+    self, c_void, MAP_ANONYMOUS, MAP_FAILED, MAP_HUGETLB, MAP_PRIVATE, PROT_READ, PROT_WRITE,
+};
+use std::{
+    alloc::{GlobalAlloc, Layout},
+    fs::File,
+    io::Read,
+    ptr::null_mut,
+};
+
+// https://www.kernel.org/doc/Documentation/vm/hugetlbpage.txt
+//
+// The output of "cat /proc/meminfo" will include lines like:
+// ...
+// HugePages_Total: uuu
+// HugePages_Free:  vvv
+// HugePages_Rsvd:  www
+// HugePages_Surp:  xxx
+// Hugepagesize:    yyy kB
+// Hugetlb:         zzz kB
+
+// constant.
+const MEMINFO_PATH: &str = "/proc/meminfo";
+const TOKEN: &str = "Hugepagesize:";
+
+lazy_static! {
+    static ref HUGEPAGE_SIZE: isize = {
+        let buf = File::open(MEMINFO_PATH).map_or("".to_owned(), |mut f| {
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            s
+        });
+        parse_hugepage_size(&buf)
+    };
+}
+
+fn parse_hugepage_size(s: &str) -> isize {
+    /* body omitted: interface retained */
+}
+
+fn align_to(size: usize, align: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+// hugepage allocator.
+pub(crate) struct HugePageAllocator;
+
+unsafe impl GlobalAlloc for HugePageAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        /* body omitted: interface retained */
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+        libc::munmap(p as *mut c_void, layout.size());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{mem, ptr};
+
+    #[test]
+    fn test_parse_hugepage_size() {
+        /* body omitted: interface retained */
+    }
+
+    #[test]
+    fn test_align_to() {
+        /* body omitted: interface retained */
+    }
+
+    #[test]
+    fn test_allocator() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/boxed.rs">
+```rust
+use crate::default_allocator;
+use std::alloc::{GlobalAlloc, Layout};
+use std::ops::{Deref, DerefMut};
+use std::ptr::NonNull;
+/// A pointer type for hugepage allocation.
+///
+/// Allocates memory on the hugepage and then places x into it.
+pub struct Box<T> {
+    data: NonNull<T>,
+}
+impl<T> Box<T> {
+    #[inline(never)]
+    pub fn new(data: T) -> Box<T> {
+        /* body omitted: interface retained */
+    }
+    pub unsafe fn from_raw(raw: *mut T) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Drop for Box<T> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Deref for Box<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_boxed() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#[cfg(target_os = "linux")]
+#[macro_use]
+extern crate lazy_static;
+#[cfg(target_os = "linux")]
+use std::alloc::{GlobalAlloc, Layout};
+#[cfg(target_os = "linux")]
+mod allocator;
+#[cfg(target_os = "linux")]
+use allocator::HugePageAllocator;
+#[cfg(target_os = "linux")]
+mod boxed;
+#[cfg(target_os = "linux")]
+pub use boxed::Box;
+#[cfg(target_os = "linux")]
+lazy_static! {
+    static ref HUGEPAGE_ALLOCATOR : HugePageAllocator = HugePageAllocator;
+}
+#[cfg(target_os = "linux")]
+pub(crate) fn default_allocator() -> &'static HugePageAllocator {
+    /* body omitted: interface retained */
+}
+/// Allocate memory with the hugepage allocator.
+///
+/// This function forwards calls to the HugePageAllocator.alloc() function.
+///
+/// # Safety
+///
+/// See [`GlobalAlloc::alloc`].
+///
+/// # Examples
+///
+/// ```
+/// use std::alloc::Layout;
+/// use hugepage_rs::{alloc, dealloc};
+///
+/// unsafe {
+///     let layout = Layout::new::<u16>();
+///     let ptr = alloc(layout);
+///
+///     *(ptr as *mut u16) = 42;
+///     assert_eq!(*(ptr as *mut u16), 42);
+///
+///     dealloc(ptr, layout);
+/// }
+/// ```
+#[cfg(target_os = "linux")]
+#[inline(never)]
+pub fn alloc(layout: Layout) -> *mut u8 {
+    /* body omitted: interface retained */
+}
+/// Deallocate memory with the hugepage allocator.
+///
+/// This function forwards calls to the HugePageAllocator.dealloc() function.
+///
+/// # Safety
+///
+/// This function is unsafe because undefined behavior can result if the caller does not ensure all of the following:
+///
+/// - ptr must denote a block of memory currently allocated via this allocator,
+/// - layout must be the same layout that was used to allocate that block of memory.
+#[cfg(target_os = "linux")]
+#[inline(never)]
+pub fn dealloc(p: *mut u8, layout: Layout) {
+    unsafe {
+        klee_ext_bind::callsite!("src-lib-rs-70-9");
+        let mut __klee_ret_src_lib_rs_70_9_dealloc = HUGEPAGE_ALLOCATOR
+            .dealloc(p, layout);
+        __klee_ret_src_lib_rs_70_9_dealloc
+    }
+}
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::dealloc;
+    use std::alloc::Layout;
+    use std::ptr;
+    #[test]
+    fn dealloc_wrapper_instantiate_allocator_call() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

@@ -1,0 +1,26 @@
+```rust
+#[cfg(feature = "unsat-poc-src-interpreter-rs-343-18-rule-294-rustc-1-87-line637-558d5721ba")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_interpreter_rs_343_18_rule_294_rustc_1_87_line637_558d5721ba() {
+    let bytecode = crate::primitives::Bytes::from(vec![0u8; 4]);
+    let contract = crate::Contract::new(
+        crate::primitives::Bytes::new(),
+        crate::primitives::Bytecode::new_raw(bytecode.clone()),
+        None,
+        crate::primitives::Address::ZERO,
+        None,
+        crate::primitives::Address::ZERO,
+        crate::primitives::U256::ZERO,
+    );
+
+    let mut interp = crate::Interpreter::new(contract, 1_000_000, false);
+
+    let leaked = Box::leak(Box::new([0u8; 8]));
+    interp.bytecode = crate::primitives::Bytes::from(leaked.to_vec());
+
+    let base = interp.bytecode.as_ptr();
+    interp.instruction_pointer = base.wrapping_add(3);
+
+    let _ = interp.program_counter();
+}
+```

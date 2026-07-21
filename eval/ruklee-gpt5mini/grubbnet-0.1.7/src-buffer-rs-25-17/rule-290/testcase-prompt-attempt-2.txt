@@ -1,0 +1,382 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+reported soundness violation.
+
+Requirements:
+- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+  operations. If the crate uses Rust 2024 and the compiler requires it, the
+  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+  must not occur in the output.
+- The testcase is injected into the module containing the target callsite, so
+  it may use fields and types visible from that module. Reproduce the supplied
+  control-chain steps literally; do not replace them with unrelated APIs.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-buffer-rs-25-17-rule-290-be921ead89")]`.
+- Define `pub extern "C" fn __unsat_poc_src_buffer_rs_25_17_rule_290_be921ead89()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+- Exercise the target callsite through the certainty call chain. Use concrete
+  values for every input; do not use KLEE helpers or symbolic inputs.
+- For a writable integer field, assign a concrete value that violates the
+  safety requirement (for example an out-of-bounds index), then invoke the
+  safe caller containing the target callsite.
+- The function will be appended to the Rust file containing the callsite, so
+  use paths that compile from that module.
+- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "compose_slice_as_ptr1"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "buffer::NetworkBuffer",
+    "path": "src/buffer.rs",
+    "line_start": 7,
+    "body_end": 7,
+    "is_public": true
+  },
+  "caller": {
+    "name": "buffer::NetworkBuffer::drain",
+    "path": "src/buffer.rs",
+    "line_start": 20,
+    "line_end": 21,
+    "body_end": 32,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::ptr::const_ptr::<impl *const T>::offset",
+    "path": "rust/library/core/src/ptr/const_ptr.rs",
+    "line_start": 374,
+    "line_end": 421,
+    "body_end": 421,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*const T"
+  },
+  "callsite": {
+    "line": 25,
+    "col": 17,
+    "path": "src/buffer.rs",
+    "id": "src-buffer-rs-25-17"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<safety requirement>
+If the computed offset is non-zero, then the memory range between `self` and the result must not wrap around the edge of the address space.
+</safety requirement>
+
+<structured reproduction target>
+Target callsite id: src-buffer-rs-25-17
+
+Rule id: rule-290
+
+Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe call:
+{"simplified":{"type":"binary","op":"||","left":{"type":"unary","op":"!","operand":{"type":"binary","op":"!=","left":{"type":"binary","op":"*","left":{"type":"simplified_var","name":"get_arg(1)"},"right":{"type":"simplified_var","name":"get_type_at_func(0).size"}},"right":{"type":"literal","value":0}}},"right":{"type":"binary","op":">=","left":{"type":"simplified_var","name":"memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).end"},"right":{"type":"simplified_var","name":"memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).start"}}},"original":{"type":"binary","op":"||","left":{"type":"unary","op":"!","operand":{"type":"binary","op":"!=","left":{"type":"binary","op":"*","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}},"right":{"type":"literal","value":0}}},"right":{"type":"binary","op":">=","left":{"type":"call","name":"get_field","args":[{"type":"call","name":"memory_range","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":0}]},{"type":"binary","op":"*","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}}]},{"type":"literal","value":"end"}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"memory_range","args":[{"type":"call","name":"get_arg","args":[{"type":"literal","value":0}]},{"type":"binary","op":"*","left":{"type":"call","name":"get_arg","args":[{"type":"literal","value":1}]},"right":{"type":"call","name":"get_field","args":[{"type":"call","name":"get_type_at_func","args":[{"type":"literal","value":0}]},{"type":"literal","value":"size"}]}}]},{"type":"literal","value":"start"}]}}}}
+</structured reproduction target>
+
+Important:
+- The testcase must make the target unsafe callee arguments violate the rule
+  above.
+- If the target says a relation such as `index < len` must be violated, choose
+  concrete inputs that make `index >= len` at the unsafe callsite.
+- If the target says two pointers must be from different allocations, do not
+  use `ptr.wrapping_add(...)` from the same allocation; construct the pointer
+  from a different safe allocation or safe API state if possible.
+- Prefer reproducing the concrete argument relation described by the rule over
+  writing a merely plausible API call.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+RNING: undefined reference to function: memset
+KLEE: WARNING: undefined reference to function: mkdir
+KLEE: WARNING: undefined reference to function: mmap64
+KLEE: WARNING: undefined reference to function: mprotect
+KLEE: WARNING: undefined reference to function: munmap
+KLEE: WARNING: undefined reference to function: nanosleep
+KLEE: WARNING: undefined reference to function: open64
+KLEE: WARNING: undefined reference to function: openat64
+KLEE: WARNING: undefined reference to function: opendir
+KLEE: WARNING: undefined reference to function: pause
+KLEE: WARNING: undefined reference to function: pidfd_getpid
+KLEE: WARNING: undefined reference to function: pidfd_spawnp
+KLEE: WARNING: undefined reference to function: pipe2
+KLEE: WARNING: undefined reference to function: poll
+KLEE: WARNING: undefined reference to function: posix_memalign
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_addchdir_np
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_adddup2
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_destroy
+KLEE: WARNING: undefined reference to function: posix_spawn_file_actions_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_destroy
+KLEE: WARNING: undefined reference to function: posix_spawnattr_init
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setflags
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setpgroup
+KLEE: WARNING: undefined reference to function: posix_spawnattr_setsigdefault
+KLEE: WARNING: undefined reference to function: posix_spawnp
+KLEE: WARNING: undefined reference to function: pread64
+KLEE: WARNING: undefined reference to function: preadv
+KLEE: WARNING: undefined reference to function: pthread_attr_destroy
+KLEE: WARNING: undefined reference to function: pthread_attr_getguardsize
+KLEE: WARNING: undefined reference to function: pthread_attr_getstack
+KLEE: WARNING: undefined reference to function: pthread_attr_init
+KLEE: WARNING: undefined reference to function: pthread_attr_setstacksize
+KLEE: WARNING: undefined reference to function: pthread_create
+KLEE: WARNING: undefined reference to function: pthread_detach
+KLEE: WARNING: undefined reference to function: pthread_getattr_np
+KLEE: WARNING: undefined reference to function: pthread_join
+KLEE: WARNING: undefined reference to function: pthread_key_create
+KLEE: WARNING: undefined reference to function: pthread_key_delete
+KLEE: WARNING: undefined reference to function: pthread_self
+KLEE: WARNING: undefined reference to function: pthread_setname_np
+KLEE: WARNING: undefined reference to function: pthread_setspecific
+KLEE: WARNING: undefined reference to function: pwrite64
+KLEE: WARNING: undefined reference to function: pwritev
+KLEE: WARNING: undefined reference to function: read
+KLEE: WARNING: undefined reference to function: readdir64
+KLEE: WARNING: undefined reference to function: readlink
+KLEE: WARNING: undefined reference to function: readv
+KLEE: WARNING: undefined reference to function: realpath
+KLEE: WARNING: undefined reference to function: recv
+KLEE: WARNING: undefined reference to function: recvfrom
+KLEE: WARNING: undefined reference to function: recvmsg
+KLEE: WARNING: undefined reference to function: rename
+KLEE: WARNING: undefined reference to function: rmdir
+KLEE: WARNING: undefined reference to function: sched_getaffinity
+KLEE: WARNING: undefined reference to function: sched_yield
+KLEE: WARNING: undefined reference to function: send
+KLEE: WARNING: undefined reference to function: sendfile64
+KLEE: WARNING: undefined reference to function: sendmsg
+KLEE: WARNING: undefined reference to function: sendto
+KLEE: WARNING: undefined reference to function: setenv
+KLEE: WARNING: undefined reference to function: setgid
+KLEE: WARNING: undefined reference to function: setgroups
+KLEE: WARNING: undefined reference to function: setpgid
+KLEE: WARNING: undefined reference to function: setsockopt
+KLEE: WARNING: undefined reference to function: setuid
+KLEE: WARNING: undefined reference to function: shutdown
+KLEE: WARNING: undefined reference to function: sigaction
+KLEE: WARNING: undefined reference to function: sigaddset
+KLEE: WARNING: undefined reference to function: sigaltstack
+KLEE: WARNING: undefined reference to function: sigemptyset
+KLEE: WARNING: undefined reference to function: signal
+KLEE: WARNING: undefined reference to function: socket
+KLEE: WARNING: undefined reference to function: socketpair
+KLEE: WARNING: undefined reference to function: splice
+KLEE: WARNING: undefined reference to function: stat64
+KLEE: WARNING: undefined reference to function: statx
+KLEE: WARNING: undefined reference to function: strlen
+KLEE: WARNING: undefined reference to function: symlink
+KLEE: WARNING: undefined reference to function: syscall
+KLEE: WARNING: undefined reference to function: sysconf
+KLEE: WARNING: undefined reference to function: unlink
+KLEE: WARNING: undefined reference to function: unlinkat
+KLEE: WARNING: undefined reference to function: unsetenv
+KLEE: WARNING: undefined reference to function: waitid
+KLEE: WARNING: undefined reference to function: waitpid
+KLEE: WARNING: undefined reference to function: write
+KLEE: WARNING: undefined reference to function: writev
+KLEE: WARNING: undefined reference to function: fork (UNSAFE)!
+KLEE: WARNING: undefined reference to function: kill (UNSAFE)!
+KLEE: [compose-verify] entry function: __unsat_poc_src_buffer_rs_25_17_rule_290_be921ead89
+KLEE: WARNING: executable has module level assembly (ignoring)
+KLEE: WARNING: Unable to load symbol(__rust_no_alloc_shim_is_unstable) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: Unable to load symbol(_RNvCsfjvCHufmGpt_7___rustc39___rust_alloc_error_handler_should_panic) while initializing globals; leaving the KLEE object zero-initialized
+KLEE: WARNING: [compose-verify] skipping oversized memset model size=16384
+KLEE: WARNING: [compose-verify] skipping oversized memcpy model size=16384
+KLEE: [ext.exec] klee_ext_callsite site='src-buffer-rs-25-17' target='src-buffer-rs-25-17'
+KLEE: [ext.callsite] reached 'src-buffer-rs-25-17'
+KLEE: [ext.callsite] deferring 'src-buffer-rs-25-17' until target call _ZN4core3ptr9const_ptr33_$LT$impl$u20$$BP$const$u20$T$GT$6offset17ha6c2e17473e3390fE
+KLEE: [ext.dsl] function type[0] T fixed from report as u8 (size=1 align=1)
+KLEE: [ext.callsite] completing deferred 'src-buffer-rs-25-17' before target call
+KLEE: [ext.call] values:
+  __klee_call_arg1 = 1
+  __klee_call_arg0 = 133979143397376
+
+KLEE: [ext.dsl] path constraints:
+(query [] false)
+
+KLEE: [ext.dsl] 1 -> 1
+KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=1)
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_type_at_func(0) -> type@5802811685389707597
+KLEE: [ext.dsl] "size" -> size
+KLEE: [ext.dsl] get_field(get_type_at_func(0), "size") -> 1
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=133979143397376)
+KLEE: [ext.dsl] 1 -> 1
+KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=1)
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_type_at_func(0) -> type@5802811685389707597
+KLEE: [ext.dsl] "size" -> size
+KLEE: [ext.dsl] get_field(get_type_at_func(0), "size") -> 1
+KLEE: [ext.dsl] binary.left expr: 1
+KLEE: [ext.dsl] binary.left is constant: width=64 value=false
+KLEE: [ext.dsl] binary.right expr: 1
+KLEE: [ext.dsl] binary.right is constant: width=64 value=false
+KLEE: [ext.dsl] (get_arg(1) * get_field(get_type_at_func(0), "size")) -> 1
+KLEE: [ext.dsl] memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), "size"))) -> range(133979143397376,1)
+KLEE: [ext.dsl] "end" -> end
+KLEE: [ext.dsl] get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), "size"))), "end") -> 133979143397377
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=133979143397376)
+KLEE: [ext.dsl] 1 -> 1
+KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=1)
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] get_type_at_func(0) -> type@5802811685389707597
+KLEE: [ext.dsl] "size" -> size
+KLEE: [ext.dsl] get_field(get_type_at_func(0), "size") -> 1
+KLEE: [ext.dsl] binary.left expr: 1
+KLEE: [ext.dsl] binary.left is constant: width=64 value=false
+KLEE: [ext.dsl] binary.right expr: 1
+KLEE: [ext.dsl] binary.right is constant: width=64 value=false
+KLEE: [ext.dsl] (get_arg(1) * get_field(get_type_at_func(0), "size")) -> 1
+KLEE: [ext.dsl] memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), "size"))) -> range(133979143397376,1)
+KLEE: [ext.dsl] "start" -> start
+KLEE: [ext.dsl] get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), "size"))), "start") -> 133979143397376
+KLEE: [ext.dsl] simplified_var(get_arg(1)) <= get_arg(1) -> simplified(get_arg(1)=1)
+KLEE: [ext.dsl] simplified_var(get_type_at_func(0).size) <= get_field(get_type_at_func(0), "size") -> simplified(get_type_at_func(0).size=1)
+KLEE: [ext.dsl] binary.left expr: 1
+KLEE: [ext.dsl] binary.left is constant: width=64 value=false
+KLEE: [ext.dsl] binary.right expr: 1
+KLEE: [ext.dsl] binary.right is constant: width=64 value=false
+KLEE: [ext.dsl] (simplified_var(get_arg(1)) * simplified_var(get_type_at_func(0).size)) -> 1
+KLEE: [ext.dsl] 0 -> 0
+KLEE: [ext.dsl] ((simplified_var(get_arg(1)) * simplified_var(get_type_at_func(0).size)) != 0) -> true
+KLEE: [ext.dsl] !(((simplified_var(get_arg(1)) * simplified_var(get_type_at_func(0).size)) != 0)) -> false
+KLEE: [ext.dsl] simplified_var(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).end) <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), "size"))), "end") -> simplified(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).end=133979143397377)
+KLEE: [ext.dsl] simplified_var(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).start) <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), "size"))), "start") -> simplified(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).start=133979143397376)
+KLEE: [ext.dsl] binary.left expr: 133979143397377
+KLEE: [ext.dsl] binary.left is constant: width=64 value=false
+KLEE: [ext.dsl] binary.right expr: 133979143397376
+KLEE: [ext.dsl] binary.right is constant: width=64 value=false
+KLEE: [ext.dsl] (simplified_var(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).end) >= simplified_var(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).start)) -> true
+KLEE: [ext.dsl] binary.left expr: false
+KLEE: [ext.dsl] binary.left is constant: width=1 value=false
+KLEE: [ext.dsl] binary.right expr: true
+KLEE: [ext.dsl] binary.right is constant: width=1 value=true
+KLEE: [ext.dsl] (!(((simplified_var(get_arg(1)) * simplified_var(get_type_at_func(0).size)) != 0)) || (simplified_var(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).end) >= simplified_var(memory_range(get_arg(0),(get_arg(1)*get_type_at_func(0).size)).start))) -> true
+KLEE: [ext.dsl] resolved constraint expr: true
+KLEE: [ext.dsl] resolved constraint is constant: width=1 value=true
+KLEE: [ext.dsl] resolved constraint uses certain symbol: false
+KLEE: [ext.dsl] violation query uses certain symbol: false
+KLEE: [ext.dsl] SAT(constraints AND NOT resolved constraint): unsat
+KLEE: [ext.dsl] at callsite 'src-buffer-rs-25-17': query solved
+KLEE: [ext.callsite] continuing after non-violating occurrence of 'src-buffer-rs-25-17' during compose-rerun
+KLEE: WARNING ONCE: calling external: _ZN4core3ptr9const_ptr33_$LT$impl$u20$$BP$const$u20$T$GT$6offset17ha6c2e17473e3390fE(133979143397376, 1) at src/buffer.rs:22 61
+KLEE: ERROR: src/buffer.rs:22: failed external call: _ZN4core3ptr9const_ptr33_$LT$impl$u20$$BP$const$u20$T$GT$6offset17ha6c2e17473e3390fE
+KLEE: NOTE: now ignoring this error at this location
+
+KLEE: done: total instructions = 52
+KLEE: done: completed paths = 0
+KLEE: done: partially completed paths = 1
+KLEE: done: generated tests = 1
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer.rs">
+```rust
+pub const MAX_BUFFER_SIZE: usize = 1024 * 16;
+/// A simple byte buffer, useful for storing bytes that are going to be consumed in packets.
+pub struct NetworkBuffer {
+    pub data: [u8; MAX_BUFFER_SIZE],
+    pub offset: usize,
+}
+impl NetworkBuffer {
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+    #[inline(never)]
+    pub fn drain(&mut self, count: usize) {
+        unsafe {
+            use std::ptr;
+            let __klee_arg0 = self.data.as_ptr();
+            let __klee_arg1 = count as isize;
+            klee_ext_bind::callsite!("src-buffer-rs-25-17");
+            let mut __klee_ret_src_buffer_rs_25_17_offset = __klee_arg0
+                .offset(__klee_arg1);
+            let __klee_arg2 = self.data.as_mut_ptr();
+            let __klee_arg3 = self.offset - count;
+            klee_ext_bind::callsite!("src-buffer-rs-24-13");
+            let mut __klee_ret_src_buffer_rs_24_13_copy = ptr::copy(
+                __klee_ret_src_buffer_rs_25_17_offset,
+                __klee_arg2,
+                __klee_arg3,
+            );
+        }
+        self.offset -= count;
+    }
+    pub fn clear(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+mod client;
+mod error;
+mod server;
+
+pub mod buffer;
+pub mod packet;
+
+#[cfg(feature = "crypto")]
+pub mod crypto;
+
+use mio::net::TcpStream;
+use std::io::Write;
+
+pub use client::{Client, ClientEvent};
+pub use error::{Error, Result};
+pub use mio::Token;
+pub use server::{Server, ServerEvent};
+
+pub enum PacketRecipient {
+    All,
+    Single(Token),
+    Exclude(Token),
+    ExcludeMany(Vec<Token>),
+    Include(Vec<Token>),
+}
+
+/// Send some bytes to a socket.
+/// Returns the number of bytes sent, or an `Error`.
+pub fn send_bytes(socket: &mut TcpStream, buffer: &[u8]) -> Result<usize> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>
