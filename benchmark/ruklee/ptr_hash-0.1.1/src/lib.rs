@@ -48,6 +48,16 @@ mod stats;
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod unsat_ir_instantiations {
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_tiny_ef_prefetch() {
+        let ef = crate::tiny_ef::TinyEf::new(&[0_u64, 1, 2, 3]);
+        ef.prefetch(0);
+    }
+}
+
 use bitvec::{bitvec, vec::BitVec};
 use either::Either;
 use itertools::izip;

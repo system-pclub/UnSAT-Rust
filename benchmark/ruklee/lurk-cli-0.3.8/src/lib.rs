@@ -536,6 +536,7 @@ mod unsat_ir_instantiations {
         )
         .unwrap();
         let _ = tracer.report_summary();
+        let _ = tracer.run_tracer();
         let _ = super::arch::read_string(Pid::from_raw(1), 0);
     }
 }

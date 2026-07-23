@@ -46,3 +46,25 @@ pub use primitives::{MAX_CODE_SIZE, MAX_INITCODE_SIZE};
 
 #[doc(hidden)]
 pub use revm_primitives as primitives;
+
+#[cfg(test)]
+mod unsat_ir_instantiations {
+    use super::*;
+    use crate::primitives::{Bytecode, Bytes};
+
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_interpreter_outcome_insertion() {
+        let mut interpreter = Interpreter::new_bytecode(Bytecode::LegacyRaw(Bytes::from([0x00])));
+        let result = InterpreterResult::new(InstructionResult::Stop, Bytes::new(), Gas::new(0));
+
+        interpreter.insert_create_outcome(CreateOutcome::new(result.clone(), None));
+        interpreter.insert_eofcreate_outcome(CreateOutcome::new(result.clone(), None));
+
+        let mut shared_memory = SharedMemory::new();
+        interpreter.insert_call_outcome(
+            &mut shared_memory,
+            CallOutcome::new(result, 0..0),
+        );
+    }
+}

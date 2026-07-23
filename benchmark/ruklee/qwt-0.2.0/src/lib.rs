@@ -45,8 +45,21 @@ mod unsat_ir_instantiations {
     #[test]
     #[ignore = "compile-only LLVM IR instantiation"]
     fn instantiate_bitvector_iter() {
-        let bits = super::BitVector::default();
+        let bits: super::BitVector = vec![0_usize, 2, 3, 4, 5].into_iter().collect();
+        let _ = bits.get_bits(1, 3);
+        let _ = bits.get_word(0);
+        let _ = bits.ones();
+        let _ = bits.ones_with_pos(2);
+        let _ = bits.zeros();
+        let _ = bits.zeros_with_pos(2);
         let _ = bits.iter();
+    }
+
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_quadwt_new() {
+        let mut data = [0_u8, 1, 2, 3];
+        let _ = super::QWT256::<u8>::new(&mut data);
     }
 }
 

@@ -33,7 +33,8 @@ pub use quest_bindings::*;
 #[cfg(test)]
 mod unsat_ir_instantiations {
     use num_complex::Complex64;
-    use roqoqo::operations::{DefinitionBit, Operation};
+    use roqoqo::operations::{DefinitionBit, Operation, PragmaRepeatedMeasurement};
+    use roqoqo::registers::{BitOutputRegister, BitRegister};
     use std::collections::HashMap;
 
     #[test]
@@ -61,6 +62,17 @@ mod unsat_ir_instantiations {
             &mut complex_registers,
             &mut bit_registers_output,
             &mut device,
+        );
+
+        let repeated = PragmaRepeatedMeasurement::new("ro".to_owned(), 1, None);
+        let mut direct_bit_registers = HashMap::<String, BitRegister>::new();
+        let mut direct_bit_output = HashMap::<String, BitOutputRegister>::new();
+        direct_bit_output.insert("ro".to_owned(), Vec::new());
+        let _ = super::interface::execute_replaced_repeated_measurement(
+            &repeated,
+            &mut qureg,
+            &mut direct_bit_registers,
+            &mut direct_bit_output,
         );
     }
 }

@@ -32,3 +32,21 @@ pub use set::SplaySet;
 
 #[doc(inline)]
 pub use heap::SplayHeap;
+
+#[cfg(test)]
+mod unsat_ir_instantiations {
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_tree_core_and_vec_like_helpers() {
+        let mut tree = crate::tree_core::Tree::<u32, u32>::new();
+        let _ = tree.insert(1, 10);
+        let _ = tree.root_ref();
+
+        let view = crate::vec_like::VecLike::new(&tree);
+        let _ = view.get(0);
+
+        let mut view_mut = crate::vec_like::VecLikeMut::new(&mut tree);
+        let _ = view_mut.get(0);
+        let _ = view_mut.get_mut(0);
+    }
+}

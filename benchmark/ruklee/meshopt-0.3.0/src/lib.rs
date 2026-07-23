@@ -111,6 +111,15 @@ mod unsat_ir_instantiations {
         let vertices = VertexDataAdapter::new(&vertex_data, 12, 0).unwrap();
         let _ = vertices.pos_ptr();
         let indices: &mut [u32] = &mut [];
+        let _ = any_as_u8_slice(&0_u32);
+        let _ = analyze_overdraw(indices, &vertices);
+        let _ = compute_cluster_bounds(indices, &vertices);
+        let meshlet = Meshlet {
+            vertices: &[],
+            triangles: &[],
+        };
+        let _ = compute_meshlet_bounds(meshlet, &vertices);
+        let _ = simplify_scale(&vertices);
         let _ = build_meshlets(indices, &vertices, 3, 4, 0.0);
         optimize_overdraw_in_place(indices, &vertices, 1.0);
         let _ = generate_shadow_indices(indices, &vertices);

@@ -1269,6 +1269,16 @@ mod test {
         }
     }
 
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_clear_and_dedup_by_key() {
+        let mut vec: StackVec<[u8; 4]> = StackVec::from_slice(&[1, 1, 2]);
+        vec.clear();
+        vec.push(1);
+        vec.push(1);
+        vec.dedup_by_key(|value| *value);
+    }
+
     struct BadSizeHint(u8);
 
     impl BadSizeHint {

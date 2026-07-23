@@ -676,4 +676,32 @@ mod tests {
         tree.mut_node(index).value = 1;
         let _ = tree.node(index);
     }
+
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_tree_public_and_internal_paths() {
+        let mut tree = Tree::new(0_i32, 8);
+        tree.clear_all();
+        let _ = tree.is_black(0);
+        let _ = tree.insert_if_not_exist(1);
+        tree.insert(2);
+        tree.insert_root(3);
+        let _ = tree.insert_with_parent(4, 0, true);
+        tree.fix_red_black_properties_after_insert(0, 0);
+        tree.delete(&1);
+        tree.delete_if_exist(&2);
+        let _ = tree.delete_index(0);
+        let _ = tree.find_left_minimum(0);
+        let _ = tree.find(1);
+        let _ = tree.find_index(1);
+        let _ = tree.height();
+
+        let sorted = [1_i32, 2, 3];
+        let array_tree = Tree::with_sorted_array(0_i32, &sorted, 1);
+        let _ = array_tree.ordered_list();
+        let mut list = Vec::new();
+        array_tree.fill_ordered_list(&mut list);
+        let first = array_tree.first_by_order();
+        let _ = array_tree.next_by_order(first);
+    }
 }

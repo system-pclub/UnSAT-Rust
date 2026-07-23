@@ -57,6 +57,16 @@ mod compile_only_tests {
         buffer.drain(0);
         let _ = serialize_packet(Box::new(EmptyPacket));
     }
+
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_client_and_server_ticks() {
+        let mut client = crate::Client::connect("127.0.0.1", 0).unwrap();
+        let _ = client.tick();
+
+        let mut server = crate::Server::host("127.0.0.1", 0, 1).unwrap();
+        let _ = server.tick();
+    }
 }
 
 /// Send some bytes to a socket.
