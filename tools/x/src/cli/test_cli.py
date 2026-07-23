@@ -15,5 +15,19 @@ class VerifyCliTests(unittest.TestCase):
         self.assertFalse(args.test)
 
 
+class ResultCliTests(unittest.TestCase):
+    def test_result_accepts_dir(self) -> None:
+        args = build_parser().parse_args(["result", "-dir", "one-run"])
+
+        self.assertEqual(args.result_dir, "one-run")
+        self.assertIsNone(args.result_dirdir)
+
+    def test_result_accepts_dirdir(self) -> None:
+        args = build_parser().parse_args(["result", "-dirdir", "many-runs"])
+
+        self.assertIsNone(args.result_dir)
+        self.assertEqual(args.result_dirdir, "many-runs")
+
+
 if __name__ == "__main__":
     unittest.main()

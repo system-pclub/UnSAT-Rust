@@ -83,6 +83,129 @@ pub fn bind_arg_u64(index: u64, value: u64) {
     unsafe { klee_ext_bind_arg_u64(index, value) }
 }
 
+pub trait ArgU64Value {
+    fn as_arg_u64(&self) -> Option<u64>;
+}
+
+macro_rules! impl_unsigned_arg_u64 {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl ArgU64Value for $ty {
+                #[inline(always)]
+                fn as_arg_u64(&self) -> Option<u64> {
+                    Some(*self as u64)
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_signed_arg_u64 {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl ArgU64Value for $ty {
+                #[inline(always)]
+                fn as_arg_u64(&self) -> Option<u64> {
+                    if *self >= 0 {
+                        Some(*self as u64)
+                    } else {
+                        None
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_unsigned_arg_u64!(usize, u8, u16, u32, u64);
+impl_signed_arg_u64!(isize, i8, i16, i32, i64);
+
+impl ArgU64Value for core::ops::Range<usize> {
+    #[inline(always)]
+    fn as_arg_u64(&self) -> Option<u64> {
+        Some(self.start as u64)
+    }
+}
+
+impl ArgU64Value for core::ops::RangeFrom<usize> {
+    #[inline(always)]
+    fn as_arg_u64(&self) -> Option<u64> {
+        Some(self.start as u64)
+    }
+}
+
+impl ArgU64Value for core::ops::RangeTo<usize> {
+    #[inline(always)]
+    fn as_arg_u64(&self) -> Option<u64> {
+        Some(0)
+    }
+}
+
+impl ArgU64Value for core::ops::RangeFull {
+    #[inline(always)]
+    fn as_arg_u64(&self) -> Option<u64> {
+        Some(0)
+    }
+}
+
+impl ArgU64Value for core::ops::RangeInclusive<usize> {
+    #[inline(always)]
+    fn as_arg_u64(&self) -> Option<u64> {
+        Some(*self.start() as u64)
+    }
+}
+
+impl ArgU64Value for core::ops::RangeToInclusive<usize> {
+    #[inline(always)]
+    fn as_arg_u64(&self) -> Option<u64> {
+        Some(0)
+    }
+}
+
+#[inline(always)]
+pub fn bind_arg_u64_value<T: ArgU64Value + ?Sized>(index: u64, value: &T) {
+    if let Some(value) = value.as_arg_u64() {
+        bind_arg_u64(index, value);
+    }
+}
+
+pub trait ArgPtrValue {
+    fn as_arg_ptr_u64(self) -> u64;
+}
+
+impl<T> ArgPtrValue for *const T {
+    #[inline(always)]
+    fn as_arg_ptr_u64(self) -> u64 {
+        self as usize as u64
+    }
+}
+
+impl<T> ArgPtrValue for *mut T {
+    #[inline(always)]
+    fn as_arg_ptr_u64(self) -> u64 {
+        self as usize as u64
+    }
+}
+
+impl<T> ArgPtrValue for &*const T {
+    #[inline(always)]
+    fn as_arg_ptr_u64(self) -> u64 {
+        *self as usize as u64
+    }
+}
+
+impl<T> ArgPtrValue for &*mut T {
+    #[inline(always)]
+    fn as_arg_ptr_u64(self) -> u64 {
+        *self as usize as u64
+    }
+}
+
+#[inline(always)]
+pub fn bind_arg_ptr_value<T: ArgPtrValue>(index: u64, value: T) {
+    bind_arg_u64(index, value.as_arg_ptr_u64());
+}
+
 #[macro_export]
 macro_rules! callsite {
     ($site_id:literal) => {

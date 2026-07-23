@@ -1,11 +1,13 @@
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest.mock import patch
 
 from cli.cmd.llvmir import (
     _build_std_args,
     _collect_test_link_llvm_irs,
+    _dedupe_latest_llvm_irs,
     _find_library_test_harness_llvm_ir,
     compile_test_with_emit_llvm,
 )
@@ -74,6 +76,23 @@ class LlvmIrSelectionTests(unittest.TestCase):
                 "panic_abort-runtime.ll",
             },
         )
+
+    def test_dedupes_stale_hashed_build_std_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            deps = Path(temporary)
+            old_alloc = self.write_ir(deps / "alloc-1111111111111111.ll")
+            new_alloc = self.write_ir(deps / "alloc-2222222222222222.ll")
+            core = self.write_ir(deps / "core-aaaaaaaaaaaaaaaa.ll")
+            os.utime(old_alloc, (1, 1))
+            os.utime(new_alloc, (2, 2))
+            os.utime(core, (1, 1))
+
+            selected = _dedupe_latest_llvm_irs([old_alloc, new_alloc, core])
+
+        self.assertEqual([path.name for path in selected], [
+            "alloc-2222222222222222.ll",
+            "core-aaaaaaaaaaaaaaaa.ll",
+        ])
 
 
 if __name__ == "__main__":

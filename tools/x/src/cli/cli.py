@@ -18,6 +18,12 @@ def _run_verify(args: argparse.Namespace) -> int:
     return run(args)
 
 
+def _run_result(args: argparse.Namespace) -> int:
+    from cli.cmd.result import run
+
+    return run(args)
+
+
 def _run_generate(args: argparse.Namespace) -> int:
     from cli.cmd.generate import run
 
@@ -169,6 +175,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Callsite id to verify. Omit to verify all callsites.",
     )
     verify_parser.add_argument(
+        "--callsites-file",
+        help=(
+            "Path to a newline-delimited list of callsite ids to verify in "
+            "matrix mode. Omit to verify all callsites or use --callsite for one."
+        ),
+    )
+    verify_parser.add_argument(
         "--rule",
         help="Rule id to verify. Omit to verify rules whose DSL path:line matches each callsite callee.",
     )
@@ -209,8 +222,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--compose-loop-bound",
         type=int,
-        default=1,
-        help="Max symbolic loop backedges before compose-verify forces a loop exit (default: 1).",
+        default=2,
+        help="Max symbolic loop backedges before compose-verify forces a loop exit (default: 2).",
     )
     verify_parser.add_argument(
         "--skip-llm-testcase",
@@ -233,6 +246,22 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "In matrix mode, check each callsite's rules sequentially and skip "
             "remaining rules for that callsite after the first confirmed violation."
+        ),
+    )
+    verify_parser.add_argument(
+        "--stop-callsite-if-reached",
+        action="store_true",
+        help=(
+            "In matrix mode, skip remaining rules for a callsite after any rule "
+            "produces concrete reach evidence (verified/reached/violation)."
+        ),
+    )
+    verify_parser.add_argument(
+        "--stop-callsite-after-timeout",
+        action="store_true",
+        help=(
+            "In matrix mode, skip remaining rules for a callsite after a timeout; "
+            "intended for reachability audits."
         ),
     )
     verify_parser.add_argument(
@@ -292,6 +321,28 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     verify_parser.set_defaults(func=_run_verify)
+
+    result_parser = subparsers.add_parser(
+        "result",
+        help="Print one BUG/OK result per callsite from x verify artifacts.",
+    )
+    result_input = result_parser.add_mutually_exclusive_group()
+    result_input.add_argument(
+        "-dir",
+        "--dir",
+        dest="result_dir",
+        help=(
+            "One x verify result directory (default: .local/verify is scanned "
+            "as a directory of result directories)."
+        ),
+    )
+    result_input.add_argument(
+        "-dirdir",
+        "--dirdir",
+        dest="result_dirdir",
+        help="Directory whose child directories contain x verify results.",
+    )
+    result_parser.set_defaults(func=_run_result)
     
     generate_parser = subparsers.add_parser(
         "generate",

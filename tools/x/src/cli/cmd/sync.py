@@ -263,6 +263,20 @@ def _callsite_id_from_target(target: dict[str, object], fallback_index: int) -> 
     return f"{normalized_path}-{line}-{col}"
 
 
+def _callee_leaf_from_target(target: dict[str, object]) -> str:
+    callee = target.get("callee")
+    if not isinstance(callee, dict):
+        return ""
+    name = callee.get("name")
+    if not isinstance(name, str):
+        return ""
+    return name.rsplit("::", 1)[-1]
+
+
+def _normalized_id_suffix(value: str) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in value)
+
+
 def _parse_rule_path(path_with_line: str) -> tuple[str, int] | None:
     path_part, sep, line_part = path_with_line.rpartition(":")
     if not sep or not path_part:
@@ -600,15 +614,23 @@ def _transform_report(
     targets: list[dict[str, object]] = []
     human_placeholders: dict[str, dict[str, dict[str, object]]] = {}
     seen_callsite_ids: set[str] = set()
+    base_callsite_counts: dict[str, int] = {}
     for target_index, raw_target in enumerate(targets_input, start=1):
         if not isinstance(raw_target, dict):
             continue
 
         target = _normalize_target_schema(raw_target)
-        callsite_id = _callsite_id_from_target(target, target_index)
+        base_callsite_id = _callsite_id_from_target(target, target_index)
+        duplicate_index = base_callsite_counts.get(base_callsite_id, 0)
+        base_callsite_counts[base_callsite_id] = duplicate_index + 1
+        if duplicate_index == 0:
+            callsite_id = base_callsite_id
+        else:
+            suffix = _normalized_id_suffix(_callee_leaf_from_target(target)) or f"dup{duplicate_index}"
+            callsite_id = f"{base_callsite_id}-{suffix}"
         # MIR can report several unsafe operations inlined at one source
-        # location. They are one injectable source callsite and must not
-        # produce duplicate marker ids or duplicate autoinj work.
+        # location. Keep exact duplicate ids out, but preserve distinct callees
+        # at the same location by using a stable callee suffix.
         if callsite_id in seen_callsite_ids:
             continue
         seen_callsite_ids.add(callsite_id)

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.cmd.verify import _missing_callsite_bodies
+from cli.cmd.verify import _find_target, _missing_callsite_bodies
 
 
 class VerifyIrAuditTests(unittest.TestCase):
@@ -51,6 +51,86 @@ class VerifyIrAuditTests(unittest.TestCase):
             )
 
         self.assertEqual(missing, [])
+
+    def test_find_target_prefers_specific_unsafe_marker_alias(self) -> None:
+        base = {
+            "caller": {"name": "crate::call"},
+            "callsite": {
+                "id": "src-lib-rs-10-8",
+                "path": "src/lib.rs",
+                "line": 10,
+                "col": 8,
+            },
+            "callee": {
+                "name": "core::slice::<impl [T]>::get_unchecked_mut",
+                "path": "rust/library/core/src/slice/mod.rs",
+                "line_start": 665,
+            },
+        }
+        specific = {
+            "caller": {"name": "crate::call"},
+            "callsite": {
+                "id": "src-lib-rs-10-8-get_unchecked_mut",
+                "path": "src/lib.rs",
+                "line": 10,
+                "col": 8,
+            },
+            "callee": {
+                "name": "core::slice::<impl [T]>::get_unchecked_mut",
+                "path": "rust/library/core/src/slice/mod.rs",
+                "line_start": 665,
+            },
+        }
+
+        target, callsite_id = _find_target([base, specific], "src-lib-rs-10-8")
+
+        self.assertIs(target, specific)
+        self.assertEqual(callsite_id, "src-lib-rs-10-8-get_unchecked_mut")
+
+    def test_find_target_keeps_exact_target_when_actual_unsafe_callsite_is_known(self) -> None:
+        base = {
+            "caller": {"name": "crate::call"},
+            "callsite": {
+                "id": "src-lib-rs-10-8",
+                "path": "src/lib.rs",
+                "line": 10,
+                "col": 8,
+            },
+            "unsafe_callsite": {
+                "path": "src/lib.rs",
+                "line": 20,
+                "col": 12,
+            },
+            "callee": {
+                "name": "core::slice::<impl [T]>::get_unchecked_mut",
+                "path": "rust/library/core/src/slice/mod.rs",
+                "line_start": 665,
+            },
+        }
+        specific = {
+            "caller": {"name": "crate::call"},
+            "callsite": {
+                "id": "src-lib-rs-10-8-get_unchecked_mut",
+                "path": "src/lib.rs",
+                "line": 10,
+                "col": 8,
+            },
+            "unsafe_callsite": {
+                "path": "src/lib.rs",
+                "line": 21,
+                "col": 12,
+            },
+            "callee": {
+                "name": "core::slice::<impl [T]>::get_unchecked_mut",
+                "path": "rust/library/core/src/slice/mod.rs",
+                "line_start": 665,
+            },
+        }
+
+        target, callsite_id = _find_target([base, specific], "src-lib-rs-10-8")
+
+        self.assertIs(target, base)
+        self.assertEqual(callsite_id, "src-lib-rs-10-8")
 
 
 if __name__ == "__main__":

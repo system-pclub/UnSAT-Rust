@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from llm.gen_example import build_witness_guided_rust_context
+from llm.gen_example import build_testcase_prompt, build_witness_guided_rust_context
 
 
 class WitnessGuidedRustContextTests(unittest.TestCase):
@@ -114,6 +114,23 @@ fn old_generated_poc() { panic!("do not retain me") }
                 build_witness_guided_rust_context(
                     root, target=target, control_chains=[], mode="unknown"
                 )
+
+    def test_testcase_prompt_prioritizes_direct_actual_safe_function(self) -> None:
+        prompt = build_testcase_prompt(
+            rust_context="<rust context/>",
+            call_chain="[]",
+            callsite="{}",
+            safety_requirement="demo rule",
+            function_name="__unsat_poc_demo",
+            feature_name="unsat-poc-demo",
+            target_context=(
+                "Direct actual-containing safe function option. "
+                "The actual unsafe call is inside safe function `fn swap(...)`."
+            ),
+        )
+        self.assertIn("Direct actual-containing safe function", prompt)
+        self.assertIn("use that direct function", prompt)
+        self.assertIn("Do not fall back to the root wrapper merely", prompt)
 
 
 if __name__ == "__main__":

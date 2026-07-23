@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::fs;
-use syn::{Item, Attribute};
+use syn::{Item, Attribute, UseTree, Visibility};
 use syn::spanned::Spanned;
 use quote::ToTokens;
 use walkdir::WalkDir;
@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Unit {
     pub line_number_start: usize,
     pub line_number_end: usize,
@@ -103,6 +103,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
     let mut files_map: HashMap<String, Vec<Unit>> = HashMap::new();
     // Step 1: Collect all Rust source files from the target directories
     let mut rust_files = Vec::new();
+    let mut blacklisted_rust_files = Vec::new();
     for dir in dirs {
         for entry in WalkDir::new(dir)
             .follow_links(true)
@@ -113,6 +114,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 let path_str = path.display().to_string();
                 if blacklist.iter().any(|b| path_str.contains(b)) {
+                    blacklisted_rust_files.push(path.to_path_buf());
                     continue;
                 }
                 rust_files.push(path.to_path_buf());
@@ -121,6 +123,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
     }
 
     println!("Found {} Rust source files to process.", rust_files.len());
+    let blacklisted_units = index_blacklisted_units(&blacklisted_rust_files)?;
     let mut files_contains_unsafe_fn_or_trait = 0;
     // Step 2 & 3: Parse each file and extract units with comments
     for file_path in rust_files {
@@ -153,6 +156,35 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
         // Extract units from the parsed file
         let mut file_has_unsafe = false;
         for item in syntax.items {
+            // Preserve public APIs re-exported from a blacklisted implementation module. For
+            // example, `ptr::copy` is public here but its signature and docs live under
+            // `intrinsics/`; the other compiler-only intrinsics must remain excluded.
+            if let Item::Use(use_item) = &item {
+                if matches!(use_item.vis, Visibility::Public(_)) {
+                    for (target, public_name) in use_targets(&use_item.tree) {
+                        let Some((origin_name, origin_module)) = target.split_last() else {
+                            continue;
+                        };
+                        let Some(origin) = blacklisted_units.get(&(
+                            origin_module.join("::"),
+                            origin_name.to_string(),
+                        )) else {
+                            continue;
+                        };
+
+                        let mut unit = origin.clone();
+                        unit.name = public_name;
+                        unit.line_number_start = use_item.span().start().line;
+                        unit.line_number_end = use_item.span().end().line;
+                        unit.parent_struct_or_trait = None;
+                        file_has_unsafe = true;
+                        files_map.entry(file_path.display().to_string())
+                            .or_insert_with(Vec::new)
+                            .push(unit);
+                    }
+                }
+            }
+
             if let Some(unit) = extract_unit_from_item(&item) {
                 if unit.is_unsafe && !unit.comment.is_empty() {
                     file_has_unsafe = true;
@@ -235,13 +267,99 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
     Ok(Units { files: files_map })
 }
 
+/// Index documented unsafe functions in blacklisted modules. They are not emitted directly, but
+/// their signature and docs can be attached to a public re-export in a non-blacklisted module.
+fn index_blacklisted_units(files: &[PathBuf]) -> Result<HashMap<(String, String), Unit>> {
+    let mut units = HashMap::new();
+
+    for file_path in files {
+        let Some(module_path) = module_path(file_path) else {
+            continue;
+        };
+        let mut content = fs::read_to_string(file_path)?;
+        content = content.replace("~const", "");
+        let syntax = match syn::parse_file(&content) {
+            Ok(syntax) => syntax,
+            Err(err) => {
+                eprintln!(
+                    "Warning: Could not parse blacklisted file {} while resolving public re-exports: {}",
+                    file_path.display(), err
+                );
+                continue;
+            }
+        };
+
+        for item in syntax.items {
+            let Some(unit) = extract_unit_from_item(&item) else {
+                continue;
+            };
+            if unit.is_unsafe && !unit.comment.trim().is_empty() {
+                units.insert((module_path.clone(), unit.name.clone()), unit);
+            }
+        }
+    }
+
+    Ok(units)
+}
+
+/// Convert `.../src/foo/mod.rs` and `.../src/foo.rs` into their `crate::foo` module paths.
+fn module_path(file_path: &std::path::Path) -> Option<String> {
+    let components: Vec<_> = file_path.components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let src_index = components.iter().rposition(|component| component == "src")?;
+    let mut module_components = components.get(src_index + 1..)?.to_vec();
+    let file_name = module_components.pop()?;
+
+    if file_name != "mod.rs" {
+        module_components.push(file_name.strip_suffix(".rs")?.to_string());
+    }
+
+    let mut result = vec!["crate".to_string()];
+    result.extend(module_components);
+    Some(result.join("::"))
+}
+
+/// Flatten a `use` tree into `(origin path, public name)` pairs.
+fn use_targets(tree: &UseTree) -> Vec<(Vec<String>, String)> {
+    fn visit(tree: &UseTree, prefix: &mut Vec<String>, targets: &mut Vec<(Vec<String>, String)>) {
+        match tree {
+            UseTree::Path(path) => {
+                prefix.push(path.ident.to_string());
+                visit(&path.tree, prefix, targets);
+                prefix.pop();
+            }
+            UseTree::Name(name) => {
+                let name = name.ident.to_string();
+                let mut target = prefix.clone();
+                target.push(name.clone());
+                targets.push((target, name));
+            }
+            UseTree::Rename(rename) => {
+                let mut target = prefix.clone();
+                target.push(rename.ident.to_string());
+                targets.push((target, rename.rename.to_string()));
+            }
+            UseTree::Group(group) => {
+                for item in &group.items {
+                    visit(item, prefix, targets);
+                }
+            }
+            UseTree::Glob(_) => {}
+        }
+    }
+
+    let mut targets = Vec::new();
+    visit(tree, &mut Vec::new(), &mut targets);
+    targets
+}
+
 /// Extract a Unit from a syn::Item
 fn extract_unit_from_item(item: &Item) -> Option<Unit> {
     match item {
         // Handle bodyless fn declarations (e.g. #[rustc_intrinsic] pub unsafe fn foo() -> T;)
         // syn cannot parse these as Item::Fn (no body), so they become Item::Verbatim.
         Item::Verbatim(tokens) => {
-            use proc_macro2::TokenTree;
             let token_str = tokens.to_string();
             let trimmed = token_str.trim_end();
             if !trimmed.ends_with(';') {
@@ -355,4 +473,35 @@ fn extract_doc_comment(attrs: &[Attribute]) -> String {
     }
     
     comments.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{module_path, use_targets};
+    use std::path::Path;
+
+    #[test]
+    fn module_path_from_rust_source_path() {
+        assert_eq!(
+            module_path(Path::new("tools/rust/library/core/src/intrinsics/mod.rs")),
+            Some("crate::intrinsics".to_string())
+        );
+    }
+
+    #[test]
+    fn grouped_and_renamed_use_targets() {
+        let item: syn::ItemUse = syn::parse_str(
+            "pub use crate::intrinsics::{copy, copy_nonoverlapping as copy_no_overlap};"
+        ).unwrap();
+        assert_eq!(
+            use_targets(&item.tree),
+            vec![
+                (vec!["crate".into(), "intrinsics".into(), "copy".into()], "copy".into()),
+                (
+                    vec!["crate".into(), "intrinsics".into(), "copy_nonoverlapping".into()],
+                    "copy_no_overlap".into()
+                ),
+            ]
+        );
+    }
 }

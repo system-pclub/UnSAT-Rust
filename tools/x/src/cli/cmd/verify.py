@@ -30,6 +30,7 @@ from cli.cmd.verify_poc import (
     generate_safe_testcase,
     inject_testcase_at_callsite,
     symbolize_testcase_constants,
+    target_call_arg_source_map,
     testcase_injection,
     write_certainty_chain_json,
 )
@@ -38,6 +39,15 @@ logger = logging.getLogger(__name__)
 
 RAW_PTR_DEREF_RULE = "__raw_ptr_deref__"
 RAW_PTR_DEREF_CALLEE = "core::ptr::__raw_ptr_deref__"
+REACHABILITY_ONLY_RULES = {"rule-192", "ruklee-unreachable-unchecked"}
+
+
+def _klee_no_stats_args() -> list[str]:
+    # RuKLEE verification uses KLEE stdout/stderr plus ktest artifacts, not the
+    # coverage/statistics databases. Compose/snapshot paths can leave transient
+    # states at unusual instruction boundaries; disabling stats keeps those
+    # bookkeeping paths from masking an already-solved SAT/UNSAT result.
+    return ["--output-stats=false", "--output-istats=false"]
 
 
 def _utc_now() -> str:
@@ -175,6 +185,93 @@ def _callsite_id_from_target(raw_target: dict[str, object], index: int) -> str:
     return str(index)
 
 
+def _callsite_location_key(raw_target: dict[str, object]) -> tuple[object, object, object] | None:
+    callsite = raw_target.get("callsite")
+    if not isinstance(callsite, dict):
+        return None
+    path = callsite.get("path")
+    line = callsite.get("line")
+    col = callsite.get("col")
+    if path is None or line is None or col is None:
+        return None
+    return (path, line, col)
+
+
+def _callee_key(raw_target: dict[str, object]) -> tuple[object, object, object] | None:
+    callee = raw_target.get("callee")
+    if not isinstance(callee, dict):
+        return None
+    name = callee.get("name")
+    path = callee.get("path")
+    line = callee.get("line_start")
+    if name is None and path is None and line is None:
+        return None
+    return (name, path, line)
+
+
+def _target_suffix_specificity(raw_target: dict[str, object], base_callsite_id: str) -> tuple[int, int, str]:
+    """Rank same-location callsite aliases by how likely they name the real unsafe marker.
+
+    MIR/autoinj can produce both a source-location marker (for example at an
+    enclosing call expression) and a more specific marker with the unsafe API
+    appended.  KLEE's compose target should use the more specific marker because
+    it is the one adjacent to the unsafe API argument binding/result.
+    """
+
+    callsite_id = _callsite_id_from_target(raw_target, 0)
+    suffix = callsite_id[len(base_callsite_id) + 1 :] if callsite_id.startswith(base_callsite_id + "-") else ""
+    callee = raw_target.get("callee")
+    callee_name = callee.get("name") if isinstance(callee, dict) else None
+    callee_leaf = str(callee_name or "").rsplit("::", 1)[-1].lower()
+    suffix_lower = suffix.lower()
+    unsafe_name_match = 1 if callee_leaf and callee_leaf in suffix_lower else 0
+    unsafe_word_match = 1 if any(word in suffix_lower for word in ("unchecked", "raw_ptr", "deref")) else 0
+    return (unsafe_name_match, unsafe_word_match, callsite_id)
+
+
+def _prefer_specific_callsite_alias(
+    targets: list[object],
+    *,
+    requested_callsite_id: str,
+    matched_target: dict[str, object],
+    matched_callsite_id: str,
+) -> tuple[dict[str, object], str]:
+    # Only rewrite the common "base id requested" case.  If the caller already
+    # requested a suffixed/alternate id exactly, keep that exact target.
+    if requested_callsite_id != matched_callsite_id:
+        return matched_target, matched_callsite_id
+    if isinstance(matched_target.get("unsafe_callsite"), dict):
+        return matched_target, matched_callsite_id
+    location_key = _callsite_location_key(matched_target)
+    callee_key = _callee_key(matched_target)
+    if location_key is None or callee_key is None:
+        return matched_target, matched_callsite_id
+
+    candidates: list[dict[str, object]] = []
+    for raw_target in targets:
+        if not isinstance(raw_target, dict) or raw_target is matched_target:
+            continue
+        candidate_id = _callsite_id_from_target(raw_target, 0)
+        if not candidate_id.startswith(matched_callsite_id + "-"):
+            continue
+        if _callsite_location_key(raw_target) != location_key:
+            continue
+        if _callee_key(raw_target) != callee_key:
+            continue
+        candidates.append(raw_target)
+
+    if not candidates:
+        return matched_target, matched_callsite_id
+    best = max(candidates, key=lambda target: _target_suffix_specificity(target, matched_callsite_id))
+    best_id = _callsite_id_from_target(best, 0)
+    logger.info(
+        "[verify] using specific unsafe marker %s for ambiguous report callsite %s",
+        best_id,
+        matched_callsite_id,
+    )
+    return best, best_id
+
+
 def _callsite_marker_id_from_path(raw_target: dict[str, object]) -> str | None:
     callsite = raw_target.get("callsite")
     if not isinstance(callsite, dict):
@@ -214,6 +311,31 @@ def _resolve_callsite_marker_for_ir(
     return callsite_id
 
 
+def _compose_init_callsite_marker_for_target(
+    *, ll_path: Path, target: dict[str, object] | None, callsite_id: str
+) -> str:
+    """Pick the marker used for the initial compose/reach run.
+
+    For nested safe wrappers, autoinj emits two markers:
+    - ``<id>-root`` at the source-level/report call expression.
+    - ``<id>`` immediately around the actual core/std unsafe operation.
+
+    The final rerun/DSL check must use the actual unsafe marker.  The initial
+    compose run is mainly used to recover a caller/control-chain for testcase
+    generation, and starting directly at the actual callee can be much more
+    expensive because KLEE has to synthesize the whole callee receiver state.
+    Prefer the root marker when it exists, but keep direct unsafe callsites
+    unchanged.
+    """
+
+    if target is None or not isinstance(target.get("unsafe_callsite"), dict):
+        return callsite_id
+    root_callsite_id = f"{callsite_id}-root"
+    if _llvm_ir_contains_callsite_marker(ll_path, root_callsite_id):
+        return root_callsite_id
+    return callsite_id
+
+
 def _find_target(
     targets: list[object],
     requested_callsite_id: str,
@@ -224,7 +346,12 @@ def _find_target(
         callsite_id = _callsite_id_from_target(raw_target, index)
         callsite_key = _target_callsite_key(raw_target, index)
         if requested_callsite_id in {callsite_id, callsite_key, str(index)}:
-            return raw_target, callsite_id
+            return _prefer_specific_callsite_alias(
+                targets,
+                requested_callsite_id=requested_callsite_id,
+                matched_target=raw_target,
+                matched_callsite_id=callsite_id,
+            )
     return None, requested_callsite_id
 
 
@@ -382,23 +509,40 @@ def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> st
 
 
 def _compose_status_from_output(
-    returncode: int | None, text: str, timed_out: bool
+    returncode: int | None,
+    text: str,
+    timed_out: bool,
+    callsite_id: str | None = None,
 ) -> str:
-    if timed_out:
-        return "timeout"
-    if returncode is None:
-        return "unknown"
-    if returncode != 0:
-        return "klee-error"
     lowered = text.lower()
-    if "sat(constraints and not resolved constraint): unsat" in lowered:
-        return "verified"
+    if timed_out:
+        if "sat(constraints and not resolved constraint): sat" in lowered:
+            return "violation-timeout"
+        if "sat(constraints and not resolved constraint): unsat" in lowered:
+            return "verified-timeout"
+        if "query solved" in lowered or "[ext.dsl] at callsite" in text:
+            return "reached-timeout"
+        if callsite_id:
+            marker = f"[ext.exec] klee_ext_callsite site='{callsite_id}' target='{callsite_id}'"
+            if marker in text:
+                return "reached-timeout"
+        return "timeout"
     if "sat(constraints and not resolved constraint): sat" in lowered:
         return "violation"
+    if "sat(constraints and not resolved constraint): unsat" in lowered:
+        return "verified"
     if "query solved" in lowered:
         return "reached"
     if "[ext.dsl] at callsite" in text:
         return "reached"
+    if callsite_id:
+        marker = f"[ext.exec] klee_ext_callsite site='{callsite_id}' target='{callsite_id}'"
+        if marker in text:
+            return "reached"
+    if returncode is None:
+        return "unknown"
+    if returncode != 0:
+        return "klee-error"
     return "ok"
 
 
@@ -407,6 +551,25 @@ def _analyze_rerun_output(
 ) -> dict[str, Any]:
     lowered = text.lower()
     reported_callsite = f"[ext.dsl] at callsite '{callsite_id}'" in text
+    observed_callsites = [
+        {"site": site, "target": target}
+        for site, target in re.findall(
+            r"\[ext\.exec\]\s+klee_ext_callsite\s+site='([^']+)'\s+target='([^']*)'",
+            text,
+        )
+    ]
+    saw_rust_panic = "terminating rust panic path" in lowered or "panic_" in lowered
+    external_calls = sorted(
+        {
+            name
+            for pattern in (
+                r"external call with symbolic argument:\s*([A-Za-z_][A-Za-z0-9_:]*)",
+                r"failed external call:\s*([A-Za-z_][A-Za-z0-9_:]*)",
+                r"calling external:\s*([A-Za-z_][A-Za-z0-9_:]*)",
+            )
+            for name in re.findall(pattern, text)
+        }
+    )
     dsl_sat = "sat(constraints and not resolved constraint): sat" in lowered
     has_certain_symbol = (
         "[ext.dsl] resolved constraint uses certain symbol: true" in text
@@ -414,18 +577,21 @@ def _analyze_rerun_output(
         or "[ext.raw-ptr-deref] pointer uses certain symbol: true" in text
         or "pointer uses certain symbol: true" in text
     )
-    full_rerun_passed = (
-        returncode == 0
-        and not timed_out
-        and reported_callsite
-        and dsl_sat
-    )
-    if timed_out:
+    # Reproduction is decided at the target callsite. Once KLEE has reached the
+    # exact callsite and the target rule query is SAT, later exploration errors
+    # (for example an unrelated extern destructor) or an eventual timeout must
+    # not turn an already-reproduced counterexample back into a miss.
+    full_rerun_passed = reported_callsite and dsl_sat
+    if full_rerun_passed and timed_out:
+        status = "reported-sat-timeout"
+    elif full_rerun_passed and returncode not in (0, None):
+        status = "reported-sat-klee-error"
+    elif full_rerun_passed:
+        status = "reported-sat"
+    elif timed_out:
         status = "timeout"
     elif returncode is None:
         status = "unknown"
-    elif full_rerun_passed:
-        status = "reported-sat"
     elif returncode != 0:
         status = "klee-error"
     elif not reported_callsite:
@@ -433,7 +599,7 @@ def _analyze_rerun_output(
     elif not dsl_sat:
         status = "callsite-reported-non-sat"
     else:
-        status = "reported-sat"
+        status = "unknown"
     return {
         "status": status,
         "returncode": returncode,
@@ -442,6 +608,9 @@ def _analyze_rerun_output(
         "dsl_sat": dsl_sat,
         "has_certain_symbol": has_certain_symbol,
         "full_rerun_passed": full_rerun_passed,
+        "external_calls": external_calls,
+        "observed_callsites": observed_callsites[-12:],
+        "saw_rust_panic": saw_rust_panic,
     }
 
 
@@ -496,6 +665,7 @@ def _run_klee_compose_verify(
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         klee_bin,
+        *_klee_no_stats_args(),
         f"--output-dir={output_dir}",
         f"--compose-verify-chain-json={output_dir.parent / 'klee-control-chains.json'}",
         f"--ext.callsite={callsite_id}",
@@ -548,17 +718,24 @@ def _run_klee_compose_verify(
         print(stdout, end="")
     if stderr:
         print(stderr, end="")
-    if timed_out:
-        return returncode, "timeout"
     combined = stdout + stderr
-    if "SAT(constraints AND NOT resolved constraint): unsat" in combined:
-        return returncode, "verified"
+    if timed_out:
+        status = _compose_status_from_output(
+            returncode, combined, timed_out=True, callsite_id=callsite_id
+        )
+        if status in {"violation-timeout", "reached-timeout"}:
+            return returncode, "candidate"
+        if status == "verified-timeout":
+            return returncode, "verified"
+        return returncode, "timeout"
     if (
         "SAT(constraints AND NOT resolved constraint): sat" in combined
         or "query solved" in combined
         or "query deferred for compose" in combined
     ):
         return returncode, "candidate"
+    if "SAT(constraints AND NOT resolved constraint): unsat" in combined:
+        return returncode, "verified"
     return returncode, "unknown"
 
 
@@ -575,6 +752,7 @@ def _run_klee_compose_rerun(
     mode = "rerun-sym" if rerun_sym else "rerun"
     cmd = [
         klee_bin,
+        *_klee_no_stats_args(),
         f"--output-dir={output_dir}",
         f"--entry-point={entry_function}",
         f"--ext.callsite={callsite_id}",
@@ -648,7 +826,11 @@ def _run_klee_compose_rerun(
 
 
 def _matrix_callsite_rows(
-    *, targets: list[object], ll_path: Path, requested_callsite: str | None
+    *,
+    targets: list[object],
+    ll_path: Path,
+    requested_callsite: str | None,
+    requested_callsites: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     try:
@@ -662,6 +844,8 @@ def _matrix_callsite_rows(
         callsite_id = _callsite_id_from_target(raw_target, idx)
         callsite_key = _target_callsite_key(raw_target, idx)
         if requested_callsite and requested_callsite not in {callsite_id, callsite_key, str(idx)}:
+            continue
+        if requested_callsites and not ({callsite_id, callsite_key, str(idx)} & requested_callsites):
             continue
 
         callsite = raw_target.get("callsite") if isinstance(raw_target.get("callsite"), dict) else {}
@@ -703,6 +887,20 @@ def _matrix_callsite_rows(
     return rows
 
 
+def _load_callsites_file(repo_root: Path, path_arg: str | None) -> set[str] | None:
+    if not path_arg:
+        return None
+    path = _resolve_path(repo_root, path_arg, path_arg)
+    callsites = {
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    if not callsites:
+        raise RuntimeError(f"--callsites-file is empty: {path}")
+    return callsites
+
+
 def _missing_callsite_bodies(
     *, targets: list[object], ll_path: Path
 ) -> list[dict[str, Any]]:
@@ -716,6 +914,7 @@ def _missing_callsite_bodies(
         targets=targets,
         ll_path=ll_path,
         requested_callsite=None,
+        requested_callsites=None,
     )
     unresolved = [row for row in rows if not row["present_in_llvm_ir"]]
     if not unresolved:
@@ -858,7 +1057,7 @@ def _row_needs_llm_testcase(row: dict[str, Any]) -> bool:
     # This is the important semantic split for the full pipeline:
     # compose found SAT for constraints AND NOT(safety rule), so a fully safe
     # concrete PoC may exist and is worth asking the LLM to construct.
-    return row.get("status") == "violation"
+    return row.get("status") in {"violation", "violation-timeout"}
 
 
 def _matrix_sort_key(row: dict[str, Any]) -> tuple[Any, Any]:
@@ -867,6 +1066,16 @@ def _matrix_sort_key(row: dict[str, Any]) -> tuple[Any, Any]:
 
 def _is_confirmed_callsite_violation(row: dict[str, Any]) -> bool:
     return row.get("status") == "violation"
+
+
+def _is_reached_callsite_status(status: object) -> bool:
+    return status in {
+        "violation",
+        "verified",
+        "reached",
+        "reached-timeout",
+        "low-confidence-sat",
+    }
 
 
 def _matrix_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1000,6 +1209,40 @@ def _tail_text(text: str, *, max_chars: int = 12000) -> str:
     return text[-max_chars:]
 
 
+def _merge_semantic_retry_feedback(
+    existing: str | None,
+    new_feedback: str | None,
+) -> str | None:
+    if not existing:
+        return new_feedback
+    if not new_feedback:
+        return existing
+    if existing in new_feedback:
+        return new_feedback
+
+    sticky_lines: list[str] = []
+    for raw_line in existing.splitlines():
+        line = raw_line.strip()
+        lower = line.lower()
+        if (
+            "hard retry constraint" in lower
+            or "must not be `0`" in lower
+            or "zero offset/count" in lower
+            or "target counterexample query was unsat" in lower
+        ):
+            if line and line not in new_feedback and line not in sticky_lines:
+                sticky_lines.append(line)
+    if not sticky_lines:
+        return new_feedback
+    merged = (
+        new_feedback
+        + "\n\n<still-active semantic constraints from earlier KLEE reruns>\n"
+        + "\n".join(sticky_lines)
+        + "\n</still-active semantic constraints from earlier KLEE reruns>"
+    )
+    return _tail_text(merged)
+
+
 def _read_failure_feedback(path: Path | None, fallback: BaseException) -> str:
     parts = [str(fallback)]
     if path is not None and path.is_file():
@@ -1008,6 +1251,326 @@ def _read_failure_feedback(path: Path | None, fallback: BaseException) -> str:
         except OSError:
             pass
     return _tail_text("\n\n".join(part for part in parts if part))
+
+
+def _is_testcase_format_feedback(feedback: str | None) -> bool:
+    if not feedback:
+        return False
+    return any(
+        needle in feedback
+        for needle in (
+            "testcase generator returned no Rust code block",
+            "generated testcase contains `unsafe`",
+            "generated testcase contains `#[cfg(test)]`",
+            "generated testcase must define",
+            "generated testcase must be gated by feature",
+        )
+    )
+
+
+def _should_use_semantic_retry(rerun_result: dict[str, Any] | None) -> bool:
+    if not rerun_result or rerun_result.get("full_rerun_passed"):
+        return False
+    status = rerun_result.get("status")
+    return status == "callsite-reported-non-sat" or (
+        bool(rerun_result.get("reported_callsite"))
+        and not bool(rerun_result.get("dsl_sat"))
+    )
+
+
+def _read_rerun_failure_feedback(
+    path: Path | None,
+    *,
+    guidance: str,
+) -> str:
+    return guidance
+
+
+def _testcase_retry_guidance(
+    *, rerun_result: dict[str, Any], callsite_id: str, target: dict[str, object]
+) -> str:
+    caller = target.get("caller") if isinstance(target, dict) else None
+    caller = caller if isinstance(caller, dict) else {}
+    caller_name = caller.get("name")
+    caller_is_unsafe = caller.get("is_unsafe")
+    caller_hint = ""
+    if isinstance(caller_name, str) and caller_name:
+        if isinstance(target.get("unsafe_callsite"), dict):
+            caller_hint = (
+                f"The metadata caller `{caller_name}` is the root wrapper for "
+                "this target. The target context also shows a separate actual "
+                "unsafe-call containing function; if it is safe and callable "
+                "from the injected module, prefer constructing its receiver/"
+                "parameters and calling that actual-containing function directly "
+                "instead of routing through the root wrapper."
+            )
+        elif caller_is_unsafe is False:
+            caller_hint = (
+                f"The metadata caller `{caller_name}` is a safe function that "
+                "contains the target unsafe callsite. Prefer calling this exact "
+                "caller directly instead of routing through a higher-level "
+                "wrapper."
+            )
+        else:
+            caller_hint = (
+                f"The metadata caller is `{caller_name}`. Build the smallest "
+                "safe path that reaches this caller and avoid unrelated wrappers "
+                "that can validate inputs first."
+            )
+
+    status = rerun_result.get("status")
+    external_calls = rerun_result.get("external_calls")
+    external_hint = ""
+    if isinstance(external_calls, list):
+        names = [
+            name
+            for name in external_calls
+            if isinstance(name, str) and name
+        ]
+        if names:
+            external_hint = (
+                "KLEE stopped before the target at external function(s): "
+                + ", ".join(f"`{name}`" for name in names[:8])
+                + ". Avoid constructors/wrappers/destructors that call these "
+                "symbols; build the target caller receiver/arguments from "
+                "fields visible in the injection module when possible."
+            )
+    observed_hint = ""
+    observed_callsites = rerun_result.get("observed_callsites")
+    if isinstance(observed_callsites, list):
+        sites: list[str] = []
+        for item in observed_callsites[-8:]:
+            if not isinstance(item, dict):
+                continue
+            site = item.get("site")
+            if isinstance(site, str) and site:
+                sites.append(site)
+        if sites:
+            observed_hint = (
+                "KLEE reached these callsite markers before missing the target "
+                "(last markers first-order): "
+                + " -> ".join(f"`{site}`" for site in sites)
+                + ". Treat a marker with a different id as prefix progress only; "
+                "the testcase must still reach the exact target marker "
+                f"`{callsite_id}` and reproduce the target counterexample there."
+            )
+    panic_hint = ""
+    if rerun_result.get("saw_rust_panic"):
+        panic_hint = (
+            "KLEE observed a Rust panic before reproducing the target. This "
+            "usually means a safe prefix lookup/index/branch precondition was "
+            "not satisfied; adjust constructor fields so every prefix helper "
+            "returns normally while keeping the target relation violating. "
+            "Re-check the actual target function prefix shown in the context: "
+            "any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, "
+            "`let Some(...) = ... else`, or `if !guard { panic!(...) }` must "
+            "succeed before the target. Avoid using a default/empty receiver "
+            "state as the whole testcase when the prefix needs a non-empty "
+            "collection, valid encoded element, or coherent branch guard. If "
+            "the prefix reads/writes through raw pointer fields, do not leave "
+            "those prefix pointer fields as `null()`/`null_mut()`; provide tiny "
+            "local backing arrays/Vecs or other safe pointer-producing values "
+            "so the prefix can execute normally before the target callsite. If "
+            "a target argument/index is also used by earlier prefix raw-pointer "
+            "operations, make the prefix backing large enough for that value "
+            "but keep the actual target receiver/buffer relation independent "
+            "and violating."
+        )
+    if status == "callsite-not-reported":
+        reason = (
+            f"KLEE did not report the exact target callsite `{callsite_id}`. "
+            "The testcase likely panicked, returned `None`/`Err`, returned "
+            "early, or exercised a different unsafe call before reaching the "
+            "target."
+        )
+    elif status == "callsite-reported-non-sat":
+        reason = (
+            f"KLEE reached `{callsite_id}`, but the target counterexample was "
+            "not reproduced. The previous concrete values satisfied the target "
+            "callsite's safety requirement. If the target caller takes separate "
+            "pointer/slice/buffer and length/count/capacity/index inputs, do not "
+            "tie those numeric inputs to the local allocation size by default; "
+            "try a small boundary relationship that reaches the same target "
+            "callsite but makes the safety requirement false."
+        )
+    elif status == "timeout":
+        reason = (
+            "KLEE timed out during rerun. Make the testcase smaller and more "
+            "direct, with tiny concrete allocations and no loops unless needed "
+            "to reach the target."
+        )
+    else:
+        reason = (
+            "The testcase compiled but did not reproduce the target violation "
+            f"(rerun status: {status})."
+        )
+
+    pieces = [
+        "The testcase compiled but did not reproduce the target violation.",
+        reason,
+        observed_hint,
+        panic_hint,
+        external_hint,
+        caller_hint,
+        (
+            "Do not use KLEE helpers or symbolic inputs. Do not introduce local "
+            "bindings that shadow crate constants/statics from the target module; "
+            "call the crate code under test."
+        ),
+    ]
+    return "\n".join(piece for piece in pieces if piece)
+
+
+def _observed_target_arg_feedback(
+    log_path: Path,
+    ast_json: str,
+    *,
+    target: dict[str, Any] | None = None,
+    crate_dir: Path | None = None,
+) -> str:
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    observations: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if "[ext.call] values:" in line:
+            current = {"args": {}, "dsl": []}
+            continue
+        if current is None:
+            continue
+        stripped_line = line.strip()
+        if stripped_line.startswith("__klee_call_arg"):
+            match = re.match(
+                r"__klee_call_arg(\d+)\s*=\s*(.*?)(?:\s+\(explicit\))?$",
+                stripped_line,
+            )
+            if match:
+                current["args"][f"get_arg({match.group(1)})"] = match.group(2).strip()
+                continue
+        if "[ext.dsl]" in line and " -> " in line:
+            stripped = line.split("[ext.dsl]", 1)[-1].strip()
+            if stripped.startswith("(") or stripped.startswith("get_arg("):
+                current["dsl"].append(stripped)
+            continue
+        if "SAT(constraints AND NOT resolved constraint):" in line:
+            current["sat"] = line.rsplit(":", 1)[-1].strip()
+            observations.append(current)
+            current = None
+            continue
+        if line.startswith("KLEE: [ext.exec]") or line.startswith("KLEE: [ext.callsite]"):
+            # A new event before a SAT line means this was not the final target
+            # query block we want to summarize.
+            if current.get("args"):
+                observations.append(current)
+            current = None
+    if current and current.get("args"):
+        observations.append(current)
+    if not observations:
+        return ""
+
+    try:
+        ast = json.loads(ast_json)
+    except json.JSONDecodeError:
+        ast = {}
+    simplified = ast.get("simplified") if isinstance(ast, dict) else None
+    op = simplified.get("op") if isinstance(simplified, dict) else None
+    left = _describe_ext_expr(simplified.get("left")) if isinstance(simplified, dict) else None
+    right = _describe_ext_expr(simplified.get("right")) if isinstance(simplified, dict) else None
+    negated = {
+        "<": ">=",
+        "<=": ">",
+        ">": "<=",
+        ">=": "<",
+        "==": "!=",
+        "!=": "==",
+    }.get(op)
+
+    arg_source_map: dict[str, str] = {}
+    if target is not None and crate_dir is not None:
+        try:
+            arg_source_map = target_call_arg_source_map(
+                crate_dir=crate_dir,
+                target=target,
+            )
+        except Exception:
+            arg_source_map = {}
+
+    lines = [
+        "Observed KLEE rerun target-argument feedback from the failed testcase:"
+    ]
+    for index, obs in enumerate(observations[-3:], start=1):
+        args = obs.get("args") if isinstance(obs.get("args"), dict) else {}
+        pieces = [
+            f"{name} = {value}"
+            for name, value in sorted(args.items(), key=lambda item: item[0])
+        ]
+        sat = obs.get("sat")
+        suffix = ""
+        if isinstance(sat, str) and sat:
+            suffix = f"; target counterexample query was {sat}"
+        lines.append(f"- Observation {index}: " + "; ".join(pieces) + suffix + ".")
+        for name, source_expr in sorted(arg_source_map.items()):
+            value = args.get(name)
+            if not isinstance(value, str):
+                continue
+            lines.append(
+                f"  At the selected target expression, `{name}` is source "
+                f"expression `{source_expr}`; this failed observation had "
+                f"`{source_expr} = {value}`."
+            )
+            if value == "0":
+                lines.append(
+                    f"  HARD RETRY CONSTRAINT: `{source_expr}` must not be `0` "
+                    "in the next generated testcase at this exact target call. "
+                    "If this source expression is a target-caller parameter, "
+                    "the target-caller invocation must pass a non-zero concrete "
+                    "value for that parameter; do not call it with literal `0` "
+                    "or with a variable initialized to `0`."
+                )
+                lines.append(
+                    f"  In the next testcase, make source expression "
+                    f"`{source_expr}` non-zero at the same target callsite. "
+                    "If it is a caller argument or visible receiver field, set "
+                    "that caller input/field directly rather than reaching the "
+                    "target through a wrapper that fixes it back to zero. For "
+                    "pointer arithmetic targets such as `add`/`offset`, zero "
+                    "offset/count often makes the safety relation trivially "
+                    "true; try a concrete small non-zero value such as `1`."
+                )
+        if left and right and left in args and right in args and op and negated:
+            lines.append(
+                f"  The rule is `{left} {op} {right}`. This failed observation "
+                f"had `{left} = {args[left]}` and `{right} = {args[right]}`; "
+                f"the next testcase must reach the same target but make "
+                f"`{left} {negated} {right}` true at the actual unsafe call."
+            )
+    lines.append(
+        "If an earlier guarded lookup/index is required to reach the target, "
+        "keep that earlier value in-bounds. Do not reuse that same value for "
+        "the actual target unsafe-call argument unless the source code requires "
+        "them to be equal; construct independent visible fields/arguments when "
+        "the target caller state allows it. If the target context shows an "
+        "actual unsafe-call source line, change the concrete source value of "
+        "that exact receiver/argument expression rather than only changing an "
+        "earlier guarded lookup that merely reaches the target. Do not preserve "
+        "implicit invariants like `index field == Vec slot` or `stored length == "
+        "allocation length` when the target caller does not enforce them before "
+        "the actual unsafe call; safe construction of an inconsistent but "
+        "type-correct receiver state is allowed. When the same source value is "
+        "used by prefix pointer operations and the target pointer operation, "
+        "the prefix pointer backing may need to be larger than the target "
+        "pointer backing so execution reaches the target and the selected "
+        "target relation is still false. If multiple visible raw-pointer "
+        "receiver fields are used with the same index/count before and at the "
+        "target, do not make all of those fields share the same allocation "
+        "length by default: keep prefix receivers large enough and make the "
+        "target receiver shorter or otherwise independent when that is what "
+        "violates the target relation."
+    )
+    return "\n".join(lines)
 
 
 def _build_klee_witness_text(
@@ -1021,12 +1584,220 @@ def _build_klee_witness_text(
         f"Target callsite id: {callsite_id}",
         f"Rule id: {rule_id}",
     ]
-    if ast_json.strip():
+    log_path = compose_output.parent / "klee-compose.log"
+    witness_lines = _extract_klee_init_witness_lines(log_path, callsite_id=callsite_id)
+    if witness_lines:
+        obligations = _derive_witness_obligations(ast_json, witness_lines)
         parts.append(
-            "Rule DSL AST. The testcase should make NOT(this rule) true at "
-            "the target unsafe call:\n" + ast_json.strip()
+            "KLEE init witness at the target call. These are the call argument "
+            "expressions/values from a path where KLEE found a target "
+            "counterexample satisfiable. Shape the concrete testcase so the "
+            "same target call arguments reproduce the counterexample:\n"
+            + ("\n".join(obligations) + "\n" if obligations else "")
+            + "\n".join(witness_lines)
         )
     return "\n\n".join(parts)
+
+
+def _describe_ext_expr(expr: object) -> str | None:
+    if not isinstance(expr, dict):
+        return None
+    kind = expr.get("type")
+    if kind == "call" and expr.get("name") == "get_arg":
+        args = expr.get("args")
+        if (
+            isinstance(args, list)
+            and len(args) == 1
+            and isinstance(args[0], dict)
+            and args[0].get("type") == "literal"
+        ):
+            return f"get_arg({args[0].get('value')})"
+    if kind == "simplified_var":
+        name = expr.get("name")
+        return name if isinstance(name, str) else None
+    if kind == "literal":
+        return str(expr.get("value"))
+    return None
+
+
+def _extract_witness_arg_map(witness_lines: list[str]) -> dict[str, str]:
+    arg_map: dict[str, str] = {}
+    for line in witness_lines:
+        match = re.search(
+            r"get_arg\((\d+)\)\s*->\s*simplified\(__klee_call_arg\d+=(.*)\)",
+            line,
+        )
+        if match:
+            arg_map[f"get_arg({match.group(1)})"] = match.group(2).strip()
+            continue
+        match = re.search(r"__klee_call_arg(\d+)\s*=\s*(.*?)(?:\s+\(explicit\))?$", line)
+        if match:
+            arg_map.setdefault(f"get_arg({match.group(1)})", match.group(2).strip())
+    return arg_map
+
+
+def _friendly_witness_expr(expr: str) -> str:
+    # KLEE symbols often contain a Rust-mangled function prefix followed by a
+    # readable snapshot path such as `.arg0.triangles.len`. Surface that suffix
+    # for the testcase generator; the raw expression remains available below.
+    match = re.search(r"\.(arg\d+(?:\.[A-Za-z_][A-Za-z0-9_]*)+)", expr)
+    if not match:
+        return expr
+    path = match.group(1)
+    bits = path.split(".")
+    if len(bits) >= 3 and bits[-1] in {"len", "cap", "capacity", "virtual_base"}:
+        owner = ".".join(bits[:-1])
+        suffix = bits[-1]
+        if suffix == "len":
+            return f"receiver/caller state `{owner}` length"
+        if suffix in {"cap", "capacity"}:
+            return f"receiver/caller state `{owner}` capacity"
+        return f"receiver/caller state `{owner}` pointer/base"
+    return f"receiver/caller state `{path}`"
+
+
+def _derive_witness_obligations(ast_json: str, witness_lines: list[str]) -> list[str]:
+    try:
+        ast = json.loads(ast_json)
+    except json.JSONDecodeError:
+        return []
+    simplified = ast.get("simplified") if isinstance(ast, dict) else None
+    if not isinstance(simplified, dict) or simplified.get("type") != "binary":
+        return []
+    op = simplified.get("op")
+    negated = {
+        "<": ">=",
+        "<=": ">",
+        ">": "<=",
+        ">=": "<",
+        "==": "!=",
+        "!=": "==",
+    }.get(op)
+    if not isinstance(op, str) or negated is None:
+        return []
+    left = _describe_ext_expr(simplified.get("left"))
+    right = _describe_ext_expr(simplified.get("right"))
+    if left is None or right is None:
+        return []
+    arg_map = _extract_witness_arg_map(witness_lines)
+    lines = [
+        f"Witness-derived target relation: construct the target caller state "
+        f"so `{left} {negated} {right}` is true at the target call."
+    ]
+    left_value = arg_map.get(left)
+    right_value = arg_map.get(right)
+    if left_value is not None or right_value is not None:
+        pieces = []
+        if left_value is not None:
+            pieces.append(f"{left} = {left_value}")
+        if right_value is not None:
+            pieces.append(f"{right} = {right_value}")
+        lines.append("Witness argument mapping: " + "; ".join(pieces) + ".")
+    if left_value is not None and right_value is not None:
+        if re.fullmatch(r"-?\d+", left_value) and not re.fullmatch(r"-?\d+", right_value):
+            if negated in {">=", ">"}:
+                direct = f"`{right}` must be {'<=' if negated == '>=' else '<'} {left_value}"
+            elif negated in {"<=", "<"}:
+                direct = f"`{right}` must be {'>=' if negated == '<=' else '>'} {left_value}"
+            elif negated == "==":
+                direct = f"`{right}` must equal {left_value}"
+            else:
+                direct = f"`{right}` must differ from {left_value}"
+            lines.append(
+                f"Because `{left}` is concrete `{left_value}`, the concrete "
+                f"target state should satisfy: {direct}. The witness maps "
+                f"`{right}` to `{_friendly_witness_expr(right_value)}` "
+                f"(raw: `{right_value}`); if that expression is a "
+                "length/capacity/field, set that field at the required boundary."
+            )
+            if ".len" in right_value and negated in {">=", ">"}:
+                lines.append(
+                    "This is a length boundary obligation: use a zero-length "
+                    "container/slice for that mapped field if it type-checks; "
+                    "do not use `vec![...]`, arrays with elements, or constructors "
+                    "that add elements to that same field."
+                )
+        elif re.fullmatch(r"-?\d+", right_value) and not re.fullmatch(r"-?\d+", left_value):
+            if negated in {">=", ">"}:
+                direct = f"`{left}` must be {'>=' if negated == '>=' else '>'} {right_value}"
+            elif negated in {"<=", "<"}:
+                direct = f"`{left}` must be {'<=' if negated == '<=' else '<'} {right_value}"
+            elif negated == "==":
+                direct = f"`{left}` must equal {right_value}"
+            else:
+                direct = f"`{left}` must differ from {right_value}"
+            lines.append(
+                f"Because `{right}` is concrete `{right_value}`, the concrete "
+                f"target state should satisfy: {direct}. The witness maps "
+                f"`{left}` to `{_friendly_witness_expr(left_value)}` "
+                f"(raw: `{left_value}`); if that expression is a "
+                "length/capacity/field, set that field at the required boundary."
+            )
+            if ".len" in left_value and negated in {"<=", "<"}:
+                lines.append(
+                    "This is a length boundary obligation: use a zero-length "
+                    "container/slice for that mapped field if it type-checks; "
+                    "do not use `vec![...]`, arrays with elements, or constructors "
+                    "that add elements to that same field."
+                )
+    return lines
+
+
+def _extract_klee_init_witness_lines(
+    log_path: Path,
+    *,
+    callsite_id: str,
+    max_lines: int = 80,
+) -> list[str]:
+    if not log_path.is_file():
+        return []
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    lines = text.splitlines()
+    candidates: list[list[str]] = []
+    current: list[str] | None = None
+    saw_target = False
+    for raw in lines:
+        line = raw.rstrip()
+        target_marker = (
+            f"[ext.exec] klee_ext_callsite site='{callsite_id}' target='{callsite_id}'"
+        )
+        if target_marker in line or f"[ext.dsl] at callsite '{callsite_id}'" in line:
+            saw_target = True
+        if saw_target and "[ext.call] values:" in line:
+            current = [line]
+            continue
+        if current is None:
+            continue
+        if line.startswith("  __klee_call_arg") or "[ext.dsl]" in line:
+            current.append(line)
+            if "SAT(constraints AND NOT resolved constraint): sat" in line:
+                candidates.append(current)
+                current = None
+                saw_target = False
+            elif "SAT(constraints AND NOT resolved constraint): unsat" in line:
+                current = None
+                saw_target = False
+            elif len(current) >= max_lines:
+                candidates.append(current)
+                current = None
+                saw_target = False
+            continue
+        if not line.strip():
+            continue
+        if current:
+            # Keep scanning across KLEE's blank-separated DSL trace, but stop
+            # when the next unrelated subsystem starts.
+            if not line.startswith("KLEE:"):
+                continue
+            if "[ext." not in line:
+                continue
+    if not candidates:
+        return []
+    selected = candidates[-1][:max_lines]
+    return selected
 
 
 def _run_llm_testcase_pipeline(
@@ -1038,6 +1809,7 @@ def _run_llm_testcase_pipeline(
     rule_dsl_path: Path,
     target: dict[str, object],
     callsite_id: str,
+    chain_callsite_id: str | None = None,
     rule_id: str,
     ast_json: str,
     artifact_dir: Path,
@@ -1047,7 +1819,7 @@ def _run_llm_testcase_pipeline(
     chain = write_certainty_chain_json(
         info_path=compose_output / "info",
         output_path=artifact_dir / "certainty-chain.json",
-        callsite=callsite_id,
+        callsite=chain_callsite_id or callsite_id,
         rule=rule_id,
     )
     if args.skip_llm_testcase:
@@ -1055,6 +1827,7 @@ def _run_llm_testcase_pipeline(
         pipeline_state = {
             "schema_version": 1,
             "callsite": callsite_id,
+            "chain_callsite": chain_callsite_id or callsite_id,
             "rule": rule_id,
         }
         pipeline_state["status"] = "skipped"
@@ -1091,6 +1864,7 @@ def _run_llm_testcase_pipeline(
     pipeline_state = {
         "schema_version": 1,
         "callsite": callsite_id,
+        "chain_callsite": chain_callsite_id or callsite_id,
         "rule": rule_id,
         "feature": injection.feature,
         "entry_function": injection.function,
@@ -1114,6 +1888,9 @@ def _run_llm_testcase_pipeline(
     pipeline_state["klee_witness"] = str(artifact_dir / "klee-witness.txt")
 
     max_attempts = max(1, int(getattr(args, "llm_testcase_retries", 3)))
+    configured_max_attempts = max_attempts
+    semantic_retry_used = False
+    format_retry_used = False
     requested_context_mode = str(getattr(args, "llm_context", "slice"))
     retry_feedback: str | None = None
     rerun_ll: Path | None = None
@@ -1121,7 +1898,10 @@ def _run_llm_testcase_pipeline(
     last_error: str | None = None
     rerun_result: dict[str, Any] | None = None
     last_testcase: str | None = None
-    for attempt in range(1, max_attempts + 1):
+    last_built_testcase: str | None = None
+    semantic_retry_feedback: str | None = None
+    attempt = 1
+    while attempt <= max_attempts:
         # A failed sliced attempt gets one conservative full-context attempt at
         # the end. Successful cases therefore pay only for the semantic slice.
         context_mode = (
@@ -1136,12 +1916,15 @@ def _run_llm_testcase_pipeline(
             "context_mode": context_mode,
         }
         build_log_path = artifact_dir / f"testcase-build-attempt-{attempt}.log"
+        build_started = False
         try:
             testcase = generate_safe_testcase(
                 crate_dir=injected_dir,
+                source_crate_dir=cargo_dir,
                 target=target,
                 rule=rule,
                 chain=chain,
+                report_path=report_json,
                 model=args.model,
                 artifacts_dir=artifact_dir,
                 injection=injection,
@@ -1193,6 +1976,7 @@ def _run_llm_testcase_pipeline(
 
             rerun_ir_dir = artifact_dir / "rerun-ir"
             _clean_dir(rerun_ir_dir)
+            build_started = True
             rerun_ll = ensure_linked_llvm_ir_file(
                 cargo_dir=injected_dir,
                 output_dir=rerun_ir_dir,
@@ -1205,6 +1989,7 @@ def _run_llm_testcase_pipeline(
                 build_log_path=build_log_path,
             )
             shutil.copyfile(build_log_path, artifact_dir / "testcase-build.log")
+            last_built_testcase = testcase
             attempt_state.update(
                 {
                     "status": "build-ok",
@@ -1238,18 +2023,48 @@ def _run_llm_testcase_pipeline(
             if rerun_result.get("full_rerun_passed"):
                 break
 
-            retry_feedback = _read_failure_feedback(
+            guidance = _testcase_retry_guidance(
+                rerun_result=rerun_result,
+                callsite_id=callsite_id,
+                target=target,
+            )
+            observed_feedback = _observed_target_arg_feedback(
                 rerun_log_path,
-                RuntimeError(
-                    "The testcase compiled but did not reproduce the target "
-                    f"violation (rerun status: {rerun_result.get('status')})."
-                ),
+                ast_json,
+                target=target,
+                crate_dir=cargo_dir,
+            )
+            if observed_feedback:
+                guidance = guidance + "\n\n" + observed_feedback
+            retry_feedback = _read_rerun_failure_feedback(
+                rerun_log_path,
+                guidance=guidance,
+            )
+            semantic_retry_feedback = _merge_semantic_retry_feedback(
+                semantic_retry_feedback,
+                retry_feedback,
             )
             last_error = retry_feedback
             attempt_state["feedback"] = retry_feedback
             (artifact_dir / "testcase-pipeline.json").write_text(
                 json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
             )
+            if (
+                attempt >= max_attempts
+                and not semantic_retry_used
+                and _should_use_semantic_retry(rerun_result)
+            ):
+                semantic_retry_used = True
+                max_attempts += 1
+                pipeline_state["llm_semantic_retry_used"] = True
+                pipeline_state["llm_configured_testcase_retries"] = configured_max_attempts
+                logger.warning(
+                    "[verify:testcase] attempt %d/%d reached the callsite but "
+                    "did not reproduce the target counterexample; adding one "
+                    "semantic retry with KLEE feedback",
+                    attempt,
+                    configured_max_attempts,
+                )
             if attempt < max_attempts:
                 logger.warning(
                     "[verify:testcase] attempt %d/%d compiled but did not reproduce; "
@@ -1258,7 +2073,19 @@ def _run_llm_testcase_pipeline(
                     max_attempts,
                 )
         except Exception as exc:
-            retry_feedback = _read_failure_feedback(build_log_path, exc)
+            retry_feedback = _read_failure_feedback(
+                build_log_path if build_started else None,
+                exc,
+            )
+            if semantic_retry_feedback:
+                retry_feedback = (
+                    retry_feedback
+                    + "\n\n<still required semantic retry feedback from the "
+                    "last KLEE rerun>\n"
+                    + semantic_retry_feedback
+                    + "\n</still required semantic retry feedback from the "
+                    "last KLEE rerun>"
+                )
             last_error = retry_feedback
             attempt_state.update(
                 {
@@ -1267,13 +2094,44 @@ def _run_llm_testcase_pipeline(
                     "feedback": retry_feedback,
                 }
             )
-            if build_log_path is not None:
+            if build_started:
                 attempt_state["build_log"] = str(build_log_path)
             pipeline_state["llm_testcase_attempts"].append(attempt_state)
             (artifact_dir / "testcase-pipeline.json").write_text(
                 json.dumps(pipeline_state, indent=2) + "\n", encoding="utf-8"
             )
             if attempt >= max_attempts:
+                if (
+                    not format_retry_used
+                    and _is_testcase_format_feedback(retry_feedback)
+                ):
+                    format_retry_used = True
+                    max_attempts += 1
+                    pipeline_state["llm_format_retry_used"] = True
+                    pipeline_state["llm_configured_testcase_retries"] = configured_max_attempts
+                    logger.warning(
+                        "[verify:testcase] attempt %d/%d produced malformed "
+                        "testcase output; adding one formatting retry with "
+                        "validator feedback",
+                        attempt,
+                        configured_max_attempts,
+                    )
+                    attempt += 1
+                    continue
+                if (
+                    rerun_ll is not None
+                    and rerun_result is not None
+                    and last_built_testcase is not None
+                    and not getattr(args, "skip_rerun_sym", False)
+                ):
+                    logger.warning(
+                        "[verify:testcase] attempt %d/%d failed after a prior "
+                        "testcase compiled; proceeding to rerun-sym with the "
+                        "last compiled testcase",
+                        attempt,
+                        max_attempts,
+                    )
+                    break
                 raise RuntimeError(
                     f"testcase generation/build failed after {max_attempts} attempts:\n"
                     f"{last_error or exc}"
@@ -1283,6 +2141,7 @@ def _run_llm_testcase_pipeline(
                 attempt,
                 max_attempts,
             )
+        attempt += 1
 
     if rerun_ll is None:
         raise RuntimeError("testcase build did not produce LLVM IR")
@@ -1297,11 +2156,21 @@ def _run_llm_testcase_pipeline(
             "mode": "rerun-sym",
         }
         try:
-            if last_testcase is None:
+            testcase_for_sym = last_built_testcase or last_testcase
+            if testcase_for_sym is None:
                 raise RuntimeError("no generated testcase is available for rerun-sym")
+            rerun_sym_focus_text = ""
+            prompt_path = artifact_dir / "testcase-prompt.txt"
+            if prompt_path.is_file():
+                rerun_sym_focus_text = prompt_path.read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            if retry_feedback:
+                rerun_sym_focus_text += "\n\n" + retry_feedback
             sym_testcase, sym_map = symbolize_testcase_constants(
-                testcase=last_testcase,
+                testcase=testcase_for_sym,
                 injection=injection,
+                focus_text=rerun_sym_focus_text,
             )
             mapping_path = artifact_dir / "rerun-sym-constants.json"
             mapping_path.write_text(
@@ -1439,9 +2308,13 @@ def _run_verify_matrix(
         targets=targets,
         ll_path=ll_path,
         requested_callsite=args.callsite,
+        requested_callsites=_load_callsites_file(repo_root, getattr(args, "callsites_file", None)),
     )
     if not callsites:
-        raise RuntimeError(f"no callsites matched {args.callsite!r}")
+        raise RuntimeError(
+            f"no callsites matched --callsite={args.callsite!r} "
+            f"--callsites-file={getattr(args, 'callsites_file', None)!r}"
+        )
     callsites = _assign_matrix_rules_to_callsites(
         callsites=callsites,
         rule_dsl_path=rule_dsl_path,
@@ -1530,6 +2403,8 @@ def _run_verify_matrix_locked(
         "timeout_sec": args.timeout_sec,
         "test": args.test,
         "stop_callsite_if_violated": bool(getattr(args, "stop_callsite_if_violated", False)),
+        "stop_callsite_if_reached": bool(getattr(args, "stop_callsite_if_reached", False)),
+        "stop_callsite_after_timeout": bool(getattr(args, "stop_callsite_after_timeout", False)),
         "total": total,
         "completed": len(results),
         "counts": dict(sorted(counts.items())),
@@ -1555,9 +2430,24 @@ def _run_verify_matrix_locked(
         if isinstance(row.get("target_index"), int) and isinstance(row.get("target"), dict)
     }
     stopped_callsites: set[str] = set()
-    if getattr(args, "stop_callsite_if_violated", False):
+    if (
+        getattr(args, "stop_callsite_if_violated", False)
+        or getattr(args, "stop_callsite_if_reached", False)
+        or getattr(args, "stop_callsite_after_timeout", False)
+    ):
         for item in existing.values():
-            if _is_confirmed_callsite_violation(item):
+            status = item.get("status")
+            should_stop = (
+                getattr(args, "stop_callsite_if_violated", False)
+                and _is_confirmed_callsite_violation(item)
+            ) or (
+                getattr(args, "stop_callsite_if_reached", False)
+                and _is_reached_callsite_status(status)
+            ) or (
+                getattr(args, "stop_callsite_after_timeout", False)
+                and status == "timeout"
+            )
+            if should_stop:
                 callsite_name = item.get("callsite")
                 if isinstance(callsite_name, str):
                     stopped_callsites.add(callsite_name)
@@ -1569,8 +2459,8 @@ def _run_verify_matrix_locked(
         for rule in callsite.get("rules", []):
             if (target_index, rule) in existing:
                 continue
-            if getattr(args, "stop_callsite_if_violated", False) and callsite_id in stopped_callsites:
-                skip_reason = "earlier rule for this callsite reported violation"
+            if callsite_id in stopped_callsites:
+                skip_reason = "earlier rule for this callsite triggered matrix early-stop"
                 row = {
                     "target_index": target_index,
                     "callsite": callsite_id,
@@ -1627,7 +2517,7 @@ def _run_verify_matrix_locked(
                 _atomic_write_json(result_path, state)
                 print(
                     f"[verify:matrix] {completed}/{total} target#{target_index} "
-                    f"{callsite_id} {rule} skipped: earlier rule violated",
+                    f"{callsite_id} {rule} skipped: callsite early-stop",
                     flush=True,
                 )
                 continue
@@ -1697,6 +2587,7 @@ def _run_verify_matrix_locked(
             output_dir.parent.mkdir(parents=True, exist_ok=True)
             cmd = [
                 args.klee_bin,
+                *_klee_no_stats_args(),
                 f"--output-dir={output_dir}",
                 f"--compose-verify-chain-json={output_dir.parent / 'klee-control-chains.json'}",
                 f"--ext.callsite={llvm_callsite_id}",
@@ -1764,7 +2655,9 @@ def _run_verify_matrix_locked(
                 )
 
             log_path.write_text(log_text, encoding="utf-8")
-            status = _compose_status_from_output(returncode, combined, timed_out)
+            status = _compose_status_from_output(
+                returncode, combined, timed_out, llvm_callsite_id
+            )
             chain_path = output_dir.parent / "klee-control-chains.json"
             has_certain_symbol = _control_chain_has_certain_symbol(chain_path)
             if "[ext.dsl] resolved constraint uses certain symbol: true" in combined:
@@ -1773,7 +2666,7 @@ def _run_verify_matrix_locked(
                 has_certain_symbol = True
             if raw_ptr_deref and "pointer uses certain symbol: true" in combined:
                 has_certain_symbol = True
-            if status == "violation" and not has_certain_symbol:
+            if status == "violation" and not has_certain_symbol and rule not in REACHABILITY_ONLY_RULES:
                 status = "low-confidence-sat"
             row = {
                 "target_index": target_index,
@@ -1820,7 +2713,14 @@ def _run_verify_matrix_locked(
             results.append(row)
             completed += 1
             counts[status] = counts.get(status, 0) + 1
-            if getattr(args, "stop_callsite_if_violated", False) and status == "violation":
+            if (
+                (getattr(args, "stop_callsite_if_violated", False) and status == "violation")
+                or (
+                    getattr(args, "stop_callsite_if_reached", False)
+                    and _is_reached_callsite_status(status)
+                )
+                or (getattr(args, "stop_callsite_after_timeout", False) and status == "timeout")
+            ):
                 stopped_callsites.add(callsite_id)
             state.update(
                 {
@@ -2088,10 +2988,21 @@ def run(args: argparse.Namespace) -> int:
         repo_root, args.artifacts_dir,
         f".local/verify/{cargo_dir.name}/{resolved_callsite_id}/{args.rule}",
     )
+    compose_callsite_id = _compose_init_callsite_marker_for_target(
+        ll_path=ll_path,
+        target=target,
+        callsite_id=resolved_callsite_id,
+    )
+    compose_reach_only = compose_callsite_id != resolved_callsite_id
+    if compose_reach_only:
+        print(
+            f"[verify] compose-init-callsite={compose_callsite_id} "
+            f"(reach/chain for actual unsafe callsite {resolved_callsite_id})"
+        )
     compose_output = artifact_dir / "klee-compose"
     rc, compose_status = _run_klee_compose_verify(
         ll_path=ll_path,
-        callsite_id=resolved_callsite_id,
+        callsite_id=compose_callsite_id,
         ast_json=ast_json,
         report_json=report_json,
         klee_bin=args.klee_bin,
@@ -2099,13 +3010,19 @@ def run(args: argparse.Namespace) -> int:
         output_dir=compose_output,
         timeout_sec=args.timeout_sec,
     )
-    if rc != 0:
+    if compose_reach_only and compose_status in {"candidate", "verified", "unknown"}:
+        # A root marker proves reachability/context for testcase generation, not
+        # absence of an actual unsafe-call violation.  Keep going to LLM/rerun,
+        # which uses resolved_callsite_id at the actual unsafe marker.
+        compose_status = "candidate"
+    if rc != 0 and compose_status not in {"candidate", "verified"}:
         return rc
 
-    if compose_status == "verified":
+    if compose_status == "verified" and not compose_reach_only:
         pipeline_state = {
             "schema_version": 1,
             "callsite": resolved_callsite_id,
+            "compose_callsite": compose_callsite_id,
             "rule": args.rule,
             "status": "compose-verified-skip-testcase",
             "reason": "compose-verify proved constraints AND NOT(rule) unsat",
@@ -2138,6 +3055,7 @@ def run(args: argparse.Namespace) -> int:
             init={
                 "status": "verified",
                 "returncode": rc,
+                "compose_callsite": compose_callsite_id,
                 "log": str(artifact_dir / "klee-compose.log"),
                 "klee_output_dir": str(compose_output),
             },
@@ -2157,6 +3075,7 @@ def run(args: argparse.Namespace) -> int:
         rule_dsl_path=rule_dsl_path,
         target=target,
         callsite_id=resolved_callsite_id,
+        chain_callsite_id=compose_callsite_id,
         rule_id=args.rule,
         ast_json=ast_json,
         artifact_dir=artifact_dir,
@@ -2192,6 +3111,7 @@ def run(args: argparse.Namespace) -> int:
         init={
             "status": compose_status,
             "returncode": rc,
+            "compose_callsite": compose_callsite_id,
             "log": str(artifact_dir / "klee-compose.log"),
             "klee_output_dir": str(compose_output),
         },

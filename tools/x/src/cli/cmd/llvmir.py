@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import subprocess
 import tomllib
 
@@ -12,6 +13,7 @@ def _emit_llvm_rustflags(
     *,
     panic_abort: bool = False,
     panic_abort_tests: bool = False,
+    overflow_checks: bool = False,
 ) -> str:
     flags = [
         "-Zinline-mir=no",
@@ -19,6 +21,7 @@ def _emit_llvm_rustflags(
         "-Cllvm-args=--inline-threshold=0",
         "-Copt-level=0",
         "-Ccodegen-units=1",
+        f"-Coverflow-checks={'on' if overflow_checks else 'off'}",
     ]
     if panic_abort:
         flags.append("-Cpanic=abort")
@@ -52,6 +55,7 @@ def compile_with_emit_llvm(
     custom_rustc: str = None,
     build_std: bool = False,
     panic_abort: bool = False,
+    overflow_checks: bool = False,
     features: list[str] | None = None,
     log_path: Path | None = None,
 ) -> None:
@@ -62,7 +66,10 @@ def compile_with_emit_llvm(
     env["CARGO_INCREMENTAL"] = "0" 
     if custom_rustc:
         env["RUSTC"] = custom_rustc
-    env["RUSTFLAGS"] = _emit_llvm_rustflags(panic_abort=panic_abort)
+    env["RUSTFLAGS"] = _emit_llvm_rustflags(
+        panic_abort=panic_abort,
+        overflow_checks=overflow_checks,
+    )
 
     cmd = ["cargo", "build"]
     if (cargo_dir / "src" / "lib.rs").is_file():
@@ -105,6 +112,7 @@ def compile_test_with_emit_llvm(
     custom_rustc: str = None,
     build_std: bool = False,
     panic_abort: bool = False,
+    overflow_checks: bool = False,
     features: list[str] | None = None,
     log_path: Path | None = None,
 ) -> None:
@@ -118,6 +126,7 @@ def compile_test_with_emit_llvm(
     env["RUSTFLAGS"] = _emit_llvm_rustflags(
         panic_abort=panic_abort,
         panic_abort_tests=panic_abort,
+        overflow_checks=overflow_checks,
     )
 
     # Only the library unit-test harness is part of verify's execution model.
@@ -261,6 +270,37 @@ def _is_incompatible_panic_runtime(path: Path, *, panic_abort: bool) -> bool:
     return path.name.startswith("panic_abort-")
 
 
+_LLVM_ARTIFACT_RE = re.compile(r"^(?P<name>.+)-[0-9a-f]{8,}$")
+
+
+def _llvm_artifact_key(path: Path) -> str:
+    """Return a stable crate-artifact key for a Cargo-emitted LLVM IR path."""
+    match = _LLVM_ARTIFACT_RE.match(path.stem)
+    if match:
+        return match.group("name")
+    return path.stem
+
+
+def _dedupe_latest_llvm_irs(paths: list[Path]) -> list[Path]:
+    """Keep only the newest LLVM IR for each Cargo artifact key.
+
+    ``target/*/debug/deps`` is sticky across multiple ``cargo build`` and
+    ``cargo test`` invocations.  A later feature-specific rerun can therefore
+    leave several ``alloc-<hash>.ll``/``core-<hash>.ll``/crate ``.ll`` files in
+    the directory.  Linking all of them creates duplicate definitions such as
+    ``alloc::sync::STATIC_INNER_SLICE``.  Cargo artifact hashes are not semantic
+    dependencies for llvm-link, so select the newest file per logical artifact.
+    """
+    latest_by_key: dict[str, Path] = {}
+    for path in paths:
+        key = _llvm_artifact_key(path)
+        current = latest_by_key.get(key)
+        if current is None or path.stat().st_mtime >= current.stat().st_mtime:
+            latest_by_key[key] = path
+    selected = set(latest_by_key.values())
+    return [path for path in paths if path in selected]
+
+
 def _collect_test_link_llvm_irs(
     deps_dir: Path,
     *,
@@ -276,6 +316,7 @@ def _collect_test_link_llvm_irs(
     selected compilation strategy is excluded.
     """
     selected = [harness_ir]
+    candidates: list[Path] = []
     for path in sorted(deps_dir.glob("*.ll")):
         if path == harness_ir:
             continue
@@ -283,7 +324,8 @@ def _collect_test_link_llvm_irs(
             continue
         if _is_incompatible_panic_runtime(path, panic_abort=panic_abort):
             continue
-        selected.append(path)
+        candidates.append(path)
+    selected.extend(_dedupe_latest_llvm_irs(candidates))
 
     logger.info(
         "Selected test LLVM IR paths: %s",
@@ -351,6 +393,7 @@ def ensure_linked_llvm_ir_file(
     test: bool = False,
     build_std: bool = True,
     panic_abort: bool = False,
+    overflow_checks: bool = False,
     force: bool = False,
     features: list[str] | None = None,
     build_log_path: Path | None = None,
@@ -370,6 +413,7 @@ def ensure_linked_llvm_ir_file(
         "rustflags": _emit_llvm_rustflags(
             panic_abort=panic_abort,
             panic_abort_tests=test and panic_abort,
+            overflow_checks=overflow_checks,
         ),
         "rustc": rustc,
         "test": test,
@@ -378,6 +422,7 @@ def ensure_linked_llvm_ir_file(
         if build_std
         else [],
         "panic_abort_tests": test and panic_abort,
+        "overflow_checks": overflow_checks,
         "features": features,
     }
     metadata_path = output_dir / f"{crate_name}.ll.meta.json"
@@ -400,6 +445,7 @@ def ensure_linked_llvm_ir_file(
             custom_rustc=rustc,
             build_std=build_std,
             panic_abort=panic_abort,
+            overflow_checks=overflow_checks,
             features=features,
             log_path=build_log_path,
         )
@@ -409,6 +455,7 @@ def ensure_linked_llvm_ir_file(
             custom_rustc=rustc,
             build_std=build_std,
             panic_abort=panic_abort,
+            overflow_checks=overflow_checks,
             features=features,
             log_path=build_log_path,
         )
@@ -435,10 +482,15 @@ def ensure_linked_llvm_ir_file(
         # package plus core/alloc/std leaves those as declarations and makes a
         # concrete KLEE rerun stop before reaching the target callsite.
         lls.append(main_ir)
+        candidates: list[Path] = []
         for path in sorted(all_deps_dir.glob("*.ll")):
             if path == main_ir or _llvm_ir_defines_main(path):
                 continue
             if _is_incompatible_panic_runtime(path, panic_abort=panic_abort):
+                continue
+            candidates.append(path)
+        for path in _dedupe_latest_llvm_irs(candidates):
+            if _llvm_artifact_key(path) == _llvm_artifact_key(main_ir):
                 continue
             lls.append(path)
 
