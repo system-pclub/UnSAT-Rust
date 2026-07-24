@@ -1,0 +1,206 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/allocator.rs">
+```rust
+use libc::{
+    self, c_void, MAP_ANONYMOUS, MAP_FAILED, MAP_HUGETLB, MAP_PRIVATE, PROT_READ, PROT_WRITE,
+};
+use std::{
+    alloc::{GlobalAlloc, Layout},
+    fs::File,
+    io::Read,
+    ptr::null_mut,
+};
+
+// https://www.kernel.org/doc/Documentation/vm/hugetlbpage.txt
+//
+// The output of "cat /proc/meminfo" will include lines like:
+// ...
+// HugePages_Total: uuu
+// HugePages_Free:  vvv
+// HugePages_Rsvd:  www
+// HugePages_Surp:  xxx
+// Hugepagesize:    yyy kB
+// Hugetlb:         zzz kB
+
+// constant.
+const MEMINFO_PATH: &str = "/proc/meminfo";
+const TOKEN: &str = "Hugepagesize:";
+
+lazy_static! {
+    static ref HUGEPAGE_SIZE: isize = {
+        let buf = File::open(MEMINFO_PATH).map_or("".to_owned(), |mut f| {
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            s
+        });
+        parse_hugepage_size(&buf)
+    };
+}
+
+fn parse_hugepage_size(s: &str) -> isize {
+    /* body omitted: interface retained */
+}
+
+fn align_to(size: usize, align: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+// hugepage allocator.
+pub(crate) struct HugePageAllocator;
+
+unsafe impl GlobalAlloc for HugePageAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let len = align_to(layout.size(), *HUGEPAGE_SIZE as usize);
+        let p = libc::mmap(
+            null_mut(),
+            len,
+            PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
+            -1,
+            0,
+        );
+
+        if p == MAP_FAILED {
+            return null_mut();
+        }
+
+        p as *mut u8
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/boxed.rs">
+```rust
+use crate::default_allocator;
+use std::alloc::{GlobalAlloc, Layout};
+use std::ops::{Deref, DerefMut};
+use std::ptr::NonNull;
+/// A pointer type for hugepage allocation.
+///
+/// Allocates memory on the hugepage and then places x into it.
+pub struct Box<T> {
+    data: NonNull<T>,
+}
+impl<T> Box<T> {
+    #[inline(never)]
+    pub fn new(data: T) -> Box<T> {
+        /* body omitted: interface retained */
+    }
+    pub unsafe fn from_raw(raw: *mut T) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Drop for Box<T> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Deref for Box<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#[cfg(target_os = "linux")]
+#[macro_use]
+extern crate lazy_static;
+#[cfg(target_os = "linux")]
+use std::alloc::{GlobalAlloc, Layout};
+#[cfg(target_os = "linux")]
+mod allocator;
+#[cfg(target_os = "linux")]
+use allocator::HugePageAllocator;
+#[cfg(target_os = "linux")]
+mod boxed;
+#[cfg(target_os = "linux")]
+pub use boxed::Box;
+#[cfg(target_os = "linux")]
+lazy_static! {
+    static ref HUGEPAGE_ALLOCATOR : HugePageAllocator = HugePageAllocator;
+}
+#[cfg(target_os = "linux")]
+pub(crate) fn default_allocator() -> &'static HugePageAllocator {
+    /* body omitted: interface retained */
+}
+/// Allocate memory with the hugepage allocator.
+///
+/// This function forwards calls to the HugePageAllocator.alloc() function.
+///
+/// # Safety
+///
+/// See [`GlobalAlloc::alloc`].
+///
+/// # Examples
+///
+/// ```
+/// use std::alloc::Layout;
+/// use hugepage_rs::{alloc, dealloc};
+///
+/// unsafe {
+///     let layout = Layout::new::<u16>();
+///     let ptr = alloc(layout);
+///
+///     *(ptr as *mut u16) = 42;
+///     assert_eq!(*(ptr as *mut u16), 42);
+///
+///     dealloc(ptr, layout);
+/// }
+/// ```
+#[cfg(target_os = "linux")]
+#[inline(never)]
+pub fn alloc(layout: Layout) -> *mut u8 {
+    unsafe {
+        klee_ext_bind::callsite!("src-lib-rs-54-14");
+        let mut __klee_ret_src_lib_rs_54_14_alloc = HUGEPAGE_ALLOCATOR.alloc(layout);
+        __klee_ret_src_lib_rs_54_14_alloc
+    }
+}
+/// Deallocate memory with the hugepage allocator.
+///
+/// This function forwards calls to the HugePageAllocator.dealloc() function.
+///
+/// # Safety
+///
+/// This function is unsafe because undefined behavior can result if the caller does not ensure all of the following:
+///
+/// - ptr must denote a block of memory currently allocated via this allocator,
+/// - layout must be the same layout that was used to allocate that block of memory.
+#[cfg(target_os = "linux")]
+#[inline(never)]
+pub fn dealloc(p: *mut u8, layout: Layout) {
+    /* body omitted: interface retained */
+}
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::{alloc, dealloc};
+    use std::alloc::Layout;
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_allocator_wrappers() {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

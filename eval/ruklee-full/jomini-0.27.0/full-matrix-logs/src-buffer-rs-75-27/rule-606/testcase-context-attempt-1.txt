@@ -1,0 +1,644 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer.rs">
+```rust
+use crate::Scalar;
+use std::{io::Read, ops::Range};
+#[derive(Debug)]
+pub struct BufferWindow {
+    pub buf: Box<[u8]>,
+    start_buf: *const u8,
+    pub start: *const u8,
+    pub end: *const u8,
+    pub prior_reads: usize,
+}
+pub enum BufferError {
+    Io(std::io::Error),
+    BufferFull,
+}
+impl BufferWindow {
+    #[inline]
+    pub fn from_slice(data: &[u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn advance_to(&mut self, ptr: *const u8) {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn advance(&mut self, amt: usize) {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn window(&self) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn window_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn position(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn consumed_data(&self) -> usize {
+        unsafe {
+            let __klee_arg5 = &self.start;
+            let __klee_arg6 = self.start_buf;
+            klee_ext_bind::callsite!("src-buffer-rs-67-18");
+            let mut __klee_ret_src_buffer_rs_67_18_offset_from = __klee_arg5
+                .offset_from(__klee_arg6);
+            __klee_ret_src_buffer_rs_67_18_offset_from as usize
+        }
+    }
+    #[inline(never)]
+    pub fn get(&self, range: Range<*const u8>) -> Scalar {
+        debug_assert!(range.start >= self.start_buf);
+        debug_assert!(range.end <= self.end);
+        let len = unsafe {
+            let __klee_arg7 = &range.end;
+            let __klee_arg8 = range.start;
+            klee_ext_bind::callsite!("src-buffer-rs-74-28");
+            let mut __klee_ret_src_buffer_rs_74_28_offset_from = __klee_arg7
+                .offset_from(__klee_arg8);
+            __klee_ret_src_buffer_rs_74_28_offset_from as usize
+        };
+        let sl = unsafe {
+            let __klee_arg9 = range.start;
+            klee_ext_bind::callsite!("src-buffer-rs-75-27");
+            let mut __klee_ret_src_buffer_rs_75_27_from_raw_parts = std::slice::from_raw_parts(
+                __klee_arg9,
+                len,
+            );
+            __klee_ret_src_buffer_rs_75_27_from_raw_parts
+        };
+        Scalar::new(sl)
+    }
+    /// This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`
+    /// will only call the underlying read if the buffer is currently empty,
+    /// this function will copy over the bytes that haven't been consumed to the
+    /// start.
+    #[inline(never)]
+    pub fn fill_buf(&mut self, mut reader: impl Read) -> Result<usize, BufferError> {
+        /* body omitted: interface retained */
+    }
+}
+#[derive(Debug)]
+pub struct BufferWindowBuilder {
+    buffer: Option<Box<[u8]>>,
+    buffer_len: usize,
+}
+impl Default for BufferWindowBuilder {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl BufferWindowBuilder {
+    #[inline]
+    pub fn buffer(mut self, val: Box<[u8]>) -> BufferWindowBuilder {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn buffer_len(mut self, val: usize) -> BufferWindowBuilder {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn build(self) -> BufferWindow {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+/*!
+
+A low level, performance oriented parser for save and game files from [Paradox Development Studio](https://en.wikipedia.org/wiki/Paradox_Development_Studio) titles (eg: Europa Universalis (EU4), Hearts of Iron (HOI4), and Crusader Kings (CK3), Imperator, Stellaris, and Victoria).
+
+For an in-depth look at the Paradox Clausewitz format and the pitfalls that come
+trying to support all variations, consult [the write-up](https://pdx.tools/blog/a-tour-of-pds-clausewitz-syntax). In short, it's extremely difficult to write a robust and
+fast parser that abstracts over the format difference between games as well as differences between game patches. Jomini hits the sweet spot between flexibility while still being ergonomic.
+
+Jomini is the cornerstone of the [online EU4 save file
+analyzer](https://pdx.tools). This library also powers the [Paradox Game
+Converters](https://github.com/ParadoxGameConverters) and
+[pdxu](https://github.com/crschnick/pdx_unlimiter).
+
+## Features
+
+- ✔ Versatile: Handle both plaintext and binary encoded data
+- ✔ Fast: Parse data at over 1 GB/s
+- ✔ Small: Compile with zero dependencies
+- ✔ Safe: Extensively fuzzed against potential malicious input
+- ✔ Ergonomic: Use [serde](https://serde.rs/derive.html)-like macros to have parsing logic automatically implemented
+- ✔ Embeddable: Cross platform native apps, statically compiled services, or in the browser via [Wasm](https://webassembly.org/)
+
+## Quick Start
+
+Below is a demonstration of deserializing plaintext data using serde.
+Several additional serde-like attributes are used to reconcile the serde
+data model with structure of these files.
+
+```rust
+# #[cfg(feature = "derive")] {
+use jomini::{
+    text::{Operator, Property},
+    JominiDeserialize,
+};
+
+#[derive(JominiDeserialize, PartialEq, Debug)]
+pub struct Model {
+    human: bool,
+    first: Option<u16>,
+    third: Property<u16>,
+    #[jomini(alias = "forth")]
+    fourth: u16,
+    #[jomini(alias = "core", duplicated)]
+    cores: Vec<String>,
+    names: Vec<String>,
+    #[jomini(take_last)]
+    checksum: String,
+}
+
+let data = br#"
+    human = yes
+    third < 5
+    forth = 10
+    core = "HAB"
+    names = { "Johan" "Frederick" }
+    core = FRA
+    checksum = "first"
+    checksum = "second"
+"#;
+
+let expected = Model {
+    human: true,
+    first: None,
+    third: Property::new(Operator::LessThan, 5),
+    fourth: 10,
+    cores: vec!["HAB".to_string(), "FRA".to_string()],
+    names: vec!["Johan".to_string(), "Frederick".to_string()],
+    checksum: "second".to_string(),
+};
+
+let actual: Model = jomini::text::de::from_windows1252_slice(data)?;
+assert_eq!(actual, expected);
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+## Binary Deserialization
+
+Deserializing data encoded in the binary format is done in a similar fashion but with a couple extra steps for the caller to supply:
+
+- How text should be decoded (typically Windows-1252 or UTF-8)
+- How rational (floating point) numbers are decoded
+- How tokens, which are 16 bit integers that uniquely identify strings, are resolved
+
+Implementors be warned, not only does each Paradox game have a different binary format, but the binary format can vary between patches!
+
+Below is an example that defines a sample binary format and uses a hashmap token lookup.
+
+```rust
+# #[cfg(feature = "derive")] {
+use jomini::{Encoding, JominiDeserialize, Windows1252Encoding, binary::BinaryFlavor};
+use std::{borrow::Cow, collections::HashMap};
+
+#[derive(JominiDeserialize, PartialEq, Debug)]
+struct MyStruct {
+    field1: String,
+}
+
+#[derive(Debug, Default)]
+pub struct BinaryTestFlavor;
+
+impl BinaryFlavor for BinaryTestFlavor {
+    fn visit_f32(&self, data: [u8; 4]) -> f32 {
+        f32::from_le_bytes(data)
+    }
+
+    fn visit_f64(&self, data: [u8; 8]) -> f64 {
+        f64::from_le_bytes(data)
+    }
+}
+
+impl Encoding for BinaryTestFlavor {
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        Windows1252Encoding::decode(data)
+    }
+}
+
+let data = [ 0x82, 0x2d, 0x01, 0x00, 0x0f, 0x00, 0x03, 0x00, 0x45, 0x4e, 0x47 ];
+
+let mut map = HashMap::new();
+map.insert(0x2d82, "field1");
+
+let actual: MyStruct = BinaryTestFlavor.deserialize_slice(&data[..], &map)?;
+assert_eq!(actual, MyStruct { field1: "ENG".to_string() });
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+When done correctly, one can use the same structure to represent both the plaintext and binary data
+without any duplication.
+
+One can configure the behavior when a token is unknown (ie: fail immediately or try to continue).
+
+### Direct identifier deserialization with `token` attribute
+
+There may be some performance loss during binary deserialization as
+tokens are resolved to strings via a `TokenResolver` and then matched against the
+string representations of a struct's fields.
+
+We can fix this issue by directly encoding the expected token value into the struct:
+
+```rust
+# #[cfg(feature = "derive")] {
+# use jomini::{Encoding, JominiDeserialize, Windows1252Encoding, BinaryDeserializer};
+# use std::{borrow::Cow, collections::HashMap};
+#
+# #[derive(Debug, Default)]
+# pub struct BinaryTestFlavor;
+#
+# impl jomini::binary::BinaryFlavor for BinaryTestFlavor {
+#     fn visit_f32(&self, data: [u8; 4]) -> f32 {
+#         f32::from_le_bytes(data)
+#     }
+#
+#     fn visit_f64(&self, data: [u8; 8]) -> f64 {
+#         f64::from_le_bytes(data)
+#     }
+# }
+#
+# impl Encoding for BinaryTestFlavor {
+#     fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+#         Windows1252Encoding::decode(data)
+#     }
+# }
+#
+# let data = [ 0x82, 0x2d, 0x01, 0x00, 0x0f, 0x00, 0x03, 0x00, 0x45, 0x4e, 0x47 ];
+#
+#[derive(JominiDeserialize, PartialEq, Debug)]
+struct MyStruct {
+    #[jomini(token = 0x2d82)]
+    field1: String,
+}
+
+// Empty token to string resolver
+let map = HashMap::<u16, String>::new();
+
+let actual: MyStruct = BinaryDeserializer::builder_flavor(BinaryTestFlavor)
+    .deserialize_slice(&data[..], &map)?;
+assert_eq!(actual, MyStruct { field1: "ENG".to_string() });
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+Couple notes:
+- This does not obviate need for the token to string resolver as tokens may be used as values.
+- If the `token` attribute is specified on one field on a struct, it must be specified on all fields of that struct.
+
+## Caveats
+
+Before calling any Jomini API, callers are expected to:
+
+- Determine the correct format (text or binary) ahead of time.
+- Strip off any header that may be present (eg: `EU4txt` / `EU4bin`)
+- Provide the token resolver for the binary format
+- Provide the conversion to reconcile how, for example, a date may be encoded as an integer in
+  the binary format, but as a string when in plaintext.
+
+## The Mid-level API
+
+If the automatic deserialization via `JominiDeserialize` is too high level, there is a mid-level
+api where one can easily iterate through the parsed document and interrogate fields for
+their information.
+
+```rust
+use jomini::TextTape;
+
+let data = b"name=aaa name=bbb core=123 name=ccc name=ddd";
+let tape = TextTape::from_slice(data).unwrap();
+let reader = tape.windows1252_reader();
+
+for (key, _op, value) in reader.fields() {
+    println!("{:?}={:?}", key.read_str(), value.read_str().unwrap());
+}
+```
+
+For even lower level of parisng, see the respective [binary] and [text] module documentation.
+
+*/
+#![cfg_attr(
+    feature = "json",
+    doc = r##"
+### JSON
+
+The mid-level API also provides the excellent utility of converting the
+plaintext Clausewitz format to JSON when the `json` feature is enabled.
+
+```rust
+use jomini::TextTape;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let tape = TextTape::from_slice(b"foo=bar")?;
+let reader = tape.windows1252_reader();
+let actual = reader.json().to_string();
+assert_eq!(actual, r#"{"foo":"bar"}"#);
+# Ok(())
+# }
+```
+"##
+)]
+/*!
+
+## Write API
+
+There are two targeted use cases for the write API. One is when a text tape is on hand.
+This is useful when one needs to reformat a document (note that comments are not
+preserved):
+
+```rust
+use jomini::{TextTape, TextWriterBuilder};
+
+let tape = TextTape::from_slice(b"hello   = world")?;
+let mut out: Vec<u8> = Vec::new();
+let mut writer = TextWriterBuilder::new().from_writer(&mut out);
+writer.write_tape(&tape)?;
+assert_eq!(&out, b"hello=world");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+The writer normalizes any formatting issues. The writer is not able to
+losslessly write all parsed documents, but these are limited to truly
+esoteric situations and hope to be resolved in future releases.
+
+The other use case is geared more towards incremental writing that can be
+found in melters or those crafting documents by hand. These use cases need to
+manually drive the writer:
+
+```rust
+use jomini::TextWriterBuilder;
+let mut out: Vec<u8> = Vec::new();
+let mut writer = TextWriterBuilder::new().from_writer(&mut out);
+writer.write_unquoted(b"hello")?;
+writer.write_unquoted(b"world")?;
+writer.write_unquoted(b"foo")?;
+writer.write_unquoted(b"bar")?;
+assert_eq!(&out, b"hello=world\nfoo=bar");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+*/
+#![warn(missing_docs)]
+pub mod binary;
+pub(crate) mod buffer;
+pub mod common;
+mod copyless;
+mod data;
+#[cfg(feature = "derive")]
+pub(crate) mod de;
+mod encoding;
+mod errors;
+#[cfg(feature = "json")]
+pub mod json;
+mod scalar;
+pub mod text;
+pub(crate) mod util;
+
+#[doc(inline)]
+pub use self::binary::{BinaryTape, BinaryToken};
+pub use self::encoding::*;
+pub use self::errors::*;
+pub use self::scalar::{Scalar, ScalarError};
+#[doc(inline)]
+pub use self::text::{TextTape, TextToken, TextWriter, TextWriterBuilder};
+
+#[cfg(feature = "derive")]
+#[doc(inline)]
+pub use self::{binary::de::BinaryDeserializer, text::de::TextDeserializer};
+#[cfg(feature = "derive")]
+pub use jomini_derive::*;
+```
+</file>
+
+<file path="src/scalar.rs">
+```rust
+use crate::decode_windows1252;
+use std::convert::TryFrom;
+use std::error;
+use std::fmt;
+
+/// An error that can occur when converting a scalar into the requested type.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScalarError {
+    /// The scalar did not contain only numbers
+    AllDigits,
+
+    /// The scalar caused an overflow when calculating its numerical value
+    Overflow,
+
+    /// The scalar was not a recognized boolean value
+    InvalidBool,
+
+    /// The scalar would lose precision if the given float was returned
+    PrecisionLoss(f64),
+}
+
+impl fmt::Display for ScalarError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl error::Error for ScalarError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A byte slice that represents a single value.
+///
+/// A scalars does not carry with it an encoding, so an appropriate encoder must be used
+/// if text is wished to be extracted from a scalar
+///
+/// ```
+/// use jomini::Scalar;
+///
+/// let v1 = Scalar::new(b"10");
+/// assert_eq!(v1.to_u64(), Ok(10));
+/// assert_eq!(v1.to_i64(), Ok(10));
+/// assert_eq!(v1.to_f64(), Ok(10.0));
+/// assert!(v1.to_bool().is_err());
+/// ```
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub struct Scalar<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> Scalar<'a> {
+    /// Create a new scalar backed by a byte slice
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Scalar<'a> {
+        /* body omitted: interface retained */
+    }
+
+    /// View the raw data
+    #[inline]
+    pub fn as_bytes(self) -> &'a [u8] {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to f64
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"1.000");
+    /// assert_eq!(v1.to_f64(), Ok(1.0));
+    ///
+    /// let v2 = Scalar::new(b"-5.67821");
+    /// assert_eq!(v2.to_f64(), Ok(-5.67821));
+    /// ```
+    #[inline]
+    pub fn to_f64(self) -> Result<f64, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to boolean, only "yes" and "no" can be mapped:
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"yes");
+    /// assert_eq!(v1.to_bool(), Ok(true));
+    ///
+    /// let v2 = Scalar::new(b"no");
+    /// assert_eq!(v2.to_bool(), Ok(false));
+    /// ```
+    #[inline]
+    pub fn to_bool(self) -> Result<bool, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to i64
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"-50");
+    /// assert_eq!(v1.to_i64(), Ok(-50));
+    ///
+    /// let v2 = Scalar::new(b"120");
+    /// assert_eq!(v2.to_i64(), Ok(120));
+    /// ```
+    #[inline]
+    pub fn to_i64(self) -> Result<i64, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to u64
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"50");
+    /// assert_eq!(v1.to_i64(), Ok(50));
+    ///
+    /// let v2 = Scalar::new(b"120");
+    /// assert_eq!(v2.to_i64(), Ok(120));
+    /// ```
+    #[inline]
+    pub fn to_u64(self) -> Result<u64, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns if the scalar contains only ascii values
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"a");
+    /// assert!(v1.is_ascii());
+    ///
+    /// let v2 = Scalar::new(&[255][..]);
+    /// assert!(!v2.is_ascii());
+    /// ```
+    #[inline]
+    pub fn is_ascii(self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> fmt::Debug for Scalar<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> fmt::Display for Scalar<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+#[inline]
+fn to_bool(d: &[u8]) -> Result<bool, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+/// Inspired by https://github.com/lemire/fast_double_parser
+#[inline]
+fn to_f64(d: &[u8]) -> Result<f64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn to_i64(d: &[u8]) -> Result<i64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+pub(crate) fn to_i64_t(d: &[u8]) -> Result<(i64, &[u8]), ScalarError> {
+    /* body omitted: interface retained */
+}
+
+/// Convert a buffer to an u64. This function is micro-optimized for small
+/// inputs. Previous implementations had higher throughput on larger input but
+/// couldn't parse small inputs as quickly. Micro-optimizing this function for
+/// small inputs shaved ~7% off deserializing 120MB save as 10% of all time
+/// was spent in this function. Dates are a common occurrence of numbers that
+/// are 1-4 digits in length
+#[inline]
+pub(crate) fn to_u64(d: &[u8]) -> Result<u64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+/// Similar to `to_u64` except a plus sign is not allowed
+#[inline]
+pub(crate) fn to_u64_t(d: &[u8], start: u64) -> Result<(u64, &[u8]), ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn to_u64_t2(d: &[u8], start: u64) -> Result<(u64, &[u8]), ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn overflow_mul_add(acc: u64, digit: u8) -> Result<u64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+const POWER_OF_TEN: [f64; 23] = [
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
+    1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
+];
+```
+</file>
+</rust context>

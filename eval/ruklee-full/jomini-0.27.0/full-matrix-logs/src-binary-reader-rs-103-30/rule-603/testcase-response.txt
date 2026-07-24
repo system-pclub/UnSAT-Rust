@@ -1,0 +1,34 @@
+```rust
+#[cfg(feature = "unsat-poc-src-binary-reader-rs-103-30-rule-603-8bdf70c88e")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_binary_reader_rs_103_30_rule_603_8bdf70c88e() {
+    use crate::binary::TokenReader;
+    use std::io::Cursor;
+
+    struct OneByteRead {
+        data: Cursor<Vec<u8>>,
+    }
+
+    impl std::io::Read for OneByteRead {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            if out.is_empty() {
+                return Ok(0);
+            }
+            let mut tmp = [0u8; 1];
+            let n = self.data.read(&mut tmp)?;
+            if n == 0 {
+                return Ok(0);
+            }
+            out[0] = tmp[0];
+            Ok(1)
+        }
+    }
+
+    let reader = OneByteRead {
+        data: Cursor::new(vec![0x43, 0x44, 0x45]),
+    };
+
+    let mut tr = TokenReader::builder().buffer_len(8).build(reader);
+    let _ = tr.read_bytes(1);
+}
+```

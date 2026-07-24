@@ -1,0 +1,54 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-82-48-rule-290-9a99bf7a3f")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_82_48_rule_290_9a99bf7a3f() {
+    use crate::{
+        gas::Gas,
+        instructions::contract,
+        interpreter::{Contract, Interpreter},
+        interpreter_action::{CallScheme, CallValue},
+        primitives::{Address, Bytes, Eof, U256},
+        DummyHost, InstructionResult,
+    };
+    use std::sync::Arc;
+
+    let sub = Eof::decode(Bytes::from_static(
+        b"\xef\x00\x01\x01\x00\x04\x02\x00\x01\x00\x01\x04\x00\x00\x00\x00\x80\x00\x00\xfe",
+    ))
+    .unwrap();
+
+    let mut eof = sub.clone();
+    eof.body.container_section = vec![sub.encode_slow()];
+    eof.body.is_data_filled = true;
+    eof.header.container_sizes = vec![eof.body.container_section[0].len() as u16];
+    eof.header.sum_container_sizes = eof.body.container_section[0].len();
+    eof.raw = eof.encode_slow();
+
+    let contract = Contract {
+        input: Bytes::new(),
+        bytecode: crate::primitives::Bytecode::Eof(Arc::new(eof)),
+        hash: None,
+        target_address: Address::ZERO,
+        bytecode_address: None,
+        caller: Address::ZERO,
+        call_value: U256::ZERO,
+    };
+
+    let mut interpreter = Interpreter::new(contract, 1_000_000, false);
+    interpreter.is_eof = true;
+    interpreter.is_static = false;
+    interpreter.gas = Gas::new(1_000_000);
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.shared_memory.resize(1);
+    interpreter.stack.push(U256::ZERO).unwrap();
+    interpreter.stack.push(U256::ZERO).unwrap();
+    interpreter.stack.push(U256::ZERO).unwrap();
+    interpreter.stack.push(U256::ZERO).unwrap();
+    interpreter.instruction_pointer = [1u8].as_ptr();
+
+    let mut host = DummyHost::default();
+    contract::eofcreate(&mut interpreter, &mut host);
+
+    let _ = (CallScheme::Call, CallValue::default());
+}
+```

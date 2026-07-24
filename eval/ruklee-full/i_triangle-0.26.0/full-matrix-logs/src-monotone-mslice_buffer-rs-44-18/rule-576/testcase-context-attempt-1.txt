@@ -1,0 +1,308 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/delaunay/triangle.rs">
+```rust
+use crate::delaunay::vertex::DVertex;
+#[derive(Debug, Clone, Copy)]
+pub struct DTriangle {
+    pub index: usize,
+    pub vertices: [DVertex; 3],
+    pub neighbors: [usize; 3],
+}
+impl DTriangle {
+    #[inline(never)]
+    pub fn neighbor_by_order(&self, order: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn vertex_by_order(&self, order: usize) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn va(&self) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn vb(&self) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn vc(&self) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn na(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn nb(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn nc(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn abc(index: usize, a: DVertex, b: DVertex, c: DVertex) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn abc_bc_ac_ab(
+        index: usize,
+        a: DVertex,
+        b: DVertex,
+        c: DVertex,
+        bc: usize,
+        ac: usize,
+        ab: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn neighbor(&self, vertex: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn opposite(&self, neighbor: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn update_opposite(&mut self, old_neighbor: usize, new_neighbor: usize) {
+        /* body omitted: interface retained */
+    }
+}
+impl Default for DTriangle {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/delaunay/vertex.rs">
+```rust
+use i_overlay::i_float::point::IntPoint;
+
+#[derive(Debug, Clone, Copy)]
+pub struct DVertex {
+    pub(crate) index: usize,
+    pub(crate) point: IntPoint
+}
+
+impl DVertex {
+    pub const fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub fn new(index: usize, point: IntPoint) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/index.rs">
+```rust
+pub(crate) const NIL_INDEX: usize = usize::MAX;
+
+pub(crate) trait Index {
+    fn is_not_nil(&self) -> bool;
+    fn is_nil(&self) -> bool;
+}
+
+impl Index for usize {
+    fn is_not_nil(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_nil(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+pub mod delaunay;
+pub mod monotone;
+mod index;
+pub mod triangulation;
+
+pub use i_overlay;
+```
+</file>
+
+<file path="src/monotone/mnav_node.rs">
+```rust
+use crate::delaunay::vertex::DVertex;
+use crate::index::NIL_INDEX;
+use crate::monotone::mslice_buffer::MSlice; // To perform vector subtraction
+
+#[derive(Clone, Debug, Copy)]
+pub struct MNavNode {
+    pub(crate) next: usize,
+    pub(crate) index: usize,
+    pub(crate) prev: usize,
+    pub(crate) vert: DVertex,
+}
+
+impl MNavNode {
+    pub const EMPTY: MNavNode = MNavNode {
+        next: NIL_INDEX,
+        index: NIL_INDEX,
+        prev: NIL_INDEX,
+        vert: DVertex::empty()
+    };
+
+    pub fn new(next: usize, index: usize, prev: usize, vert: DVertex) -> Self {
+        Self { next, index, prev, vert }
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub(super) struct ABVert {
+    pub(super) a: MNavNode,
+    pub(super) b: MNavNode
+}
+
+impl ABVert {
+    pub(super) fn new(a: MNavNode, b: MNavNode) -> Self {
+        Self { a, b }
+    }
+
+    pub(super) fn slice(&self) -> MSlice {
+        /* body omitted: interface retained */
+    }
+}
+
+pub(super) trait MNavNodeArray {
+    fn new_next(&mut self, a: usize, b: usize) -> ABVert;
+}
+
+impl MNavNodeArray for Vec<MNavNode> {
+
+    fn new_next(&mut self, a: usize, b: usize) -> ABVert {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/monotone/mod.rs">
+```rust
+mod mpoly;
+pub (crate) mod mslice_buffer;
+pub (crate) mod mnav_node;
+pub mod node_layout;
+pub (crate) mod monotone_layout;
+```
+</file>
+
+<file path="src/monotone/mpoly.rs">
+```rust
+#[derive(Debug, Clone, Copy)]
+pub (super) struct MPoly {
+    pub next: usize,
+    pub prev: usize
+}
+
+impl MPoly {
+
+    #[inline]
+    pub (super) fn new(start: usize) -> Self {
+        Self { next: start, prev: start }
+    }
+
+    #[inline]
+    pub (super) fn next_prev(next: usize, prev: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/monotone/mslice_buffer.rs">
+```rust
+use crate::delaunay::triangle::DTriangle;
+use crate::index::{Index, NIL_INDEX};
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MSlice {
+    a: usize,
+    b: usize,
+}
+impl MSlice {
+    pub fn new(a: usize, b: usize) -> Self {
+        Self { a, b }
+    }
+}
+#[derive(Debug, Clone, Copy)]
+struct Edge {
+    pub id: usize,
+    pub edge: usize,
+    pub triangle: usize,
+}
+impl Edge {
+    pub const EMPTY: Edge = Edge {
+        id: 0,
+        edge: 0,
+        triangle: 0,
+    };
+}
+pub(crate) struct MSliceBuffer {
+    vertex_count: usize,
+    edges: Vec<Edge>,
+    vertex_marks: Vec<bool>,
+}
+impl MSliceBuffer {
+    #[inline(never)]
+    pub(crate) fn new(vertex_count: usize, slices: &[MSlice]) -> Self {
+        let mut vertex_marks = vec![false; vertex_count];
+        let mut edges = vec![Edge::EMPTY; slices.len()];
+        for (i, slice) in slices.iter().enumerate() {
+            unsafe {
+                let __klee_arg0 = slice.a;
+                klee_ext_bind::bind_arg_u64(1, (vertex_marks).len() as u64);
+                klee_ext_bind::bind_arg_u64_value(2, &__klee_arg0);
+                klee_ext_bind::callsite!("src-monotone-mslice_buffer-rs-44-18");
+                let mut __klee_ret_src_monotone_mslice_buffer_rs_44_18_get_unchecked_mut = vertex_marks
+                    .get_unchecked_mut(__klee_arg0);
+                *__klee_ret_src_monotone_mslice_buffer_rs_44_18_get_unchecked_mut = true;
+                let __klee_arg1 = slice.b;
+                klee_ext_bind::bind_arg_u64(1, (vertex_marks).len() as u64);
+                klee_ext_bind::bind_arg_u64_value(2, &__klee_arg1);
+                klee_ext_bind::callsite!("src-monotone-mslice_buffer-rs-45-18");
+                let mut __klee_ret_src_monotone_mslice_buffer_rs_45_18_get_unchecked_mut = vertex_marks
+                    .get_unchecked_mut(__klee_arg1);
+                *__klee_ret_src_monotone_mslice_buffer_rs_45_18_get_unchecked_mut = true;
+                let id = Self::id(vertex_count, slice.a, slice.b);
+                klee_ext_bind::bind_arg_u64(1, (edges).len() as u64);
+                klee_ext_bind::bind_arg_u64_value(2, &i);
+                klee_ext_bind::callsite!("src-monotone-mslice_buffer-rs-48-18");
+                let mut __klee_ret_src_monotone_mslice_buffer_rs_48_18_get_unchecked_mut = edges
+                    .get_unchecked_mut(i);
+                *__klee_ret_src_monotone_mslice_buffer_rs_48_18_get_unchecked_mut = Edge {
+                    id,
+                    edge: NIL_INDEX,
+                    triangle: NIL_INDEX,
+                };
+            }
+        }
+        edges.sort_by(|a, b| a.id.cmp(&b.id));
+        Self {
+            vertex_count,
+            edges,
+            vertex_marks,
+        }
+    }
+    #[inline(never)]
+    pub fn add_connections(&mut self, triangles: &mut [DTriangle]) {
+        /* body omitted: interface retained */
+    }
+    fn find(&self, a: usize, b: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    fn id(n: usize, a: usize, b: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

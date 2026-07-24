@@ -1,0 +1,42 @@
+```rust
+#[cfg(feature = "unsat-poc-src-interpreter-stack-rs-283-44-rule-347-141947b6cf")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_interpreter_stack_rs_283_44_rule_347_141947b6cf() {
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterAction};
+    use revm_primitives::{Address, Bytecode, Bytes, U256};
+
+    let bytecode = Bytecode::LegacyRaw(Bytes::from([0x00]));
+    let mut interp = Interpreter::new(
+        crate::Contract::new(
+            Bytes::new(),
+            bytecode,
+            None,
+            Address::ZERO,
+            None,
+            Address::ZERO,
+            U256::ZERO,
+        ),
+        10_000,
+        false,
+    );
+
+    interp.is_eof = true;
+    interp.instruction_result = InstructionResult::Continue;
+    interp.gas = Gas::new(10_000);
+    interp.next_action = InterpreterAction::None;
+
+    interp.stack.data_mut().clear();
+    interp.stack.data_mut().extend_from_slice(&[
+        U256::from(11u64),
+        U256::from(22u64),
+        U256::from(33u64),
+    ]);
+
+    let mut host = DummyHost::default();
+
+    let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 1);
+    let _ = interp.stack.exchange(1, 2);
+    let _ = interp.stack.exchange(0, 2);
+}
+```

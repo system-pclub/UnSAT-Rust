@@ -1,0 +1,433 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/error.rs">
+```rust
+use std::fmt::{self, Debug, Display, Formatter};
+use std::io::ErrorKind::UnexpectedEof;
+use std::sync::mpsc::RecvError;
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct Error {
+    pub inner: String,
+}
+
+impl Error {
+    pub fn error(&self) -> String {
+        /* body omitted: interface retained */
+    }
+
+    pub fn warp<E>(e: E, info: &str) -> Self
+    where
+        E: std::fmt::Display,
+    {
+        /* body omitted: interface retained */
+    }
+
+    pub fn to_string(&self) -> String {
+        /* body omitted: interface retained */
+    }
+}
+
+/// dark_std::errors::Error
+#[macro_export]
+macro_rules! err {
+     ($($arg:tt)*) => {{
+         $crate::error::Error{
+             inner: format!($($arg)*)
+         }
+     }}
+}
+
+///new error
+#[inline]
+pub fn new(text: String) -> Error {
+    /* body omitted: interface retained */
+}
+
+pub trait FromError<T>: Sized {
+    fn from_err(_: T) -> Error;
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::io::Error> for Error {
+    #[inline]
+    fn from(err: std::io::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<&str> for Error {
+    fn from(arg: &str) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::string::String> for Error {
+    fn from(arg: String) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<&dyn std::error::Error> for Error {
+    fn from(arg: &dyn std::error::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(arg: Box<dyn std::error::Error>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<&Box<dyn std::error::Error>> for Error {
+    fn from(arg: &Box<dyn std::error::Error>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::sync::mpsc::RecvError> for Error {
+    fn from(e: RecvError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> From<std::sync::mpsc::SendError<T>> for Error {
+    fn from(e: std::sync::mpsc::SendError<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#[macro_use]
+extern crate log;
+
+pub mod defer;
+pub mod error;
+
+pub mod map_btree;
+pub mod map_hash;
+pub mod vec;
+pub mod wg;
+
+pub mod statis;
+
+pub mod unsafe_cell_type;
+
+pub mod stock_pool;
+pub mod fast_thread_pool;
+
+pub mod elapsed_time;
+
+pub mod static_type;
+```
+</file>
+
+<file path="src/vec.rs">
+```rust
+use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
+use serde::{Deserializer, Serialize, Serializer};
+use std::cell::UnsafeCell;
+use std::fmt::{Debug, Formatter};
+use std::ops::{Deref, DerefMut, Index};
+use std::slice::{Iter as SliceIter, IterMut as SliceIterMut};
+use std::sync::Arc;
+use std::vec::IntoIter;
+pub struct SyncVec<V> {
+    dirty: UnsafeCell<Vec<V>>,
+    #[cfg(feature = "reentrant_lock")]
+    lock: parking_lot::ReentrantMutex<()>,
+    #[cfg(feature = "std_lock")]
+    lock: std::sync::Mutex<()>,
+}
+/// this is safety, dirty mutex ensure
+unsafe impl<V> Send for SyncVec<V> {}
+/// this is safety, dirty mutex ensure
+unsafe impl<V> Sync for SyncVec<V> {}
+impl<V> Default for SyncVec<V> {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> From<Vec<V>> for SyncVec<V> {
+    fn from(v: Vec<V>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> SyncVec<V>
+where
+    V: Clone,
+{
+    pub fn to_vec(&self) -> Vec<V> {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> SyncVec<V> {
+    pub fn new_arc() -> Arc<Self> {
+        /* body omitted: interface retained */
+    }
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn with_vec(vec: Vec<V>) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn insert(&self, index: usize, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn insert_mut(&mut self, index: usize, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn push(&self, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn push_vec(&self, input_arr: Vec<V>) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn push_mut(&mut self, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn pop(&self) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn pop_mut(&mut self) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn remove(&self, index: usize) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn remove_mut(&mut self, index: usize) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    pub fn clear(&self) {
+        /* body omitted: interface retained */
+    }
+    pub fn shrink_to_fit(&self) {
+        /* body omitted: interface retained */
+    }
+    pub fn from(vec: Vec<V>) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn get(&self, index: usize) -> Option<&V> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn get_uncheck(&self, index: usize) -> &V {
+        unsafe {
+            let __klee_arg0 = (&*self.dirty.get());
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
+            klee_ext_bind::bind_arg_u64_value(2, &index);
+            klee_ext_bind::callsite!("src-vec-rs-184-18");
+            let mut __klee_ret_src_vec_rs_184_18_get_unchecked = __klee_arg0
+                .get_unchecked(index);
+            __klee_ret_src_vec_rs_184_18_get_unchecked
+        }
+    }
+    #[inline]
+    pub fn get_mut(&self, index: usize) -> Option<VecRefMut<'_, V>> {
+        let m = unsafe { &mut *self.dirty.get() };
+        #[cfg(feature = "std_lock")]
+        let _g = match self.lock.lock() {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        #[cfg(feature = "reentrant_lock")]
+        let _g = self.lock.lock();
+        Some(VecRefMut {
+            _g,
+            value: Some(m.get_mut(index)?),
+        })
+    }
+    #[inline]
+    pub fn contains(&self, x: &V) -> bool
+    where
+        V: PartialEq,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn iter(&self) -> std::slice::Iter<'_, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn iter_mut(&self) -> IterMut<'_, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn into_iter(self) -> IntoIter<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn dirty_ref(&self) -> &Vec<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn into_inner(self) -> Vec<V> {
+        /* body omitted: interface retained */
+    }
+}
+pub struct VecRefMut<'a, V> {
+    #[cfg(feature = "reentrant_lock")]
+    _g: ReentrantMutexGuard<'a, ()>,
+    #[cfg(feature = "std_lock")]
+    _g: std::sync::MutexGuard<'a, ()>,
+    value: Option<&'a mut V>,
+}
+impl<'a, V> Deref for VecRefMut<'_, V> {
+    type Target = V;
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> DerefMut for VecRefMut<'_, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> Debug for VecRefMut<'_, V>
+where
+    V: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+pub struct Iter<'a, V> {
+    inner: Option<SliceIter<'a, *const V>>,
+}
+impl<'a, V> Iterator for Iter<'a, V> {
+    type Item = &'a V;
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+pub struct IterMut<'a, V> {
+    #[cfg(feature = "reentrant_lock")]
+    _g: ReentrantMutexGuard<'a, ()>,
+    #[cfg(feature = "std_lock")]
+    _g: std::sync::MutexGuard<'a, ()>,
+    inner: Option<SliceIterMut<'a, V>>,
+}
+impl<'a, V> Deref for IterMut<'a, V> {
+    type Target = SliceIterMut<'a, V>;
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> DerefMut for IterMut<'a, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> Iterator for IterMut<'a, V> {
+    type Item = &'a mut V;
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> IntoIterator for &'a SyncVec<V> {
+    type Item = &'a V;
+    type IntoIter = std::slice::Iter<'a, V>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> IntoIterator for SyncVec<V> {
+    type Item = V;
+    type IntoIter = IntoIter<V>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> Serialize for SyncVec<V>
+where
+    V: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de, V> serde::Deserialize<'de> for SyncVec<V>
+where
+    V: serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> Debug for SyncVec<V>
+where
+    V: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> Index<usize> for SyncVec<V> {
+    type Output = V;
+    fn index(&self, index: usize) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<V: PartialEq> PartialEq for SyncVec<V> {
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<V: Clone> Clone for SyncVec<V> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[macro_export]
+macro_rules! sync_vec {
+    () => {
+        $crate::sync::SyncVec::new()
+    };
+    ($elem:expr; $n:expr) => {
+        $crate::sync::SyncVec::with_vec(vec![$elem;$n])
+    };
+    ($($x:expr),+ $(,)?) => {
+        $crate::sync::SyncVec::with_vec(vec![$($x),+,])
+    };
+}
+```
+</file>
+</rust context>

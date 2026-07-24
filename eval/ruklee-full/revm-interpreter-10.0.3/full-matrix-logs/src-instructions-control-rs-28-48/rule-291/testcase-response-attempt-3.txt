@@ -1,0 +1,42 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-28-48-rule-291-35cce3e44d")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_28_48_rule_291_35cce3e44d() {
+    use crate::{
+        gas::Gas,
+        instructions::control,
+        interpreter::Contract,
+        primitives::{Bytecode, Bytes, U256},
+        DummyHost, InstructionResult, Interpreter,
+    };
+    use std::sync::Arc;
+
+    let code = Bytes::from(vec![0x00, 0x00, 0x00, 0x00]);
+    let bytecode = Bytecode::LegacyRaw(code.clone());
+    let contract = Contract::new(
+        Bytes::new(),
+        bytecode,
+        None,
+        crate::primitives::Address::ZERO,
+        None,
+        crate::primitives::Address::ZERO,
+        U256::ZERO,
+    );
+
+    let mut interp = Interpreter::new(contract, 10_000, false);
+    interp.is_eof = true;
+    interp.gas = Gas::new(10_000);
+    interp.instruction_result = InstructionResult::Continue;
+
+    let backing = [0u8; 8];
+    interp.instruction_pointer = backing.as_ptr();
+
+    interp.stack.data_mut().clear();
+    interp.stack.data_mut().push(U256::from(1));
+
+    let mut host = DummyHost::default();
+    control::rjumpi::<DummyHost>(&mut interp, &mut host);
+
+    let _ = Arc::new(());
+}
+```

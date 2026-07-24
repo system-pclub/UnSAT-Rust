@@ -1,0 +1,2361 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-vec-rs-184-18-rule-575-67e0aa33f1`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_vec_rs_184_18_rule_575_67e0aa33f1`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-vec-rs-184-18-rule-575-67e0aa33f1")]`.
+- Define `pub extern "C" fn __unsat_poc_src_vec_rs_184_18_rule_575_67e0aa33f1()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-vec-rs-184-18-rule-575-67e0aa33f1")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_vec_rs_184_18_rule_575_67e0aa33f1() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "vec::SyncVec",
+    "path": "src/vec.rs",
+    "line_start": 10,
+    "body_end": 10,
+    "is_public": true
+  },
+  "caller": {
+    "name": "vec::SyncVec::<V>::get_uncheck",
+    "path": "src/vec.rs",
+    "line_start": 183,
+    "line_end": 183,
+    "body_end": 185,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "&V"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 625,
+    "line_end": 657,
+    "body_end": 657,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&<I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 184,
+    "col": 18,
+    "path": "src/vec.rs",
+    "id": "src-vec-rs-184-18"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "V",
+      "layout_control": "external",
+      "external_sources": [
+        "V"
+      ]
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "usize",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `vec::SyncVec` for `receiver` using constructor(s): `vec::SyncVec::<V>::new_arc`, `vec::SyncVec::<V>::new`, `vec::SyncVec::<V>::with_capacity` -> call target caller `vec::SyncVec::<V>::get_uncheck` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `vec::SyncVec::<V>::get_uncheck`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
+use serde::{Deserializer, Serialize, Serializer};
+use std::cell::UnsafeCell;
+use std::fmt::{Debug, Formatter};
+use std::ops::{Deref, DerefMut, Index};
+use std::slice::{Iter as SliceIter, IterMut as SliceIterMut};
+use std::sync::Arc;
+use std::vec::IntoIter;
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `parking_lot::...`, `serde::...`.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/vec.rs:184
+```rust
+176:     pub fn get(&self, index: usize) -> Option<&V> {
+177:         unsafe {
+178:             return (&*self.dirty.get()).get(index);
+179:         }
+180:     }
+181: 
+182:     #[inline]
+183:     pub fn get_uncheck(&self, index: usize) -> &V {
+184:         unsafe { (&*self.dirty.get()).get_unchecked(index) }
+185:     }
+186: 
+187:     #[inline]
+188:     pub fn get_mut(&self, index: usize) -> Option<VecRefMut<'_, V>> {
+189:         let m = unsafe { &mut *self.dirty.get() };
+190: 
+191:         #[cfg(feature = "std_lock")]
+192:         let _g = match self.lock.lock() {
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/vec.rs:183-184
+```rust
+183:     pub fn get_uncheck(&self, index: usize) -> &V {
+184:         unsafe { (&*self.dirty.get()).get_unchecked(index) }
+```
+
+Inferred prefix path obligations from the actual-containing function. These are not the unsafe API rule; they are safe-path conditions needed to reach the target callsite:
+- `self.dirty.get()` must return normally on the path to the target; construct the receiver and argument values so the lookup/index is accepted.
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/map_btree.rs:145-151
+```rust
+145:     pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+146:         where
+147:             K: Borrow<Q> + Ord,
+148:             Q: Hash + Eq + Ord,
+149:     {
+150:         unsafe { (&*self.dirty.get()).get(k) }
+151:     }
+```
+
+src/static_type.rs:56-60
+```rust
+56:     pub fn get_unchecked(&self) -> &T {
+57:         unsafe { &*self.val.get() }
+58:             .as_ref()
+59:             .unwrap_or_else(|| unreachable!("get_unchecked StaticType not set"))
+60:     }
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/parking_lot-0.12.5/src/remutex.rs:41-171
+```rust
+ 41: pub type ReentrantMutex<T> = lock_api::ReentrantMutex<RawMutex, RawThreadId, T>;
+ 42: 
+ 43: /// Creates a new reentrant mutex in an unlocked state ready for use.
+ 44: ///
+ 45: /// This allows creating a reentrant mutex in a constant context on stable Rust.
+ 46: pub const fn const_reentrant_mutex<T>(val: T) -> ReentrantMutex<T> {
+ 47:     ReentrantMutex::const_new(
+ 48:         <RawMutex as lock_api::RawMutex>::INIT,
+ 49:         <RawThreadId as lock_api::GetThreadId>::INIT,
+ 50:         val,
+ 51:     )
+ 52: }
+ 53: 
+ 54: /// An RAII implementation of a "scoped lock" of a reentrant mutex. When this structure
+ 55: /// is dropped (falls out of scope), the lock will be unlocked.
+ 56: ///
+ 57: /// The data protected by the mutex can be accessed through this guard via its
+ 58: /// `Deref` implementation.
+ 59: pub type ReentrantMutexGuard<'a, T> = lock_api::ReentrantMutexGuard<'a, RawMutex, RawThreadId, T>;
+ 60: 
+ 61: /// An RAII mutex guard returned by `ReentrantMutexGuard::map`, which can point to a
+ 62: /// subfield of the protected data.
+ 63: ///
+ 64: /// The main difference between `MappedReentrantMutexGuard` and `ReentrantMutexGuard` is that the
+ 65: /// former doesn't support temporarily unlocking and re-locking, since that
+ 66: /// could introduce soundness issues if the locked object is modified by another
+ 67: /// thread.
+ 68: pub type MappedReentrantMutexGuard<'a, T> =
+ 69:     lock_api::MappedReentrantMutexGuard<'a, RawMutex, RawThreadId, T>;
+ 70: 
+ 71: #[cfg(test)]
+ 72: mod tests {
+ 73:     use crate::ReentrantMutex;
+ 74:     use crate::ReentrantMutexGuard;
+ 75:     use std::cell::RefCell;
+ 76:     use std::sync::mpsc::channel;
+ 77:     use std::sync::Arc;
+ 78:     use std::thread;
+ 79: 
+ 80:     #[cfg(feature = "serde")]
+ 81:     use bincode::{deserialize, serialize};
+ 82: 
+ 83:     #[test]
+ 84:     fn smoke() {
+ 85:         let m = ReentrantMutex::new(2);
+ 86:         {
+ 87:             let a = m.lock();
+ 88:             {
+ 89:                 let b = m.lock();
+ 90:                 {
+ 91:                     let c = m.lock();
+ 92:                     assert_eq!(*c, 2);
+ 93:                 }
+ 94:                 assert_eq!(*b, 2);
+ 95:             }
+ 96:             assert_eq!(*a, 2);
+ 97:         }
+ 98:     }
+ 99: 
+100:     #[test]
+101:     fn is_mutex() {
+102:         let m = Arc::new(ReentrantMutex::new(RefCell::new(0)));
+103:         let m2 = m.clone();
+104:         let lock = m.lock();
+105:         let child = thread::spawn(move || {
+106:             let lock = m2.lock();
+107:             assert_eq!(*lock.borrow(), 4950);
+108:         });
+109:         for i in 0..100 {
+110:             let lock = m.lock();
+111:             *lock.borrow_mut() += i;
+112:         }
+113:         drop(lock);
+114:         child.join().unwrap();
+115:     }
+116: 
+117:     #[test]
+118:     fn trylock_works() {
+119:         let m = Arc::new(ReentrantMutex::new(()));
+120:         let m2 = m.clone();
+121:         let _lock = m.try_lock();
+122:         let _lock2 = m.try_lock();
+123:         thread::spawn(move || {
+124:             let lock = m2.try_lock();
+125:             assert!(lock.is_none());
+126:         })
+127:         .join()
+128:         .unwrap();
+129:         let _lock3 = m.try_lock();
+130:     }
+131: 
+132:     #[test]
+133:     fn test_reentrant_mutex_debug() {
+134:         let mutex = ReentrantMutex::new(vec![0u8, 10]);
+135: 
+136:         assert_eq!(format!("{:?}", mutex), "ReentrantMutex { data: [0, 10] }");
+137:     }
+138: 
+139:     #[test]
+140:     fn test_reentrant_mutex_bump() {
+141:         let mutex = Arc::new(ReentrantMutex::new(()));
+142:         let mutex2 = mutex.clone();
+143: 
+144:         let mut guard = mutex.lock();
+145: 
+146:         let (tx, rx) = channel();
+147: 
+148:         thread::spawn(move || {
+149:             let _guard = mutex2.lock();
+150:             tx.send(()).unwrap();
+151:         });
+152: 
+153:         // `bump()` repeatedly until the thread starts up and requests the lock
+154:         while rx.try_recv().is_err() {
+155:             ReentrantMutexGuard::bump(&mut guard);
+156:         }
+157:     }
+158: 
+159:     #[cfg(feature = "serde")]
+160:     #[test]
+161:     fn test_serde() {
+162:         let contents: Vec<u8> = vec![0, 1, 2];
+163:         let mutex = ReentrantMutex::new(contents.clone());
+164: 
+165:         let serialized = serialize(&mutex).unwrap();
+166:         let deserialized: ReentrantMutex<Vec<u8>> = deserialize(&serialized).unwrap();
+167: 
+168:         assert_eq!(*(mutex.lock()), *(deserialized.lock()));
+169:         assert_eq!(contents, *(deserialized.lock()));
+170:     }
+171: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/parking_lot-0.12.5/src/raw_mutex.rs:32-171
+```rust
+ 32: pub struct RawMutex {
+ 33:     /// This atomic integer holds the current state of the mutex instance. Only the two lowest bits
+ 34:     /// are used. See `LOCKED_BIT` and `PARKED_BIT` for the bitmask for these bits.
+ 35:     ///
+ 36:     /// # State table:
+ 37:     ///
+ 38:     /// PARKED_BIT | LOCKED_BIT | Description
+ 39:     ///     0      |     0      | The mutex is not locked, nor is anyone waiting for it.
+ 40:     /// -----------+------------+------------------------------------------------------------------
+ 41:     ///     0      |     1      | The mutex is locked by exactly one thread. No other thread is
+ 42:     ///            |            | waiting for it.
+ 43:     /// -----------+------------+------------------------------------------------------------------
+ 44:     ///     1      |     0      | The mutex is not locked. One or more thread is parked or about to
+ 45:     ///            |            | park. At least one of the parked threads are just about to be
+ 46:     ///            |            | unparked, or a thread heading for parking might abort the park.
+ 47:     /// -----------+------------+------------------------------------------------------------------
+ 48:     ///     1      |     1      | The mutex is locked by exactly one thread. One or more thread is
+ 49:     ///            |            | parked or about to park, waiting for the lock to become available.
+ 50:     ///            |            | In this state, PARKED_BIT is only ever cleared when a bucket lock
+ 51:     ///            |            | is held (i.e. in a parking_lot_core callback). This ensures that
+ 52:     ///            |            | we never end up in a situation where there are parked threads but
+ 53:     ///            |            | PARKED_BIT is not set (which would result in those threads
+ 54:     ///            |            | potentially never getting woken up).
+ 55:     state: AtomicU8,
+ 56: }
+ 57: 
+ 58: unsafe impl lock_api::RawMutex for RawMutex {
+ 59:     const INIT: RawMutex = RawMutex {
+ 60:         state: AtomicU8::new(0),
+ 61:     };
+ 62: 
+ 63:     type GuardMarker = crate::GuardMarker;
+ 64: 
+ 65:     #[inline]
+ 66:     fn lock(&self) {
+ 67:         if self
+ 68:             .state
+ 69:             .compare_exchange_weak(0, LOCKED_BIT, Ordering::Acquire, Ordering::Relaxed)
+ 70:             .is_err()
+ 71:         {
+ 72:             self.lock_slow(None);
+ 73:         }
+ 74:         unsafe { deadlock::acquire_resource(self as *const _ as usize) };
+ 75:     }
+ 76: 
+ 77:     #[inline]
+ 78:     fn try_lock(&self) -> bool {
+ 79:         let mut state = self.state.load(Ordering::Relaxed);
+ 80:         loop {
+ 81:             if state & LOCKED_BIT != 0 {
+ 82:                 return false;
+ 83:             }
+ 84:             match self.state.compare_exchange_weak(
+ 85:                 state,
+ 86:                 state | LOCKED_BIT,
+ 87:                 Ordering::Acquire,
+ 88:                 Ordering::Relaxed,
+ 89:             ) {
+ 90:                 Ok(_) => {
+ 91:                     unsafe { deadlock::acquire_resource(self as *const _ as usize) };
+ 92:                     return true;
+ 93:                 }
+ 94:                 Err(x) => state = x,
+ 95:             }
+ 96:         }
+ 97:     }
+ 98: 
+ 99:     #[inline]
+100:     unsafe fn unlock(&self) {
+101:         deadlock::release_resource(self as *const _ as usize);
+102:         if self
+103:             .state
+104:             .compare_exchange(LOCKED_BIT, 0, Ordering::Release, Ordering::Relaxed)
+105:             .is_ok()
+106:         {
+107:             return;
+108:         }
+109:         self.unlock_slow(false);
+110:     }
+111: 
+112:     #[inline]
+113:     fn is_locked(&self) -> bool {
+114:         let state = self.state.load(Ordering::Relaxed);
+115:         state & LOCKED_BIT != 0
+116:     }
+117: }
+118: 
+119: unsafe impl lock_api::RawMutexFair for RawMutex {
+120:     #[inline]
+121:     unsafe fn unlock_fair(&self) {
+122:         deadlock::release_resource(self as *const _ as usize);
+123:         if self
+124:             .state
+125:             .compare_exchange(LOCKED_BIT, 0, Ordering::Release, Ordering::Relaxed)
+126:             .is_ok()
+127:         {
+128:             return;
+129:         }
+130:         self.unlock_slow(true);
+131:     }
+132: 
+133:     #[inline]
+134:     unsafe fn bump(&self) {
+135:         if self.state.load(Ordering::Relaxed) & PARKED_BIT != 0 {
+136:             self.bump_slow();
+137:         }
+138:     }
+139: }
+140: 
+141: unsafe impl lock_api::RawMutexTimed for RawMutex {
+142:     type Duration = Duration;
+143:     type Instant = Instant;
+144: 
+145:     #[inline]
+146:     fn try_lock_until(&self, timeout: Instant) -> bool {
+147:         let result = if self
+148:             .state
+149:             .compare_exchange_weak(0, LOCKED_BIT, Ordering::Acquire, Ordering::Relaxed)
+150:             .is_ok()
+151:         {
+152:             true
+153:         } else {
+154:             self.lock_slow(Some(timeout))
+155:         };
+156:         if result {
+157:             unsafe { deadlock::acquire_resource(self as *const _ as usize) };
+158:         }
+159:         result
+160:     }
+161: 
+162:     #[inline]
+163:     fn try_lock_for(&self, timeout: Duration) -> bool {
+164:         let result = if self
+165:             .state
+166:             .compare_exchange_weak(0, LOCKED_BIT, Ordering::Acquire, Ordering::Relaxed)
+167:             .is_ok()
+168:         {
+169:             true
+170:         } else {
+171:             self.lock_slow(util::to_deadline(timeout))
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thingbuf-0.1.6/src/mpsc/async_impl.rs:1858-1997
+```rust
+1858: enum State {
+1859:     Start,
+1860:     Waiting,
+1861:     Done,
+1862: }
+1863: 
+1864: // === impl RecvRefFuture ===
+1865: 
+1866: #[inline]
+1867: fn poll_recv_ref<'a, T>(
+1868:     core: &'a ChannelCore<Waker>,
+1869:     slots: &'a [Slot<T>],
+1870:     cx: &mut Context<'_>,
+1871: ) -> Poll<Option<RecvRef<'a, T>>> {
+1872:     core.poll_recv_ref(slots, || cx.waker().clone())
+1873:         .map(|some| {
+1874:             some.map(|slot| {
+1875:                 RecvRef(RecvRefInner {
+1876:                     _notify: super::NotifyTx(&core.tx_wait),
+1877:                     slot,
+1878:                 })
+1879:             })
+1880:         })
+1881: }
+1882: 
+1883: impl<'a, T> Future for RecvRefFuture<'a, T> {
+1884:     type Output = Option<RecvRef<'a, T>>;
+1885: 
+1886:     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+1887:         poll_recv_ref(self.core, self.slots, cx)
+1888:     }
+1889: }
+1890: 
+1891: // === impl Recv ===
+1892: 
+1893: impl<'a, T, R> Future for RecvFuture<'a, T, R>
+1894: where
+1895:     R: Recycle<T>,
+1896: {
+1897:     type Output = Option<T>;
+1898: 
+1899:     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+1900:         poll_recv_ref(self.core, self.slots, cx)
+1901:             .map(|opt| opt.map(|mut r| recycling::take(&mut *r, self.recycle)))
+1902:     }
+1903: }
+1904: 
+1905: // === impl SendRefFuture ===
+1906: 
+1907: impl<'sender, T, R> Future for SendRefFuture<'sender, T, R>
+1908: where
+1909:     R: Recycle<T> + 'sender,
+1910:     T: 'sender,
+1911: {
+1912:     type Output = Result<SendRef<'sender, T>, Closed>;
+1913: 
+1914:     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+1915:         test_println!("SendRefFuture::poll({:p})", self);
+1916: 
+1917:         loop {
+1918:             let this = self.as_mut().project();
+1919:             let node = this.waiter;
+1920:             match test_dbg!(*this.state) {
+1921:                 State::Start => {
+1922:                     match this.core.try_send_ref(this.slots, *this.recycle) {
+1923:                         Ok(slot) => return Poll::Ready(Ok(SendRef(slot))),
+1924:                         Err(TrySendError::Closed(_)) => return Poll::Ready(Err(Closed(()))),
+1925:                         Err(_) => {}
+1926:                     }
+1927: 
+1928:                     let start_wait = this.core.tx_wait.start_wait(node, cx.waker());
+1929: 
+1930:                     match test_dbg!(start_wait) {
+1931:                         WaitResult::Closed => {
+1932:                             // the channel closed while we were registering the waiter!
+1933:                             *this.state = State::Done;
+1934:                             return Poll::Ready(Err(Closed(())));
+1935:                         }
+1936:                         WaitResult::Wait => {
+1937:                             // okay, we are now queued to wait.
+1938:                             // gotosleep!
+1939:                             *this.state = State::Waiting;
+1940:                             return Poll::Pending;
+1941:                         }
+1942:                         WaitResult::Notified => continue,
+1943:                     }
+1944:                 }
+1945:                 State::Waiting => {
+1946:                     let continue_wait = this.core.tx_wait.continue_wait(node, cx.waker());
+1947: 
+1948:                     match test_dbg!(continue_wait) {
+1949:                         WaitResult::Closed => {
+1950:                             *this.state = State::Done;
+1951:                             return Poll::Ready(Err(Closed(())));
+1952:                         }
+1953:                         WaitResult::Wait => return Poll::Pending,
+1954:                         WaitResult::Notified => {
+1955:                             *this.state = State::Done;
+1956:                         }
+1957:                     }
+1958:                 }
+1959:                 State::Done => match this.core.try_send_ref(this.slots, *this.recycle) {
+1960:                     Ok(slot) => return Poll::Ready(Ok(SendRef(slot))),
+1961:                     Err(TrySendError::Closed(_)) => return Poll::Ready(Err(Closed(()))),
+1962:                     Err(_) => {
+1963:                         *this.state = State::Start;
+1964:                     }
+1965:                 },
+1966:             }
+1967:         }
+1968:     }
+1969: }
+1970: 
+1971: #[pin_project::pinned_drop]
+1972: impl<T, R> PinnedDrop for SendRefFuture<'_, T, R> {
+1973:     fn drop(self: Pin<&mut Self>) {
+1974:         test_println!("SendRefFuture::drop({:p})", self);
+1975:         let this = self.project();
+1976:         if test_dbg!(*this.state) == State::Waiting && test_dbg!(this.waiter.is_linked()) {
+1977:             this.waiter.remove(&this.core.tx_wait)
+1978:         }
+1979:     }
+1980: }
+1981: 
+1982: #[cfg(feature = "alloc")]
+1983: #[cfg(test)]
+1984: mod tests {
+1985:     use super::*;
+1986: 
+1987:     fn _assert_sync<T: Sync>(_: T) {}
+1988:     fn _assert_send<T: Send>(_: T) {}
+1989: 
+1990:     #[test]
+1991:     fn recv_ref_future_is_send() {
+1992:         fn _compiles() {
+1993:             let (_, rx) = channel::<usize>(10);
+1994:             _assert_send(rx.recv_ref());
+1995:         }
+1996:     }
+1997: 
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thingbuf-0.1.6/src/mpsc.rs:261-400
+```rust
+261: struct ChannelCore<N> {
+262:     core: Core,
+263:     rx_wait: WaitCell<N>,
+264:     tx_count: AtomicUsize,
+265:     tx_wait: WaitQueue<N>,
+266: }
+267: 
+268: struct SendRefInner<'a, T, N: Notify> {
+269:     // /!\ LOAD BEARING STRUCT DROP ORDER /!\
+270:     //
+271:     // The `Ref` field *must* be dropped before the `NotifyInner` field, or else
+272:     // loom tests will fail. This ensures that the mutable access to the slot is
+273:     // considered to have ended *before* the receiver thread/task is notified.
+274:     //
+275:     // The alternatives to a load-bearing drop order would be:
+276:     // (a) put one field inside an `Option` so it can be dropped before the
+277:     //     other (not great, as it adds a little extra overhead even outside
+278:     //     of Loom tests),
+279:     // (b) use `core::mem::ManuallyDrop` (also not great, requires additional
+280:     //     unsafe code that in this case we can avoid)
+281:     //
+282:     // So, given that, relying on struct field drop order seemed like the least
+283:     // bad option here. Just don't reorder these fields. :)
+284:     slot: Ref<'a, T>,
+285:     _notify: NotifyRx<'a, N>,
+286: }
+287: 
+288: struct RecvRefInner<'a, T, N: Notify + Unpin> {
+289:     // /!\ LOAD BEARING STRUCT DROP ORDER /!\
+290:     //
+291:     // The `Ref` field *must* be dropped before the `NotifyTx` field, or else
+292:     // loom tests will fail. This ensures that the mutable access to the slot is
+293:     // considered to have ended *before* the receiver thread/task is notified.
+294:     //
+295:     // The alternatives to a load-bearing drop order would be:
+296:     // (a) put one field inside an `Option` so it can be dropped before the
+297:     //     other (not great, as it adds a little extra overhead even outside
+298:     //     of Loom tests),
+299:     // (b) use `core::mem::ManuallyDrop` (also not great, requires additional
+300:     //     unsafe code that in this case we can avoid)
+301:     //
+302:     // So, given that, relying on struct field drop order seemed like the least
+303:     // bad option here. Just don't reorder these fields. :)
+304:     slot: Ref<'a, T>,
+305:     _notify: crate::mpsc::NotifyTx<'a, N>,
+306: }
+307: 
+308: struct NotifyRx<'a, N: Notify>(&'a WaitCell<N>);
+309: struct NotifyTx<'a, N: Notify + Unpin>(&'a WaitQueue<N>);
+310: 
+311: // ==== impl Inner ====
+312: 
+313: impl<N> ChannelCore<N> {
+314:     #[cfg(not(loom))]
+315:     const fn new(capacity: usize) -> Self {
+316:         Self {
+317:             core: Core::new(capacity),
+318:             rx_wait: WaitCell::new(),
+319:             tx_count: AtomicUsize::new(1),
+320:             tx_wait: WaitQueue::new(),
+321:         }
+322:     }
+323: 
+324:     #[cfg(loom)]
+325:     fn new(capacity: usize) -> Self {
+326:         Self {
+327:             core: Core::new(capacity),
+328:             rx_wait: WaitCell::new(),
+329:             tx_count: AtomicUsize::new(1),
+330:             tx_wait: WaitQueue::new(),
+331:         }
+332:     }
+333: }
+334: 
+335: impl<N> ChannelCore<N>
+336: where
+337:     N: Notify + Unpin,
+338: {
+339:     fn close_rx(&self) {
+340:         if self.core.close() {
+341:             crate::loom::hint::spin_loop();
+342:             test_println!("draining_queue");
+343:             self.tx_wait.close();
+344:         }
+345:     }
+346: }
+347: 
+348: impl<N> ChannelCore<N>
+349: where
+350:     N: Notify + Unpin,
+351: {
+352:     fn try_send_ref<'a, T, R>(
+353:         &'a self,
+354:         slots: &'a [Slot<T>],
+355:         recycle: &R,
+356:     ) -> Result<SendRefInner<'a, T, N>, TrySendError>
+357:     where
+358:         R: Recycle<T>,
+359:     {
+360:         self.core.push_ref(slots, recycle).map(|slot| SendRefInner {
+361:             _notify: NotifyRx(&self.rx_wait),
+362:             slot,
+363:         })
+364:     }
+365: 
+366:     fn try_send<T, R>(&self, slots: &[Slot<T>], val: T, recycle: &R) -> Result<(), TrySendError<T>>
+367:     where
+368:         R: Recycle<T>,
+369:     {
+370:         match self.try_send_ref(slots, recycle) {
+371:             Ok(mut slot) => {
+372:                 slot.with_mut(|slot| *slot = val);
+373:                 Ok(())
+374:             }
+375:             Err(e) => Err(e.with_value(val)),
+376:         }
+377:     }
+378: 
+379:     fn try_recv_ref<'a, T>(
+380:         &'a self,
+381:         slots: &'a [Slot<T>],
+382:     ) -> Result<RecvRefInner<'a, T, N>, TryRecvError> {
+383:         self.core.pop_ref(slots).map(|slot| RecvRefInner {
+384:             _notify: NotifyTx(&self.tx_wait),
+385:             slot,
+386:         })
+387:     }
+388: 
+389:     fn try_recv<T, R>(&self, slots: &[Slot<T>], recycle: &R) -> Result<T, TryRecvError>
+390:     where
+391:         R: Recycle<T>,
+392:     {
+393:         match self.try_recv_ref(slots) {
+394:             Ok(mut slot) => Ok(take(&mut *slot, recycle)),
+395:             Err(e) => Err(e),
+396:         }
+397:     }
+398: 
+399:     /// Performs one iteration of the `recv_ref` loop.
+400:     ///
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thingbuf-0.1.6/src/lib.rs:98-237
+```rust
+ 98: struct Core {
+ 99:     head: CachePadded<AtomicUsize>,
+100:     tail: CachePadded<AtomicUsize>,
+101:     gen: usize,
+102:     gen_mask: usize,
+103:     idx_mask: usize,
+104:     closed: usize,
+105:     capacity: usize,
+106:     /// Set when dropping the slots in the ring buffer, to avoid potential double-frees.
+107:     has_dropped_slots: bool,
+108: }
+109: 
+110: struct Slot<T> {
+111:     value: UnsafeCell<MaybeUninit<T>>,
+112:     /// Each slot's state has two components: a flag indicated by the most significant bit (MSB), and the rest of the state.
+113:     /// The MSB is set when a reader is reading from this slot.
+114:     /// The rest of the state helps determine the availability of the slot for reading or writing:
+115:     /// - A slot is available for reading when the state (excluding the MSB) equals head + 1.
+116:     /// - A slot is available for writing when the state (excluding the MSB) equals tail.
+117:     /// At initialization, each slot's state is set to its ordinal index.
+118:     state: AtomicUsize,
+119: }
+120: 
+121: impl Core {
+122:     #[cfg(not(all(loom, test)))]
+123:     const fn new(capacity: usize) -> Self {
+124:         assert!(capacity <= MAX_CAPACITY);
+125:         let closed = (capacity + 1).next_power_of_two();
+126:         let idx_mask = closed - 1;
+127:         let gen = closed << 1;
+128:         let gen_mask = !(closed | idx_mask);
+129:         Self {
+130:             head: CachePadded(AtomicUsize::new(0)),
+131:             tail: CachePadded(AtomicUsize::new(0)),
+132:             gen,
+133:             gen_mask,
+134:             closed,
+135:             idx_mask,
+136:             capacity,
+137:             has_dropped_slots: false,
+138:         }
+139:     }
+140: 
+141:     #[cfg(all(loom, test))]
+142:     fn new(capacity: usize) -> Self {
+143:         let closed = (capacity + 1).next_power_of_two();
+144:         let idx_mask = closed - 1;
+145:         let gen = closed << 1;
+146:         let gen_mask = !(closed | idx_mask);
+147:         Self {
+148:             head: CachePadded(AtomicUsize::new(0)),
+149:             tail: CachePadded(AtomicUsize::new(0)),
+150:             gen,
+151:             closed,
+152:             gen_mask,
+153:             idx_mask,
+154:             capacity,
+155:             #[cfg(debug_assertions)]
+156:             has_dropped_slots: false,
+157:         }
+158:     }
+159: 
+160:     #[inline(always)]
+161:     fn idx_gen(&self, val: usize) -> (usize, usize) {
+162:         (val & self.idx_mask, val & self.gen_mask)
+163:     }
+164: 
+165:     #[inline]
+166:     fn next(&self, idx: usize, gen: usize) -> usize {
+167:         // Are we still in the same generation?
+168:         if idx + 1 < self.capacity() {
+169:             // If we're still within the current generation, increment the index
+170:             // by 1.
+171:             (idx | gen) + 1
+172:         } else {
+173:             // We've reached the end of the current lap, wrap the index around
+174:             // to 0.
+175:             wrapping_add(gen, self.gen)
+176:         }
+177:     }
+178: 
+179:     #[inline]
+180:     fn capacity(&self) -> usize {
+181:         self.capacity
+182:     }
+183: 
+184:     fn close(&self) -> bool {
+185:         test_println!("Core::close");
+186:         if crate::util::panic::panicking() {
+187:             return false;
+188:         }
+189:         test_dbg!(self.tail.fetch_or(self.closed, SeqCst) & self.closed == 0)
+190:     }
+191: 
+192:     #[inline(always)]
+193:     fn push_ref<'slots, T, R>(
+194:         &self,
+195:         slots: &'slots [Slot<T>],
+196:         recycle: &R,
+197:     ) -> Result<Ref<'slots, T>, TrySendError<()>>
+198:     where
+199:         R: Recycle<T>,
+200:     {
+201:         test_println!("push_ref");
+202:         let mut backoff = Backoff::new();
+203:         let mut tail = test_dbg!(self.tail.load(Relaxed));
+204:         loop {
+205:             if test_dbg!(tail & self.closed != 0) {
+206:                 return Err(TrySendError::Closed(()));
+207:             }
+208:             let (idx, gen) = self.idx_gen(tail);
+209:             test_dbg!(idx);
+210:             test_dbg!(gen);
+211:             let slot = unsafe {
+212:                 // Safety: `get_unchecked` does not check that the accessed
+213:                 // index was within bounds. However, `idx` is produced by
+214:                 // masking the current tail index to extract only the part
+215:                 // that's within the array's bounds.
+216:                 debug_assert!(
+217:                     idx < slots.len(),
+218:                     "index out of bounds (index was {} but the length was {})\n\n\
+219:                     /!\\ EXTREMELY SERIOUS WARNING /!\\: in release mode, this \
+220:                     access would not have been bounds checked, resulting in \
+221:                     undefined behavior!\nthis is a bug in `thingbuf`! please \
+222:                     report an issue immediately!",
+223:                     idx,
+224:                     slots.len()
+225:                 );
+226:                 slots.get_unchecked(idx)
+227:             };
+228:             let raw_state = test_dbg!(slot.state.load(SeqCst));
+229:             let state = test_dbg!(clear_has_reader(raw_state));
+230:             // slot is writable
+231:             if test_dbg!(state == tail) {
+232:                 let next_tail = self.next(idx, gen);
+233:                 // try to advance the tail
+234:                 match test_dbg!(self
+235:                     .tail
+236:                     .compare_exchange_weak(tail, next_tail, SeqCst, Acquire))
+237:                 {
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thingbuf-0.1.6/src/util.rs:19-94
+```rust
+19: pub(crate) struct CachePadded<T>(pub(crate) T);
+20: 
+21: // === impl Backoff ===
+22: 
+23: impl Backoff {
+24:     const MAX_SPINS: u8 = 3;
+25:     const MAX_YIELDS: u8 = 6;
+26:     #[inline]
+27:     pub(crate) fn new() -> Self {
+28:         Self(0)
+29:     }
+30: 
+31:     #[inline(always)]
+32:     pub(crate) fn spin(&mut self) {
+33:         #[cfg(not(all(loom, test)))]
+34:         for _ in 0..test_dbg!(1 << self.0.min(Self::MAX_SPINS)) {
+35:             loom::hint::spin_loop();
+36:         }
+37: 
+38:         #[cfg(all(loom, test))]
+39:         {
+40:             test_println!("hint::spin_loop() (x{})", 1 << self.0.min(Self::MAX_SPINS));
+41:             loom::hint::spin_loop();
+42:         }
+43: 
+44:         if self.0 <= Self::MAX_SPINS {
+45:             self.0 += 1;
+46:         }
+47:     }
+48: 
+49:     #[inline(always)]
+50:     pub(crate) fn spin_yield(&mut self) {
+51:         if self.0 <= Self::MAX_SPINS || cfg!(not(any(feature = "std", test))) {
+52:             #[cfg(not(all(loom, test)))]
+53:             for _ in 0..1 << self.0 {
+54:                 loom::hint::spin_loop();
+55:             }
+56: 
+57:             test_println!("hint::spin_loop() (x{})", 1 << self.0);
+58:         }
+59: 
+60:         test_println!("thread::yield_now()");
+61:         #[cfg(any(all(loom, test), feature = "std"))]
+62:         loom::thread::yield_now();
+63: 
+64:         if self.0 <= Self::MAX_YIELDS {
+65:             self.0 += 1;
+66:         }
+67:     }
+68: 
+69:     pub(crate) fn done_spinning(&self) -> bool {
+70:         self.0 >= Self::MAX_SPINS
+71:     }
+72: }
+73: 
+74: // === impl CachePadded ===
+75: 
+76: impl<T> Deref for CachePadded<T> {
+77:     type Target = T;
+78: 
+79:     fn deref(&self) -> &T {
+80:         &self.0
+81:     }
+82: }
+83: 
+84: impl<T> DerefMut for CachePadded<T> {
+85:     fn deref_mut(&mut self) -> &mut T {
+86:         &mut self.0
+87:     }
+88: }
+89: 
+90: impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
+91:     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+92:         self.0.fmt(f)
+93:     }
+94: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/flume-0.10.14/src/async.rs:68-207
+```rust
+ 68:     type Target = T;
+ 69: 
+ 70:     fn deref(&self) -> &T {
+ 71:         match self {
+ 72:             OwnedOrRef::Owned(arc) => &arc,
+ 73:             OwnedOrRef::Ref(r) => r,
+ 74:         }
+ 75:     }
+ 76: }
+ 77: 
+ 78: impl<T> Sender<T> {
+ 79:     /// Asynchronously send a value into the channel, returning an error if all receivers have been
+ 80:     /// dropped. If the channel is bounded and is full, the returned future will yield to the async
+ 81:     /// runtime.
+ 82:     ///
+ 83:     /// In the current implementation, the returned future will not yield to the async runtime if the
+ 84:     /// channel is unbounded. This may change in later versions.
+ 85:     pub fn send_async(&self, item: T) -> SendFut<T> {
+ 86:         SendFut {
+ 87:             sender: OwnedOrRef::Ref(&self),
+ 88:             hook: Some(SendState::NotYetSent(item)),
+ 89:         }
+ 90:     }
+ 91: 
+ 92:     /// Convert this sender into a future that asynchronously sends a single message into the channel,
+ 93:     /// returning an error if all receivers have been dropped. If the channel is bounded and is full,
+ 94:     /// this future will yield to the async runtime.
+ 95:     ///
+ 96:     /// In the current implementation, the returned future will not yield to the async runtime if the
+ 97:     /// channel is unbounded. This may change in later versions.
+ 98:     pub fn into_send_async(self, item: T) -> SendFut<'static, T> {
+ 99:         SendFut {
+100:             sender: OwnedOrRef::Owned(self),
+101:             hook: Some(SendState::NotYetSent(item)),
+102:         }
+103:     }
+104: 
+105:     /// Create an asynchronous sink that uses this sender to asynchronously send messages into the
+106:     /// channel. The sender will continue to be usable after the sink has been dropped.
+107:     ///
+108:     /// In the current implementation, the returned sink will not yield to the async runtime if the
+109:     /// channel is unbounded. This may change in later versions.
+110:     pub fn sink(&self) -> SendSink<'_, T> {
+111:         SendSink(SendFut {
+112:             sender: OwnedOrRef::Ref(&self),
+113:             hook: None,
+114:         })
+115:     }
+116: 
+117:     /// Convert this sender into a sink that allows asynchronously sending messages into the channel.
+118:     ///
+119:     /// In the current implementation, the returned sink will not yield to the async runtime if the
+120:     /// channel is unbounded. This may change in later versions.
+121:     pub fn into_sink(self) -> SendSink<'static, T> {
+122:         SendSink(SendFut {
+123:             sender: OwnedOrRef::Owned(self),
+124:             hook: None,
+125:         })
+126:     }
+127: }
+128: 
+129: enum SendState<T> {
+130:     NotYetSent(T),
+131:     QueuedItem(Arc<Hook<T, AsyncSignal>>),
+132: }
+133: 
+134: /// A future that sends a value into a channel.
+135: ///
+136: /// Can be created via [`Sender::send_async`] or [`Sender::into_send_async`].
+137: #[must_use = "futures/streams/sinks do nothing unless you `.await` or poll them"]
+138: #[pin_project(PinnedDrop)]
+139: pub struct SendFut<'a, T> {
+140:     sender: OwnedOrRef<'a, Sender<T>>,
+141:     // Only none after dropping
+142:     hook: Option<SendState<T>>,
+143: }
+144: 
+145: impl<'a, T> SendFut<'a, T> {
+146:     /// Reset the hook, clearing it and removing it from the waiting sender's queue. This is called
+147:     /// on drop and just before `start_send` in the `Sink` implementation.
+148:     fn reset_hook(&mut self) {
+149:         if let Some(SendState::QueuedItem(hook)) = self.hook.take() {
+150:             let hook: Arc<Hook<T, dyn Signal>> = hook;
+151:             wait_lock(&self.sender.shared.chan).sending
+152:                 .as_mut()
+153:                 .unwrap().1
+154:                 .retain(|s| s.signal().as_ptr() != hook.signal().as_ptr());
+155:         }
+156:     }
+157: 
+158:     /// See [`Sender::is_disconnected`].
+159:     pub fn is_disconnected(&self) -> bool {
+160:         self.sender.is_disconnected()
+161:     }
+162: 
+163:     /// See [`Sender::is_empty`].
+164:     pub fn is_empty(&self) -> bool {
+165:         self.sender.is_empty()
+166:     }
+167: 
+168:     /// See [`Sender::is_full`].
+169:     pub fn is_full(&self) -> bool {
+170:         self.sender.is_full()
+171:     }
+172: 
+173:     /// See [`Sender::len`].
+174:     pub fn len(&self) -> usize {
+175:         self.sender.len()
+176:     }
+177: 
+178:     /// See [`Sender::capacity`].
+179:     pub fn capacity(&self) -> Option<usize> {
+180:         self.sender.capacity()
+181:     }
+182: }
+183: 
+184: #[allow(clippy::needless_lifetimes)] // False positive, see https://github.com/rust-lang/rust-clippy/issues/5787
+185: #[pinned_drop]
+186: impl<'a, T> PinnedDrop for SendFut<'a, T> {
+187:     fn drop(mut self: Pin<&mut Self>) {
+188:         self.reset_hook()
+189:     }
+190: }
+191: 
+192: // impl<'a, T> Drop for SendFut<'a, T> {
+193: //     fn drop(&mut self) {
+194: //         self.reset_hook()
+195: //     }
+196: // }
+197: 
+198: impl<'a, T> Future for SendFut<'a, T> {
+199:     type Output = Result<(), SendError<T>>;
+200: 
+201:     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+202:         if let Some(SendState::QueuedItem(hook)) = self.hook.as_ref() {
+203:             if hook.is_empty() {
+204:                 Poll::Ready(Ok(()))
+205:             } else if self.sender.shared.is_disconnected() {
+206:                 match self.hook.take().unwrap() {
+207:                     SendState::NotYetSent(item) => Poll::Ready(Err(SendError(item))),
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/flume-0.10.14/src/lib.rs:654-793
+```rust
+654: pub struct Sender<T> {
+655:     shared: Arc<Shared<T>>,
+656: }
+657: 
+658: impl<T> Sender<T> {
+659:     /// Attempt to send a value into the channel. If the channel is bounded and full, or all
+660:     /// receivers have been dropped, an error is returned. If the channel associated with this
+661:     /// sender is unbounded, this method has the same behaviour as [`Sender::send`].
+662:     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+663:         self.shared.send_sync(msg, None).map_err(|err| match err {
+664:             TrySendTimeoutError::Full(msg) => TrySendError::Full(msg),
+665:             TrySendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
+666:             _ => unreachable!(),
+667:         })
+668:     }
+669: 
+670:     /// Send a value into the channel, returning an error if all receivers have been dropped.
+671:     /// If the channel is bounded and is full, this method will block until space is available
+672:     /// or all receivers have been dropped. If the channel is unbounded, this method will not
+673:     /// block.
+674:     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+675:         self.shared.send_sync(msg, Some(None)).map_err(|err| match err {
+676:             TrySendTimeoutError::Disconnected(msg) => SendError(msg),
+677:             _ => unreachable!(),
+678:         })
+679:     }
+680: 
+681:     /// Send a value into the channel, returning an error if all receivers have been dropped
+682:     /// or the deadline has passed. If the channel is bounded and is full, this method will
+683:     /// block until space is available, the deadline is reached, or all receivers have been
+684:     /// dropped.
+685:     pub fn send_deadline(&self, msg: T, deadline: Instant) -> Result<(), SendTimeoutError<T>> {
+686:         self.shared.send_sync(msg, Some(Some(deadline))).map_err(|err| match err {
+687:             TrySendTimeoutError::Disconnected(msg) => SendTimeoutError::Disconnected(msg),
+688:             TrySendTimeoutError::Timeout(msg) => SendTimeoutError::Timeout(msg),
+689:             _ => unreachable!(),
+690:         })
+691:     }
+692: 
+693:     /// Send a value into the channel, returning an error if all receivers have been dropped
+694:     /// or the timeout has expired. If the channel is bounded and is full, this method will
+695:     /// block until space is available, the timeout has expired, or all receivers have been
+696:     /// dropped.
+697:     pub fn send_timeout(&self, msg: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+698:         self.send_deadline(msg, Instant::now().checked_add(dur).unwrap())
+699:     }
+700: 
+701:     /// Returns true if all receivers for this channel have been dropped.
+702:     pub fn is_disconnected(&self) -> bool {
+703:         self.shared.is_disconnected()
+704:     }
+705: 
+706:     /// Returns true if the channel is empty.
+707:     /// Note: Zero-capacity channels are always empty.
+708:     pub fn is_empty(&self) -> bool {
+709:         self.shared.is_empty()
+710:     }
+711: 
+712:     /// Returns true if the channel is full.
+713:     /// Note: Zero-capacity channels are always full.
+714:     pub fn is_full(&self) -> bool {
+715:         self.shared.is_full()
+716:     }
+717: 
+718:     /// Returns the number of messages in the channel
+719:     pub fn len(&self) -> usize {
+720:         self.shared.len()
+721:     }
+722: 
+723:     /// If the channel is bounded, returns its capacity.
+724:     pub fn capacity(&self) -> Option<usize> {
+725:         self.shared.capacity()
+726:     }
+727: }
+728: 
+729: impl<T> Clone for Sender<T> {
+730:     /// Clone this sender. [`Sender`] acts as a handle to the ending a channel. Remaining channel
+731:     /// contents will only be cleaned up when all senders and the receiver have been dropped.
+732:     fn clone(&self) -> Self {
+733:         self.shared.sender_count.fetch_add(1, Ordering::Relaxed);
+734:         Self { shared: self.shared.clone() }
+735:     }
+736: }
+737: 
+738: impl<T> fmt::Debug for Sender<T> {
+739:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+740:         f.debug_struct("Sender").finish()
+741:     }
+742: }
+743: 
+744: impl<T> Drop for Sender<T> {
+745:     fn drop(&mut self) {
+746:         // Notify receivers that all senders have been dropped if the number of senders drops to 0.
+747:         if self.shared.sender_count.fetch_sub(1, Ordering::Relaxed) == 1 {
+748:             self.shared.disconnect_all();
+749:         }
+750:     }
+751: }
+752: 
+753: /// The receiving end of a channel.
+754: ///
+755: /// Note: Cloning the receiver *does not* turn this channel into a broadcast channel.
+756: /// Each message will only be received by a single receiver. This is useful for
+757: /// implementing work stealing for concurrent programs.
+758: pub struct Receiver<T> {
+759:     shared: Arc<Shared<T>>,
+760: }
+761: 
+762: impl<T> Receiver<T> {
+763:     /// Attempt to fetch an incoming value from the channel associated with this receiver,
+764:     /// returning an error if the channel is empty or if all senders have been dropped.
+765:     pub fn try_recv(&self) -> Result<T, TryRecvError> {
+766:         self.shared.recv_sync(None).map_err(|err| match err {
+767:             TryRecvTimeoutError::Disconnected => TryRecvError::Disconnected,
+768:             TryRecvTimeoutError::Empty => TryRecvError::Empty,
+769:             _ => unreachable!(),
+770:         })
+771:     }
+772: 
+773:     /// Wait for an incoming value from the channel associated with this receiver, returning an
+774:     /// error if all senders have been dropped.
+775:     pub fn recv(&self) -> Result<T, RecvError> {
+776:         self.shared.recv_sync(Some(None)).map_err(|err| match err {
+777:             TryRecvTimeoutError::Disconnected => RecvError::Disconnected,
+778:             _ => unreachable!(),
+779:         })
+780:     }
+781: 
+782:     /// Wait for an incoming value from the channel associated with this receiver, returning an
+783:     /// error if all senders have been dropped or the deadline has passed.
+784:     pub fn recv_deadline(&self, deadline: Instant) -> Result<T, RecvTimeoutError> {
+785:         self.shared.recv_sync(Some(Some(deadline))).map_err(|err| match err {
+786:             TryRecvTimeoutError::Disconnected => RecvTimeoutError::Disconnected,
+787:             TryRecvTimeoutError::Timeout => RecvTimeoutError::Timeout,
+788:             _ => unreachable!(),
+789:         })
+790:     }
+791: 
+792:     /// Wait for an incoming value from the channel associated with this receiver, returning an
+793:     /// error if all senders have been dropped or the timeout has expired.
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/parking_lot-0.12.5/src/condvar.rs:922-1061
+```rust
+ 922:     enum Timeout {
+ 923:         Bounded(Duration),
+ 924:         Forever,
+ 925:     }
+ 926: 
+ 927:     #[derive(Clone, Copy)]
+ 928:     enum NotifyStyle {
+ 929:         One,
+ 930:         All,
+ 931:     }
+ 932: 
+ 933:     struct Queue {
+ 934:         items: VecDeque<usize>,
+ 935:         should_continue: bool,
+ 936:     }
+ 937: 
+ 938:     impl Queue {
+ 939:         fn new() -> Self {
+ 940:             Self {
+ 941:                 items: VecDeque::new(),
+ 942:                 should_continue: true,
+ 943:             }
+ 944:         }
+ 945:     }
+ 946: 
+ 947:     fn wait<T: ?Sized>(
+ 948:         condition: &Condvar,
+ 949:         lock: &mut MutexGuard<'_, T>,
+ 950:         predicate: impl Fn(&mut MutexGuard<'_, T>) -> bool,
+ 951:         timeout: &Timeout,
+ 952:     ) {
+ 953:         while !predicate(lock) {
+ 954:             match timeout {
+ 955:                 Timeout::Forever => condition.wait(lock),
+ 956:                 Timeout::Bounded(bound) => {
+ 957:                     condition.wait_for(lock, *bound);
+ 958:                 }
+ 959:             }
+ 960:         }
+ 961:     }
+ 962: 
+ 963:     fn notify(style: NotifyStyle, condition: &Condvar, should_notify: bool) {
+ 964:         match style {
+ 965:             NotifyStyle::One => {
+ 966:                 condition.notify_one();
+ 967:             }
+ 968:             NotifyStyle::All => {
+ 969:                 if should_notify {
+ 970:                     condition.notify_all();
+ 971:                 }
+ 972:             }
+ 973:         }
+ 974:     }
+ 975: 
+ 976:     fn run_queue_test(
+ 977:         num_producers: usize,
+ 978:         num_consumers: usize,
+ 979:         max_queue_size: usize,
+ 980:         messages_per_producer: usize,
+ 981:         notify_style: NotifyStyle,
+ 982:         timeout: Timeout,
+ 983:         delay: Duration,
+ 984:     ) {
+ 985:         let input_queue = Arc::new(Mutex::new(Queue::new()));
+ 986:         let empty_condition = Arc::new(Condvar::new());
+ 987:         let full_condition = Arc::new(Condvar::new());
+ 988: 
+ 989:         let output_vec = Arc::new(Mutex::new(vec![]));
+ 990: 
+ 991:         let consumers = (0..num_consumers)
+ 992:             .map(|_| {
+ 993:                 consumer_thread(
+ 994:                     input_queue.clone(),
+ 995:                     empty_condition.clone(),
+ 996:                     full_condition.clone(),
+ 997:                     timeout,
+ 998:                     notify_style,
+ 999:                     output_vec.clone(),
+1000:                     max_queue_size,
+1001:                 )
+1002:             })
+1003:             .collect::<Vec<_>>();
+1004:         let producers = (0..num_producers)
+1005:             .map(|_| {
+1006:                 producer_thread(
+1007:                     messages_per_producer,
+1008:                     input_queue.clone(),
+1009:                     empty_condition.clone(),
+1010:                     full_condition.clone(),
+1011:                     timeout,
+1012:                     notify_style,
+1013:                     max_queue_size,
+1014:                 )
+1015:             })
+1016:             .collect::<Vec<_>>();
+1017: 
+1018:         thread::sleep(delay);
+1019: 
+1020:         for producer in producers.into_iter() {
+1021:             producer.join().expect("Producer thread panicked");
+1022:         }
+1023: 
+1024:         {
+1025:             let mut input_queue = input_queue.lock();
+1026:             input_queue.should_continue = false;
+1027:         }
+1028:         empty_condition.notify_all();
+1029: 
+1030:         for consumer in consumers.into_iter() {
+1031:             consumer.join().expect("Consumer thread panicked");
+1032:         }
+1033: 
+1034:         let mut output_vec = output_vec.lock();
+1035:         assert_eq!(output_vec.len(), num_producers * messages_per_producer);
+1036:         output_vec.sort();
+1037:         for msg_idx in 0..messages_per_producer {
+1038:             for producer_idx in 0..num_producers {
+1039:                 assert_eq!(msg_idx, output_vec[msg_idx * num_producers + producer_idx]);
+1040:             }
+1041:         }
+1042:     }
+1043: 
+1044:     fn consumer_thread(
+1045:         input_queue: Arc<Mutex<Queue>>,
+1046:         empty_condition: Arc<Condvar>,
+1047:         full_condition: Arc<Condvar>,
+1048:         timeout: Timeout,
+1049:         notify_style: NotifyStyle,
+1050:         output_queue: Arc<Mutex<Vec<usize>>>,
+1051:         max_queue_size: usize,
+1052:     ) -> thread::JoinHandle<()> {
+1053:         thread::spawn(move || loop {
+1054:             let (should_notify, result) = {
+1055:                 let mut queue = input_queue.lock();
+1056:                 wait(
+1057:                     &empty_condition,
+1058:                     &mut queue,
+1059:                     |state| -> bool { !state.items.is_empty() || !state.should_continue },
+1060:                     &timeout,
+1061:                 );
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/parking_lot-0.12.5/src/mutex.rs:100-239
+```rust
+100: pub type MutexGuard<'a, T> = lock_api::MutexGuard<'a, RawMutex, T>;
+101: 
+102: /// An RAII mutex guard returned by `MutexGuard::map`, which can point to a
+103: /// subfield of the protected data.
+104: ///
+105: /// The main difference between `MappedMutexGuard` and `MutexGuard` is that the
+106: /// former doesn't support temporarily unlocking and re-locking, since that
+107: /// could introduce soundness issues if the locked object is modified by another
+108: /// thread.
+109: pub type MappedMutexGuard<'a, T> = lock_api::MappedMutexGuard<'a, RawMutex, T>;
+110: 
+111: #[cfg(test)]
+112: mod tests {
+113:     use crate::{Condvar, MappedMutexGuard, Mutex, MutexGuard};
+114:     use std::collections::HashMap;
+115:     use std::ops::Deref;
+116:     use std::sync::atomic::{AtomicUsize, Ordering};
+117:     use std::sync::mpsc::channel;
+118:     use std::sync::Arc;
+119:     use std::thread;
+120: 
+121:     #[cfg(feature = "serde")]
+122:     use bincode::{deserialize, serialize};
+123: 
+124:     struct Packet<T>(Arc<(Mutex<T>, Condvar)>);
+125: 
+126:     #[derive(Eq, PartialEq, Debug)]
+127:     struct NonCopy(i32);
+128: 
+129:     unsafe impl<T: Send> Send for Packet<T> {}
+130:     unsafe impl<T> Sync for Packet<T> {}
+131: 
+132:     #[test]
+133:     fn smoke() {
+134:         let m = Mutex::new(());
+135:         drop(m.lock());
+136:         drop(m.lock());
+137:     }
+138: 
+139:     #[test]
+140:     fn lots_and_lots() {
+141:         const J: u32 = 1000;
+142:         const K: u32 = 3;
+143: 
+144:         let m = Arc::new(Mutex::new(0));
+145: 
+146:         fn inc(m: &Mutex<u32>) {
+147:             for _ in 0..J {
+148:                 *m.lock() += 1;
+149:             }
+150:         }
+151: 
+152:         let (tx, rx) = channel();
+153:         for _ in 0..K {
+154:             let tx2 = tx.clone();
+155:             let m2 = m.clone();
+156:             thread::spawn(move || {
+157:                 inc(&m2);
+158:                 tx2.send(()).unwrap();
+159:             });
+160:             let tx2 = tx.clone();
+161:             let m2 = m.clone();
+162:             thread::spawn(move || {
+163:                 inc(&m2);
+164:                 tx2.send(()).unwrap();
+165:             });
+166:         }
+167: 
+168:         drop(tx);
+169:         for _ in 0..2 * K {
+170:             rx.recv().unwrap();
+171:         }
+172:         assert_eq!(*m.lock(), J * K * 2);
+173:     }
+174: 
+175:     #[test]
+176:     fn try_lock() {
+177:         let m = Mutex::new(());
+178:         *m.try_lock().unwrap() = ();
+179:     }
+180: 
+181:     #[test]
+182:     fn test_into_inner() {
+183:         let m = Mutex::new(NonCopy(10));
+184:         assert_eq!(m.into_inner(), NonCopy(10));
+185:     }
+186: 
+187:     #[test]
+188:     fn test_into_inner_drop() {
+189:         struct Foo(Arc<AtomicUsize>);
+190:         impl Drop for Foo {
+191:             fn drop(&mut self) {
+192:                 self.0.fetch_add(1, Ordering::SeqCst);
+193:             }
+194:         }
+195:         let num_drops = Arc::new(AtomicUsize::new(0));
+196:         let m = Mutex::new(Foo(num_drops.clone()));
+197:         assert_eq!(num_drops.load(Ordering::SeqCst), 0);
+198:         {
+199:             let _inner = m.into_inner();
+200:             assert_eq!(num_drops.load(Ordering::SeqCst), 0);
+201:         }
+202:         assert_eq!(num_drops.load(Ordering::SeqCst), 1);
+203:     }
+204: 
+205:     #[test]
+206:     fn test_get_mut() {
+207:         let mut m = Mutex::new(NonCopy(10));
+208:         *m.get_mut() = NonCopy(20);
+209:         assert_eq!(m.into_inner(), NonCopy(20));
+210:     }
+211: 
+212:     #[test]
+213:     fn test_mutex_arc_condvar() {
+214:         let packet = Packet(Arc::new((Mutex::new(false), Condvar::new())));
+215:         let packet2 = Packet(packet.0.clone());
+216:         let (tx, rx) = channel();
+217:         let _t = thread::spawn(move || {
+218:             // wait until parent gets in
+219:             rx.recv().unwrap();
+220:             let (lock, cvar) = &*packet2.0;
+221:             let mut lock = lock.lock();
+222:             *lock = true;
+223:             cvar.notify_one();
+224:         });
+225: 
+226:         let (lock, cvar) = &*packet.0;
+227:         let mut lock = lock.lock();
+228:         tx.send(()).unwrap();
+229:         assert!(!*lock);
+230:         while !*lock {
+231:             cvar.wait(&mut lock);
+232:         }
+233:     }
+234: 
+235:     #[test]
+236:     fn test_mutex_arc_nested() {
+237:         // Tests nested mutexes and access
+238:         // to underlying data.
+239:         let arc = Arc::new(Mutex::new(1));
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/lib.rs:30-97
+```rust
+30: 
+31:     #[test]
+32:     #[ignore = "compile-only LLVM IR instantiation"]
+33:     fn instantiate_mirscan_callers() {
+34:         let mut btree = SyncBtreeMap::<u8, u8>::new();
+35:         let _ = btree.insert(1, 1);
+36:         let _ = btree.insert_mut(2, 2);
+37:         let _ = btree.remove(&1);
+38:         let _ = btree.remove_mut(&2);
+39:         let _ = btree.len();
+40:         let _ = btree.is_empty();
+41:         btree.clear();
+42:         btree.clear_mut();
+43:         let _ = btree.insert_mut(1, 1);
+44:         let _ = btree.get(&1);
+45:         drop(btree.get_mut(&1));
+46:         let _ = btree.contains_key(&1);
+47:         let _ = btree.iter();
+48:         drop(btree.iter_mut());
+49:         let _ = btree.dirty_ref();
+50: 
+51:         let mut hash = SyncHashMap::<u8, u8>::new();
+52:         let _ = hash.insert(1, 1);
+53:         let _ = hash.insert_mut(2, 2);
+54:         let _ = hash.remove(&1);
+55:         let _ = hash.remove_mut(&2);
+56:         let _ = hash.len();
+57:         let _ = hash.is_empty();
+58:         hash.clear();
+59:         hash.clear_mut();
+60:         hash.shrink_to_fit();
+61:         hash.shrink_to_fit_mut();
+62:         let _ = hash.insert_mut(1, 1);
+63:         let _ = hash.get(&1);
+64:         drop(hash.get_mut(&1));
+65:         let _ = hash.contains_key(&1);
+66:         let _ = hash.iter();
+67:         drop(hash.iter_mut());
+68:         let _ = hash.dirty_ref();
+69: 
+70:         let mut vec = SyncVec::<u8>::new();
+71:         let _ = vec.insert(0, 1);
+72:         let _ = vec.insert_mut(0, 2);
+73:         let _ = vec.push_vec(vec![3]);
+74:         let _ = vec.push_mut(4);
+75:         let _ = vec.pop();
+76:         let _ = vec.pop_mut();
+77:         let _ = vec.remove(0);
+78:         let _ = vec.remove_mut(0);
+79:         let _ = vec.is_empty();
+80:         vec.clear();
+81:         vec.shrink_to_fit();
+82:         let _ = vec.get(0);
+83:         drop(vec.get_mut(0));
+84:         let _ = vec.contains(&0);
+85:         let _ = vec.iter();
+86:         drop(vec.iter_mut());
+87:         let _ = vec.dirty_ref();
+88: 
+89:         let value = U::new(1_u8);
+90:         let _ = value.as_mut();
+91:         let static_value = StaticType::<u8>::new();
+92:         static_value.init_call(|| 1_u8);
+93:         let _ = static_value.get_unchecked();
+94:         let _ = static_value.get_safe();
+95: 
+96:         super::fast_thread_pool::lite::_test_thread_lite(0);
+97:     }
+```
+
+src/remutex.rs:138-157
+```rust
+138: 
+139:     #[test]
+140:     fn test_reentrant_mutex_bump() {
+141:         let mutex = Arc::new(ReentrantMutex::new(()));
+142:         let mutex2 = mutex.clone();
+143: 
+144:         let mut guard = mutex.lock();
+145: 
+146:         let (tx, rx) = channel();
+147: 
+148:         thread::spawn(move || {
+149:             let _guard = mutex2.lock();
+150:             tx.send(()).unwrap();
+151:         });
+152: 
+153:         // `bump()` repeatedly until the thread starts up and requests the lock
+154:         while rx.try_recv().is_err() {
+155:             ReentrantMutexGuard::bump(&mut guard);
+156:         }
+157:     }
+```
+
+src/remutex.rs:99-115
+```rust
+ 99: 
+100:     #[test]
+101:     fn is_mutex() {
+102:         let m = Arc::new(ReentrantMutex::new(RefCell::new(0)));
+103:         let m2 = m.clone();
+104:         let lock = m.lock();
+105:         let child = thread::spawn(move || {
+106:             let lock = m2.lock();
+107:             assert_eq!(*lock.borrow(), 4950);
+108:         });
+109:         for i in 0..100 {
+110:             let lock = m.lock();
+111:             *lock.borrow_mut() += i;
+112:         }
+113:         drop(lock);
+114:         child.join().unwrap();
+115:     }
+```
+
+src/static_type.rs:133-153
+```rust
+133: 
+134: #[test]
+135: fn test_static_type() {
+136:     //定义静态变量
+137:     static STATIC_TYPE: StaticType<i32> = StaticType::new();
+138: 
+139:     // 没有初始化之前
+140:     assert_eq!(format!("{}", STATIC_TYPE), "None");
+141: 
+142:     // 初始化数据
+143:     STATIC_TYPE.init_call(|| 22);
+144: 
+145:     // 第二次初始化数据, 预期不执行
+146:     STATIC_TYPE.init_call(|| 33);
+147: 
+148:     // 控制台输出相应的数据
+149:     assert_eq!(format!("{}", STATIC_TYPE), "22");
+150: 
+151:     // 获取数据,数据相同
+152:     assert_eq!(*STATIC_TYPE, 22);
+153: }
+```
+
+src/remutex.rs:116-130
+```rust
+116: 
+117:     #[test]
+118:     fn trylock_works() {
+119:         let m = Arc::new(ReentrantMutex::new(()));
+120:         let m2 = m.clone();
+121:         let _lock = m.try_lock();
+122:         let _lock2 = m.try_lock();
+123:         thread::spawn(move || {
+124:             let lock = m2.try_lock();
+125:             assert!(lock.is_none());
+126:         })
+127:         .join()
+128:         .unwrap();
+129:         let _lock3 = m.try_lock();
+130:     }
+```
+
+src/remutex.rs:131-137
+```rust
+131: 
+132:     #[test]
+133:     fn test_reentrant_mutex_debug() {
+134:         let mutex = ReentrantMutex::new(vec![0u8, 10]);
+135: 
+136:         assert_eq!(format!("{:?}", mutex), "ReentrantMutex { data: [0, 10] }");
+137:     }
+```
+
+src/remutex.rs:158-170
+```rust
+158: 
+159:     #[cfg(feature = "serde")]
+160:     #[test]
+161:     fn test_serde() {
+162:         let contents: Vec<u8> = vec![0, 1, 2];
+163:         let mutex = ReentrantMutex::new(contents.clone());
+164: 
+165:         let serialized = serialize(&mutex).unwrap();
+166:         let deserialized: ReentrantMutex<Vec<u8>> = deserialize(&serialized).unwrap();
+167: 
+168:         assert_eq!(*(mutex.lock()), *(deserialized.lock()));
+169:         assert_eq!(contents, *(deserialized.lock()));
+170:     }
+```
+
+src/remutex.rs:82-98
+```rust
+82: 
+83:     #[test]
+84:     fn smoke() {
+85:         let m = ReentrantMutex::new(2);
+86:         {
+87:             let a = m.lock();
+88:             {
+89:                 let b = m.lock();
+90:                 {
+91:                     let c = m.lock();
+92:                     assert_eq!(*c, 2);
+93:                 }
+94:                 assert_eq!(*b, 2);
+95:             }
+96:             assert_eq!(*a, 2);
+97:         }
+98:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-vec-rs-184-18
+
+Rule id: rule-575
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/error.rs">
+```rust
+use std::fmt::{self, Debug, Display, Formatter};
+use std::io::ErrorKind::UnexpectedEof;
+use std::sync::mpsc::RecvError;
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct Error {
+    pub inner: String,
+}
+
+impl Error {
+    pub fn error(&self) -> String {
+        /* body omitted: interface retained */
+    }
+
+    pub fn warp<E>(e: E, info: &str) -> Self
+    where
+        E: std::fmt::Display,
+    {
+        /* body omitted: interface retained */
+    }
+
+    pub fn to_string(&self) -> String {
+        /* body omitted: interface retained */
+    }
+}
+
+/// dark_std::errors::Error
+#[macro_export]
+macro_rules! err {
+     ($($arg:tt)*) => {{
+         $crate::error::Error{
+             inner: format!($($arg)*)
+         }
+     }}
+}
+
+///new error
+#[inline]
+pub fn new(text: String) -> Error {
+    /* body omitted: interface retained */
+}
+
+pub trait FromError<T>: Sized {
+    fn from_err(_: T) -> Error;
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::io::Error> for Error {
+    #[inline]
+    fn from(err: std::io::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<&str> for Error {
+    fn from(arg: &str) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::string::String> for Error {
+    fn from(arg: String) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<&dyn std::error::Error> for Error {
+    fn from(arg: &dyn std::error::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(arg: Box<dyn std::error::Error>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<&Box<dyn std::error::Error>> for Error {
+    fn from(arg: &Box<dyn std::error::Error>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::sync::mpsc::RecvError> for Error {
+    fn from(e: RecvError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> From<std::sync::mpsc::SendError<T>> for Error {
+    fn from(e: std::sync::mpsc::SendError<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#[macro_use]
+extern crate log;
+
+pub mod defer;
+pub mod error;
+
+pub mod map_btree;
+pub mod map_hash;
+pub mod vec;
+pub mod wg;
+
+pub mod statis;
+
+pub mod unsafe_cell_type;
+
+pub mod stock_pool;
+pub mod fast_thread_pool;
+
+pub mod elapsed_time;
+
+pub mod static_type;
+```
+</file>
+
+<file path="src/vec.rs">
+```rust
+use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
+use serde::{Deserializer, Serialize, Serializer};
+use std::cell::UnsafeCell;
+use std::fmt::{Debug, Formatter};
+use std::ops::{Deref, DerefMut, Index};
+use std::slice::{Iter as SliceIter, IterMut as SliceIterMut};
+use std::sync::Arc;
+use std::vec::IntoIter;
+pub struct SyncVec<V> {
+    dirty: UnsafeCell<Vec<V>>,
+    #[cfg(feature = "reentrant_lock")]
+    lock: parking_lot::ReentrantMutex<()>,
+    #[cfg(feature = "std_lock")]
+    lock: std::sync::Mutex<()>,
+}
+/// this is safety, dirty mutex ensure
+unsafe impl<V> Send for SyncVec<V> {}
+/// this is safety, dirty mutex ensure
+unsafe impl<V> Sync for SyncVec<V> {}
+impl<V> Default for SyncVec<V> {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> From<Vec<V>> for SyncVec<V> {
+    fn from(v: Vec<V>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> SyncVec<V>
+where
+    V: Clone,
+{
+    pub fn to_vec(&self) -> Vec<V> {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> SyncVec<V> {
+    pub fn new_arc() -> Arc<Self> {
+        /* body omitted: interface retained */
+    }
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn with_vec(vec: Vec<V>) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn insert(&self, index: usize, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn insert_mut(&mut self, index: usize, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn push(&self, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn push_vec(&self, input_arr: Vec<V>) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn push_mut(&mut self, v: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn pop(&self) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn pop_mut(&mut self) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn remove(&self, index: usize) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn remove_mut(&mut self, index: usize) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    pub fn clear(&self) {
+        /* body omitted: interface retained */
+    }
+    pub fn shrink_to_fit(&self) {
+        /* body omitted: interface retained */
+    }
+    pub fn from(vec: Vec<V>) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn get(&self, index: usize) -> Option<&V> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn get_uncheck(&self, index: usize) -> &V {
+        unsafe {
+            let __klee_arg0 = (&*self.dirty.get());
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
+            klee_ext_bind::bind_arg_u64_value(2, &index);
+            klee_ext_bind::callsite!("src-vec-rs-184-18");
+            let mut __klee_ret_src_vec_rs_184_18_get_unchecked = __klee_arg0
+                .get_unchecked(index);
+            __klee_ret_src_vec_rs_184_18_get_unchecked
+        }
+    }
+    #[inline]
+    pub fn get_mut(&self, index: usize) -> Option<VecRefMut<'_, V>> {
+        let m = unsafe { &mut *self.dirty.get() };
+        #[cfg(feature = "std_lock")]
+        let _g = match self.lock.lock() {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        #[cfg(feature = "reentrant_lock")]
+        let _g = self.lock.lock();
+        Some(VecRefMut {
+            _g,
+            value: Some(m.get_mut(index)?),
+        })
+    }
+    #[inline]
+    pub fn contains(&self, x: &V) -> bool
+    where
+        V: PartialEq,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn iter(&self) -> std::slice::Iter<'_, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn iter_mut(&self) -> IterMut<'_, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn into_iter(self) -> IntoIter<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn dirty_ref(&self) -> &Vec<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn into_inner(self) -> Vec<V> {
+        /* body omitted: interface retained */
+    }
+}
+pub struct VecRefMut<'a, V> {
+    #[cfg(feature = "reentrant_lock")]
+    _g: ReentrantMutexGuard<'a, ()>,
+    #[cfg(feature = "std_lock")]
+    _g: std::sync::MutexGuard<'a, ()>,
+    value: Option<&'a mut V>,
+}
+impl<'a, V> Deref for VecRefMut<'_, V> {
+    type Target = V;
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> DerefMut for VecRefMut<'_, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> Debug for VecRefMut<'_, V>
+where
+    V: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+pub struct Iter<'a, V> {
+    inner: Option<SliceIter<'a, *const V>>,
+}
+impl<'a, V> Iterator for Iter<'a, V> {
+    type Item = &'a V;
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+pub struct IterMut<'a, V> {
+    #[cfg(feature = "reentrant_lock")]
+    _g: ReentrantMutexGuard<'a, ()>,
+    #[cfg(feature = "std_lock")]
+    _g: std::sync::MutexGuard<'a, ()>,
+    inner: Option<SliceIterMut<'a, V>>,
+}
+impl<'a, V> Deref for IterMut<'a, V> {
+    type Target = SliceIterMut<'a, V>;
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> DerefMut for IterMut<'a, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> Iterator for IterMut<'a, V> {
+    type Item = &'a mut V;
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, V> IntoIterator for &'a SyncVec<V> {
+    type Item = &'a V;
+    type IntoIter = std::slice::Iter<'a, V>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> IntoIterator for SyncVec<V> {
+    type Item = V;
+    type IntoIter = IntoIter<V>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> Serialize for SyncVec<V>
+where
+    V: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de, V> serde::Deserialize<'de> for SyncVec<V>
+where
+    V: serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> Debug for SyncVec<V>
+where
+    V: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<V> Index<usize> for SyncVec<V> {
+    type Output = V;
+    fn index(&self, index: usize) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<V: PartialEq> PartialEq for SyncVec<V> {
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<V: Clone> Clone for SyncVec<V> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[macro_export]
+macro_rules! sync_vec {
+    () => {
+        $crate::sync::SyncVec::new()
+    };
+    ($elem:expr; $n:expr) => {
+        $crate::sync::SyncVec::with_vec(vec![$elem;$n])
+    };
+    ($($x:expr),+ $(,)?) => {
+        $crate::sync::SyncVec::with_vec(vec![$($x),+,])
+    };
+}
+```
+</file>
+</rust context>

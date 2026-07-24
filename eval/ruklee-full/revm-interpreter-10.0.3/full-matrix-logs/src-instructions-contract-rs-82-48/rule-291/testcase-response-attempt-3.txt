@@ -1,0 +1,46 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-82-48-rule-291-c384f4c11f")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_82_48_rule_291_c384f4c11f() {
+    use std::sync::Arc;
+
+    let container_bytes = revm_primitives::Bytes::from_static(
+        b"\xef\x00\x01\x01\x00\x04\x02\x00\x01\x00\x01\x04\x00\x00\x00\x00\x80\x00\x00\xfe",
+    );
+    let eof = revm_primitives::Eof::decode(container_bytes.clone()).expect("valid eof");
+    let eof = Arc::new(eof);
+
+    let mut interpreter = crate::Interpreter::new(
+        crate::Contract::new(
+            revm_primitives::Bytes::new(),
+            crate::primitives::Bytecode::Eof(eof.clone()),
+            None,
+            crate::primitives::Address::ZERO,
+            None,
+            crate::primitives::Address::ZERO,
+            crate::primitives::U256::ZERO,
+        ),
+        100_000,
+        false,
+    );
+
+    interpreter.is_eof = true;
+    interpreter.is_static = false;
+    interpreter.instruction_result = crate::InstructionResult::Continue;
+    interpreter.shared_memory = crate::SharedMemory::new();
+
+    let ip_storage = [1u8, 0u8];
+    interpreter.instruction_pointer = ip_storage.as_ptr();
+
+    interpreter.stack.data_mut().clear();
+    interpreter.stack.data_mut().extend_from_slice(&[
+        crate::primitives::U256::ZERO,
+        crate::primitives::U256::ZERO,
+        crate::primitives::U256::ZERO,
+        crate::primitives::U256::ZERO,
+    ]);
+
+    let mut host = crate::DummyHost::default();
+    crate::instructions::contract::eofcreate::<crate::DummyHost>(&mut interpreter, &mut host);
+}
+```

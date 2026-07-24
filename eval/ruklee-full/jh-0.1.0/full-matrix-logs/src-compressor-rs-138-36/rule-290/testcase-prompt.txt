@@ -1,0 +1,1136 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-compressor-rs-138-36-rule-290-78e265a6ea`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_compressor_rs_138_36_rule_290_78e265a6ea`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-compressor-rs-138-36-rule-290-78e265a6ea")]`.
+- Define `pub extern "C" fn __unsat_poc_src_compressor_rs_138_36_rule_290_78e265a6ea()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-compressor-rs-138-36-rule-290-78e265a6ea")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_compressor_rs_138_36_rule_290_78e265a6ea() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "compressor::f8_impl",
+    "path": "src/compressor.rs",
+    "line_start": 97,
+    "line_end": 98,
+    "body_end": 150,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "core::ptr::const_ptr::<impl *const T>::offset",
+    "path": "rust/library/core/src/ptr/const_ptr.rs",
+    "line_start": 374,
+    "line_end": 421,
+    "body_end": 421,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*const T"
+  },
+  "callsite": {
+    "line": 138,
+    "col": 36,
+    "path": "src/compressor.rs",
+    "id": "src-compressor-rs-138-36"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "<M as ppv_lite86::Machine>::u128x1",
+      "layout_control": "external",
+      "external_sources": [
+        "<M as ppv_lite86::Machine>::u128x1"
+      ]
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `compressor::f8_impl` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `compressor::f8_impl`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use core::ptr;
+use digest::generic_array::{typenum::U64, GenericArray};
+use simd::{dispatch, vec128_storage, AndNot, Machine, Swap64, VZip, Vec2};
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `digest::...`, `simd::...`.
+
+Target expression selected by the callsite line/column:
+- column: `36`
+- expression: `data.offset(3)`
+- receiver expression: `data`
+- method/function: `offset`
+- call argument 1: `3`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/compressor.rs:138
+```rust
+130:             };
+131:             y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));
+132:         });
+133:     }
+134:     unsafe {
+135:         y.4 ^= ptr::read_unaligned(data);
+136:         y.5 ^= ptr::read_unaligned(data.offset(1));
+137:         y.6 ^= ptr::read_unaligned(data.offset(2));
+138:         y.7 ^= ptr::read_unaligned(data.offset(3));
+139:     }
+140:     *state = [
+141:         y.0.into(),
+142:         y.1.into(),
+143:         y.2.into(),
+144:         y.3.into(),
+145:         y.4.into(),
+146:         y.5.into(),
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/compressor.rs:98-138
+```rust
+ 98: pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {
+ 99:     #[allow(clippy::cast_ptr_alignment)]
+100:     let data = data as *const M::u128x1;
+101:     let mut y = X8::<M>(
+102:         mach.unpack(state[0]),
+103:         mach.unpack(state[1]),
+104:         mach.unpack(state[2]),
+105:         mach.unpack(state[3]),
+106:         mach.unpack(state[4]),
+107:         mach.unpack(state[5]),
+108:         mach.unpack(state[6]),
+109:         mach.unpack(state[7]),
+110:     );
+111:     unsafe {
+112:         y.0 ^= ptr::read_unaligned(data);
+113:         y.1 ^= ptr::read_unaligned(data.offset(1));
+114:         y.2 ^= ptr::read_unaligned(data.offset(2));
+115:         y.3 ^= ptr::read_unaligned(data.offset(3));
+116:     }
+117:     for rc in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {
+118:         unroll7!(j, {
+119:             y = ss(y, unsafe { X2Bytes::<M> { bytes: rc[j] }.x2 });
+120:             y = l(y);
+121:             let f = match j {
+122:                 0 => M::u128x1::swap1,
+123:                 1 => M::u128x1::swap2,
+124:                 2 => M::u128x1::swap4,
+125:                 3 => M::u128x1::swap8,
+126:                 4 => M::u128x1::swap16,
+127:                 5 => M::u128x1::swap32,
+128:                 6 => M::u128x1::swap64,
+129:                 _ => unreachable!(),
+130:             };
+131:             y = X8(y.0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7));
+132:         });
+133:     }
+134:     unsafe {
+135:         y.4 ^= ptr::read_unaligned(data);
+136:         y.5 ^= ptr::read_unaligned(data.offset(1));
+137:         y.6 ^= ptr::read_unaligned(data.offset(2));
+138:         y.7 ^= ptr::read_unaligned(data.offset(3));
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/compressor.rs:8-18
+```rust
+ 8: macro_rules! unroll7 {
+ 9:     ($j:ident, $body:block) => {
+10:         { const $j: usize = 0; $body }
+11:         { const $j: usize = 1; $body }
+12:         { const $j: usize = 2; $body }
+13:         { const $j: usize = 3; $body }
+14:         { const $j: usize = 4; $body }
+15:         { const $j: usize = 5; $body }
+16:         { const $j: usize = 6; $body }
+17:     };
+18: }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-compressor-rs-138-36
+
+Rule id: rule-290
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+ condition value: `std`
+   --> src/compressor.rs:193:1
+    |
+193 | / dispatch!(
+194 | |     mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+195 | |     f8_impl(mach, state, data); } }
+196 | | );
+    | |_^
+    |
+    = note: expected values for `feature` are: `unsat-poc-src-compressor-rs-112-16-rule-324-9e9bf585b2`, `unsat-poc-src-compressor-rs-113-16-rule-324-c54aada4b7`, `unsat-poc-src-compressor-rs-113-36-rule-290-042f4ba6cd`, `unsat-poc-src-compressor-rs-113-36-rule-291-80ee77b338`, `unsat-poc-src-compressor-rs-114-16-rule-324-12bbddbee5`, `unsat-poc-src-compressor-rs-114-36-rule-290-fce6fa638b`, `unsat-poc-src-compressor-rs-114-36-rule-291-67d5c7d61f`, `unsat-poc-src-compressor-rs-115-16-rule-324-c735177de4`, `unsat-poc-src-compressor-rs-115-36-rule-290-bcf798993f`, `unsat-poc-src-compressor-rs-115-36-rule-291-d755390a5a`, `unsat-poc-src-compressor-rs-135-16-rule-324-bd61d2bed7`, `unsat-poc-src-compressor-rs-136-16-rule-324-bdf7cb5743`, `unsat-poc-src-compressor-rs-136-36-rule-290-4a5136a08c`, `unsat-poc-src-compressor-rs-136-36-rule-291-891540a8f0`, `unsat-poc-src-compressor-rs-137-16-rule-324-a674c47894`, `unsat-poc-src-compressor-rs-137-36-rule-290-70980a2fc1`, `unsat-poc-src-compressor-rs-137-36-rule-291-9cd77f6e07`, and `unsat-poc-src-compressor-rs-138-36-rule-290-78e265a6ea`
+    = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+    = help: try referring to `dispatch` crate for guidance on how handle this unexpected cfg
+    = help: the macro `dispatch` may come from an old version of the `ppv_lite86` crate, try updating your dependency with `cargo update -p ppv_lite86`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the macro `dispatch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `M: core::marker::Copy` is not satisfied
+   --> src/compressor.rs:661:28
+    |
+661 |     impl simd::Machine for M {
+    |                            ^ the trait `core::marker::Copy` is not implemented for `M`
+    |
+note: required by a bound in `Machine`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:231:28
+    |
+231 | pub trait Machine: Sized + Copy {
+    |                            ^^^^ required by this bound in `Machine`
+help: consider annotating `M` with `#[derive(Copy)]`
+    |
+659 +     #[derive(Copy)]
+660 |     struct M;
+    |
+
+error[E0277]: the trait bound `u128: u128x1<M>` is not satisfied
+   --> src/compressor.rs:662:23
+    |
+662 |         type u128x1 = u128;
+    |                       ^^^^ the trait `u128x1<M>` is not implemented for `u128`
+    |
+    = help: the following other types implement trait `u128x1<M>`:
+              `ppv_lite86::x86_64::sse2::u128x1_sse2<S3, S4, NI>` implements `u128x1<SseMachine<S3, S4, NI>>`
+              `ppv_lite86::x86_64::sse2::u128x1_sse2<YesS3, YesS4, NI>` implements `u128x1<Avx2Machine<NI>>`
+note: required by a bound in `ppv_lite86::Machine::u128x1`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:234:18
+    |
+234 |     type u128x1: u128x1<Self>;
+    |                  ^^^^^^^^^^^^ required by this bound in `Machine::u128x1`
+
+error[E0277]: the trait bound `vec128_storage: From<u128>` is not satisfied
+   --> src/compressor.rs:662:23
+    |
+662 |         type u128x1 = u128;
+    |                       ^^^^ the trait `From<u128>` is not implemented for `vec128_storage`
+    |
+    = help: the following other types implement trait `From<T>`:
+              `vec128_storage` implements `From<[u32; 4]>`
+              `vec128_storage` implements `From<ppv_lite86::x86_64::sse2::u128x1_sse2<S3, S4, NI>>`
+              `vec128_storage` implements `From<ppv_lite86::x86_64::sse2::u32x4_sse2<S3, S4, NI>>`
+              `vec128_storage` implements `From<ppv_lite86::x86_64::sse2::u64x2_sse2<S3, S4, NI>>`
+    = note: required for `u128` to implement `Into<vec128_storage>`
+    = note: required for `<M as Machine>::u128x1` to implement `u128x1<M>`
+note: required by a bound in `ppv_lite86::Machine::u128x1`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:234:18
+    |
+234 |     type u128x1: u128x1<Self>;
+    |                  ^^^^^^^^^^^^ required by this bound in `Machine::u128x1`
+
+error[E0277]: the trait bound `(u128, u128): u128x2<M>` is not satisfied
+   --> src/compressor.rs:663:23
+    |
+663 |         type u128x2 = (u128, u128);
+    |                       ^^^^^^^^^^^^ the trait `u128x2<M>` is not implemented for `(u128, u128)`
+    |
+    = help: the following other types implement trait `u128x2<M>`:
+              `ppv_lite86::soft::x2<ppv_lite86::x86_64::sse2::u128x1_sse2<S3, S4, NI>, ppv_lite86::x86_64::sse2::G0>` implements `u128x2<SseMachine<S3, S4, NI>>`
+              `ppv_lite86::soft::x2<ppv_lite86::x86_64::sse2::u128x1_sse2<YesS3, YesS4, NI>, ppv_lite86::x86_64::sse2::G0>` implements `u128x2<Avx2Machine<NI>>`
+note: required by a bound in `ppv_lite86::Machine::u128x2`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:239:18
+    |
+239 |     type u128x2: u128x2<Self>;
+    |                  ^^^^^^^^^^^^ required by this bound in `Machine::u128x2`
+
+error[E0277]: the trait bound `(u128, u128): MultiLane<[u128; 2]>` is not satisfied
+   --> src/compressor.rs:663:23
+    |
+663 |         type u128x2 = (u128, u128);
+    |                       ^^^^^^^^^^^^ the trait `MultiLane<[u128; 2]>` is not implemented for `(u128, u128)`
+    |
+    = help: the following other types implement trait `MultiLane<Lanes>`:
+              `ppv_lite86::soft::x2<W, G>` implements `MultiLane<[W; 2]>`
+              `ppv_lite86::soft::x2<ppv_lite86::x86_64::sse2::avx2::u32x4x2_avx2<NI>, ppv_lite86::x86_64::sse2::G0>` implements `MultiLane<[ppv_lite86::x86_64::sse2::u32x4_sse2<YesS3, YesS4, NI>; 4]>`
+              `ppv_lite86::soft::x2<ppv_lite86::x86_64::sse2::u64x2_sse2<S3, S4, NI>, ppv_lite86::x86_64::sse2::G1>` implements `MultiLane<[u64; 4]>`
+              `ppv_lite86::soft::x4<W>` implements `MultiLane<[W; 4]>`
+              `ppv_lite86::x86_64::sse2::avx2::u32x4x2_avx2<NI>` implements `MultiLane<[ppv_lite86::x86_64::sse2::u32x4_sse2<YesS3, YesS4, NI>; 2]>`
+              `ppv_lite86::x86_64::sse2::u128x1_sse2<S3, S4, NI>` implements `MultiLane<[u128; 1]>`
+              `ppv_lite86::x86_64::sse2::u32x4_sse2<S3, NoS4, NI>` implements `MultiLane<[u32; 4]>`
+              `ppv_lite86::x86_64::sse2::u32x4_sse2<S3, YesS4, NI>` implements `MultiLane<[u32; 4]>`
+            and 2 others
+    = note: required for `<M as Machine>::u128x2` to implement `u128x2<M>`
+note: required by a bound in `ppv_lite86::Machine::u128x2`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:239:18
+    |
+239 |     type u128x2: u128x2<Self>;
+    |                  ^^^^^^^^^^^^ required by this bound in `Machine::u128x2`
+
+error[E0277]: the trait bound `(u128, u128): Vec2<u128>` is not satisfied
+   --> src/compressor.rs:663:23
+    |
+663 |         type u128x2 = (u128, u128);
+    |                       ^^^^^^^^^^^^ the trait `Vec2<u128>` is not implemented for `(u128, u128)`
+    |
+    = help: the following other types implement trait `Vec2<W>`:
+              `ppv_lite86::soft::x2<W, G>` implements `Vec2<W>`
+              `ppv_lite86::x86_64::sse2::avx2::u32x4x2_avx2<NI>` implements `Vec2<ppv_lite86::x86_64::sse2::u32x4_sse2<YesS3, YesS4, NI>>`
+              `ppv_lite86::x86_64::sse2::u64x2_sse2<S3, NoS4, NI>` implements `Vec2<u64>`
+              `ppv_lite86::x86_64::sse2::u64x2_sse2<S3, YesS4, NI>` implements `Vec2<u64>`
+    = note: required for `<M as Machine>::u128x2` to implement `u128x2<M>`
+note: required by a bound in `ppv_lite86::Machine::u128x2`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:239:18
+    |
+239 |     type u128x2: u128x2<Self>;
+    |                  ^^^^^^^^^^^^ required by this bound in `Machine::u128x2`
+
+error[E0277]: the trait bound `vec256_storage: From<(u128, u128)>` is not satisfied
+   --> src/compressor.rs:663:23
+    |
+663 |         type u128x2 = (u128, u128);
+    |                       ^^^^^^^^^^^^ the trait `From<(u128, u128)>` is not implemented for `vec256_storage`
+    |
+    = help: the following other types implement trait `From<T>`:
+              `vec256_storage` implements `From<[u64; 4]>`
+              `vec256_storage` implements `From<ppv_lite86::soft::x2<W, G>>`
+              `vec256_storage` implements `From<ppv_lite86::x86_64::sse2::avx2::u32x4x2_avx2<NI>>`
+    = note: required for `(u128, u128)` to implement `Into<vec256_storage>`
+    = note: required for `<M as Machine>::u128x2` to implement `u128x2<M>`
+note: required by a bound in `ppv_lite86::Machine::u128x2`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:239:18
+    |
+239 |     type u128x2: u128x2<Self>;
+    |                  ^^^^^^^^^^^^ required by this bound in `Machine::u128x2`
+
+error[E0186]: method `unpack` has a `self` declaration in the trait, but not in the impl
+   --> src/compressor.rs:666:9
+    |
+666 |         fn unpack(x: simd::vec128_storage) -> Self::u128x1 {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `self` in impl
+    |
+    = note: `unpack` from trait: `fn(Self, S) -> V`
+
+error[E0046]: not all trait items implemented, missing: `u32x4`, `u64x2`, `u32x4x2`, `u64x2x2`, `u64x4`, `u32x4x4`, `u64x2x4`, `u128x4`, `instance`
+   --> src/compressor.rs:661:5
+    |
+661 |     impl simd::Machine for M {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^ missing `u32x4`, `u64x2`, `u32x4x2`, `u64x2x2`, `u64x4`, `u32x4x4`, `u64x2x4`, `u128x4`, `instance` in implementation
+    |
+    = help: implement the missing item: `type u32x4 = /* Type */;`
+    = help: implement the missing item: `type u64x2 = /* Type */;`
+    = help: implement the missing item: `type u32x4x2 = /* Type */;`
+    = help: implement the missing item: `type u64x2x2 = /* Type */;`
+    = help: implement the missing item: `type u64x4 = /* Type */;`
+    = help: implement the missing item: `type u32x4x4 = /* Type */;`
+    = help: implement the missing item: `type u64x2x4 = /* Type */;`
+    = help: implement the missing item: `type u128x4 = /* Type */;`
+    = help: implement the missing item: `unsafe fn instance() -> Self { todo!() }`
+
+error[E0308]: mismatched types
+   --> src/compressor.rs:667:13
+    |
+666 |         fn unpack(x: simd::vec128_storage) -> Self::u128x1 {
+    |                                               ------------ expected `u128` because of return type
+667 |             x
+    |             ^ expected `u128`, found `vec128_storage`
+
+error[E0277]: the trait bound `M: core::marker::Copy` is not satisfied
+   --> src/compressor.rs:666:47
+    |
+666 |         fn unpack(x: simd::vec128_storage) -> Self::u128x1 {
+    |                                               ^^^^ the trait `core::marker::Copy` is not implemented for `M`
+    |
+note: required by a bound in `ppv_lite86::Machine::u128x1`
+   --> /home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/types.rs:231:28
+    |
+231 | pub trait Machine: Sized + Copy {
+    |                            ^^^^ required by this bound in `Machine::u128x1`
+...
+234 |     type u128x1: u128x1<Self>;
+    |          ------ required by a bound in this associated type
+help: consider annotating `M` with `#[derive(Copy)]`
+    |
+659 +     #[derive(Copy)]
+660 |     struct M;
+    |
+
+Some errors have detailed explanations: E0046, E0186, E0277, E0308, E0433.
+For more information about an error, try `rustc --explain E0046`.
+warning: `jh` (lib) generated 2 warnings
+error: could not compile `jh` (lib) due to 12 previous errors; 2 warnings emitted
+
+
+</previous attempt feedback>
+
+
+<rust context>
+
+<file path="benches/digest_bench.rs">
+```rust
+#![feature(test)]
+extern crate test;
+
+use digest::bench_update;
+use jh::Jh256;
+use test::Bencher;
+
+bench_update!(
+    Jh256::default();
+    jh_256_10 10;
+    jh_256_100 100;
+    jh_256_1000 1000;
+    jh_256_10000 10000;
+);
+
+```
+</file>
+
+<file path="benches/machine.rs">
+```rust
+#![feature(test)]
+extern crate test;
+
+use simd::{vec128_storage, x86_64, Machine};
+use test::Bencher;
+
+macro_rules! mach_bench {
+    ($MachName:ident, $feature:expr, $enable:expr) => {
+        #[allow(non_snake_case)]
+        #[bench]
+        pub fn $MachName(b: &mut Bencher) {
+            if !$enable {
+                return;
+            }
+            let m = unsafe { x86_64::$MachName::instance() };
+            let mut state = [vec128_storage::default(); 8];
+            let input = [0; 64];
+            #[target_feature(enable = $feature)]
+            unsafe fn runner<M: Machine>(
+                m: M,
+                state: &mut [vec128_storage; 8],
+                input: *const [u8; 64],
+            ) {
+                for _ in 0..160 {
+                    jh::f8_impl(m, state, input as *const _);
+                }
+            }
+            b.iter(|| unsafe { runner(m, &mut state, &input) });
+            b.bytes = 10240;
+        }
+    };
+}
+
+mach_bench!(SSE2, "sse2", is_x86_feature_detected!("sse2"));
+mach_bench!(SSSE3, "ssse3", is_x86_feature_detected!("ssse3"));
+mach_bench!(SSE41, "sse4.1", is_x86_feature_detected!("sse4.1"));
+mach_bench!(AVX, "avx", is_x86_feature_detected!("avx"));
+mach_bench!(AVX2, "avx2", is_x86_feature_detected!("avx2"));
+
+```
+</file>
+
+<file path="examples/src-compressor-rs-112-16-rule-447.rs">
+```rust
+fn main() {
+    use jh::Digest;
+    use jh::Jh256;
+
+    // This is a safe, public API call.
+    // It hashes an empty message, which is enough to exercise the internal
+    // compressor path that uses `ptr::read_unaligned(data.offset(1..3))`.
+    let mut hasher = Jh256::new();
+    let _ = hasher.finalize();
+
+    println!("hashed empty message");
+}
+
+```
+</file>
+
+<file path="src/compressor.rs">
+```rust
+#![allow(non_upper_case_globals)]
+use core::ptr;
+use digest::generic_array::{typenum::U64, GenericArray};
+use simd::{dispatch, vec128_storage, AndNot, Machine, Swap64, VZip, Vec2};
+#[rustfmt::skip]
+macro_rules! unroll7 {
+    ($j:ident, $body:block) => {
+        { const $j : usize = 0; $body } { const $j : usize = 1; $body } { const $j :
+        usize = 2; $body } { const $j : usize = 3; $body } { const $j : usize = 4; $body
+        } { const $j : usize = 5; $body } { const $j : usize = 6; $body }
+    };
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct X8<M: Machine>(
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+    M::u128x1,
+);
+impl<M: Machine> X8<M> {
+    #[inline(always)]
+    fn zip(self) -> (M::u128x2, M::u128x2, M::u128x2, M::u128x2) {
+        (
+            [self.0, self.1].vzip(),
+            [self.2, self.3].vzip(),
+            [self.4, self.5].vzip(),
+            [self.6, self.7].vzip(),
+        )
+    }
+    #[inline(always)]
+    fn unzip((a, b, c, d): (M::u128x2, M::u128x2, M::u128x2, M::u128x2)) -> Self {
+        X8(
+            a.extract(0),
+            a.extract(1),
+            b.extract(0),
+            b.extract(1),
+            c.extract(0),
+            c.extract(1),
+            d.extract(0),
+            d.extract(1),
+        )
+    }
+}
+/// two Sboxes computed in parallel; each Sbox implements S0 and S1, selected by a constant bit
+#[inline(always)]
+fn ss<M: Machine>(state: X8<M>, mut k: M::u128x2) -> X8<M> {
+    let mut m = state.zip();
+    m.3 = !m.3;
+    m.0 ^= m.2.andnot(k);
+    k ^= m.0 & m.1;
+    m.0 ^= m.3 & m.2;
+    m.3 ^= m.1.andnot(m.2);
+    m.1 ^= m.0 & m.2;
+    m.2 ^= m.3.andnot(m.0);
+    m.0 ^= m.1 | m.3;
+    m.3 ^= m.1 & m.2;
+    m.2 ^= k;
+    m.1 ^= k & m.0;
+    X8::unzip(m)
+}
+#[inline(always)]
+fn l<M: Machine>(mut y: X8<M>) -> X8<M> {
+    y.1 ^= y.2;
+    y.3 ^= y.4;
+    y.5 ^= y.6 ^ y.0;
+    y.7 ^= y.0;
+    y.0 ^= y.3;
+    y.2 ^= y.5;
+    y.4 ^= y.7 ^ y.1;
+    y.6 ^= y.1;
+    y
+}
+union X2Bytes<M: Machine> {
+    x2: M::u128x2,
+    bytes: [u8; 32],
+}
+#[doc(hidden)]
+#[inline(never)]
+pub fn f8_impl<M: Machine>(mach: M, state: &mut [vec128_storage; 8], data: *const u8) {
+    #[allow(clippy::cast_ptr_alignment)]
+    let data = data as *const M::u128x1;
+    let mut y = X8::<
+        M,
+    >(
+        mach.unpack(state[0]),
+        mach.unpack(state[1]),
+        mach.unpack(state[2]),
+        mach.unpack(state[3]),
+        mach.unpack(state[4]),
+        mach.unpack(state[5]),
+        mach.unpack(state[6]),
+        mach.unpack(state[7]),
+    );
+    unsafe {
+        klee_ext_bind::callsite!("src-compressor-rs-112-16");
+        let mut __klee_ret_src_compressor_rs_112_16_read_unaligned = ptr::read_unaligned(
+            data,
+        );
+        y.0 ^= __klee_ret_src_compressor_rs_112_16_read_unaligned;
+        let __klee_arg0 = 1;
+        klee_ext_bind::bind_arg_ptr_value(0, data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg0);
+        klee_ext_bind::callsite!("src-compressor-rs-113-36");
+        let mut __klee_ret_src_compressor_rs_113_36_offset = data.offset(__klee_arg0);
+        klee_ext_bind::callsite!("src-compressor-rs-113-16");
+        let mut __klee_ret_src_compressor_rs_113_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_113_36_offset,
+        );
+        y.1 ^= __klee_ret_src_compressor_rs_113_16_read_unaligned;
+        let __klee_arg1 = 2;
+        klee_ext_bind::bind_arg_ptr_value(0, data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg1);
+        klee_ext_bind::callsite!("src-compressor-rs-114-36");
+        let mut __klee_ret_src_compressor_rs_114_36_offset = data.offset(__klee_arg1);
+        klee_ext_bind::callsite!("src-compressor-rs-114-16");
+        let mut __klee_ret_src_compressor_rs_114_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_114_36_offset,
+        );
+        y.2 ^= __klee_ret_src_compressor_rs_114_16_read_unaligned;
+        let __klee_arg2 = 3;
+        klee_ext_bind::bind_arg_ptr_value(0, data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
+        klee_ext_bind::callsite!("src-compressor-rs-115-36");
+        let mut __klee_ret_src_compressor_rs_115_36_offset = data.offset(__klee_arg2);
+        klee_ext_bind::callsite!("src-compressor-rs-115-16");
+        let mut __klee_ret_src_compressor_rs_115_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_115_36_offset,
+        );
+        y.3 ^= __klee_ret_src_compressor_rs_115_16_read_unaligned;
+    }
+    for rc in crate::consts::E8_BITSLICE_ROUNDCONSTANT.chunks_exact(7) {
+        unroll7!(
+            j, { y = ss(y, unsafe { X2Bytes::< M > { bytes : rc[j] } .x2 }); y = l(y);
+            let f = match j { 0 => M::u128x1::swap1, 1 => M::u128x1::swap2, 2 =>
+            M::u128x1::swap4, 3 => M::u128x1::swap8, 4 => M::u128x1::swap16, 5 =>
+            M::u128x1::swap32, 6 => M::u128x1::swap64, _ => unreachable!(), }; y = X8(y
+            .0, f(y.1), y.2, f(y.3), y.4, f(y.5), y.6, f(y.7)); }
+        );
+    }
+    unsafe {
+        klee_ext_bind::callsite!("src-compressor-rs-135-16");
+        let mut __klee_ret_src_compressor_rs_135_16_read_unaligned = ptr::read_unaligned(
+            data,
+        );
+        y.4 ^= __klee_ret_src_compressor_rs_135_16_read_unaligned;
+        let __klee_arg3 = 1;
+        klee_ext_bind::bind_arg_ptr_value(0, data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg3);
+        klee_ext_bind::callsite!("src-compressor-rs-136-36");
+        let mut __klee_ret_src_compressor_rs_136_36_offset = data.offset(__klee_arg3);
+        klee_ext_bind::callsite!("src-compressor-rs-136-16");
+        let mut __klee_ret_src_compressor_rs_136_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_136_36_offset,
+        );
+        y.5 ^= __klee_ret_src_compressor_rs_136_16_read_unaligned;
+        let __klee_arg4 = 2;
+        klee_ext_bind::bind_arg_ptr_value(0, data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg4);
+        klee_ext_bind::callsite!("src-compressor-rs-137-36");
+        let mut __klee_ret_src_compressor_rs_137_36_offset = data.offset(__klee_arg4);
+        klee_ext_bind::callsite!("src-compressor-rs-137-16");
+        let mut __klee_ret_src_compressor_rs_137_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_137_36_offset,
+        );
+        y.6 ^= __klee_ret_src_compressor_rs_137_16_read_unaligned;
+        let __klee_arg5 = 3;
+        klee_ext_bind::bind_arg_ptr_value(0, data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg5);
+        klee_ext_bind::callsite!("src-compressor-rs-138-36");
+        let mut __klee_ret_src_compressor_rs_138_36_offset = data.offset(__klee_arg5);
+        klee_ext_bind::callsite!("src-compressor-rs-138-16");
+        let mut __klee_ret_src_compressor_rs_138_16_read_unaligned = ptr::read_unaligned(
+            __klee_ret_src_compressor_rs_138_36_offset,
+        );
+        y.7 ^= __klee_ret_src_compressor_rs_138_16_read_unaligned;
+    }
+    *state = [
+        y.0.into(),
+        y.1.into(),
+        y.2.into(),
+        y.3.into(),
+        y.4.into(),
+        y.5.into(),
+        y.6.into(),
+        y.7.into(),
+    ];
+}
+dispatch!(
+    mach, M, { fn f8(state : & mut [vec128_storage; 8], data : * const u8) {
+    f8_impl(mach, state, data); } }
+);
+pub(crate) union Compressor {
+    cv: [vec128_storage; 8],
+    bytes: [u8; 128],
+}
+impl Compressor {
+    #[inline]
+    pub(crate) fn new(bytes: [u8; 128]) -> Self {
+        Compressor { bytes }
+    }
+    #[inline]
+    pub(crate) fn update(&mut self, data: &GenericArray<u8, U64>) {
+        f8(unsafe { &mut self.cv }, data.as_ptr());
+    }
+    #[inline]
+    pub(crate) fn finalize(&self) -> &[u8; 128] {
+        unsafe { &self.bytes }
+    }
+}
+impl Clone for Compressor {
+    fn clone(&self) -> Self {
+        Self {
+            bytes: unsafe { self.bytes },
+        }
+    }
+}
+
+```
+</file>
+
+<file path="src/consts.rs">
+```rust
+use hex_literal::hex;
+
+pub(crate) const JH224_H0: [u8; 128] = hex!(
+    "2dfedd62f99a98acae7cacd619d634e7a4831005bc301216b86038c6c9661494"
+    "66d9899f2580706fce9ea31b1d9b1adc11e8325f7b366e10f994857f02fa06c1"
+    "1b4f1b5cd8c840b397f6a17f6e738099dcdf93a5adeaa3d3a431e8dec9539a68"
+    "22b4a98aec86a1e4d574ac959ce56cf015960deab5ab2bbf9611dcf0dd64ea6e"
+);
+
+pub(crate) const JH256_H0: [u8; 128] = hex!(
+    "eb98a3412c20d3eb92cdbe7b9cb245c11c93519160d4c7fa260082d67e508a03"
+    "a4239e267726b945e0fb1a48d41a9477cdb5ab26026b177a56f024420fff2fa8"
+    "71a396897f2e4d751d144908f77de262277695f776248f9487d5b6574780296c"
+    "5c5e272dac8e0d6c518450c657057a0f7be4d367702412ea89e3ab13d31cd769"
+);
+
+pub(crate) const JH384_H0: [u8; 128] = hex!(
+    "481e3bc6d813398a6d3b5e894ade879b63faea68d480ad2e332ccb21480f8267"
+    "98aec84d9082b928d455ea304111424936f555b2924847ecc7250a93baf43ce1"
+    "569b7f8a27db454c9efcbd496397af0e589fc27d26aa80cd80c08b8c9deb2eda"
+    "8a7981e8f8d5373af43967adddd17a71a9b4d3bda475d394976c3fba9842737f"
+);
+
+pub(crate) const JH512_H0: [u8; 128] = hex!(
+    "6fd14b963e00aa17636a2e057a15d5438a225e8d0c97ef0be9341259f2b3c361"
+    "891da0c1536f801e2aa9056bea2b6d80588eccdb2075baa6a90f3a76baf83bf7"
+    "0169e60541e34a6946b58a8e2e6fe65a1047a7d0c1843c243b6e71b12d5ac199"
+    "cf57f6ec9db1f856a706887c5716b156e3c2fcdfe68517fb545a4678cc8cdd4b"
+);
+
+pub(crate) const E8_BITSLICE_ROUNDCONSTANT: [[u8; 32]; 42] = [
+    hex!("72d5dea2df15f8677b84150ab723155781abd6904d5a87f64e9f4fc5c3d12b40"),
+    hex!("ea983ae05c45fa9c03c5d29966b2999a660296b4f2bb538ab556141a88dba231"),
+    hex!("03a35a5c9a190edb403fb20a87c144101c051980849e951d6f33ebad5ee7cddc"),
+    hex!("10ba139202bf6b41dc786515f7bb27d00a2c813937aa78503f1abfd2410091d3"),
+    hex!("422d5a0df6cc7e90dd629f9c92c097ce185ca70bc72b44acd1df65d663c6fc23"),
+    hex!("976e6c039ee0b81a2105457e446ceca8eef103bb5d8e61fafd9697b294838197"),
+    hex!("4a8e8537db03302f2a678d2dfb9f6a958afe7381f8b8696c8ac77246c07f4214"),
+    hex!("c5f4158fbdc75ec475446fa78f11bb8052de75b7aee488bc82b8001e98a6a3f4"),
+    hex!("8ef48f33a9a36315aa5f5624d5b7f989b6f1ed207c5ae0fd36cae95a06422c36"),
+    hex!("ce2935434efe983d533af974739a4ba7d0f51f596f4e81860e9dad81afd85a9f"),
+    hex!("a7050667ee34626a8b0b28be6eb9172747740726c680103fe0a07e6fc67e487b"),
+    hex!("0d550aa54af8a4c091e3e79f978ef19e8676728150608dd47e9e5a41f3e5b062"),
+    hex!("fc9f1fec4054207ae3e41a00cef4c9844fd794f59dfa95d8552e7e1124c354a5"),
+    hex!("5bdf7228bdfe6e2878f57fe20fa5c4b205897cefee49d32e447e9385eb28597f"),
+    hex!("705f6937b324314a5e8628f11dd6e465c71b770451b920e774fe43e823d4878a"),
+    hex!("7d29e8a3927694f2ddcb7a099b30d9c11d1b30fb5bdc1be0da24494ff29c82bf"),
+    hex!("a4e7ba31b470bfff0d324405def8bc483baefc3253bbd339459fc3c1e0298ba0"),
+    hex!("e5c905fdf7ae090f947034124290f134a271b701e344ed95e93b8e364f2f984a"),
+    hex!("88401d63a06cf61547c1444b8752afff7ebb4af1e20ac6304670b6c5cc6e8ce6"),
+    hex!("a4d5a456bd4fca00da9d844bc83e18ae7357ce453064d1ade8a6ce68145c2567"),
+    hex!("a3da8cf2cb0ee11633e906589a94999a1f60b220c26f847bd1ceac7fa0d18518"),
+    hex!("32595ba18ddd19d3509a1cc0aaa5b4469f3d6367e4046bbaf6ca19ab0b56ee7e"),
+    hex!("1fb179eaa9282174e9bdf7353b3651ee1d57ac5a7550d3763a46c2fea37d7001"),
+    hex!("f735c1af98a4d84278edec209e6b677941836315ea3adba8fac33b4d32832c83"),
+    hex!("a7403b1f1c2747f35940f034b72d769ae73e4e6cd2214ffdb8fd8d39dc5759ef"),
+    hex!("8d9b0c492b49ebda5ba2d74968f3700d7d3baed07a8d5584f5a5e9f0e4f88e65"),
+    hex!("a0b8a2f436103b530ca8079e753eec5a9168949256e8884f5bb05c55f8babc4c"),
+    hex!("e3bb3b99f387947b75daf4d6726b1c5d64aeac28dc34b36d6c34a550b828db71"),
+    hex!("f861e2f2108d512ae3db643359dd75fc1cacbcf143ce3fa267bbd13c02e843b0"),
+    hex!("330a5bca8829a1757f34194db416535c923b94c30e794d1e797475d7b6eeaf3f"),
+    hex!("eaa8d4f7be1a39215cf47e094c23275126a32453ba323cd244a3174a6da6d5ad"),
+    hex!("b51d3ea6aff2c90883593d98916b3c564cf87ca17286604d46e23ecc086ec7f6"),
+    hex!("2f9833b3b1bc765e2bd666a5efc4e62a06f4b6e8bec1d43674ee8215bcef2163"),
+    hex!("fdc14e0df453c969a77d5ac4065858267ec1141606e0fa167e90af3d28639d3f"),
+    hex!("d2c9f2e3009bd20c5faace30b7d40c30742a5116f2e032980deb30d8e3cef89a"),
+    hex!("4bc59e7bb5f17992ff51e66e048668d39b234d57e6966731cce6a6f3170a7505"),
+    hex!("b17681d913326cce3c175284f805a262f42bcbb378471547ff46548223936a48"),
+    hex!("38df58074e5e6565f2fc7c89fc86508e31702e44d00bca86f04009a23078474e"),
+    hex!("65a0ee39d1f73883f75ee937e42c3abd2197b2260113f86fa344edd1ef9fdee7"),
+    hex!("8ba0df15762592d93c85f7f612dc42bed8a7ec7cab27b07e538d7ddaaa3ea8de"),
+    hex!("aa25ce93bd0269d85af643fd1a7308f9c05fefda174a19a5974d66334cfd216a"),
+    hex!("35b49831db411570ea1e0fbbedcd549b9ad063a151974072f6759dbf91476fe2"),
+];
+
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! Implementation of the [JH] cryptographic hash function.
+//!
+//! There are 4 standard versions of the JH hash function:
+//!
+//! * [JH-224][Jh224]
+//! * [JH-256][Jh256]
+//! * [JH-384][Jh384]
+//! * [JH-512][Jh512]
+//!
+//! # Examples
+//!
+//! Hash functionality is usually accessed via the [`Digest`] trait:
+//!
+//! ```
+//! use hex_literal::hex;
+//! use jh::{Digest, Jh256};
+//!
+//! // create a JH-256 object
+//! let mut hasher = Jh256::new();
+//!
+//! // write input message
+//! hasher.update(b"hello");
+//!
+//! // read hash digest
+//! let result = hasher.finalize();
+//!
+//! let expected = hex!("94fd3f4c564957c6754265676bf8b244c707d3ffb294e18af1f2e4f9b8306089");
+//! assert_eq!(result[..], expected[..]);
+//! ```
+//! Also see [RustCrypto/hashes] readme.
+//!
+//! [JH]: https://en.wikipedia.org/wiki/JH_(hash_function)
+//! [RustCrypto/hashes]: https://github.com/RustCrypto/hashes
+#![no_std]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/RustCrypto/media/6ee8e381/logo.svg",
+    html_favicon_url = "https://raw.githubusercontent.com/RustCrypto/media/6ee8e381/logo.svg"
+)]
+#![warn(missing_docs, rust_2018_idioms)]
+
+mod compressor;
+mod consts;
+
+// This function is exported only for benchmarks
+pub use compressor::f8_impl;
+
+pub use digest::{self, Digest};
+
+use crate::compressor::Compressor;
+use core::fmt;
+use digest::{
+    block_buffer::Eager,
+    core_api::{
+        AlgorithmName, Block, Buffer, BufferKindUser, CoreWrapper, CtVariableCoreWrapper,
+        TruncSide, UpdateCore, VariableOutputCore,
+    },
+    crypto_common::{BlockSizeUser, OutputSizeUser},
+    generic_array::typenum::{Unsigned, U28, U32, U48, U64},
+    HashMarker, InvalidOutputSize, Output,
+};
+
+/// Core JH hasher state
+#[derive(Clone)]
+pub struct JhCore {
+    state: Compressor,
+    block_len: u64,
+}
+
+impl HashMarker for JhCore {}
+
+impl BlockSizeUser for JhCore {
+    type BlockSize = U64;
+}
+
+impl BufferKindUser for JhCore {
+    type BufferKind = Eager;
+}
+
+impl OutputSizeUser for JhCore {
+    type OutputSize = U64;
+}
+
+impl UpdateCore for JhCore {
+    #[inline]
+    fn update_blocks(&mut self, blocks: &[Block<Self>]) {
+        self.block_len = self.block_len.wrapping_add(blocks.len() as u64);
+        for b in blocks {
+            self.state.update(b);
+        }
+    }
+}
+
+impl VariableOutputCore for JhCore {
+    const TRUNC_SIDE: TruncSide = TruncSide::Right;
+
+    #[inline]
+    fn new(output_size: usize) -> Result<Self, InvalidOutputSize> {
+        let h0 = match output_size {
+            28 => consts::JH224_H0,
+            32 => consts::JH256_H0,
+            48 => consts::JH384_H0,
+            64 => consts::JH512_H0,
+            _ => return Err(InvalidOutputSize),
+        };
+        Ok(Self {
+            state: Compressor::new(h0),
+            block_len: 0,
+        })
+    }
+
+    #[inline]
+    fn finalize_variable_core(&mut self, buffer: &mut Buffer<Self>, out: &mut Output<Self>) {
+        let Self { state, block_len } = self;
+        let bit_len = block_len
+            .wrapping_mul(Self::BlockSize::U64)
+            .wrapping_add(buffer.get_pos() as u64)
+            .wrapping_mul(8);
+        if buffer.get_pos() == 0 {
+            buffer.len64_padding_be(bit_len, |b| state.update(b));
+        } else {
+            buffer.digest_pad(0x80, &[], |b| state.update(b));
+            buffer.digest_pad(0, &bit_len.to_be_bytes(), |b| state.update(b));
+        }
+        out.copy_from_slice(&self.state.finalize()[64..]);
+    }
+}
+
+impl AlgorithmName for JhCore {
+    fn write_alg_name(f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Jh")
+    }
+}
+
+impl fmt::Debug for JhCore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("JhCore { ... }")
+    }
+}
+
+/// Jh-224 hasher state
+pub type Jh224 = CoreWrapper<CtVariableCoreWrapper<JhCore, U28>>;
+/// Jh-256 hasher state
+pub type Jh256 = CoreWrapper<CtVariableCoreWrapper<JhCore, U32>>;
+/// Jh-384 hasher state
+pub type Jh384 = CoreWrapper<CtVariableCoreWrapper<JhCore, U48>>;
+/// Jh-512 hasher state
+pub type Jh512 = CoreWrapper<CtVariableCoreWrapper<JhCore, U64>>;
+
+
+```
+</file>
+
+<file path="tests/lib.rs">
+```rust
+use digest::{dev::fixed_test, new_test};
+
+new_test!(long_224, "LongMsgKAT_224", jh::Jh224, fixed_test);
+new_test!(long_256, "LongMsgKAT_256", jh::Jh256, fixed_test);
+new_test!(long_384, "LongMsgKAT_384", jh::Jh384, fixed_test);
+new_test!(long_512, "LongMsgKAT_512", jh::Jh512, fixed_test);
+
+new_test!(short_224, "ShortMsgKAT_224", jh::Jh224, fixed_test);
+new_test!(short_256, "ShortMsgKAT_256", jh::Jh256, fixed_test);
+new_test!(short_384, "ShortMsgKAT_384", jh::Jh384, fixed_test);
+new_test!(short_512, "ShortMsgKAT_512", jh::Jh512, fixed_test);
+
+```
+</file>
+</rust context>

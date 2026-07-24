@@ -1,0 +1,29 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-14-48-rule-291-0808f8e5fc")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_14_48_rule_291_0808f8e5fc() {
+    use crate::{gas::Gas, host::DummyHost, instructions::control, interpreter::Interpreter};
+    use revm_primitives::{Bytecode, Bytes};
+
+    let code = Bytes::from(vec![0xE0, 0x00, 0x00, 0x00]);
+    let contract = crate::Contract::new(
+        Bytes::new(),
+        Bytecode::LegacyRaw(code),
+        None,
+        revm_primitives::Address::ZERO,
+        None,
+        revm_primitives::Address::ZERO,
+        revm_primitives::U256::ZERO,
+    );
+
+    let mut interpreter = Interpreter::new(contract, 10_000, false);
+    interpreter.is_eof = true;
+    interpreter.gas = Gas::new(10_000);
+
+    let backing = [0u8; 1];
+    interpreter.instruction_pointer = backing.as_ptr();
+
+    let mut host = DummyHost::default();
+    control::rjump(&mut interpreter, &mut host);
+}
+```

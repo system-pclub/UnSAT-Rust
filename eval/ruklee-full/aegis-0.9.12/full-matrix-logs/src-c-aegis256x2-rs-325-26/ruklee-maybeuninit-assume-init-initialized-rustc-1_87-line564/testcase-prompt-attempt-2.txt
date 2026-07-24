@@ -1,0 +1,2593 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-c-aegis256x2-rs-325-26-ruklee-maybeuninit-assume-init-initialized-rustc-1-87-fe54c1fed8`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_c_aegis256x2_rs_325_26_ruklee_maybeuninit_assume_init_initialized_rustc_1_87_fe54c1fed8`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-c-aegis256x2-rs-325-26-ruklee-maybeuninit-assume-init-initialized-rustc-1-87-fe54c1fed8")]`.
+- Define `pub extern "C" fn __unsat_poc_src_c_aegis256x2_rs_325_26_ruklee_maybeuninit_assume_init_initialized_rustc_1_87_fe54c1fed8()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-c-aegis256x2-rs-325-26-ruklee-maybeuninit-assume-init-initialized-rustc-1-87-fe54c1fed8")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_c_aegis256x2_rs_325_26_ruklee_maybeuninit_assume_init_initialized_rustc_1_87_fe54c1fed8() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "extdsl_obj_16826922203095450774"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "c::aegis256x2::Aegis256X2Mac",
+    "path": "src/c/aegis256x2.rs",
+    "line_start": 251,
+    "body_end": 251,
+    "is_public": true
+  },
+  "caller": {
+    "name": "c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new_with_nonce",
+    "path": "src/c/aegis256x2.rs",
+    "line_start": 311,
+    "line_end": 314,
+    "body_end": 327,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "c::aegis256x2::Aegis256X2Mac<TAG_BYTES>"
+  },
+  "callee": {
+    "name": "std::mem::MaybeUninit::<T>::assume_init",
+    "path": "rust/library/core/src/mem/maybe_uninit.rs",
+    "line_start": 564,
+    "line_end": 614,
+    "body_end": 614,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "T"
+  },
+  "callsite": {
+    "line": 325,
+    "col": 26,
+    "path": "src/c/aegis256x2.rs",
+    "id": "src-c-aegis256x2-rs-325-26"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "c::aegis256x2::aegis256x2_mac_state",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `c::aegis256x2::Aegis256X2Mac` for `receiver` using constructor(s): `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new`, `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new_with_nonce` -> call target caller `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new_with_nonce`
+2. construct `c::aegis256x2::Aegis256X2Mac` for `receiver` using constructor(s): `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new`, `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new_with_nonce` -> call target caller `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new_with_nonce` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `c::aegis256x2::Aegis256X2Mac::<TAG_BYTES>::new_with_nonce`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+```
+
+Target expression selected by the callsite line/column:
+- column: `26`
+- expression: `st.assume_init()`
+- receiver expression: `st`
+- method/function: `assume_init`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/c/aegis256x2.rs:325
+```rust
+317:             "Invalid tag length, must be 16 or 32"
+318:         );
+319:         Self::ensure_init();
+320:         let mut st = MaybeUninit::<aegis256x2_mac_state>::uninit();
+321:         unsafe {
+322:             aegis256x2_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+323:         }
+324:         Aegis256X2Mac {
+325:             st: unsafe { st.assume_init() },
+326:         }
+327:     }
+328: 
+329:     /// Updates the MAC state with a message
+330:     ///
+331:     /// This function can be called multiple times to update the MAC state with additional data.
+332:     pub fn update(&mut self, m: &[u8]) {
+333:         unsafe {
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/c/aegis256x2.rs:314-325
+```rust
+314:     pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+315:         assert!(
+316:             TAG_BYTES == 16 || TAG_BYTES == 32,
+317:             "Invalid tag length, must be 16 or 32"
+318:         );
+319:         Self::ensure_init();
+320:         let mut st = MaybeUninit::<aegis256x2_mac_state>::uninit();
+321:         unsafe {
+322:             aegis256x2_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+323:         }
+324:         Aegis256X2Mac {
+325:             st: unsafe { st.assume_init() },
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/c/aegis128l.rs:85-108
+```rust
+ 85:     fn ensure_init() {
+ 86:         #[cfg(feature = "std")]
+ 87:         INIT.call_once(|| assert_eq!(unsafe { aegis_init() }, 0));
+ 88: 
+ 89:         #[cfg(not(feature = "std"))]
+ 90:         {
+ 91:             use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+ 92: 
+ 93:             if INITIALIZED.load(Acquire) {
+ 94:                 return;
+ 95:             }
+ 96:             let initializing = match INITIALIZING.compare_exchange(false, true, Acquire, Relaxed) {
+ 97:                 Ok(initializing) => initializing,
+ 98:                 Err(initializing) => initializing,
+ 99:             };
+100:             if initializing {
+101:                 while !INITIALIZED.load(Acquire) {}
+102:             } else {
+103:                 assert_eq!(unsafe { aegis_init() }, 0);
+104:                 INITIALIZED.store(true, Release);
+105:                 INITIALIZING.store(false, Release);
+106:             }
+107:         }
+108:     }
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/aead-0.5.2/src/lib.rs:94-233
+```rust
+ 94: pub type Nonce<A> = GenericArray<u8, <A as AeadCore>::NonceSize>;
+ 95: 
+ 96: /// Tag: authentication code which ensures ciphertexts are authentic
+ 97: pub type Tag<A> = GenericArray<u8, <A as AeadCore>::TagSize>;
+ 98: 
+ 99: /// Authenticated Encryption with Associated Data (AEAD) algorithm core trait.
+100: ///
+101: /// Defines nonce, tag, and overhead sizes that are consumed by various other
+102: /// `Aead*` traits.
+103: pub trait AeadCore {
+104:     /// The length of a nonce.
+105:     type NonceSize: ArrayLength<u8>;
+106: 
+107:     /// The maximum length of the nonce.
+108:     type TagSize: ArrayLength<u8>;
+109: 
+110:     /// The upper bound amount of additional space required to support a
+111:     /// ciphertext vs. a plaintext.
+112:     type CiphertextOverhead: ArrayLength<u8> + Unsigned;
+113: 
+114:     /// Generate a random nonce for this AEAD algorithm.
+115:     ///
+116:     /// AEAD algorithms accept a parameter to encryption/decryption called
+117:     /// a "nonce" which must be unique every time encryption is performed and
+118:     /// never repeated for the same key. The nonce is often prepended to the
+119:     /// ciphertext. The nonce used to produce a given ciphertext must be passed
+120:     /// to the decryption function in order for it to decrypt correctly.
+121:     ///
+122:     /// Nonces don't necessarily have to be random, but it is one strategy
+123:     /// which is implemented by this function.
+124:     ///
+125:     /// # ⚠️Security Warning
+126:     ///
+127:     /// AEAD algorithms often fail catastrophically if nonces are ever repeated
+128:     /// (with SIV modes being an exception).
+129:     ///
+130:     /// Using random nonces runs the risk of repeating them unless the nonce
+131:     /// size is particularly large (e.g. 192-bit extended nonces used by the
+132:     /// `XChaCha20Poly1305` and `XSalsa20Poly1305` constructions.
+133:     ///
+134:     /// [NIST SP 800-38D] recommends the following:
+135:     ///
+136:     /// > The total number of invocations of the authenticated encryption
+137:     /// > function shall not exceed 2^32, including all IV lengths and all
+138:     /// > instances of the authenticated encryption function with the given key.
+139:     ///
+140:     /// Following this guideline, only 4,294,967,296 messages with random
+141:     /// nonces can be encrypted under a given key. While this bound is high,
+142:     /// it's possible to encounter in practice, and systems which might
+143:     /// reach it should consider alternatives to purely random nonces, like
+144:     /// a counter or a combination of a random nonce + counter.
+145:     ///
+146:     /// See the [`stream`] module for a ready-made implementation of the latter.
+147:     ///
+148:     /// [NIST SP 800-38D]: https://csrc.nist.gov/publications/detail/sp/800-38d/final
+149:     #[cfg(feature = "rand_core")]
+150:     #[cfg_attr(docsrs, doc(cfg(feature = "rand_core")))]
+151:     fn generate_nonce(mut rng: impl CryptoRng + RngCore) -> Nonce<Self>
+152:     where
+153:         Nonce<Self>: Default,
+154:     {
+155:         let mut nonce = Nonce::<Self>::default();
+156:         rng.fill_bytes(&mut nonce);
+157:         nonce
+158:     }
+159: }
+160: 
+161: /// Authenticated Encryption with Associated Data (AEAD) algorithm.
+162: ///
+163: /// This trait is intended for use with stateless AEAD algorithms. The
+164: /// [`AeadMut`] trait provides a stateful interface.
+165: #[cfg(feature = "alloc")]
+166: #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
+167: pub trait Aead: AeadCore {
+168:     /// Encrypt the given plaintext payload, and return the resulting
+169:     /// ciphertext as a vector of bytes.
+170:     ///
+171:     /// The [`Payload`] type can be used to provide Additional Associated Data
+172:     /// (AAD) along with the message: this is an optional bytestring which is
+173:     /// not encrypted, but *is* authenticated along with the message. Failure
+174:     /// to pass the same AAD that was used during encryption will cause
+175:     /// decryption to fail, which is useful if you would like to "bind" the
+176:     /// ciphertext to some other identifier, like a digital signature key
+177:     /// or other identifier.
+178:     ///
+179:     /// If you don't care about AAD and just want to encrypt a plaintext
+180:     /// message, `&[u8]` will automatically be coerced into a `Payload`:
+181:     ///
+182:     /// ```nobuild
+183:     /// let plaintext = b"Top secret message, handle with care";
+184:     /// let ciphertext = cipher.encrypt(nonce, plaintext);
+185:     /// ```
+186:     ///
+187:     /// The default implementation assumes a postfix tag (ala AES-GCM,
+188:     /// AES-GCM-SIV, ChaCha20Poly1305). [`Aead`] implementations which do not
+189:     /// use a postfix tag will need to override this to correctly assemble the
+190:     /// ciphertext message.
+191:     fn encrypt<'msg, 'aad>(
+192:         &self,
+193:         nonce: &Nonce<Self>,
+194:         plaintext: impl Into<Payload<'msg, 'aad>>,
+195:     ) -> Result<Vec<u8>>;
+196: 
+197:     /// Decrypt the given ciphertext slice, and return the resulting plaintext
+198:     /// as a vector of bytes.
+199:     ///
+200:     /// See notes on [`Aead::encrypt()`] about allowable message payloads and
+201:     /// Associated Additional Data (AAD).
+202:     ///
+203:     /// If you have no AAD, you can call this as follows:
+204:     ///
+205:     /// ```nobuild
+206:     /// let ciphertext = b"...";
+207:     /// let plaintext = cipher.decrypt(nonce, ciphertext)?;
+208:     /// ```
+209:     ///
+210:     /// The default implementation assumes a postfix tag (ala AES-GCM,
+211:     /// AES-GCM-SIV, ChaCha20Poly1305). [`Aead`] implementations which do not
+212:     /// use a postfix tag will need to override this to correctly parse the
+213:     /// ciphertext message.
+214:     fn decrypt<'msg, 'aad>(
+215:         &self,
+216:         nonce: &Nonce<Self>,
+217:         ciphertext: impl Into<Payload<'msg, 'aad>>,
+218:     ) -> Result<Vec<u8>>;
+219: }
+220: 
+221: /// Stateful Authenticated Encryption with Associated Data algorithm.
+222: #[cfg(feature = "alloc")]
+223: #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
+224: pub trait AeadMut: AeadCore {
+225:     /// Encrypt the given plaintext slice, and return the resulting ciphertext
+226:     /// as a vector of bytes.
+227:     ///
+228:     /// See notes on [`Aead::encrypt()`] about allowable message payloads and
+229:     /// Associated Additional Data (AAD).
+230:     fn encrypt<'msg, 'aad>(
+231:         &mut self,
+232:         nonce: &Nonce<Self>,
+233:         plaintext: impl Into<Payload<'msg, 'aad>>,
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/boring-5.1.0/src/error.rs:139-278
+```rust
+139: enum Data {
+140:     None,
+141:     CString(CString),
+142:     String(String),
+143:     Static(&'static str),
+144: }
+145: 
+146: unsafe impl Sync for Error {}
+147: unsafe impl Send for Error {}
+148: 
+149: static BORING_INTERNAL: &CStr = c"boring-rust";
+150: 
+151: impl Error {
+152:     /// Pops the first error off the OpenSSL error stack.
+153:     #[must_use = "Use ErrorStack::clear() to drop the error stack"]
+154:     #[corresponds(ERR_get_error_line_data)]
+155:     pub fn get() -> Option<Error> {
+156:         unsafe {
+157:             ffi::init();
+158: 
+159:             let mut file = ptr::null();
+160:             let mut line = 0;
+161:             let mut data = ptr::null();
+162:             let mut flags = 0;
+163:             match ffi::ERR_get_error_line_data(&mut file, &mut line, &mut data, &mut flags) {
+164:                 0 => None,
+165:                 code => {
+166:                     // The memory referenced by data is only valid until that slot is overwritten
+167:                     // in the error stack, so we'll need to copy it off if it's dynamic
+168:                     let data = if flags & ffi::ERR_FLAG_STRING != 0 {
+169:                         Data::CString(CStr::from_ptr(data.cast()).to_owned())
+170:                     } else {
+171:                         Data::None
+172:                     };
+173:                     Some(Error {
+174:                         code,
+175:                         file,
+176:                         line: line as c_uint,
+177:                         data,
+178:                     })
+179:                 }
+180:             }
+181:         }
+182:     }
+183: 
+184:     /// Pushes the error back onto the OpenSSL error stack.
+185:     #[corresponds(ERR_put_error)]
+186:     pub fn put(&self) {
+187:         unsafe {
+188:             ffi::ERR_put_error(
+189:                 ffi::ERR_GET_LIB(self.code),
+190:                 ffi::ERR_GET_FUNC(self.code),
+191:                 ffi::ERR_GET_REASON(self.code),
+192:                 self.file,
+193:                 self.line,
+194:             );
+195:             if let Some(cstr) = self.data_cstr() {
+196:                 ffi::ERR_add_error_data(1, cstr.as_ptr().cast_mut());
+197:             }
+198:         }
+199:     }
+200: 
+201:     /// Get `{lib}_R_{reason}` reason code for the given library, or `None` if the error is from a different library.
+202:     ///
+203:     /// Libraries are identified by [`ERR_LIB_{name}`(ffi::ERR_LIB_SSL) constants.
+204:     #[inline]
+205:     #[must_use]
+206:     #[track_caller]
+207:     pub fn library_reason(&self, library_code: ErrLib) -> Option<c_int> {
+208:         debug_assert!(library_code.0 < ffi::ERR_NUM_LIBS.0);
+209:         (self.library_code() == library_code.0 as c_int).then_some(self.reason_code())
+210:     }
+211: 
+212:     /// Returns a raw OpenSSL **packed** error code for this error, which **can't be reliably compared to any error constant**.
+213:     ///
+214:     /// Use [`Error::library_code()`] and [`Error::library_reason()`] instead.
+215:     /// Packed error codes are different than [SSL error codes](crate::ssl::ErrorCode).
+216:     #[must_use]
+217:     #[deprecated(note = "use library_reason() to compare error codes")]
+218:     pub fn code(&self) -> c_uint {
+219:         self.code
+220:     }
+221: 
+222:     /// Returns the name of the library reporting the error, if available.
+223:     #[must_use]
+224:     pub fn library(&self) -> Option<&'static str> {
+225:         if self.is_internal() {
+226:             return None;
+227:         }
+228:         unsafe {
+229:             let cstr = ffi::ERR_lib_error_string(self.code);
+230:             if cstr.is_null() {
+231:                 return None;
+232:             }
+233:             CStr::from_ptr(cstr.cast())
+234:                 .to_str()
+235:                 .ok()
+236:                 .filter(|&msg| msg != "unknown library")
+237:         }
+238:     }
+239: 
+240:     /// Returns the raw OpenSSL error constant for the library reporting the error (`ERR_LIB_{name}`).
+241:     ///
+242:     /// Error [reason codes](Error::library_reason) are not globally unique, but scoped to each library.
+243:     #[must_use]
+244:     pub fn library_code(&self) -> c_int {
+245:         ffi::ERR_GET_LIB(self.code)
+246:     }
+247: 
+248:     /// Returns `None`. Boring doesn't use function codes.
+249:     pub fn function(&self) -> Option<&'static str> {
+250:         None
+251:     }
+252: 
+253:     /// Returns the reason for the error.
+254:     #[must_use]
+255:     pub fn reason(&self) -> Option<&str> {
+256:         if self.is_internal() {
+257:             return self.data();
+258:         }
+259:         unsafe {
+260:             let cstr = ffi::ERR_reason_error_string(self.code);
+261:             if cstr.is_null() {
+262:                 return None;
+263:             }
+264:             CStr::from_ptr(cstr.cast()).to_str().ok()
+265:         }
+266:     }
+267: 
+268:     /// Returns [library-specific](Error::library_code) reason code corresponding to some of the `{lib}_R_{reason}` constants.
+269:     ///
+270:     /// Reason codes are ambiguous, and different libraries reuse the same numeric values for different errors.
+271:     /// Use [`Error::library_reason`] to compare error codes.
+272:     ///
+273:     /// For `ERR_LIB_SYS` the reason code is `errno`. `ERR_LIB_USER` can use any values.
+274:     /// Other libraries may use [`ERR_R_*`](ffi::ERR_R_FATAL) or their own codes.
+275:     #[must_use]
+276:     pub fn reason_code(&self) -> c_int {
+277:         ffi::ERR_GET_REASON(self.code)
+278:     }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/boring-5.1.0/src/ssl/error.rs:18-157
+```rust
+ 18: pub struct ErrorCode(c_int);
+ 19: 
+ 20: impl ErrorCode {
+ 21:     /// No error.
+ 22:     pub const NONE: ErrorCode = ErrorCode(ffi::SSL_ERROR_NONE);
+ 23: 
+ 24:     /// The SSL session has been closed.
+ 25:     pub const ZERO_RETURN: ErrorCode = ErrorCode(ffi::SSL_ERROR_ZERO_RETURN);
+ 26: 
+ 27:     /// An attempt to read data from the underlying socket returned `WouldBlock`.
+ 28:     ///
+ 29:     /// Wait for read readiness and retry the operation.
+ 30:     pub const WANT_READ: ErrorCode = ErrorCode(ffi::SSL_ERROR_WANT_READ);
+ 31: 
+ 32:     /// An attempt to write data to the underlying socket returned `WouldBlock`.
+ 33:     ///
+ 34:     /// Wait for write readiness and retry the operation.
+ 35:     pub const WANT_WRITE: ErrorCode = ErrorCode(ffi::SSL_ERROR_WANT_WRITE);
+ 36: 
+ 37:     pub const WANT_X509_LOOKUP: ErrorCode = ErrorCode(ffi::SSL_ERROR_WANT_X509_LOOKUP);
+ 38: 
+ 39:     pub const PENDING_SESSION: ErrorCode = ErrorCode(ffi::SSL_ERROR_PENDING_SESSION);
+ 40: 
+ 41:     pub const PENDING_CERTIFICATE: ErrorCode = ErrorCode(ffi::SSL_ERROR_PENDING_CERTIFICATE);
+ 42: 
+ 43:     pub const WANT_CERTIFICATE_VERIFY: ErrorCode =
+ 44:         ErrorCode(ffi::SSL_ERROR_WANT_CERTIFICATE_VERIFY);
+ 45: 
+ 46:     pub const WANT_PRIVATE_KEY_OPERATION: ErrorCode =
+ 47:         ErrorCode(ffi::SSL_ERROR_WANT_PRIVATE_KEY_OPERATION);
+ 48: 
+ 49:     pub const PENDING_TICKET: ErrorCode = ErrorCode(ffi::SSL_ERROR_PENDING_TICKET);
+ 50: 
+ 51:     /// A non-recoverable IO error occurred.
+ 52:     pub const SYSCALL: ErrorCode = ErrorCode(ffi::SSL_ERROR_SYSCALL);
+ 53: 
+ 54:     /// An error occurred in the SSL library.
+ 55:     pub const SSL: ErrorCode = ErrorCode(ffi::SSL_ERROR_SSL);
+ 56: 
+ 57:     /// Wrap an `SSL_ERROR_*` error code.
+ 58:     ///
+ 59:     /// This is different than [packed error codes](crate::error::Error).
+ 60:     #[must_use]
+ 61:     #[inline]
+ 62:     #[cfg_attr(debug_assertions, track_caller)]
+ 63:     pub fn from_raw(raw: c_int) -> ErrorCode {
+ 64:         let code = ErrorCode(raw);
+ 65:         debug_assert!(
+ 66:             raw < 64 || code.description().is_some(),
+ 67:             "{raw} is not an SSL_ERROR_* code"
+ 68:         );
+ 69:         code
+ 70:     }
+ 71: 
+ 72:     /// An `SSL_ERROR_*` error code.
+ 73:     ///
+ 74:     /// This is different than [packed error codes](crate::error::Error).
+ 75:     #[allow(clippy::trivially_copy_pass_by_ref)]
+ 76:     #[must_use]
+ 77:     pub fn as_raw(&self) -> c_int {
+ 78:         self.0
+ 79:     }
+ 80: 
+ 81:     #[corresponds(SSL_error_description)]
+ 82:     #[must_use]
+ 83:     pub fn description(self) -> Option<&'static str> {
+ 84:         unsafe {
+ 85:             let msg = ffi::SSL_error_description(self.0);
+ 86:             if msg.is_null() {
+ 87:                 return None;
+ 88:             }
+ 89:             CStr::from_ptr(msg).to_str().ok()
+ 90:         }
+ 91:     }
+ 92: }
+ 93: 
+ 94: impl fmt::Display for ErrorCode {
+ 95:     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+ 96:         write!(f, "{} ({})", self.description().unwrap_or("error"), self.0)
+ 97:     }
+ 98: }
+ 99: 
+100: impl fmt::Debug for ErrorCode {
+101:     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+102:         fmt::Display::fmt(self, f)
+103:     }
+104: }
+105: 
+106: #[derive(Debug)]
+107: pub(crate) enum InnerError {
+108:     Io(io::Error),
+109:     Ssl(ErrorStack),
+110: }
+111: 
+112: /// A general SSL error, based on [`SSL_ERROR_*` error codes](ErrorCode).
+113: #[derive(Debug)]
+114: pub struct Error {
+115:     pub(crate) code: ErrorCode,
+116:     pub(crate) cause: Option<InnerError>,
+117: }
+118: 
+119: impl Error {
+120:     /// An `SSL_ERROR_*` error code.
+121:     #[must_use]
+122:     pub fn code(&self) -> ErrorCode {
+123:         self.code
+124:     }
+125: 
+126:     #[must_use]
+127:     pub fn io_error(&self) -> Option<&io::Error> {
+128:         match self.cause {
+129:             Some(InnerError::Io(ref e)) => Some(e),
+130:             _ => None,
+131:         }
+132:     }
+133: 
+134:     pub fn into_io_error(self) -> Result<io::Error, Error> {
+135:         match self.cause {
+136:             Some(InnerError::Io(e)) => Ok(e),
+137:             _ => Err(self),
+138:         }
+139:     }
+140: 
+141:     /// Stack of [library-specific errors](crate::error::Error), if available.
+142:     #[must_use]
+143:     pub fn ssl_error(&self) -> Option<&ErrorStack> {
+144:         match self.cause {
+145:             Some(InnerError::Ssl(ref e)) => Some(e),
+146:             _ => None,
+147:         }
+148:     }
+149: 
+150:     #[must_use]
+151:     pub fn would_block(&self) -> bool {
+152:         matches!(
+153:             self.code,
+154:             ErrorCode::WANT_READ
+155:                 | ErrorCode::WANT_WRITE
+156:                 | ErrorCode::WANT_X509_LOOKUP
+157:                 | ErrorCode::PENDING_SESSION
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/lib.rs:323-374
+```rust
+323: 
+324: fn pasted_to_tokens(mut pasted: String, span: Span) -> Result<TokenStream> {
+325:     let mut raw_mode = false;
+326:     let mut tokens = TokenStream::new();
+327: 
+328:     if pasted.starts_with(|ch: char| ch.is_ascii_digit()) {
+329:         let literal = match panic::catch_unwind(|| Literal::from_str(&pasted)) {
+330:             Ok(Ok(literal)) => TokenTree::Literal(literal),
+331:             Ok(Err(LexError { .. })) | Err(_) => {
+332:                 return Err(Error::new(
+333:                     span,
+334:                     &format!("`{:?}` is not a valid literal", pasted),
+335:                 ));
+336:             }
+337:         };
+338:         tokens.extend(iter::once(literal));
+339:         return Ok(tokens);
+340:     }
+341: 
+342:     if pasted.starts_with('\'') {
+343:         let mut apostrophe = TokenTree::Punct(Punct::new('\'', Spacing::Joint));
+344:         apostrophe.set_span(span);
+345:         tokens.extend(iter::once(apostrophe));
+346:         pasted.remove(0);
+347:     }
+348: 
+349:     if pasted.starts_with("r#") {
+350:         raw_mode = true;
+351:     }
+352: 
+353:     let ident = match panic::catch_unwind(|| {
+354:         if raw_mode {
+355:             let mut spasted = pasted.clone();
+356:             spasted.remove(0);
+357:             spasted.remove(0);
+358:             Ident::new_raw(&spasted, span)
+359:         } else {
+360:             Ident::new(&pasted, span)
+361:         }
+362:     }) {
+363:         Ok(ident) => TokenTree::Ident(ident),
+364:         Err(_) => {
+365:             return Err(Error::new(
+366:                 span,
+367:                 &format!("`{:?}` is not a valid identifier", pasted),
+368:             ));
+369:         }
+370:     };
+371: 
+372:     tokens.extend(iter::once(ident));
+373:     Ok(tokens)
+374: }
+```
+
+src/lib.rs:241-253
+```rust
+241:     fn decrypt<'msg, 'aad>(
+242:         &mut self,
+243:         nonce: &Nonce<Self>,
+244:         ciphertext: impl Into<Payload<'msg, 'aad>>,
+245:     ) -> Result<Vec<u8>>;
+246: }
+247: 
+248: /// Implement the `decrypt_in_place` method on [`AeadInPlace`] and
+249: /// [`AeadMutInPlace]`, using a macro to gloss over the `&self` vs `&mut self`.
+250: ///
+251: /// Assumes a postfix authentication tag. AEAD ciphers which do not use a
+252: /// postfix authentication tag will need to define their own implementation.
+253: macro_rules! impl_decrypt_in_place {
+```
+
+src/error.rs:69-72
+```rust
+69:     #[cold]
+70:     pub(crate) fn internal_error_str(message: &'static str) -> Self {
+71:         Self(vec![Error::new_internal(Data::Static(message))])
+72:     }
+```
+
+src/ssl/test/mod.rs:431-437
+```rust
+431:         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+432:             if mem::replace(&mut self.first_read, false) {
+433:                 Err(io::Error::new(io::ErrorKind::WouldBlock, "first read"))
+434:             } else {
+435:                 self.inner.read(buf)
+436:             }
+437:         }
+```
+
+src/ssl/test/mod.rs:441-447
+```rust
+441:         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+442:             if mem::replace(&mut self.first_write, false) {
+443:                 Err(io::Error::new(io::ErrorKind::WouldBlock, "first write"))
+444:             } else {
+445:                 self.inner.write(buf)
+446:             }
+447:         }
+```
+
+src/ssl/test/mod.rs:448-455
+```rust
+448: 
+449:         fn flush(&mut self) -> io::Result<()> {
+450:             if mem::replace(&mut self.first_flush, false) {
+451:                 Err(io::Error::new(io::ErrorKind::WouldBlock, "first flush"))
+452:             } else {
+453:                 self.inner.flush()
+454:             }
+455:         }
+```
+
+src/error.rs:63-66
+```rust
+63:     #[cold]
+64:     pub(crate) fn internal_error(err: impl error::Error) -> Self {
+65:         Self(vec![Error::new_internal(Data::String(err.to_string()))])
+66:     }
+```
+
+src/custom.rs:30-33
+```rust
+30: /// pub fn always_fail(buf: &mut [u8]) -> Result<(), Error> {
+31: ///     let code = NonZeroU32::new(MY_CUSTOM_ERROR_CODE).unwrap();
+32: ///     Err(Error::from(code))
+33: /// }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-c-aegis256x2-rs-325-26
+
+Rule id: ruklee-maybeuninit-assume-init-initialized-rustc-1_87-line564
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/aegis-0.9.12':
+stdout: 
+stderr:    Compiling aegis v0.9.12 (/workspaces/UnSAT-Rust/crates_inj/aegis-0.9.12)
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `c`
+   --> src/c/aegis256x2.rs:381:14
+    |
+381 |     let key: c::aegis256x2::Key = [0u8; 32];
+    |              ^ use of unresolved module or unlinked crate `c`
+    |
+    = help: if you wanted to use a crate named `c`, use `cargo add c` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `c`
+   --> src/c/aegis256x2.rs:382:16
+    |
+382 |     let nonce: c::aegis256x2::Nonce = [1u8; 32];
+    |                ^ use of unresolved module or unlinked crate `c`
+    |
+    = help: if you wanted to use a crate named `c`, use `cargo add c` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `c`
+   --> src/c/aegis256x2.rs:383:13
+    |
+383 |     let _ = c::aegis256x2::Aegis256X2Mac::<16>::new_with_nonce(&key, &nonce);
+    |             ^ use of unresolved module or unlinked crate `c`
+    |
+    = help: if you wanted to use a crate named `c`, use `cargo add c` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `aegis` (lib) due to 3 previous errors
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-c-aegis256x2-rs-325-26-ruklee-maybeuninit-assume-init-initialized-rustc-1-87-fe54c1fed8', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling aegis v0.9.12 (/workspaces/UnSAT-Rust/crates_inj/aegis-0.9.12)
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `c`
+   --> src/c/aegis256x2.rs:381:14
+    |
+381 |     let key: c::aegis256x2::Key = [0u8; 32];
+    |              ^ use of unresolved module or unlinked crate `c`
+    |
+    = help: if you wanted to use a crate named `c`, use `cargo add c` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `c`
+   --> src/c/aegis256x2.rs:382:16
+    |
+382 |     let nonce: c::aegis256x2::Nonce = [1u8; 32];
+    |                ^ use of unresolved module or unlinked crate `c`
+    |
+    = help: if you wanted to use a crate named `c`, use `cargo add c` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `c`
+   --> src/c/aegis256x2.rs:383:13
+    |
+383 |     let _ = c::aegis256x2::Aegis256X2Mac::<16>::new_with_nonce(&key, &nonce);
+    |             ^ use of unresolved module or unlinked crate `c`
+    |
+    = help: if you wanted to use a crate named `c`, use `cargo add c` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `aegis` (lib) due to 3 previous errors
+
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/c/aegis128l.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-128L key
+pub type Key = [u8; 16];
+/// AEGIS-128L nonce
+pub type Nonce = [u8; 16];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis128l_state {
+    opaque: [u8; 256],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis128l_mac_state {
+    opaque: [u8; 384],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis128l_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128l_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128l_mac_init(st_: *mut aegis128l_mac_state, k: *const u8, npub: *const u8);
+    fn aegis128l_mac_update(
+        st_: *mut aegis128l_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis128l_mac_final(
+        st_: *mut aegis128l_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128l_mac_verify(
+        st_: *mut aegis128l_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128l_mac_reset(st_: *mut aegis128l_mac_state);
+    fn aegis128l_mac_state_clone(
+        dst: *mut aegis128l_mac_state,
+        src: *const aegis128l_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis128L<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-128L authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis128L<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-128L instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 16 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-128L
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-128L
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-128L
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-128L
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis128LMac<const TAG_BYTES: usize> {
+    st: aegis128l_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis128LMac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis128LMac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis128l_mac_state>::uninit();
+        unsafe {
+            aegis128l_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis128LMac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis128l-rs-321-26");
+                let mut __klee_ret_src_c_aegis128l_rs_321_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis128l_rs_321_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis128x2.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-128X2 key
+pub type Key = [u8; 16];
+/// AEGIS-128X2 nonce
+pub type Nonce = [u8; 16];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x2_state {
+    opaque: [u8; 448],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x2_mac_state {
+    opaque: [u8; 704],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis128x2_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x2_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x2_mac_init(
+        st_: *mut aegis128x2_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis128x2_mac_update(
+        st_: *mut aegis128x2_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis128x2_mac_final(
+        st_: *mut aegis128x2_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x2_mac_verify(
+        st_: *mut aegis128x2_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x2_mac_reset(st_: *mut aegis128x2_mac_state);
+    fn aegis128x2_mac_state_clone(
+        dst: *mut aegis128x2_mac_state,
+        src: *const aegis128x2_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis128X2<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-128X2 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis128X2<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-128X2 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 16 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-128X2
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-128X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-128X2
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-128X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis128X2Mac<const TAG_BYTES: usize> {
+    st: aegis128x2_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis128X2Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis128X2Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis128x2_mac_state>::uninit();
+        unsafe {
+            aegis128x2_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis128X2Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis128x2-rs-326-26");
+                let mut __klee_ret_src_c_aegis128x2_rs_326_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis128x2_rs_326_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis128x4.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-128X4 key
+pub type Key = [u8; 16];
+/// AEGIS-128X4 nonce
+pub type Nonce = [u8; 16];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x4_state {
+    opaque: [u8; 832],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x4_mac_state {
+    opaque: [u8; 1344],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis128x4_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x4_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x4_mac_init(
+        st_: *mut aegis128x4_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis128x4_mac_update(
+        st_: *mut aegis128x4_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis128x4_mac_final(
+        st_: *mut aegis128x4_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x4_mac_verify(
+        st_: *mut aegis128x4_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x4_mac_reset(st_: *mut aegis128x4_mac_state);
+    fn aegis128x4_mac_state_clone(
+        dst: *mut aegis128x4_mac_state,
+        src: *const aegis128x4_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis128X4<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-128X4 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis128X4<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-128X4 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 16 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-128X4
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-128X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-128X4
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-128X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis128X4Mac<const TAG_BYTES: usize> {
+    st: aegis128x4_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis128X4Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis128X4Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis128x4_mac_state>::uninit();
+        unsafe {
+            aegis128x4_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis128X4Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis128x4-rs-325-26");
+                let mut __klee_ret_src_c_aegis128x4_rs_325_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis128x4_rs_325_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis256.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-256 key
+pub type Key = [u8; 32];
+/// AEGIS-256 nonce
+pub type Nonce = [u8; 32];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(16))]
+#[derive(Debug)]
+struct aegis256_state {
+    opaque: [u8; 192],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(16))]
+#[derive(Debug)]
+struct aegis256_mac_state {
+    opaque: [u8; 288],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis256_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256_mac_init(st_: *mut aegis256_mac_state, k: *const u8, npub: *const u8);
+    fn aegis256_mac_update(
+        st_: *mut aegis256_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis256_mac_final(
+        st_: *mut aegis256_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256_mac_verify(
+        st_: *mut aegis256_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256_mac_reset(st_: *mut aegis256_mac_state);
+    fn aegis256_mac_state_clone(
+        dst: *mut aegis256_mac_state,
+        src: *const aegis256_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis256<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-256 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis256<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-256 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 32 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-256
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-256
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-256
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-256
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis256Mac<const TAG_BYTES: usize> {
+    st: aegis256_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis256Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis256Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis256_mac_state>::uninit();
+        unsafe {
+            aegis256_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis256Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis256-rs-321-26");
+                let mut __klee_ret_src_c_aegis256_rs_321_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis256_rs_321_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis256x2.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-256X2 key
+pub type Key = [u8; 32];
+/// AEGIS-256X2 nonce
+pub type Nonce = [u8; 32];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis256x2_state {
+    opaque: [u8; 320],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis256x2_mac_state {
+    opaque: [u8; 512],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis256x2_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x2_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x2_mac_init(
+        st_: *mut aegis256x2_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis256x2_mac_update(
+        st_: *mut aegis256x2_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis256x2_mac_final(
+        st_: *mut aegis256x2_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x2_mac_verify(
+        st_: *mut aegis256x2_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x2_mac_reset(st_: *mut aegis256x2_mac_state);
+    fn aegis256x2_mac_state_clone(
+        dst: *mut aegis256x2_mac_state,
+        src: *const aegis256x2_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis256X2<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-256X2 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis256X2<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-256X2 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 32 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-256X2
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-256X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-256X2
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-256X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis256X2Mac<const TAG_BYTES: usize> {
+    st: aegis256x2_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis256X2Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis256X2Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis256x2_mac_state>::uninit();
+        unsafe {
+            aegis256x2_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis256X2Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis256x2-rs-325-26");
+                let mut __klee_ret_src_c_aegis256x2_rs_325_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis256x2_rs_325_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis256x4.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-256X4 key
+pub type Key = [u8; 32];
+/// AEGIS-256X4 nonce
+pub type Nonce = [u8; 32];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis256x4_state {
+    opaque: [u8; 576],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis256x4_mac_state {
+    opaque: [u8; 960],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis256x4_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x4_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x4_mac_init(
+        st_: *mut aegis256x4_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis256x4_mac_update(
+        st_: *mut aegis256x4_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis256x4_mac_final(
+        st_: *mut aegis256x4_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x4_mac_verify(
+        st_: *mut aegis256x4_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x4_mac_reset(st_: *mut aegis256x4_mac_state);
+    fn aegis256x4_mac_state_clone(
+        dst: *mut aegis256x4_mac_state,
+        src: *const aegis256x4_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis256X4<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-256X4 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis256X4<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-256X4 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 32 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-256X4
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-256X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-256X4
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-256X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis256X4Mac<const TAG_BYTES: usize> {
+    st: aegis256x4_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis256X4Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis256X4Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis256x4_mac_state>::uninit();
+        unsafe {
+            aegis256x4_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis256X4Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis256x4-rs-325-26");
+                let mut __klee_ret_src_c_aegis256x4_rs_325_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis256x4_rs_325_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/mod.rs">
+```rust
+/// Encrypted random-access file I/O built on top of the AEGIS ciphers.
+#[cfg(feature = "raf-core")]
+#[cfg_attr(docsrs, doc(cfg(feature = "raf")))]
+pub mod raf;
+
+/// AEGIS-128L.
+pub mod aegis128l;
+/// AEGIS-128X2, the 2-lane variant of AEGIS-128L.
+pub mod aegis128x2;
+/// AEGIS-128X4, the 4-lane variant of AEGIS-128L.
+pub mod aegis128x4;
+/// AEGIS-256.
+pub mod aegis256;
+/// AEGIS-256X2, the 2-lane variant of AEGIS-256.
+pub mod aegis256x2;
+/// AEGIS-256X4, the 4-lane variant of AEGIS-256.
+pub mod aegis256x4;
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("../README.md")]
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+#[cfg(feature = "std")]
+use std::fmt;
+
+#[cfg(all(feature = "raf-core", feature = "pure-rust"))]
+compile_error!(
+    "The `raf` and `pure-rust` features are mutually exclusive. RAF requires the C backend."
+);
+
+#[cfg(feature = "pure-rust")]
+mod pure_rust;
+#[cfg(feature = "pure-rust")]
+pub use pure_rust::*;
+
+#[cfg(not(feature = "pure-rust"))]
+#[cfg_attr(docsrs, doc(cfg(all())))]
+mod c;
+#[cfg(not(feature = "pure-rust"))]
+#[cfg_attr(docsrs, doc(cfg(all())))]
+pub use c::*;
+
+/// Errors returned by the AEGIS encryption and authentication functions.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Error {
+    /// The authentication tag did not match: the ciphertext or associated data
+    /// has been altered, or the wrong key or nonce was used.
+    InvalidTag,
+}
+
+#[cfg(feature = "std")]
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
+/// Implementations of third-party crate traits for the AEGIS ciphers.
+pub mod compat;
+```
+</file>
+
+<file path="src/pure_rust/aegis256x2.rs">
+```rust
+use super::{AesBlock, AesBlock2};
+pub use crate::Error;
+
+/// AEGIS-256X2 key
+pub type Key = [u8; 32];
+
+/// AEGIS-256X2 nonce
+pub type Nonce = [u8; 32];
+
+/// AEGIS-256X2 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+
+/// State for AEGIS-256X2 with 6 rows of 2 parallel AES blocks
+#[derive(Clone, Copy)]
+struct State {
+    s0: AesBlock2,
+    s1: AesBlock2,
+    s2: AesBlock2,
+    s3: AesBlock2,
+    s4: AesBlock2,
+    s5: AesBlock2,
+}
+
+impl State {
+    #[inline(always)]
+    fn update(&mut self, m: AesBlock2) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn absorb(&mut self, src: &[u8; 32]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn enc(&mut self, dst: &mut [u8; 32], src: &[u8; 32]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn dec(&mut self, dst: &mut [u8; 32], src: &[u8; 32]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn dec_partial(&mut self, dst: &mut [u8], src: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn mac<const TAG_BYTES: usize>(&mut self, adlen: usize, mlen: usize) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn mac_finalize<const TAG_BYTES: usize>(&mut self, data_len: usize) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// AEGIS-256X2 authenticated encryption
+#[derive(Clone, Copy)]
+pub struct Aegis256X2<const TAG_BYTES: usize> {
+    state: State,
+}
+
+impl<const TAG_BYTES: usize> Aegis256X2<TAG_BYTES> {
+    /// Create a new AEGIS-256X2 instance
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Encrypt a message
+    #[cfg(feature = "std")]
+    pub fn encrypt(mut self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Encrypt in place
+    pub fn encrypt_in_place(mut self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+
+    /// Decrypt a message
+    #[cfg(feature = "std")]
+    pub fn decrypt(mut self, c: &[u8], tag: &Tag<TAG_BYTES>, ad: &[u8]) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Decrypt in place
+    pub fn decrypt_in_place(
+        mut self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// AEGIS-256X2 MAC
+#[derive(Clone)]
+pub struct Aegis256X2Mac<const TAG_BYTES: usize> {
+    state: State,
+    buf: [u8; 32],
+    buf_len: usize,
+    msg_len: usize,
+}
+
+impl<const TAG_BYTES: usize> Aegis256X2Mac<TAG_BYTES> {
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    pub fn new_with_nonce(key: &Key, nonce: &Nonce) -> Self {
+        Aegis256X2Mac {
+            state: State::new(key, nonce),
+            buf: [0u8; 32],
+            buf_len: 0,
+            msg_len: 0,
+        }
+    }
+
+    /// Updates the MAC state with a message.
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, data: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    /// Finalizes the MAC and returns the authentication tag.
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+
+    /// Verifies the authentication tag.
+    pub fn verify(self, expected: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

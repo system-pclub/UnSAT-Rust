@@ -1,0 +1,98 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+pub mod void;
+pub mod golike;
+pub mod xself;
+pub mod buf_pro;
+pub mod xfs;
+pub mod xbuild;
+pub mod xffi;
+pub mod xnum;
+pub mod env;
+pub mod xpath;
+pub mod plat;
+
+
+#[cfg(feature = "enable-async")]
+pub mod xasync;
+```
+</file>
+
+<file path="src/xffi/mod.rs">
+```rust
+pub mod sto;
+mod xemcpy;
+pub mod xef;
+pub mod xtr;
+```
+</file>
+
+<file path="src/xffi/sto.rs">
+```rust
+use std::{ffi::CStr, os::raw::c_char};
+#[allow(clippy::needless_range_loop)]
+pub fn string_to_array<const COUNT: usize>(s: &str) -> [c_char; COUNT] {
+    /* body omitted: interface retained */
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline(never)]
+pub fn cchar_to_string(c_str: *const c_char) -> String {
+    /* body omitted: interface retained */
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn string_to_buffer(s: &str, buf: *mut u8, buf_max: usize) {
+    crate::xffi::xtr::string_to_buffer(s, buf, buf_max)
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn string_to_dbuffer(s: &str, buf: *mut *mut u8, buf_max: *mut usize) {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/xffi/xtr.rs">
+```rust
+use std::ptr::copy_nonoverlapping;
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline(never)]
+pub fn string_to_buffer(s: &str, buf: *mut u8, buf_max: usize) {
+    if buf.is_null() || buf_max == 0 {
+        return;
+    }
+    let len = std::cmp::min(buf_max - 1, s.len());
+    unsafe {
+        let __klee_arg0 = s.as_ptr();
+        let __klee_arg1 = buf as *mut _;
+        klee_ext_bind::callsite!("src-xffi-xtr-rs-10-9");
+        let mut __klee_ret_src_xffi_xtr_rs_10_9_copy_nonoverlapping = copy_nonoverlapping(
+            __klee_arg0,
+            __klee_arg1,
+            len,
+        );
+        klee_ext_bind::bind_arg_ptr_value(0, buf);
+        klee_ext_bind::bind_arg_u64_value(1, &len);
+        klee_ext_bind::callsite!("src-xffi-xtr-rs-11-9");
+        let mut __klee_ret_src_xffi_xtr_rs_11_9_add = buf.add(len);
+        let __klee_arg2 = __klee_ret_src_xffi_xtr_rs_11_9_add;
+        let __klee_arg3 = 0_u8;
+        let __klee_arg4 = 1;
+        klee_ext_bind::callsite!("src-xffi-xtr-rs-11-9-write_bytes");
+        let mut __klee_ret_src_xffi_xtr_rs_11_9_write_bytes_write_bytes = __klee_arg2
+            .write_bytes(__klee_arg3, __klee_arg4);
+    }
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline(never)]
+pub fn string_to_dbuffer(s: &str, buf: *mut *mut u8, buf_max: *mut usize) {
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

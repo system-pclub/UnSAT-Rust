@@ -1,0 +1,1476 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 134368968310784; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `c_str`; this failed observation had `c_str = 134368968310784`.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-xffi-sto-rs-17-14-rule-62-464f89aced`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_xffi_sto_rs_17_14_rule_62_464f89aced`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-xffi-sto-rs-17-14-rule-62-464f89aced")]`.
+- Define `pub extern "C" fn __unsat_poc_src_xffi_sto_rs_17_14_rule_62_464f89aced()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-xffi-sto-rs-17-14-rule-62-464f89aced")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_xffi_sto_rs_17_14_rule_62_464f89aced() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "xffi::sto::cchar_to_string",
+    "path": "src/xffi/sto.rs",
+    "line_start": 13,
+    "line_end": 13,
+    "body_end": 18,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "std::string::String"
+  },
+  "callee": {
+    "name": "std::ffi::CStr::from_ptr",
+    "path": "rust/library/core/src/ffi/c_str.rs",
+    "line_start": 195,
+    "line_end": 261,
+    "body_end": 261,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&'a std::ffi::CStr"
+  },
+  "callsite": {
+    "line": 17,
+    "col": 14,
+    "path": "src/xffi/sto.rs",
+    "id": "src-xffi-sto-rs-17-14"
+  }
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `xffi::sto::cchar_to_string` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `xffi::sto::cchar_to_string`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::{ffi::CStr, os::raw::c_char};
+```
+
+Target expression selected by the callsite line/column:
+- column: `14`
+- expression: `CStr::from_ptr(c_str)`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/xffi/sto.rs:17
+```rust
+ 9:     a
+10: }
+11: 
+12: #[allow(clippy::not_unsafe_ptr_arg_deref)]
+13: pub fn cchar_to_string(c_str: *const c_char) -> String {
+14:     if c_str.is_null() {
+15:         return String::new();
+16:     }
+17:     unsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }
+18: }
+19: 
+20: #[allow(clippy::not_unsafe_ptr_arg_deref)]
+21: pub fn string_to_buffer(s: &str, buf: *mut u8, buf_max: usize) {
+22:     crate::xffi::xtr::string_to_buffer(s, buf, buf_max)
+23: }
+24: 
+25: #[allow(clippy::not_unsafe_ptr_arg_deref)]
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/xffi/sto.rs:13-17
+```rust
+13: pub fn cchar_to_string(c_str: *const c_char) -> String {
+14:     if c_str.is_null() {
+15:         return String::new();
+16:     }
+17:     unsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }
+```
+
+Inferred prefix path obligations from the actual-containing function. These are not the unsafe API rule; they are safe-path conditions needed to reach the target callsite:
+- `c_str.is_null()` controls an early-exit prefix branch; choose values so execution continues toward the target callsite.
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/void.rs:18-20
+```rust
+18:     pub fn from_ptr(ptr: *mut c_void) -> Self {
+19:         Self { ptr: ptr.cast() }
+20:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-xffi-sto-rs-17-14
+
+Rule id: rule-62
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-xffi-sto-rs-17-14`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-xffi-sto-rs-17-14`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-xffi-sto-rs-17-14` and reproduce the target counterexample there.
+KLEE stopped before the target at external function(s): `strlen`. Avoid constructors/wrappers/destructors that call these symbols; build the target caller receiver/arguments from fields visible in the injection module when possible.
+The metadata caller `xffi::sto::cchar_to_string` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 134368968310784; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `c_str`; this failed observation had `c_str = 134368968310784`.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+
+</previous attempt feedback>
+
+
+<rust context>
+
+<file path="build.rs">
+```rust
+fn main() {}
+```
+</file>
+
+<file path="src/buf_pro/chunk.rs">
+```rust
+use std::fmt::Debug;
+
+pub struct Chunker<T> {
+    buffer: Vec<T>,
+    chunk_size: usize,
+    remain_size: usize,
+}
+
+impl<T: PartialEq + Clone + Debug> Chunker<T> {
+    pub fn new(chunk_size: usize) -> Self {
+        Self {
+            buffer: Vec::new(),
+            chunk_size,
+            remain_size: 0,
+        }
+    }
+    fn extract_cache(&mut self) {
+        let shrink_to_size = self.buffer.len() - self.remain_size;
+        self.buffer.drain(..shrink_to_size);
+        self.remain_size = 0;
+    }
+    pub fn chunk<'a>(&'a mut self, data_input: &[T]) -> Vec<&'a [T]> {
+        if data_input.is_empty() {
+            return Vec::new();
+        }
+        self.extract_cache();
+        let mut v = Vec::new();
+        self.buffer.extend_from_slice(data_input);
+
+        let mut iter = self.buffer.chunks_exact(self.chunk_size);
+        for c in iter.by_ref() {
+            v.push(c);
+        }
+        self.remain_size = iter.remainder().len();
+        v
+    }
+}
+
+```
+</file>
+
+<file path="src/buf_pro/chunk_by.rs">
+```rust
+use super::search::{filter_in, filter_in_if, search_in};
+
+#[allow(non_snake_case)]
+pub fn chunkBy_once<'a, T: PartialEq>(input: &'a [T], iden: &[T]) -> Vec<&'a [T]> {
+    let mut v = Vec::new();
+
+    {
+        let mut o = filter_in(input, iden);
+        o.push(input.len());
+        o
+    }
+    .windows(2)
+    .for_each(|i| v.push(&input[i[0]..i[1]]));
+
+    v
+}
+
+#[allow(non_snake_case)]
+pub fn chunkByIf_once<T: PartialEq>(input: &[T], win_size: usize, f: impl Fn(usize, &[T]) -> bool) -> Vec<&[T]> {
+    let mut v = Vec::new();
+
+    {
+        let mut o = filter_in_if(input, win_size, f);
+        o.push(input.len());
+        o
+    }
+    .windows(2)
+    .for_each(|i| v.push(&input[i[0]..i[1]]));
+
+    v
+}
+
+pub struct ChunkerBy<T> {
+    iden: Vec<T>,
+    buffer: Vec<T>,
+    last_start: Option<usize>,
+}
+
+impl<T: PartialEq + Clone> ChunkerBy<T> {
+    pub fn new(iden: &[T]) -> Self {
+        Self {
+            iden: iden.to_vec(),
+            buffer: Vec::new(),
+            last_start: None,
+        }
+    }
+    fn extract_cache(&mut self) {
+        if let Some(last_start) = self.last_start.take() {
+            self.buffer.drain(..last_start);
+        }
+    }
+    pub fn flush(&mut self) -> &[T] {
+        self.extract_cache();
+        &self.buffer
+    }
+    pub fn chunk<'a>(&'a mut self, data_input: &[T]) -> Vec<&'a [T]> {
+        if data_input.is_empty() {
+            return Vec::new();
+        }
+        self.extract_cache();
+
+        self.buffer.extend_from_slice(data_input);
+
+        let mut v = Vec::new();
+
+        let mut nalu_start = None;
+        loop {
+            match nalu_start {
+                None => match search_in(&self.buffer, &self.iden) {
+                    Some(start) => {
+                        nalu_start = Some(start);
+                        continue;
+                    },
+                    None => {
+                        break;
+                    },
+                },
+                Some(start) => {
+                    let find_offset = start + self.iden.len();
+
+                    let find_next = search_in(&self.buffer[find_offset..], &self.iden);
+
+                    match find_next {
+                        None => {
+                            self.last_start = Some(start);
+                            break;
+                        },
+                        Some(next_step) => {
+                            let next = find_offset + next_step;
+
+                            let s = start;
+                            nalu_start = Some(next);
+                            v.push(&self.buffer[s..next]);
+                        },
+                    }
+                },
+            }
+        }
+        v
+    }
+}
+
+```
+</file>
+
+<file path="src/buf_pro/mod.rs">
+```rust
+pub mod chunk_by;
+pub mod search;
+pub mod chunk;
+```
+</file>
+
+<file path="src/buf_pro/search.rs">
+```rust
+pub fn search_in<T: PartialEq>(input: &[T], iden: &[T]) -> Option<usize> {
+    input
+        .windows(iden.len())
+        .enumerate()
+        .find_map(|(i, w)| if w == iden { Some(i) } else { None })
+}
+pub fn filter_in<T: PartialEq>(input: &[T], iden: &[T]) -> Vec<usize> {
+    input
+        .windows(iden.len())
+        .enumerate()
+        .filter_map(|(i, w)| if w == iden { Some(i) } else { None })
+        .collect()
+}
+pub fn filter_in_if<T: PartialEq>(input: &[T], win_size: usize, f: impl Fn(usize, &[T]) -> bool) -> Vec<usize> {
+    input
+        .windows(win_size)
+        .enumerate()
+        .filter_map(move |(i, w)| if f(i, w) { Some(i) } else { None })
+        .collect()
+}
+
+```
+</file>
+
+<file path="src/env/eval.rs">
+```rust
+use std::env;
+use std::str::FromStr;
+
+pub fn eval_env_with<T, F>(var_name: &str, default_value: T, parse_fn: F) -> Result<T, T::Err>
+where
+    T: FromStr,
+    F: FnOnce(&str) -> Result<T, T::Err>,
+{
+    let Ok(var_value) = env::var(var_name) else {
+        return Ok(default_value);
+    };
+
+    let parsed = parse_fn(&var_value)?;
+    Ok(parsed)
+}
+
+pub fn eval_env<T>(var_name: &str, default_value: T) -> Result<T, T::Err>
+where
+    T: FromStr,
+{
+    eval_env_with(var_name, default_value, T::from_str)
+}
+
+pub fn eval_env_or<T>(var_name: &str, default_value: T) -> T
+where
+    T: FromStr + Clone,
+{
+    // Note: here ignore the parsed error
+    eval_env(var_name, default_value.clone()).unwrap_or(default_value)
+}
+
+
+```
+</file>
+
+<file path="src/env/mod.rs">
+```rust
+pub mod eval;
+
+```
+</file>
+
+<file path="src/golike.rs">
+```rust
+pub struct OnDrop<F>
+where
+    F: FnOnce(),
+{
+    f: Option<F>,
+}
+impl<F> OnDrop<F>
+where
+    F: FnOnce(),
+{
+    pub fn new(f: F) -> Self {
+        Self { f: Some(f) }
+    }
+}
+
+impl<F> Drop for OnDrop<F>
+where
+    F: FnOnce(),
+{
+    fn drop(&mut self) {
+        if let Some(f) = self.f.take() {
+            f();
+        }
+    }
+}
+
+
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+pub mod void;
+pub mod golike;
+pub mod xself;
+pub mod buf_pro;
+pub mod xfs;
+pub mod xbuild;
+pub mod xffi;
+pub mod xnum;
+pub mod env;
+pub mod xpath;
+pub mod plat;
+
+
+#[cfg(feature = "enable-async")]
+pub mod xasync;
+
+```
+</file>
+
+<file path="src/plat/dist.rs">
+```rust
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+};
+
+pub enum PlatDist {
+    Debian,
+    Rh,
+    Other,
+}
+fn get_plat_id_like() -> String {
+    let mut id_like = "".to_string();
+    if let Ok(file) = File::open("/etc/os-release") {
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                if line.starts_with("ID_LIKE=") && line.contains("debian") {
+                    id_like = "debian".to_string();
+                    break;
+                }
+            } else {
+                continue;
+            }
+        }
+    }
+    id_like
+}
+
+pub fn plat_dist() -> PlatDist {
+    match get_plat_id_like().as_str() {
+        "debian" => PlatDist::Debian,
+        "fedora" => PlatDist::Rh,
+        _ => PlatDist::Other,
+    }
+}
+
+```
+</file>
+
+<file path="src/plat/mod.rs">
+```rust
+pub mod dist;
+```
+</file>
+
+<file path="src/void.rs">
+```rust
+#![allow(dead_code)]
+use std::{os::raw::c_void, ptr::NonNull};
+#[derive(Clone, Copy)]
+pub struct HyVoid<T> {
+    ptr: *mut T,
+}
+unsafe impl<T> Send for HyVoid<T>
+where
+    T: Send,
+{}
+unsafe impl<T> Sync for HyVoid<T>
+where
+    T: Sync,
+{}
+impl<T> HyVoid<T> {
+    pub fn from_ref(r: &mut T) -> Self {
+        Self {
+            ptr: NonNull::from(r).as_ptr().cast(),
+        }
+    }
+    pub fn from_ptr(ptr: *mut c_void) -> Self {
+        Self { ptr: ptr.cast() }
+    }
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.ptr.cast()
+    }
+    pub fn as_dptr(&mut self) -> *mut *mut c_void {
+        std::ptr::addr_of_mut!(self.ptr).cast()
+    }
+}
+impl<T> AsMut<T> for HyVoid<T> {
+    fn as_mut(&mut self) -> &mut T {
+        opacue_to_mut(self.ptr)
+    }
+}
+impl<T> AsRef<T> for HyVoid<T> {
+    fn as_ref(&self) -> &T {
+        opacue_to_ref(self.ptr)
+    }
+}
+#[derive(Clone, Copy)]
+pub struct HyVoidConst<T> {
+    ptr: *const T,
+}
+unsafe impl<T> Send for HyVoidConst<T>
+where
+    T: Send,
+{}
+unsafe impl<T> Sync for HyVoidConst<T>
+where
+    T: Sync,
+{}
+impl<T> HyVoidConst<T> {
+    pub fn from_ref(r: &T) -> Self {
+        Self {
+            ptr: NonNull::from(r).as_ptr().cast(),
+        }
+    }
+    pub fn from_ptr(ptr: *const c_void) -> Self {
+        Self { ptr: ptr.cast() }
+    }
+    pub fn as_ptr(&self) -> *const c_void {
+        self.ptr.cast()
+    }
+    pub fn as_dptr(&mut self) -> *const *const c_void {
+        std::ptr::addr_of!(self.ptr).cast()
+    }
+}
+impl<T> AsRef<T> for HyVoidConst<T> {
+    fn as_ref(&self) -> &T {
+        opacue_to_ref(self.ptr)
+    }
+}
+pub fn opacue_to_mut<'a, T>(user: *mut T) -> &'a mut T {
+    if user.is_null() {
+        panic!("Pointer is null")
+    }
+    unsafe { &mut *(user.cast()) as &mut T }
+}
+#[inline(never)]
+pub fn opacue_to_ref<'a, T>(user: *const T) -> &'a T {
+    unsafe {
+        &*klee_ext_bind::raw_pointer_deref!("src-void-rs-75-14", (user.cast())) as &T
+    }
+}
+pub fn of_addr<'a, T>(user: *const T) -> &'a T {
+    opacue_to_ref(user)
+}
+pub fn of_mut_addr<'a, T>(user: *mut T) -> &'a mut T {
+    opacue_to_mut(user)
+}
+pub fn mut_to_opacue<T>(r: &mut T) -> *mut c_void {
+    r as *const _ as *mut _
+}
+pub fn ref_to_opacue<T>(r: &T) -> *const c_void {
+    r as *const _ as *const _
+}
+#[inline(never)]
+pub fn delete<T>(ctx: *mut c_void) {
+    drop(unsafe {
+        let __klee_arg0 = ctx as *mut _ as *mut T;
+        klee_ext_bind::callsite!("src-void-rs-93-19");
+        let mut __klee_ret_src_void_rs_93_19_from_raw = Box::from_raw(__klee_arg0);
+        __klee_ret_src_void_rs_93_19_from_raw
+    });
+}
+pub fn new<T>(t: T) -> *mut c_void {
+    unsafe { &mut *(Box::into_raw(Box::new(t)) as *mut c_void) }
+}
+pub fn new_and_then<T, F>(t: T, op: F) -> Result<*mut c_void, anyhow::Error>
+where
+    F: FnOnce(&mut T) -> Result<(), anyhow::Error>,
+{
+    let mut b = Box::new(t);
+    match op(b.as_mut()) {
+        Ok(_) => Ok(unsafe { &mut *(Box::into_raw(b) as *mut c_void) }),
+        Err(e) => Err(e),
+    }
+}
+
+```
+</file>
+
+<file path="src/xasync/call.rs">
+```rust
+#[macro_export]
+macro_rules! async_call {
+
+    // for enum(struct)
+    ($tx:expr, $($enum_name:ident)::+ {
+        $( $field:ident $(: $value:expr)? $(,)?)*
+     }) => {{
+         use tokio::sync::oneshot;
+         let (ret, get) = oneshot::channel();
+         let _ = $tx.send(  $($enum_name)::+ {
+             $(
+                 $field $(:$value)?,
+             )*
+             ret,
+         });
+         get
+     }};
+
+
+    // for enum(tuple)
+    ($tx:expr,  $($enum_name:ident)::+ (
+        $( $field:expr  $(,)? )*
+    )) => {{
+         use tokio::sync::oneshot;
+         let (ret, get) = oneshot::channel();
+         let _ = $tx.send($($enum_name)::+ (
+             $(
+                $field,
+            )*
+             ret,
+         ));
+         get
+     }};
+
+    // for struct
+     ($tx:expr, $struct_name:ident {
+        $( $field:ident $(:$value:expr)? $(,)?)*
+     }) => {{
+         use tokio::sync::oneshot;
+         let (ret, get) = oneshot::channel();
+         let _ = $tx.send( $struct_name {
+            $(
+                $field $(:$value)?,
+            )*
+             ret,
+         });
+         get
+     }};
+}
+
+```
+</file>
+
+<file path="src/xasync/mod.rs">
+```rust
+pub mod call;
+```
+</file>
+
+<file path="src/xbuild/cmake.rs">
+```rust
+use crate::xpath::path::path_to_string;
+use anyhow::Result;
+use std::{
+    fs::{create_dir_all, File},
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+static CARGO_SCRIPT_SKIP_RUSTC_LINK_LIB: &str = "CARGO_SCRIPT_SKIP_RUSTC_LINK_LIB";
+
+pub enum LibKind {
+    Shared(String),
+    Static(String),
+    Auto(String),
+}
+
+fn libname_strip(lib_name: &str) -> String {
+    if cfg!(target_os = "linux") {
+        // Note: here remove the suffix in linux, beacause windows contain '*.a' as static library
+        let temp = lib_name.strip_prefix("lib").unwrap_or(lib_name);
+        path_to_string(std::path::Path::new(&temp).file_stem().unwrap_or(temp.as_ref()))
+    } else {
+        lib_name.to_string()
+    }
+}
+
+pub fn format_target_link_libraries(kind: LibKind) -> Option<String> {
+    match std::env::var(CARGO_SCRIPT_SKIP_RUSTC_LINK_LIB) {
+        Ok(value) if value == "1" => None,
+        _ => {
+            let line = format!(
+                "cargo:rustc-link-lib={}",
+                match kind {
+                    LibKind::Shared(name) => "dylib=".to_string() + &libname_strip(&name),
+                    LibKind::Static(name) => "static=".to_string() + &libname_strip(&name),
+                    LibKind::Auto(name) => libname_strip(&name),
+                }
+            );
+            Some(line)
+        },
+    }
+}
+
+pub fn target_link_libraries<Libs>(kinds: Libs)
+where
+    Libs: IntoIterator<Item = LibKind>,
+{
+    for kind in kinds {
+        if let Some(line) = format_target_link_libraries(kind) {
+            println!("{}", line);
+        }
+    }
+}
+
+pub fn target_link_directories<Paths>(p: Paths)
+where
+    Paths: IntoIterator,
+    Paths::Item: AsRef<std::path::Path>,
+{
+    for path in p {
+        let path_str = path.as_ref().display().to_string();
+        if path_str.is_empty() {
+            continue;
+        }
+        println!("cargo:rerun-if-changed={}", path_str);
+        println!("cargo:rustc-link-search={}", path_str);
+    }
+}
+
+#[derive(Default)]
+pub struct Target {
+    pub name: String,
+    pub files: String,
+    pub include_dir: Option<String>,
+    pub lib_dir: Option<String>,
+    pub dep: Vec<String>,
+    pub type_: String,
+}
+pub struct Module {
+    module_name: String,
+    targets: Vec<Target>,
+    out_path: PathBuf,
+    version: String,
+}
+
+impl Module {
+    pub fn builder() -> ModuleBuilder {
+        ModuleBuilder::default()
+    }
+    pub fn write(&self) -> Result<()> {
+        create_dir_all(&self.out_path)?;
+        self.write_version_file()?;
+        self.write_target_file()?;
+        self.write_config_file()?;
+        Ok(())
+    }
+
+    fn get_target_file_name(&self) -> String {
+        format!("{}Targets.cmake", self.module_name)
+    }
+
+    fn write_config_file(&self) -> Result<()> {
+        let file_name = format!("{}Config.cmake", self.module_name);
+        let mut file = File::create(self.out_path.join(file_name))?;
+        let text = self.get_config_str()?;
+        file.write_all(text.as_bytes())?;
+
+        Ok(())
+    }
+    fn get_config_str(&self) -> Result<String> {
+        let s = format!(
+            r#"include(${{CMAKE_CURRENT_LIST_DIR}}/{})"#,
+            self.get_target_file_name()
+        );
+        Ok(s)
+    }
+
+    fn write_version_file(&self) -> Result<()> {
+        let file_name = format!("{}ConfigVersion.cmake", self.module_name);
+        let mut file = File::create(self.out_path.join(file_name))?;
+        let text = self.get_verion_str()?;
+        file.write_all(text.as_bytes())?;
+        Ok(())
+    }
+
+    fn get_verion_str(&self) -> Result<String> {
+        let s = format!(r#"set(PACKAGE_VERSION "{}")"#, self.version);
+
+        Ok(s)
+    }
+
+    fn get_target_str(&self) -> Result<String> {
+        let mut s = String::new();
+        s += r#"
+get_filename_component(var_import_prefix "${CMAKE_CURRENT_LIST_FILE}" PATH)
+get_filename_component(var_import_prefix "${var_import_prefix}" PATH)"#
+            .trim();
+        s += "\n";
+        for target in &self.targets {
+            let sub_target_name = format!("{}::{}", self.module_name, target.name);
+            s += &format!(r#"add_library({} {} IMPORTED)"#, sub_target_name, target.type_);
+            s += "\n";
+
+            s += &format!(r#"set_target_properties({} PROPERTIES"#, sub_target_name);
+            s += "\n";
+
+            {
+                let mut prop_line = "".to_string();
+                if let Some(include_dir) = &target.include_dir {
+                    prop_line = format!(
+                        r#"INTERFACE_INCLUDE_DIRECTORIES  "${{var_import_prefix}}/{}""#,
+                        include_dir
+                    );
+                }
+                s += &prop_line;
+                s += "\n";
+            }
+            {
+                let mut prop_line = "".to_string();
+                if let Some(lib_dir) = &target.lib_dir {
+                    prop_line = format!(
+                        r#"IMPORTED_LOCATION  "${{var_import_prefix}}/{}/{}""#,
+                        lib_dir, target.files
+                    );
+                }
+                s += &prop_line;
+
+                s += "\n";
+            }
+            {
+                s += "IMPORTED_NO_SONAME TRUE";
+                s += "\n";
+            }
+            {
+                if !target.dep.is_empty() {
+                    let dep_part = target.dep.join(";");
+                    s += &format!(r#"INTERFACE_LINK_LIBRARIES "{}""#, dep_part);
+                    s += "\n";
+                }
+            }
+            s += ")";
+
+            s += "\n";
+            s += r#"set(${CMAKE_FIND_PACKAGE_NAME}_FOUND TRUE)"#;
+
+            s += "\n";
+            s += &format!(
+                r#"message(STATUS "Using {} ${{{}_VERSION}}")"#,
+                self.module_name, self.module_name
+            );
+        }
+        Ok(s)
+    }
+
+    fn write_target_file(&self) -> Result<()> {
+        let file_name = self.get_target_file_name();
+        let mut file = File::create(self.out_path.join(file_name))?;
+
+        let text = self.get_target_str()?;
+        file.write_all(text.as_bytes())?;
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct ModuleBuilder {
+    target_name: Vec<Target>,
+    out_path: Option<PathBuf>,
+    module_name: Option<String>,
+    version: Option<String>,
+}
+impl ModuleBuilder {
+    pub fn add_target(mut self, target: Target) -> Self {
+        self.target_name.push(target);
+        self
+    }
+    pub fn module_name(mut self, module_name: impl Into<String>) -> Self {
+        self.module_name = Some(module_name.into());
+        self
+    }
+    pub fn version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+    pub fn out_path(mut self, out_path: impl AsRef<Path>) -> Self {
+        self.out_path = Some(out_path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn build(self) -> Module {
+        Module {
+            version: self.version.expect("Version must be set"),
+            module_name: self.module_name.expect("Module name must be set"),
+            targets: self.target_name,
+            out_path: self.out_path.expect("Output path must be set"),
+        }
+    }
+}
+
+```
+</file>
+
+<file path="src/xbuild/mod.rs">
+```rust
+pub mod cmake;
+pub mod path;
+```
+</file>
+
+<file path="src/xbuild/path.rs">
+```rust
+use crate::plat::dist::{plat_dist, PlatDist};
+use std::env;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
+
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub struct DevPath {
+    pub include: PathBuf,
+    pub lib: PathBuf,
+}
+
+impl DevPath {
+    pub fn get_shared(&self) -> Vec<PathBuf> {
+        let mut netca_libs = Vec::new();
+        if let Ok(paths) = std::fs::read_dir(&self.lib) {
+            for path in paths.flatten() {
+                let path = path.path();
+                if path.is_file() && path.extension() == Some(get_dist_lib_suffix().as_ref()) {
+                    netca_libs.push(path);
+                }
+            }
+        }
+
+        netca_libs
+    }
+
+    pub fn include(&self) -> &PathBuf {
+        &self.include
+    }
+    pub fn lib(&self) -> &PathBuf {
+        &self.lib
+    }
+}
+
+pub fn watch<Paths>(path: Paths) -> PathBuf
+where
+    Paths: AsRef<std::path::Path>,
+{
+    if path.as_ref().exists() {
+        // use :: when rust > 1.77
+        println!("cargo:rerun-if-changed={}", path.as_ref().join("*").display());
+    }
+    path.as_ref().to_path_buf()
+}
+
+fn get_dist_lib_name() -> String {
+    match plat_dist() {
+        PlatDist::Rh => "lib64",
+        PlatDist::Debian => "lib",
+        PlatDist::Other => "lib",
+    }
+    .to_string()
+}
+
+fn get_dist_lib_suffix() -> String {
+    if cfg!(target_os = "linux") {
+        "so".to_string()
+    } else if cfg!(target_os = "windows") {
+        "dll".to_string()
+    } else {
+        panic!("unkown os")
+    }
+}
+
+pub fn lib_path_of_root<Paths>(lib_root: Paths) -> PathBuf
+where
+    Paths: AsRef<std::path::Path>,
+{
+    let p = Path::new(lib_root.as_ref());
+    let lib_must = p.join(get_dist_lib_name());
+    let lib_alt = if lib_must.ends_with("64") { "lib" } else { "lib64" };
+    let path = if lib_must.exists() { lib_must } else { p.join(lib_alt) };
+    watch(path)
+}
+pub fn include_path_of_root<Paths>(lib_root: Paths) -> PathBuf
+where
+    Paths: AsRef<std::path::Path>,
+{
+    let path = lib_root.as_ref().join("include");
+
+    watch(path)
+}
+
+pub fn dev_path_of_root<Paths>(lib_root: Paths) -> DevPath
+where
+    Paths: AsRef<std::path::Path>,
+{
+    DevPath {
+        include: include_path_of_root(&lib_root),
+        lib: lib_path_of_root(lib_root),
+    }
+}
+pub fn dev_path_of_root_env_or<K>(lib_root_key: K, default: DevPath) -> DevPath
+where
+    K: AsRef<OsStr>,
+{
+    match env::var(lib_root_key) {
+        Err(_) => default,
+        Ok(lib_root) => dev_path_of_root(lib_root),
+    }
+}
+
+pub fn dev_path_of_root_env<K>(lib_root_key: K) -> DevPath
+where
+    K: AsRef<OsStr>,
+{
+    dev_path_of_root_env_or(lib_root_key, DevPath::default())
+}
+
+pub fn cargo_profile_dir() -> PathBuf {
+    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+}
+pub fn cargo_root_profile_dir() -> PathBuf {
+    cargo_target_dir().parent().unwrap().to_path_buf()
+}
+pub fn cargo_target_dir() -> PathBuf {
+    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let mut target_dir = None;
+    let mut sub_path = out_dir.as_path();
+    while let Some(parent) = sub_path.parent() {
+        if parent.ends_with("target") {
+            target_dir = Some(parent);
+            break;
+        }
+        sub_path = parent;
+    }
+    let target_dir = target_dir.unwrap();
+    target_dir.to_path_buf()
+}
+
+pub fn cargo_target_bin_dir() -> PathBuf {
+    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let profile = std::env::var("PROFILE").unwrap();
+    let mut target_dir = None;
+    let mut sub_path = out_dir.as_path();
+    while let Some(parent) = sub_path.parent() {
+        if parent.ends_with(&profile) {
+            target_dir = Some(parent);
+            break;
+        }
+        sub_path = parent;
+    }
+    let target_dir = target_dir.unwrap();
+    target_dir.to_path_buf()
+}
+
+
+```
+</file>
+
+<file path="src/xffi/mod.rs">
+```rust
+pub mod sto;
+mod xemcpy;
+pub mod xef;
+pub mod xtr;
+```
+</file>
+
+<file path="src/xffi/sto.rs">
+```rust
+use std::{ffi::CStr, os::raw::c_char};
+#[allow(clippy::needless_range_loop)]
+pub fn string_to_array<const COUNT: usize>(s: &str) -> [c_char; COUNT] {
+    let mut a = [0 as c_char; COUNT];
+    let len = std::cmp::min(a.len() - 1, s.len());
+    for i in 0..len {
+        a[i] = s.as_bytes()[i] as c_char;
+    }
+    a
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline(never)]
+pub fn cchar_to_string(c_str: *const c_char) -> String {
+    if c_str.is_null() {
+        return String::new();
+    }
+    unsafe {
+        klee_ext_bind::callsite!("src-xffi-sto-rs-17-14");
+        let mut __klee_ret_src_xffi_sto_rs_17_14_from_ptr = CStr::from_ptr(c_str);
+        __klee_ret_src_xffi_sto_rs_17_14_from_ptr.to_string_lossy().into_owned()
+    }
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn string_to_buffer(s: &str, buf: *mut u8, buf_max: usize) {
+    crate::xffi::xtr::string_to_buffer(s, buf, buf_max)
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn string_to_dbuffer(s: &str, buf: *mut *mut u8, buf_max: *mut usize) {
+    crate::xffi::xtr::string_to_dbuffer(s, buf, buf_max)
+}
+
+```
+</file>
+
+<file path="src/xffi/xef.rs">
+```rust
+#[macro_export]
+macro_rules! ref_cast {
+    ($from:expr) => {{
+        &*($from as *const _ as *const _)
+    }};
+}
+
+```
+</file>
+
+<file path="src/xffi/xemcpy.rs">
+```rust
+#[macro_export]
+macro_rules! xemcpy {
+    ($dst:expr,$src:expr,$len:expr) => {{
+        std::ptr::copy_nonoverlapping($src as _, $dst as *mut _ as *mut _, $len as _);
+    }};
+}
+
+```
+</file>
+
+<file path="src/xffi/xtr.rs">
+```rust
+use std::ptr::copy_nonoverlapping;
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline(never)]
+pub fn string_to_buffer(s: &str, buf: *mut u8, buf_max: usize) {
+    if buf.is_null() || buf_max == 0 {
+        return;
+    }
+    let len = std::cmp::min(buf_max - 1, s.len());
+    unsafe {
+        let __klee_arg0 = s.as_ptr();
+        let __klee_arg1 = buf as *mut _;
+        klee_ext_bind::callsite!("src-xffi-xtr-rs-10-9");
+        let mut __klee_ret_src_xffi_xtr_rs_10_9_copy_nonoverlapping = copy_nonoverlapping(
+            __klee_arg0,
+            __klee_arg1,
+            len,
+        );
+        klee_ext_bind::bind_arg_ptr_value(0, buf);
+        klee_ext_bind::bind_arg_u64_value(1, &len);
+        klee_ext_bind::callsite!("src-xffi-xtr-rs-11-9");
+        let mut __klee_ret_src_xffi_xtr_rs_11_9_add = buf.add(len);
+        let __klee_arg2 = __klee_ret_src_xffi_xtr_rs_11_9_add;
+        let __klee_arg3 = 0_u8;
+        let __klee_arg4 = 1;
+        klee_ext_bind::callsite!("src-xffi-xtr-rs-11-9-write_bytes");
+        let mut __klee_ret_src_xffi_xtr_rs_11_9_write_bytes_write_bytes = __klee_arg2
+            .write_bytes(__klee_arg3, __klee_arg4);
+    }
+}
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline(never)]
+pub fn string_to_dbuffer(s: &str, buf: *mut *mut u8, buf_max: *mut usize) {
+    let len = s.len();
+    unsafe {
+        *klee_ext_bind::raw_pointer_deref!("src-xffi-xtr-rs-19-9", buf_max) = len;
+        *klee_ext_bind::raw_pointer_deref!("src-xffi-xtr-rs-20-9", buf) = s.as_ptr()
+            as *mut _;
+    }
+}
+
+```
+</file>
+
+<file path="src/xfs/cargo_path.rs">
+```rust
+use std::path::PathBuf;
+
+pub fn get_project_root_path() -> Result<PathBuf, std::env::VarError> {
+    std::env::var("CARGO_MANIFEST_DIR").map(|pa| PathBuf::from(&pa))
+}
+
+```
+</file>
+
+<file path="src/xfs/mod.rs">
+```rust
+pub mod cargo_path;
+```
+</file>
+
+<file path="src/xnum/mod.rs">
+```rust
+pub mod ppdd;
+
+```
+</file>
+
+<file path="src/xnum/ppdd.rs">
+```rust
+#[macro_export]
+macro_rules! ipp {
+    ($num:expr) => {{
+        let bk = $num;
+        $num += 1;
+        bk
+    }};
+}
+
+#[macro_export]
+macro_rules! ppi {
+    ($num:expr) => {{
+        $num += 1;
+        $num
+    }};
+}
+#[macro_export]
+macro_rules! idd {
+    ($num:expr) => {{
+        let bk = $num;
+        $num -= 1;
+        bk
+    }};
+}
+
+#[macro_export]
+macro_rules! ddi {
+    ($num:expr) => {{
+        $num -= 1;
+        $num
+    }};
+}
+
+
+```
+</file>
+
+<file path="src/xpath/mod.rs">
+```rust
+pub mod path;
+```
+</file>
+
+<file path="src/xpath/path.rs">
+```rust
+pub fn path_to_string<Paths>(p: Paths) -> String
+where
+    Paths: AsRef<std::path::Path>,
+{
+    p.as_ref().display().to_string()
+}
+
+
+```
+</file>
+
+<file path="src/xself.rs">
+```rust
+use std::pin::Pin;
+
+/**
+
+   # Safety
+
+   This function is unsafe. You must guarantee that you will never move the data out of the
+   mutable reference you receive when you call this function, so that the invariants on the Pin type can be upheld.
+*/
+pub unsafe fn self_mut_from_pinbox<T>(p: &mut Pin<Box<T>>) -> &mut T {
+    p.as_mut().get_unchecked_mut()
+}
+pub fn self_from_pinbox<T>(p: &Pin<Box<T>>) -> &T {
+    p.as_ref().get_ref()
+}
+
+```
+</file>
+</rust context>

@@ -1,0 +1,29 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-stack-rs-61-48-rule-290-1e52d35637")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_stack_rs_61_48_rule_290_1e52d35637() {
+    let code = vec![0x01u8, 0x00u8];
+    let contract = Contract::new(
+        Vec::new().into(),
+        crate::primitives::Bytecode::LegacyRaw(code.into()),
+        None,
+        crate::primitives::Address::ZERO,
+        None,
+        crate::primitives::Address::ZERO,
+        crate::primitives::U256::ZERO,
+    );
+
+    let mut interpreter = Interpreter::new(contract, 10_000, false);
+    interpreter.is_eof = true;
+    interpreter.instruction_result = InstructionResult::Continue;
+
+    let backing = [0x00u8, 0x01u8];
+    interpreter.instruction_pointer = backing.as_ptr();
+
+    interpreter.stack.data_mut().clear();
+    interpreter.stack.push(crate::primitives::U256::from(1u64)).ok();
+
+    let mut host = DummyHost::default();
+    crate::instructions::stack::dupn(&mut interpreter, &mut host);
+}
+```

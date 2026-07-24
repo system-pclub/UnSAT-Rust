@@ -1,0 +1,37 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-stack-rs-37-48-rule-300-rustc-1-87-line880-e2e1cd33b6")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_stack_rs_37_48_rule_300_rustc_1_87_line880_e2e1cd33b6() {
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter};
+    use revm_primitives::{Bytecode, Bytes, U256};
+
+    let bytecode = Bytecode::LegacyRaw(Bytes::from(vec![0x00, 0x00, 0x00, 0x00]));
+    let mut interpreter = Interpreter::new(
+        crate::Contract::new(
+            Bytes::new(),
+            bytecode,
+            None,
+            revm_primitives::Address::ZERO,
+            None,
+            revm_primitives::Address::ZERO,
+            U256::ZERO,
+        ),
+        10_000,
+        false,
+    );
+
+    let backing = vec![0x11u8, 0x22, 0x33];
+    interpreter.instruction_pointer = backing.as_ptr();
+
+    interpreter.stack.data_mut().clear();
+    interpreter.stack.data_mut().push(U256::from(0xAAu64));
+
+    interpreter.gas = Gas::new(10_000);
+    interpreter.instruction_result = InstructionResult::Continue;
+
+    let mut host = DummyHost::default();
+    crate::instructions::stack::push::<1, _>(&mut interpreter, &mut host);
+
+    core::mem::forget(backing);
+}
+```

@@ -1,0 +1,34 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-data-rs-12-5-rule-576-51bb62392a")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_data_rs_12_5_rule_576_51bb62392a() {
+    use crate::{instructions::data, Contract, DummyHost, Gas, InstructionResult, Interpreter};
+    use revm_primitives::{bytes, Bytecode, Eof, U256};
+    use std::sync::Arc;
+
+    let eof_bytes = bytes!("ef000101000402000100010400000000800000fe");
+    let mut eof = Eof::decode(eof_bytes).unwrap();
+    eof.body.data_section = bytes!("01020304");
+    eof.header.data_size = eof.body.data_section.len() as u16;
+    eof.header.code_sizes[0] = 1;
+    eof.body.code_section[0] = bytes!("00");
+
+    let contract = Contract::new(
+        bytes!(""),
+        Bytecode::Eof(Arc::new(eof)),
+        None,
+        revm_primitives::Address::ZERO,
+        None,
+        revm_primitives::Address::ZERO,
+        U256::ZERO,
+    );
+
+    let mut interpreter = Interpreter::new(contract, 10_000, false);
+    interpreter.gas = Gas::new(10_000);
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.stack.push(U256::from(1u64)).unwrap();
+
+    let mut host = DummyHost::default();
+    data::data_load(&mut interpreter, &mut host);
+}
+```

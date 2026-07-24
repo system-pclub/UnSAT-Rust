@@ -1,0 +1,37 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-memory-rs-10-5-rule-576-5980bb48ff")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_memory_rs_10_5_rule_576_5980bb48ff() {
+    use crate::{
+        gas::Gas,
+        instructions::memory,
+        interpreter::{Contract, Interpreter},
+        primitives::{Bytecode, Bytes, U256},
+        DummyHost,
+    };
+
+    let mut stack_bytes = Vec::with_capacity(2);
+    stack_bytes.push(U256::from(0u64));
+    stack_bytes.push(U256::from(2u64));
+
+    let bytecode = Bytecode::LegacyRaw(Bytes::from([0x51u8]));
+    let contract = Contract::new(
+        Bytes::new(),
+        bytecode,
+        None,
+        crate::primitives::Address::ZERO,
+        None,
+        crate::primitives::Address::ZERO,
+        U256::ZERO,
+    );
+
+    let mut interpreter = Interpreter::new(contract, 10_000, false);
+    interpreter.gas = Gas::new(10_000);
+    interpreter.is_eof = false;
+    interpreter.stack.data_mut().extend(stack_bytes);
+    interpreter.shared_memory.resize(32);
+
+    let mut host = DummyHost::default();
+    memory::mload(&mut interpreter, &mut host);
+}
+```

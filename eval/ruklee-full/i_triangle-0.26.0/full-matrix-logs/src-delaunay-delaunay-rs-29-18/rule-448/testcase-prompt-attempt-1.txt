@@ -1,0 +1,1187 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-delaunay-delaunay-rs-29-18-rule-448-2911061f8c`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_delaunay_delaunay_rs_29_18_rule_448_2911061f8c`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-delaunay-delaunay-rs-29-18-rule-448-2911061f8c")]`.
+- Define `pub extern "C" fn __unsat_poc_src_delaunay_delaunay_rs_29_18_rule_448_2911061f8c()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-delaunay-delaunay-rs-29-18-rule-448-2911061f8c")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_delaunay_delaunay_rs_29_18_rule_448_2911061f8c() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "delaunay::delaunay::Delaunay",
+    "path": "src/delaunay/delaunay.rs",
+    "line_start": 9,
+    "body_end": 9,
+    "is_public": true
+  },
+  "caller": {
+    "name": "delaunay::delaunay::Delaunay::to_triangulation",
+    "path": "src/delaunay/delaunay.rs",
+    "line_start": 14,
+    "line_end": 14,
+    "body_end": 51,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "triangulation::int::Triangulation"
+  },
+  "callee": {
+    "name": "std::ptr::mut_ptr::<impl *mut T>::add",
+    "path": "rust/library/core/src/ptr/mut_ptr.rs",
+    "line_start": 971,
+    "line_end": 1022,
+    "body_end": 1022,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*mut T"
+  },
+  "callsite": {
+    "line": 29,
+    "col": 18,
+    "path": "src/delaunay/delaunay.rs",
+    "id": "src-delaunay-delaunay-rs-29-18"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "usize",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `delaunay::delaunay::Delaunay` for `receiver` using fields visible from the injection module when that better controls the target caller state: `triangles: std::vec::Vec<delaunay::triangle::DTriangle>` -> call target caller `delaunay::delaunay::Delaunay::to_triangulation` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `delaunay::delaunay::Delaunay::to_triangulation`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use i_overlay::i_float::point::IntPoint;
+use i_overlay::i_float::triangle::Triangle;
+use i_overlay::i_float::u128::UInt128;
+use crate::delaunay::triangle::DTriangle;
+use crate::delaunay::vertex::DVertex;
+use crate::index::{NIL_INDEX, Index};
+use crate::triangulation::int::Triangulation;
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `i_overlay::...`.
+
+Target expression selected by the callsite line/column:
+- column: `18`
+- expression: `i_pnt.add(j + 1)`
+- receiver expression: `i_pnt`
+- method/function: `add`
+- call argument 1: `j + 1`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/delaunay/delaunay.rs:29
+```rust
+21:             let a = triangle.vertices[0];
+22:             let b = triangle.vertices[1];
+23:             let c = triangle.vertices[2];
+24: 
+25:             max_index = max_index.max(c.index).max(a.index.max(b.index));
+26: 
+27:             unsafe {
+28:                 *i_pnt.add(j) = a.index + shifted;
+29:                 *i_pnt.add(j + 1) = b.index + shifted;
+30:                 *i_pnt.add(j + 2) = c.index + shifted;
+31:             }
+32:             j += 3;
+33:         }
+34: 
+35:         let mut points = vec![IntPoint::ZERO; max_index + 1];
+36:         let p_pnt = points.as_mut_ptr();
+37: 
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/delaunay/delaunay.rs:14-29
+```rust
+14:     pub fn to_triangulation(&self, shifted: usize) -> Triangulation {
+15:         let mut indices = vec![NIL_INDEX; 3 * self.triangles.len()];
+16:         let i_pnt = indices.as_mut_ptr();
+17: 
+18:         let mut max_index = 0;
+19:         let mut j = 0;
+20:         for triangle in self.triangles.iter() {
+21:             let a = triangle.vertices[0];
+22:             let b = triangle.vertices[1];
+23:             let c = triangle.vertices[2];
+24: 
+25:             max_index = max_index.max(c.index).max(a.index.max(b.index));
+26: 
+27:             unsafe {
+28:                 *i_pnt.add(j) = a.index + shifted;
+29:                 *i_pnt.add(j + 1) = b.index + shifted;
+```
+
+Inferred prefix path obligations from the actual-containing function. These are not the unsafe API rule; they are safe-path conditions needed to reach the target callsite:
+- `i_pnt.add(j)` is a safe prefix helper that must return normally before the target. Its source has a nil-sentinel guard before nested indexing/lookup; construct `j` so the helper either takes the nil/sentinel skip path or uses an in-bounds existing element whose nested lookup will also succeed.
+- `i_pnt.add(j + 1)` is a safe prefix helper that must return normally before the target. Its source has a nil-sentinel guard before nested indexing/lookup; construct `j + 1` so the helper either takes the nil/sentinel skip path or uses an in-bounds existing element whose nested lookup will also succeed.
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/delaunay/convex.rs:75-122
+```rust
+ 75:     fn add(&mut self, edge: Edge, triangle: DTriangle) -> bool {
+ 76:         let v_index = triangle.opposite(edge.triangle_index);
+ 77:         let v = triangle.vertices[v_index];
+ 78: 
+ 79:         // a0 -> a1 -> p
+ 80: 
+ 81:         let mut node_a1 = self.nodes[edge.a];
+ 82:         let va0 = self.nodes[node_a1.prev].point;
+ 83:         let va1 = node_a1.point;
+ 84: 
+ 85:         let aa = va1.subtract(va0);
+ 86:         let ap = v.point.subtract(va1);
+ 87: 
+ 88:         let apa = aa.cross_product(ap);
+ 89:         if apa > 0 {
+ 90:             return false;
+ 91:         }
+ 92: 
+ 93:         // b0 <- b1 <- p
+ 94: 
+ 95:         let mut node_b1 = self.nodes[edge.b];
+ 96:         let vb0 = self.nodes[node_b1.next].point;
+ 97:         let vb1 = node_b1.point;
+ 98: 
+ 99:         let bb = vb0.subtract(vb1);
+100:         let bp = vb1.subtract(v.point);
+101: 
+102:         let bpb = bp.cross_product(bb);
+103:         if bpb > 0 {
+104:             return false;
+105:         }
+106: 
+107:         let prev_neighbor = triangle.neighbors[(v_index + 2) % 3];
+108:         let next_neighbor = triangle.neighbors[(v_index + 1) % 3];
+109: 
+110:         let new_index = self.nodes.len();
+111: 
+112:         let new_node = Node { next: node_b1.index, index: new_index, prev: node_a1.index, point: v.point };
+113: 
+114:         node_a1.next = new_index;
+115:         node_b1.prev = new_index;
+116: 
+117:         self.nodes.push(new_node);
+118:         self.nodes[node_a1.index] = node_a1;
+119:         self.nodes[node_b1.index] = node_b1;
+120: 
+121:         if next_neighbor.is_not_nil() {
+122:             let edge = Edge { triangle_index: triangle.index, neighbor: next_neighbor, a: edge.a, b: new_index };
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/delaunay/delaunay.rs:321-334
+```rust
+321: 
+322:     #[test]
+323:     fn to_triangulation_instantiates_pointer_writes() {
+324:         let triangle = DTriangle::abc(
+325:             0,
+326:             DVertex::new(0, IntPoint::new(0, 0)),
+327:             DVertex::new(1, IntPoint::new(1, 0)),
+328:             DVertex::new(2, IntPoint::new(0, 1)),
+329:         );
+330:         let triangulation = Delaunay::new(vec![triangle]).to_triangulation(3);
+331: 
+332:         assert_eq!(triangulation.indices, vec![3, 4, 5]);
+333:         assert_eq!(triangulation.points.len(), 3);
+334:     }
+```
+
+src/delaunay/triangle.rs:130-145
+```rust
+130: 
+131:     #[test]
+132:     fn order_accessors_instantiate_unchecked_paths() {
+133:         let triangle = DTriangle::abc_bc_ac_ab(
+134:             0,
+135:             DVertex::new(0, IntPoint::ZERO),
+136:             DVertex::new(1, IntPoint::ZERO),
+137:             DVertex::new(2, IntPoint::ZERO),
+138:             10,
+139:             11,
+140:             12,
+141:         );
+142: 
+143:         assert_eq!(triangle.neighbor_by_order(1), 11);
+144:         assert_eq!(triangle.vertex_by_order(2).index, 2);
+145:     }
+```
+
+src/delaunay/triangle.rs:146-153
+```rust
+146: 
+147:     #[test]
+148:     #[ignore = "compile-only LLVM IR instantiation"]
+149:     fn instantiate_update_opposite() {
+150:         let mut triangle = DTriangle::new();
+151:         triangle.neighbors[0] = 1;
+152:         triangle.update_opposite(1, 2);
+153:     }
+```
+
+src/split/cross_solver.rs:357-375
+```rust
+357: 
+358:     #[test]
+359:     fn test_simple_cross() {
+360:         let s: i32 = 1024;
+361: 
+362:         let ea = XSegment::new(IntPoint::new(-s, 0), IntPoint::new(s, 0));
+363:         let eb = XSegment::new(IntPoint::new(0, -s), IntPoint::new(0, s));
+364: 
+365:         let result = CrossSolver::cross(&ea, &eb, 2).unwrap();
+366: 
+367:         match result.cross_type {
+368:             CrossType::Pure => {
+369:                 assert_eq!(IntPoint::ZERO, result.point);
+370:             }
+371:             _ => {
+372:                 panic!("Fail cross result");
+373:             }
+374:         }
+375:     }
+```
+
+src/split/cross_solver.rs:376-394
+```rust
+376: 
+377:     #[test]
+378:     fn test_big_cross_1() {
+379:         let s: i32 = 1024_000_000;
+380: 
+381:         let ea = XSegment::new(IntPoint::new(-s, 0), IntPoint::new(s, 0));
+382:         let eb = XSegment::new(IntPoint::new(0, -s), IntPoint::new(0, s));
+383: 
+384:         let result = CrossSolver::cross(&ea, &eb, 2).unwrap();
+385: 
+386:         match result.cross_type {
+387:             CrossType::Pure => {
+388:                 assert_eq!(IntPoint::ZERO, result.point);
+389:             }
+390:             _ => {
+391:                 panic!("Fail cross result");
+392:             }
+393:         }
+394:     }
+```
+
+src/split/cross_solver.rs:395-413
+```rust
+395: 
+396:     #[test]
+397:     fn test_big_cross_2() {
+398:         let s: i32 = 1024_000_000;
+399: 
+400:         let ea = XSegment::new(IntPoint::new(-s, 0), IntPoint::new(s, 0));
+401:         let eb = XSegment::new(IntPoint::new(1024, -s), IntPoint::new(1024, s));
+402: 
+403:         let result = CrossSolver::cross(&ea, &eb, 2).unwrap();
+404: 
+405:         match result.cross_type {
+406:             CrossType::Pure => {
+407:                 assert_eq!(IntPoint::new(1024, 0), result.point);
+408:             }
+409:             _ => {
+410:                 panic!("Fail cross result");
+411:             }
+412:         }
+413:     }
+```
+
+src/split/cross_solver.rs:414-433
+```rust
+414: 
+415:     #[test]
+416:     fn test_big_cross_3() {
+417:         let s: i32 = 1024_000_000;
+418:         let q: i32 = s / 2;
+419: 
+420:         let ea = XSegment::new(IntPoint::new(-s, -s), IntPoint::new(s, s));
+421:         let eb = XSegment::new(IntPoint::new(q, -s), IntPoint::new(q, s));
+422: 
+423:         let result = CrossSolver::cross(&ea, &eb, 2).unwrap();
+424: 
+425:         match result.cross_type {
+426:             CrossType::Pure => {
+427:                 assert_eq!(IntPoint::new(512_000_000, 512_000_000), result.point);
+428:             }
+429:             _ => {
+430:                 panic!("Fail cross result");
+431:             }
+432:         }
+433:     }
+```
+
+src/split/cross_solver.rs:434-452
+```rust
+434: 
+435:     #[test]
+436:     fn test_left_end() {
+437:         let s: i32 = 1024_000_000;
+438: 
+439:         let ea = XSegment::new(IntPoint::new(-s, 0), IntPoint::new(s, 0));
+440:         let eb = XSegment::new(IntPoint::new(-s, -s), IntPoint::new(-s, s));
+441: 
+442:         let result = CrossSolver::cross(&ea, &eb, 2).unwrap();
+443: 
+444:         match result.cross_type {
+445:             CrossType::TargetEnd => {
+446:                 assert_eq!(IntPoint::new(-s, 0), result.point);
+447:             }
+448:             _ => {
+449:                 panic!("Fail cross result");
+450:             }
+451:         }
+452:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-delaunay-delaunay-rs-29-18
+
+Rule id: rule-448
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/delaunay/delaunay.rs">
+```rust
+use i_overlay::i_float::point::IntPoint;
+use i_overlay::i_float::triangle::Triangle;
+use i_overlay::i_float::u128::UInt128;
+use crate::delaunay::triangle::DTriangle;
+use crate::delaunay::vertex::DVertex;
+use crate::index::{NIL_INDEX, Index};
+use crate::triangulation::int::Triangulation;
+pub struct Delaunay {
+    pub triangles: Vec<DTriangle>,
+}
+impl Delaunay {
+    #[inline(never)]
+    pub fn to_triangulation(&self, shifted: usize) -> Triangulation {
+        let mut indices = vec![NIL_INDEX; 3 * self.triangles.len()];
+        let i_pnt = indices.as_mut_ptr();
+        let mut max_index = 0;
+        let mut j = 0;
+        for triangle in self.triangles.iter() {
+            let a = triangle.vertices[0];
+            let b = triangle.vertices[1];
+            let c = triangle.vertices[2];
+            max_index = max_index.max(c.index).max(a.index.max(b.index));
+            unsafe {
+                klee_ext_bind::bind_arg_ptr_value(0, i_pnt);
+                klee_ext_bind::bind_arg_u64_value(1, &j);
+                klee_ext_bind::callsite!("src-delaunay-delaunay-rs-28-18");
+                let mut __klee_ret_src_delaunay_delaunay_rs_28_18_add = {
+                    klee_ext_bind::callsite!("src-delaunay-delaunay-rs-28-17");
+                    i_pnt.add(j)
+                };
+                *__klee_ret_src_delaunay_delaunay_rs_28_18_add = a.index + shifted;
+                let __klee_arg0 = j + 1;
+                klee_ext_bind::bind_arg_ptr_value(0, i_pnt);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg0);
+                klee_ext_bind::callsite!("src-delaunay-delaunay-rs-29-18");
+                let mut __klee_ret_src_delaunay_delaunay_rs_29_18_add = {
+                    klee_ext_bind::callsite!("src-delaunay-delaunay-rs-29-17");
+                    i_pnt.add(__klee_arg0)
+                };
+                *__klee_ret_src_delaunay_delaunay_rs_29_18_add = b.index + shifted;
+                let __klee_arg1 = j + 2;
+                klee_ext_bind::bind_arg_ptr_value(0, i_pnt);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg1);
+                klee_ext_bind::callsite!("src-delaunay-delaunay-rs-30-18");
+                let mut __klee_ret_src_delaunay_delaunay_rs_30_18_add = {
+                    klee_ext_bind::callsite!("src-delaunay-delaunay-rs-30-17");
+                    i_pnt.add(__klee_arg1)
+                };
+                *__klee_ret_src_delaunay_delaunay_rs_30_18_add = c.index + shifted;
+            }
+            j += 3;
+        }
+        let mut points = vec![IntPoint::ZERO; max_index + 1];
+        let p_pnt = points.as_mut_ptr();
+        for triangle in self.triangles.iter() {
+            let a = triangle.vertices[0];
+            let b = triangle.vertices[1];
+            let c = triangle.vertices[2];
+            unsafe {
+                let __klee_arg2 = a.index;
+                klee_ext_bind::bind_arg_ptr_value(0, p_pnt);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
+                klee_ext_bind::callsite!("src-delaunay-delaunay-rs-44-18");
+                let mut __klee_ret_src_delaunay_delaunay_rs_44_18_add = {
+                    klee_ext_bind::callsite!("src-delaunay-delaunay-rs-44-17");
+                    p_pnt.add(__klee_arg2)
+                };
+                *__klee_ret_src_delaunay_delaunay_rs_44_18_add = a.point;
+                let __klee_arg3 = b.index;
+                klee_ext_bind::bind_arg_ptr_value(0, p_pnt);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg3);
+                klee_ext_bind::callsite!("src-delaunay-delaunay-rs-45-18");
+                let mut __klee_ret_src_delaunay_delaunay_rs_45_18_add = {
+                    klee_ext_bind::callsite!("src-delaunay-delaunay-rs-45-17");
+                    p_pnt.add(__klee_arg3)
+                };
+                *__klee_ret_src_delaunay_delaunay_rs_45_18_add = b.point;
+                let __klee_arg4 = c.index;
+                klee_ext_bind::bind_arg_ptr_value(0, p_pnt);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg4);
+                klee_ext_bind::callsite!("src-delaunay-delaunay-rs-46-18");
+                let mut __klee_ret_src_delaunay_delaunay_rs_46_18_add = {
+                    klee_ext_bind::callsite!("src-delaunay-delaunay-rs-46-17");
+                    p_pnt.add(__klee_arg4)
+                };
+                *__klee_ret_src_delaunay_delaunay_rs_46_18_add = c.point;
+            }
+        }
+        Triangulation { points, indices }
+    }
+    pub(super) fn new(triangles: Vec<DTriangle>) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub(crate) fn build(&mut self) {
+        /* body omitted: interface retained */
+    }
+    fn swap(&mut self, abc: DTriangle, pbc: DTriangle) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn update_neighbor_index(
+        &mut self,
+        index: usize,
+        old_neighbor: usize,
+        new_neighbor: usize,
+    ) {
+        /* body omitted: interface retained */
+    }
+    fn condition(p0: IntPoint, p1: IntPoint, p2: IntPoint, p3: IntPoint) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/delaunay/mod.rs">
+```rust
+pub mod triangle;
+pub mod vertex;
+#[allow(clippy::module_inception)]
+pub mod delaunay;
+pub mod triangulate;
+pub mod convex;
+```
+</file>
+
+<file path="src/delaunay/triangle.rs">
+```rust
+use crate::delaunay::vertex::DVertex;
+#[derive(Debug, Clone, Copy)]
+pub struct DTriangle {
+    pub index: usize,
+    pub vertices: [DVertex; 3],
+    pub neighbors: [usize; 3],
+}
+impl DTriangle {
+    #[inline(never)]
+    pub fn neighbor_by_order(&self, order: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn vertex_by_order(&self, order: usize) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn va(&self) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn vb(&self) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn vc(&self) -> DVertex {
+        /* body omitted: interface retained */
+    }
+    pub fn na(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn nb(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn nc(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn abc(index: usize, a: DVertex, b: DVertex, c: DVertex) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn abc_bc_ac_ab(
+        index: usize,
+        a: DVertex,
+        b: DVertex,
+        c: DVertex,
+        bc: usize,
+        ac: usize,
+        ab: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn neighbor(&self, vertex: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn opposite(&self, neighbor: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn update_opposite(&mut self, old_neighbor: usize, new_neighbor: usize) {
+        /* body omitted: interface retained */
+    }
+}
+impl Default for DTriangle {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/delaunay/triangulate.rs">
+```rust
+use std::vec;
+use i_overlay::i_float::bit_pack::BitPackVec;
+use i_overlay::i_float::triangle::Triangle;
+use i_overlay::i_shape::int::shape::IntShape;
+use crate::delaunay::delaunay::Delaunay;
+use crate::delaunay::triangle::DTriangle;
+use crate::delaunay::vertex::DVertex;
+use crate::monotone::monotone_layout::{MonotoneLayoutStatus, ShapeLayout};
+use crate::monotone::mnav_node::MNavNode;
+use crate::monotone::mslice_buffer::MSliceBuffer;
+use crate::triangulation::int::Triangulation;
+
+#[derive(Debug, Clone, Copy)]
+struct Edge {
+    a: usize,               // vertex index
+    b: usize,               // vertex index
+    neighbor: usize         // prev triangle index
+}
+
+struct TriangleStack {
+    edges: Vec<Edge>,
+    triangles: Vec<DTriangle>,
+    counter: usize
+}
+
+impl TriangleStack {
+
+    fn with_count(count: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    fn take_triangles(mut self) -> Vec<DTriangle> {
+        /* body omitted: interface retained */
+    }
+
+    fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    fn add(&mut self, a: DVertex, b: DVertex, c: DVertex) {
+        /* body omitted: interface retained */
+    }
+
+    fn pop(&mut self, a: usize, b: usize) -> Option<Edge> {
+        /* body omitted: interface retained */
+    }
+}
+
+pub trait ShapeTriangulate {
+    fn delaunay(&self) -> Option<Delaunay>;
+
+    fn triangulation(&self) -> Triangulation;
+}
+
+impl ShapeTriangulate for IntShape {
+
+    fn delaunay(&self) -> Option<Delaunay> {
+        /* body omitted: interface retained */
+    }
+
+    fn triangulation(&self) -> Triangulation {
+        /* body omitted: interface retained */
+    }
+}
+
+fn triangulate(index: usize, links: &mut [MNavNode], triangle_stack: &mut TriangleStack) {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/delaunay/vertex.rs">
+```rust
+use i_overlay::i_float::point::IntPoint;
+
+#[derive(Debug, Clone, Copy)]
+pub struct DVertex {
+    pub(crate) index: usize,
+    pub(crate) point: IntPoint
+}
+
+impl DVertex {
+    pub const fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub fn new(index: usize, point: IntPoint) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/index.rs">
+```rust
+pub(crate) const NIL_INDEX: usize = usize::MAX;
+
+pub(crate) trait Index {
+    fn is_not_nil(&self) -> bool;
+    fn is_nil(&self) -> bool;
+}
+
+impl Index for usize {
+    fn is_not_nil(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_nil(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+pub mod delaunay;
+pub mod monotone;
+mod index;
+pub mod triangulation;
+
+pub use i_overlay;
+```
+</file>
+
+<file path="src/monotone/mnav_node.rs">
+```rust
+use crate::delaunay::vertex::DVertex;
+use crate::index::NIL_INDEX;
+use crate::monotone::mslice_buffer::MSlice; // To perform vector subtraction
+
+#[derive(Clone, Debug, Copy)]
+pub struct MNavNode {
+    pub(crate) next: usize,
+    pub(crate) index: usize,
+    pub(crate) prev: usize,
+    pub(crate) vert: DVertex,
+}
+
+impl MNavNode {
+    pub const EMPTY: MNavNode = MNavNode {
+        next: NIL_INDEX,
+        index: NIL_INDEX,
+        prev: NIL_INDEX,
+        vert: DVertex::empty()
+    };
+
+    pub fn new(next: usize, index: usize, prev: usize, vert: DVertex) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub(super) struct ABVert {
+    pub(super) a: MNavNode,
+    pub(super) b: MNavNode
+}
+
+impl ABVert {
+    pub(super) fn new(a: MNavNode, b: MNavNode) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub(super) fn slice(&self) -> MSlice {
+        /* body omitted: interface retained */
+    }
+}
+
+pub(super) trait MNavNodeArray {
+    fn new_next(&mut self, a: usize, b: usize) -> ABVert;
+}
+
+impl MNavNodeArray for Vec<MNavNode> {
+
+    fn new_next(&mut self, a: usize, b: usize) -> ABVert {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/monotone/monotone_layout.rs">
+```rust
+use i_overlay::i_float::bit_pack::{BitPack, BitPackVec};
+use i_overlay::i_float::point::IntPoint;
+use i_overlay::i_float::triangle::Triangle;
+use i_overlay::i_shape::int::shape::IntShape;
+use crate::index::{Index, NIL_INDEX};
+use crate::monotone::mnav_node::{MNavNode, MNavNodeArray};
+use crate::monotone::mpoly::MPoly;
+use crate::monotone::mslice_buffer::MSlice;
+use crate::monotone::node_layout::{MNodeType, MSpecialNode, ShapeNodeLayout};
+
+#[derive(Clone, Debug, Copy, PartialEq)]
+pub(crate) enum MonotoneLayoutStatus {
+    Empty,
+    Success,
+    Fail
+}
+
+pub(crate) struct MonotoneLayout {
+    pub(crate) start_list: Vec<usize>,
+    pub(crate) nav_nodes: Vec<MNavNode>,
+    pub(crate) slice_list: Vec<MSlice>,
+    status: MonotoneLayoutStatus
+}
+
+impl MonotoneLayout {
+
+    pub(crate) fn status(&self) -> MonotoneLayoutStatus {
+        /* body omitted: interface retained */
+    }
+
+    fn fail() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+
+}
+
+struct NavIndex {
+    next: usize,
+    prev: usize
+}
+
+enum MType {
+    Direct,
+    Next,
+    Prev
+}
+
+struct MSolution {
+    mtype: MType,
+    a: usize,
+    b: usize,
+    node_index: usize
+}
+
+pub trait ShapeLayout {
+    fn monotone_layout(&self) -> MonotoneLayout;
+}
+
+impl ShapeLayout for IntShape {
+
+    fn monotone_layout(&self) -> MonotoneLayout {
+        /* body omitted: interface retained */
+    }
+}
+
+fn fill(mpolies: &mut [MPoly], verts: &[MNavNode], stop: BitPack, stop_index: usize) -> NavIndex {
+    /* body omitted: interface retained */
+}
+
+fn find_node_to_merge(prev: MNavNode, next: MNavNode, merge: MNavNode, start_node: usize, specs: &[MSpecialNode], navs: &[MNavNode]) -> MSolution {
+    /* body omitted: interface retained */
+}
+
+fn is_contain(mpoly: MPoly, point: IntPoint, navs: &[MNavNode]) -> bool {
+    /* body omitted: interface retained */
+}
+
+fn is_contain_point(point: IntPoint, a0: IntPoint, a1: IntPoint, b0: IntPoint, b1: IntPoint) -> bool {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/monotone/mslice_buffer.rs">
+```rust
+use crate::delaunay::triangle::DTriangle;
+use crate::index::{Index, NIL_INDEX};
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MSlice {
+    a: usize,
+    b: usize,
+}
+impl MSlice {
+    pub fn new(a: usize, b: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[derive(Debug, Clone, Copy)]
+struct Edge {
+    pub id: usize,
+    pub edge: usize,
+    pub triangle: usize,
+}
+impl Edge {
+    pub const EMPTY: Edge = Edge {
+        id: 0,
+        edge: 0,
+        triangle: 0,
+    };
+}
+pub(crate) struct MSliceBuffer {
+    vertex_count: usize,
+    edges: Vec<Edge>,
+    vertex_marks: Vec<bool>,
+}
+impl MSliceBuffer {
+    #[inline(never)]
+    pub(crate) fn new(vertex_count: usize, slices: &[MSlice]) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn add_connections(&mut self, triangles: &mut [DTriangle]) {
+        /* body omitted: interface retained */
+    }
+    fn find(&self, a: usize, b: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+    fn id(n: usize, a: usize, b: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/triangulation/float.rs">
+```rust
+use i_overlay::core::fill_rule::FillRule;
+use i_overlay::i_float::f64_adapter::F64PointAdapter;
+use i_overlay::i_float::f64_point::F64Point;
+use i_overlay::i_float::f64_rect::F64Rect;
+use i_overlay::i_shape::f64::adapter::{ShapeToFloat, ShapeToInt};
+use i_overlay::i_shape::f64::rect::RectInit;
+use i_overlay::i_shape::f64::shape::{F64Path, F64Shape};
+use crate::triangulation::int::IntTriangulate;
+
+#[derive(Debug)]
+pub struct Triangulation {
+    pub points: Vec<F64Point>,
+    pub indices: Vec<usize>,
+}
+
+pub trait FloatTriangulate {
+    fn to_triangulation(&self, validate_rule: Option<FillRule>, min_area: f64) -> Triangulation;
+
+    fn to_convex_polygons(&self, validate_rule: Option<FillRule>, min_area: f64) -> Vec<F64Path>;
+}
+
+impl FloatTriangulate for F64Shape {
+    fn to_triangulation(&self, validate_rule: Option<FillRule>, min_area: f64) -> Triangulation {
+        /* body omitted: interface retained */
+    }
+
+    fn to_convex_polygons(&self, validate_rule: Option<FillRule>, min_area: f64) -> Vec<F64Path> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/triangulation/int.rs">
+```rust
+use i_overlay::core::fill_rule::FillRule;
+use i_overlay::core::simplify::Simplify;
+use i_overlay::i_float::point::IntPoint;
+use i_overlay::i_shape::int::path::{IntPath, PointPathExtension};
+use i_overlay::i_shape::int::shape::{IntShape, PointsCount};
+use crate::delaunay::triangulate::ShapeTriangulate;
+
+#[derive(Debug)]
+pub struct Triangulation {
+    pub points: Vec<IntPoint>,
+    pub indices: Vec<usize>
+}
+
+pub trait IntTriangulate {
+
+    fn to_triangulation(&self, validate_rule: Option<FillRule>, min_area: i64) -> Triangulation;
+
+    fn to_convex_polygons(&self, validate_rule: Option<FillRule>, min_area: i64) -> Vec<IntPath>;
+
+}
+
+trait UnsafeTriangulate {
+    fn triangulation(&self) -> Triangulation;
+    fn convex_polygons(&self) -> Vec<IntPath>;
+}
+
+impl UnsafeTriangulate for Vec<IntShape> {
+
+    fn triangulation(&self) -> Triangulation {
+        /* body omitted: interface retained */
+    }
+
+    fn convex_polygons(&self) -> Vec<IntPath> {
+        /* body omitted: interface retained */
+    }
+
+}
+
+impl IntTriangulate for IntShape {
+
+    fn to_triangulation(&self, validate_rule: Option<FillRule>, min_area: i64) -> Triangulation {
+        /* body omitted: interface retained */
+    }
+
+    fn to_convex_polygons(&self, validate_rule: Option<FillRule>, min_area: i64) -> Vec<IntPath> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl IntTriangulate for Vec<IntShape> {
+
+    fn to_triangulation(&self, validate_rule: Option<FillRule>, min_area: i64) -> Triangulation {
+        /* body omitted: interface retained */
+    }
+
+    fn to_convex_polygons(&self, validate_rule: Option<FillRule>, min_area: i64) -> Vec<IntPath> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

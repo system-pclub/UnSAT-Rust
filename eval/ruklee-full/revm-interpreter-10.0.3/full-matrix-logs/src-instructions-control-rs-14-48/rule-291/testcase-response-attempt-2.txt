@@ -1,0 +1,30 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-14-48-rule-291-0808f8e5fc")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_14_48_rule_291_0808f8e5fc() {
+    use core::sync::atomic::{AtomicPtr, Ordering};
+
+    let code = revm_primitives::Bytes::from(vec![0x01, 0x00, 0x00]);
+    let contract = crate::Contract::new(
+        code.clone(),
+        revm_primitives::Bytecode::LegacyRaw(code),
+        None,
+        revm_primitives::Address::ZERO,
+        None,
+        revm_primitives::Address::ZERO,
+        revm_primitives::U256::ZERO,
+    );
+
+    let mut interpreter = crate::Interpreter::new(contract, 10_000, false);
+    interpreter.is_eof = true;
+    interpreter.gas = crate::Gas::new(10_000);
+
+    let backing = [0u8; 4];
+    let ptr = backing.as_ptr();
+    let slot = AtomicPtr::new(ptr as *mut u8);
+    interpreter.instruction_pointer = slot.load(Ordering::Relaxed) as *const u8;
+
+    let mut host = crate::DummyHost::default();
+    crate::instructions::control::rjump(&mut interpreter, &mut host);
+}
+```

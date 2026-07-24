@@ -1,0 +1,207 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+pub mod store;
+pub mod tree;
+pub mod node;
+pub mod array;
+```
+</file>
+
+<file path="src/node.rs">
+```rust
+pub const EMPTY_REF: u32 = u32::MAX;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum Color {
+    Red,
+    Black
+}
+
+pub struct Node<T> {
+    pub parent: u32,
+    pub left: u32,
+    pub right: u32,
+    pub color: Color,
+    pub value: T
+}
+```
+</file>
+
+<file path="src/store.rs">
+```rust
+use crate::node::{Color, EMPTY_REF, Node};
+
+pub struct Store<T> {
+    pub(super) buffer: Vec<Node<T>>,
+    pub(super) unused: Vec<u32>,
+    empty: T,
+}
+
+impl<T: Clone> Store<T> {
+
+    #[inline(always)]
+    pub(super) fn new(empty: T, capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn reserve(&mut self, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    pub fn get_free_index(&mut self) -> u32 {
+        /* body omitted: interface retained */
+    }
+
+
+    #[inline(always)]
+    pub fn put_back(&mut self, index: u32) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/tree.rs">
+```rust
+use std::cmp::Ordering;
+use crate::node::{Color, EMPTY_REF, Node};
+use crate::store::Store;
+pub struct Tree<T> {
+    pub store: Store<T>,
+    pub root: u32,
+    nil_index: u32,
+}
+impl<T: Clone + PartialEq + Eq + PartialOrd + Ord> Tree<T> {
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn new(empty: T, capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn clear_all(&mut self) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn is_black(&self, index: u32) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn node(&self, index: u32) -> &Node<T> {
+        unsafe {
+            let __klee_arg0 = &self.store.buffer;
+            let __klee_arg1 = index as usize;
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
+            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg1);
+            klee_ext_bind::callsite!("src-tree-rs-65-13");
+            let mut __klee_ret_src_tree_rs_65_13_get_unchecked = __klee_arg0
+                .get_unchecked(__klee_arg1);
+            __klee_ret_src_tree_rs_65_13_get_unchecked
+        }
+    }
+    #[inline(never)]
+    pub fn mut_node(&mut self, index: u32) -> &mut Node<T> {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn create_nil_node(&mut self, parent: u32) {
+        /* body omitted: interface retained */
+    }
+    fn rotate_right(&mut self, index: u32) {
+        /* body omitted: interface retained */
+    }
+    fn rotate_left(&mut self, index: u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn replace_parents_child(&mut self, parent: u32, old_child: u32, new_child: u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn remove_parents_child(&mut self, parent: u32, old_child: u32) {
+        /* body omitted: interface retained */
+    }
+    pub fn insert_if_not_exist(&mut self, value: T) -> bool {
+        /* body omitted: interface retained */
+    }
+    pub fn insert(&mut self, value: T) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn insert_root(&mut self, value: T) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn insert_with_parent(&mut self, value: T, p_index: u32, is_left: bool) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn fix_red_black_properties_after_insert(
+        &mut self,
+        n_index: u32,
+        p_origin: u32,
+    ) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn get_uncle(&self, p_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn delete(&mut self, value: &T) {
+        /* body omitted: interface retained */
+    }
+    pub fn delete_if_exist(&mut self, value: &T) {
+        /* body omitted: interface retained */
+    }
+    pub fn delete_index(&mut self, index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn parent(&self, index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    fn delete_node_with_zero_or_one_child(&mut self, n_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    fn fix_red_black_properties_after_delete(&mut self, n_index: u32) {
+        /* body omitted: interface retained */
+    }
+    fn handle_black_sibling_with_at_least_one_red_child(
+        &mut self,
+        n_index: u32,
+        s_origin: u32,
+    ) {
+        /* body omitted: interface retained */
+    }
+    fn handle_red_sibling(&mut self, n_index: u32, s_index: u32) {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    fn get_sibling(&self, n_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn find_left_minimum(&self, n_index: u32) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn find(&self, value: T) -> Option<T> {
+        /* body omitted: interface retained */
+    }
+    pub fn find_index(&self, value: T) -> u32 {
+        /* body omitted: interface retained */
+    }
+    pub fn height(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

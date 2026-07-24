@@ -1,0 +1,37 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-48-22-rule-290-a2e8c55a83")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_48_22_rule_290_a2e8c55a83() {
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter};
+    use revm_primitives::{Bytecode, Bytes};
+
+    let mut code = Bytes::from(vec![
+        0x02, // max_index = 2
+        0x00, 0x01, // case 0 -> offset 1
+        0x00, 0x01, // case 1 -> offset 1
+        0x00, 0x01, // case 2 -> offset 1
+        0x00, // padding for the final pointer advance
+    ]);
+
+    let contract = crate::Contract::new(
+        Bytes::new(),
+        Bytecode::LegacyRaw(code.clone()),
+        None,
+        Default::default(),
+        None,
+        Default::default(),
+        Default::default(),
+    );
+
+    let mut interp = Interpreter::new(contract, 10_000, false);
+    interp.is_eof = true;
+    interp.gas = Gas::new(10_000);
+    interp.stack.push(revm_primitives::U256::from(1)).unwrap();
+
+    let mut host = DummyHost::default();
+    crate::instructions::control::rjumpv(&mut interp, &mut host);
+
+    let _ = &mut code;
+    let _ = InstructionResult::Continue;
+}
+```

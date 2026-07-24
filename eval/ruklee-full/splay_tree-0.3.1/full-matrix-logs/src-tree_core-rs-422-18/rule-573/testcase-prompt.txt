@@ -1,0 +1,791 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 125613396459520; get_arg(1) = 2; get_arg(2) = 1; target counterexample query was unsat.
+- The rule is `get_arg(2) < get_arg(1)`. This failed observation had `get_arg(2) = 1` and `get_arg(1) = 2`; the next testcase must reach the same target but make `get_arg(2) >= get_arg(1)` true at the actual unsafe call.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-tree-core-rs-422-18-rule-573-2694b50270`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_tree_core_rs_422_18_rule_573_2694b50270`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-tree-core-rs-422-18-rule-573-2694b50270")]`.
+- Define `pub extern "C" fn __unsat_poc_src_tree_core_rs_422_18_rule_573_2694b50270()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-tree-core-rs-422-18-rule-573-2694b50270")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_tree_core_rs_422_18_rule_573_2694b50270() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "tree_core::Tree",
+    "path": "src/tree_core.rs",
+    "line_start": 60,
+    "body_end": 60,
+    "is_public": true
+  },
+  "caller": {
+    "name": "tree_core::Tree::<K, V>::node_ref",
+    "path": "src/tree_core.rs",
+    "line_start": 421,
+    "line_end": 421,
+    "body_end": 423,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "&tree_core::Node<K, V>"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 625,
+    "line_end": 657,
+    "body_end": 657,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&<I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 422,
+    "col": 18,
+    "path": "src/tree_core.rs",
+    "id": "src-tree_core-rs-422-18"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "tree_core::Node<K, V>",
+      "layout_control": "external",
+      "external_sources": [
+        "tree_core::Node<K, V>"
+      ]
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "usize",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `tree_core::Tree` for `receiver` using constructor(s): `tree_core::Tree::<K, V>::new` -> construct `tree_core::Node` for `i` using fields visible from the injection module when that better controls the target caller state: `key`, `val` -> or construct `tree_core::Node` for `i` using constructor(s): `tree_core::Node::<K, V>::new` -> call target caller `tree_core::Tree::<K, V>::node_ref` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `tree_core::Tree::<K, V>::node_ref`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use crate::iter;
+use std::borrow::Borrow;
+use std::cmp;
+use std::cmp::Ordering;
+use std::hash;
+use std::mem;
+use std::slice;
+use std::u32;
+use std::vec::Vec;
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/tree_core.rs:422
+```rust
+414:         let root = self.root;
+415:         self.node_ref(root)
+416:     }
+417:     pub fn root_mut(&mut self) -> &mut Node<K, V> {
+418:         let root = self.root;
+419:         self.node_mut(root)
+420:     }
+421:     pub fn node_ref(&self, i: NodeIndex) -> &Node<K, V> {
+422:         unsafe { self.nodes.get_unchecked(i as usize) }
+423:     }
+424:     pub fn node_mut(&mut self, i: NodeIndex) -> &mut Node<K, V> {
+425:         unsafe { self.nodes.get_unchecked_mut(i as usize) }
+426:     }
+427:     unsafe fn aliasable_node_mut<'a>(&mut self, i: NodeIndex) -> &'a mut Node<K, V> {
+428:         &mut *(self.node_mut(i) as *mut _)
+429:     }
+430:     pub fn len(&self) -> usize {
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/tree_core.rs:421-422
+```rust
+421:     pub fn node_ref(&self, i: NodeIndex) -> &Node<K, V> {
+422:         unsafe { self.nodes.get_unchecked(i as usize) }
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/tree_core.rs:170-196
+```rust
+170:     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+171:         if let Some(root) = self.root() {
+172:             let (root, order) = self.splay(root, &key);
+173:             self.root = root;
+174:             match order {
+175:                 Ordering::Equal => {
+176:                     let old = mem::replace(&mut self.root_mut().val, value);
+177:                     Some(old)
+178:                 }
+179:                 Ordering::Less => {
+180:                     let lft = mem::replace(&mut self.root_mut().lft, NULL_NODE);
+181:                     let rgt = self.root;
+182:                     self.push_root(Node::new(key, value, lft, rgt));
+183:                     None
+184:                 }
+185:                 Ordering::Greater => {
+186:                     let rgt = mem::replace(&mut self.root_mut().rgt, NULL_NODE);
+187:                     let lft = self.root;
+188:                     self.push_root(Node::new(key, value, lft, rgt));
+189:                     None
+190:                 }
+191:             }
+192:         } else {
+193:             self.push_root(Node::new(key, value, NULL_NODE, NULL_NODE));
+194:             None
+195:         }
+196:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-tree_core-rs-422-18
+
+Rule id: rule-573
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-tree_core-rs-422-18`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-tree_core-rs-425-18` -> `src-tree_core-rs-425-18` -> `src-tree_core-rs-422-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-tree_core-rs-422-18` and reproduce the target counterexample there.
+The metadata caller `tree_core::Tree::<K, V>::node_ref` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 125613396459520; get_arg(1) = 2; get_arg(2) = 1; target counterexample query was unsat.
+  The rule is `get_arg(2) < get_arg(1)`. This failed observation had `get_arg(2) = 1` and `get_arg(1) = 2`; the next testcase must reach the same target but make `get_arg(2) >= get_arg(1)` true at the actual unsafe call.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/iter.rs">
+```rust
+//! Iterators for splay tree
+use crate::tree_core::Node;
+use crate::tree_core::NodeIndex;
+use std::mem;
+use std::vec::Vec;
+
+pub type MaybeNodeIndex = Option<NodeIndex>;
+
+pub trait Nodes {
+    type Entry;
+    fn get_node(&mut self, index: NodeIndex) -> (Self::Entry, MaybeNodeIndex, MaybeNodeIndex);
+}
+
+enum Visit<E> {
+    Elem(E),
+    Node(NodeIndex),
+}
+
+pub struct InOrderIter<N>
+where
+    N: Nodes,
+{
+    nodes: N,
+    stack: Vec<Visit<N::Entry>>,
+}
+impl<N> InOrderIter<N>
+where
+    N: Nodes,
+{
+    pub fn new(root: MaybeNodeIndex, nodes: N) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<N> Iterator for InOrderIter<N>
+where
+    N: Nodes,
+{
+    type Item = N::Entry;
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+
+pub type Iter<'a, K, V> = InOrderIter<&'a [Node<K, V>]>;
+impl<'a, K: 'a, V: 'a> Nodes for &'a [Node<K, V>] {
+    type Entry = (&'a K, &'a V);
+    fn get_node(&mut self, index: NodeIndex) -> (Self::Entry, MaybeNodeIndex, MaybeNodeIndex) {
+        /* body omitted: interface retained */
+    }
+}
+
+pub type IterMut<'a, K, V> = InOrderIter<&'a mut [Node<K, V>]>;
+impl<'a, K: 'a, V: 'a> Nodes for &'a mut [Node<K, V>] {
+    type Entry = (&'a K, &'a mut V);
+    fn get_node(&mut self, index: NodeIndex) -> (Self::Entry, MaybeNodeIndex, MaybeNodeIndex) {
+        /* body omitted: interface retained */
+    }
+}
+
+pub type IntoIter<K, V> = InOrderIter<OwnedNodes<K, V>>;
+pub struct OwnedNodes<K, V>(pub(crate) Vec<Option<Node<K, V>>>);
+impl<K, V> Nodes for OwnedNodes<K, V> {
+    type Entry = (K, V);
+    fn get_node(&mut self, index: NodeIndex) -> (Self::Entry, MaybeNodeIndex, MaybeNodeIndex) {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> Drop for OwnedNodes<K, V> {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! Splay tree based data structures
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), feature(alloc))]
+#![warn(missing_docs)]
+
+#[cfg(feature = "serde")]
+#[macro_use]
+extern crate serde;
+
+#[cfg(not(feature = "std"))]
+#[macro_use]
+pub extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+mod std {
+    pub use alloc::*;
+    pub use core::{borrow, cmp, fmt, hash, iter, mem, ops, slice, u32};
+}
+
+pub mod heap;
+mod iter;
+pub mod map;
+pub mod set;
+mod tree_core;
+mod vec_like;
+
+#[doc(inline)]
+pub use map::SplayMap;
+
+#[doc(inline)]
+pub use set::SplaySet;
+
+#[doc(inline)]
+pub use heap::SplayHeap;
+```
+</file>
+
+<file path="src/tree_core.rs">
+```rust
+//! In-place top-down splay tree implementation
+use crate::iter;
+use std::borrow::Borrow;
+use std::cmp;
+use std::cmp::Ordering;
+use std::hash;
+use std::mem;
+use std::slice;
+use std::u32;
+use std::vec::Vec;
+pub type NodeIndex = u32;
+const NULL_NODE: NodeIndex = u32::MAX;
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Node<K, V> {
+    lft: NodeIndex,
+    rgt: NodeIndex,
+    pub key: K,
+    pub val: V,
+}
+impl<K, V> Node<K, V> {
+    pub fn new(key: K, val: V, lft: NodeIndex, rgt: NodeIndex) -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn rgt(&self) -> Option<NodeIndex> {
+        /* body omitted: interface retained */
+    }
+    pub fn lft(&self) -> Option<NodeIndex> {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> From<Node<K, V>> for (K, V) {
+    fn from(t: Node<K, V>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, K, V> From<&'a Node<K, V>> for (&'a K, &'a V) {
+    fn from(t: &'a Node<K, V>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, K, V> From<&'a mut Node<K, V>> for (&'a K, &'a mut V) {
+    fn from(t: &'a mut Node<K, V>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Tree<K, V> {
+    root: NodeIndex,
+    nodes: Vec<Node<K, V>>,
+}
+impl<K, V> Tree<K, V>
+where
+    K: Ord,
+{
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    pub fn contains_key<Q: ?Sized>(&mut self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn contains_key_immut<Q: ?Sized>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn find_lower_bound<Q: ?Sized>(&mut self, key: &Q) -> Option<&K>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn find_lower_bound_immut<Q: ?Sized>(&self, key: &Q) -> Option<&K>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn find_upper_bound<Q: ?Sized>(&mut self, key: &Q) -> Option<&K>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn find_upper_bound_immut<Q: ?Sized>(&self, key: &Q) -> Option<&K>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn get<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn get_immut<Q: ?Sized>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn find_bound_immut<F>(&self, cmp: F) -> Option<&K>
+    where
+        F: Fn(&K) -> Ordering,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        /* body omitted: interface retained */
+    }
+    pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    pub fn pop_last(&mut self) -> Option<(K, V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn pop_root(&mut self) -> Option<(K, V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn get_lftmost(&mut self) -> Option<(&K, &V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn get_lftmost_immut(&self) -> Option<(&K, &V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn take_lftmost(&mut self) -> Option<(K, V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn get_rgtmost(&mut self) -> Option<(&K, &V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn get_rgtmost_immut(&self) -> Option<(&K, &V)> {
+        /* body omitted: interface retained */
+    }
+    pub fn take_rgtmost(&mut self) -> Option<(K, V)> {
+        /* body omitted: interface retained */
+    }
+    fn push_root(&mut self, node: Node<K, V>) {
+        /* body omitted: interface retained */
+    }
+    fn splay<Q: ?Sized>(&mut self, root: NodeIndex, key: &Q) -> (NodeIndex, Ordering)
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        /* body omitted: interface retained */
+    }
+    fn splay_lftmost(&mut self, root: NodeIndex) -> NodeIndex {
+        /* body omitted: interface retained */
+    }
+    fn splay_rgtmost(&mut self, root: NodeIndex) -> NodeIndex {
+        /* body omitted: interface retained */
+    }
+    fn splay_by<F>(&mut self, mut curr_idx: NodeIndex, cmp: F) -> (NodeIndex, Ordering)
+    where
+        F: Fn(&K) -> Ordering,
+    {
+        /* body omitted: interface retained */
+    }
+    fn non_empty_pop_root(&mut self) -> (K, V) {
+        /* body omitted: interface retained */
+    }
+    fn find_bound<F>(&mut self, cmp: F) -> Option<&K>
+    where
+        F: Fn(&K) -> Ordering,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> Tree<K, V> {
+    pub fn root(&self) -> Option<NodeIndex> {
+        /* body omitted: interface retained */
+    }
+    pub fn root_ref(&self) -> &Node<K, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn root_mut(&mut self) -> &mut Node<K, V> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn node_ref(&self, i: NodeIndex) -> &Node<K, V> {
+        unsafe {
+            let __klee_arg0 = &self.nodes;
+            let __klee_arg1 = i as usize;
+            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
+            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg1);
+            klee_ext_bind::callsite!("src-tree_core-rs-422-18");
+            let mut __klee_ret_src_tree_core_rs_422_18_get_unchecked = __klee_arg0
+                .get_unchecked(__klee_arg1);
+            __klee_ret_src_tree_core_rs_422_18_get_unchecked
+        }
+    }
+    #[inline(never)]
+    pub fn node_mut(&mut self, i: NodeIndex) -> &mut Node<K, V> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn aliasable_node_mut<'a>(&mut self, i: NodeIndex) -> &'a mut Node<K, V> {
+        &mut *(self.node_mut(i) as *mut _)
+    }
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[allow(dead_code)]
+    pub fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    pub fn iter(&self) -> iter::Iter<K, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn iter_mut(&mut self) -> iter::IterMut<K, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn into_iter(self) -> iter::IntoIter<K, V> {
+        /* body omitted: interface retained */
+    }
+    pub fn nodes_iter(&self) -> slice::Iter<Node<K, V>> {
+        /* body omitted: interface retained */
+    }
+    pub fn nodes_iter_mut(&mut self) -> slice::IterMut<Node<K, V>> {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> hash::Hash for Tree<K, V>
+where
+    K: hash::Hash,
+    V: hash::Hash,
+{
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> PartialEq for Tree<K, V>
+where
+    K: PartialEq,
+    V: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> Eq for Tree<K, V>
+where
+    K: Eq,
+    V: Eq,
+{}
+impl<K, V> PartialOrd for Tree<K, V>
+where
+    K: PartialOrd,
+    V: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        /* body omitted: interface retained */
+    }
+}
+impl<K, V> Ord for Tree<K, V>
+where
+    K: Ord,
+    V: Ord,
+{
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

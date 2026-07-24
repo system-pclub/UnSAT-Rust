@@ -1,0 +1,31 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-data-rs-47-48-rule-290-c863533a11")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_data_rs_47_48_rule_290_c863533a11() {
+    use revm_primitives::{bytes, Bytecode, Eof};
+    use std::sync::Arc;
+
+    let eof_bytes = bytes!("ef000101000402000100010400000000800000fe");
+    let mut eof = Eof::decode(eof_bytes).unwrap();
+    eof.body.data_section = bytes!("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+    eof.header.data_size = eof.body.data_section.len() as u16;
+
+    let bytecode = Bytecode::Eof(Arc::new(eof));
+    let contract = Contract::new(
+        revm_primitives::Bytes::new(),
+        bytecode,
+        None,
+        revm_primitives::Address::ZERO,
+        None,
+        revm_primitives::Address::ZERO,
+        revm_primitives::U256::ZERO,
+    );
+
+    let mut interpreter = Interpreter::new(contract, 10_000, false);
+    interpreter.stack = Stack::new();
+    interpreter.instruction_pointer = interpreter.bytecode.as_ptr();
+
+    let mut host = DummyHost::default();
+    instructions::data::data_loadn::<DummyHost>(&mut interpreter, &mut host);
+}
+```

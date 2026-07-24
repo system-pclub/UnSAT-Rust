@@ -1,0 +1,42 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-system-rs-63-5-rule-576-957d0dc326")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_system_rs_63_5_rule_576_957d0dc326() {
+    use crate::{
+        gas::Gas,
+        instructions::system,
+        primitives::{Bytecode, Bytes, U256},
+        DummyHost, Interpreter,
+    };
+
+    let mut host = DummyHost::default();
+
+    let mut interp = Interpreter::new(
+        crate::Contract::new(
+            Bytes::from(vec![0u8; 64]),
+            Bytecode::LegacyRaw(Bytes::from(vec![0x00])),
+            None,
+            crate::primitives::Address::ZERO,
+            None,
+            crate::primitives::Address::ZERO,
+            U256::ZERO,
+        ),
+        10_000,
+        false,
+    );
+
+    interp.gas = Gas::new(10_000);
+    interp.is_eof = false;
+    interp.stack.data_mut().clear();
+    interp.stack.data_mut().push(U256::from(1));
+    interp.contract.input = Bytes::from(vec![0x11, 0x22]);
+    interp.stack.data_mut()[0] = U256::from(1);
+
+    system::calldataload(&mut interp, &mut host);
+
+    let mut stack2 = crate::Stack::new();
+    stack2.data_mut().push(U256::from(7));
+    stack2.data_mut().push(U256::from(9));
+    let _ = stack2.top_unsafe();
+}
+```

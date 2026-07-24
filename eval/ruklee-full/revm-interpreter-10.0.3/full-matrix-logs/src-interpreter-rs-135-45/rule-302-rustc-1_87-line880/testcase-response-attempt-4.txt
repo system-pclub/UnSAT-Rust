@@ -1,0 +1,47 @@
+```rust
+#[cfg(feature = "unsat-poc-src-interpreter-rs-135-45-rule-302-rustc-1-87-line880")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_interpreter_rs_135_45_rule_302_rustc_1_87_line880_be5862ff48() {
+    use crate::{Contract, DummyHost, Gas, InstructionResult, Interpreter};
+    use revm_primitives::{Bytecode, Eof, Bytes, U256};
+    use std::sync::Arc;
+
+    let mut eof = Eof::decode(bytes::bytes!("ef000101000402000100010400000000800000fe")).unwrap();
+    eof.body.code_section.clear();
+    eof.body.types_section.clear();
+    eof.header.code_sizes.clear();
+
+    let code0 = Bytes::from_static(&[0x00]);
+    let code1 = Bytes::from_static(&[0x11, 0x22]);
+
+    eof.header.code_sizes.push(code0.len() as u16);
+    eof.body.code_section.push(code0.clone());
+    eof.body.types_section.push(revm_primitives::eof::TypesSection::new(0, 0, 1));
+
+    eof.header.code_sizes.push(code1.len() as u16);
+    eof.body.code_section.push(code1.clone());
+    eof.body.types_section.push(revm_primitives::eof::TypesSection::new(0, 0, 1));
+
+    eof.body.is_data_filled = true;
+
+    let contract = Contract {
+        input: Bytes::new(),
+        bytecode: Bytecode::Eof(Arc::new(eof)),
+        hash: None,
+        target_address: revm_primitives::Address::ZERO,
+        bytecode_address: None,
+        caller: revm_primitives::Address::ZERO,
+        call_value: U256::ZERO,
+    };
+
+    let mut interp = Interpreter::new(contract, 1, false);
+    interp.gas = Gas::new(1);
+    interp.instruction_result = InstructionResult::Continue;
+
+    let mut host = DummyHost::default();
+
+    interp.load_eof_code(1, 1);
+
+    let _ = host.env.block.gas_limit;
+}
+```

@@ -1,0 +1,35 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-control-rs-45-17-rule-290-f87d2c0ceb")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_control_rs_45_17_rule_290_f87d2c0ceb() {
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter};
+    use revm_primitives::{Bytecode, Bytes, U256};
+    use std::sync::Arc;
+
+    let code = Bytes::from(vec![1u8, 0x34, 0x12, 0x00]);
+    let bytecode = Bytecode::LegacyRaw(code.clone());
+    let contract = crate::Contract::new(
+        Bytes::new(),
+        bytecode,
+        None,
+        Default::default(),
+        None,
+        Default::default(),
+        U256::ZERO,
+    );
+
+    let mut interpreter = Interpreter::new(contract, 1_000, false);
+    interpreter.is_eof = true;
+    interpreter.gas = Gas::new(1_000);
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.stack.push(U256::from(0u64)).unwrap();
+
+    let ip = code.as_ptr();
+    interpreter.instruction_pointer = ip;
+
+    let mut host = DummyHost::default();
+    crate::instructions::control::rjumpv(&mut interpreter, &mut host);
+
+    let _ = Arc::new(());
+}
+```

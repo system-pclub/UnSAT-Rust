@@ -1,0 +1,2527 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/function_stack.rs">
+```rust
+use std::vec::Vec;
+
+/// Function return frame.
+/// Needed information for returning from a function.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FunctionReturnFrame {
+    /// The index of the code container that this frame is executing.
+    pub idx: usize,
+    /// The program counter where frame execution should continue.
+    pub pc: usize,
+}
+
+impl FunctionReturnFrame {
+    /// Return new function frame.
+    pub fn new(idx: usize, pc: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Function Stack
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FunctionStack {
+    pub return_stack: Vec<FunctionReturnFrame>,
+    pub current_code_idx: usize,
+}
+
+impl FunctionStack {
+    /// Returns new function stack.
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Pushes a new frame to the stack. and sets current_code_idx to new value.
+    pub fn push(&mut self, program_counter: usize, new_idx: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Return stack length
+    pub fn return_stack_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Pops a frame from the stack and sets current_code_idx to the popped frame's idx.
+    pub fn pop(&mut self) -> Option<FunctionReturnFrame> {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets current_code_idx, this is needed for JUMPF opcode.
+    pub fn set_current_code_idx(&mut self, idx: usize) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/gas.rs">
+```rust
+//! EVM gas calculation utilities.
+
+mod calc;
+mod constants;
+
+pub use calc::*;
+pub use constants::*;
+
+/// Represents the state of gas during execution.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Gas {
+    /// The initial gas limit. This is constant throughout execution.
+    limit: u64,
+    /// The remaining gas.
+    remaining: u64,
+    /// Refunded gas. This is used only at the end of execution.
+    refunded: i64,
+}
+
+impl Gas {
+    /// Creates a new `Gas` struct with the given gas limit.
+    #[inline]
+    pub const fn new(limit: u64) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new `Gas` struct with the given gas limit, but without any gas remaining.
+    #[inline]
+    pub const fn new_spent(limit: u64) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the gas limit.
+    #[inline]
+    pub const fn limit(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the **last** memory expansion cost.
+    #[inline]
+    #[deprecated = "memory expansion cost is not tracked anymore; \
+                    calculate it using `SharedMemory::current_expansion_cost` instead"]
+    #[doc(hidden)]
+    pub const fn memory(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the total amount of gas that was refunded.
+    #[inline]
+    pub const fn refunded(&self) -> i64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the total amount of gas spent.
+    #[inline]
+    pub const fn spent(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the amount of gas remaining.
+    #[inline]
+    pub const fn remaining(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Return remaining gas after subtracting 63/64 parts.
+    pub const fn remaining_63_of_64_parts(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Erases a gas cost from the totals.
+    #[inline]
+    pub fn erase_cost(&mut self, returned: u64) {
+        /* body omitted: interface retained */
+    }
+
+    /// Spends all remaining gas.
+    #[inline]
+    pub fn spend_all(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    /// Records a refund value.
+    ///
+    /// `refund` can be negative but `self.refunded` should always be positive
+    /// at the end of transact.
+    #[inline]
+    pub fn record_refund(&mut self, refund: i64) {
+        /* body omitted: interface retained */
+    }
+
+    /// Set a refund value for final refund.
+    ///
+    /// Max refund value is limited to Nth part (depending of fork) of gas spend.
+    ///
+    /// Related to EIP-3529: Reduction in refunds
+    #[inline]
+    pub fn set_final_refund(&mut self, is_london: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// Set a refund value. This overrides the current refund value.
+    #[inline]
+    pub fn set_refund(&mut self, refund: i64) {
+        /* body omitted: interface retained */
+    }
+
+    /// Records an explicit cost.
+    ///
+    /// Returns `false` if the gas limit is exceeded.
+    #[inline]
+    #[must_use = "prefer using `gas!` instead to return an out-of-gas error on failure"]
+    pub fn record_cost(&mut self, cost: u64) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/host/dummy.rs">
+```rust
+use crate::{
+    primitives::{hash_map::Entry, Address, Bytes, Env, HashMap, Log, B256, KECCAK_EMPTY, U256},
+    Host, SStoreResult, SelfDestructResult,
+};
+use std::vec::Vec;
+
+use super::{AccountLoad, Eip7702CodeLoad, StateLoad};
+
+/// A dummy [Host] implementation.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DummyHost {
+    pub env: Env,
+    pub storage: HashMap<U256, U256>,
+    pub transient_storage: HashMap<U256, U256>,
+    pub log: Vec<Log>,
+}
+
+impl DummyHost {
+    /// Create a new dummy host with the given [`Env`].
+    #[inline]
+    pub fn new(env: Env) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Clears the storage and logs of the dummy host.
+    #[inline]
+    pub fn clear(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Host for DummyHost {
+    #[inline]
+    fn env(&self) -> &Env {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn env_mut(&mut self) -> &mut Env {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn load_account_delegated(&mut self, _address: Address) -> Option<AccountLoad> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn block_hash(&mut self, _number: u64) -> Option<B256> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn balance(&mut self, _address: Address) -> Option<StateLoad<U256>> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn code(&mut self, _address: Address) -> Option<Eip7702CodeLoad<Bytes>> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn code_hash(&mut self, _address: Address) -> Option<Eip7702CodeLoad<B256>> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn sload(&mut self, _address: Address, index: U256) -> Option<StateLoad<U256>> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn sstore(
+        &mut self,
+        _address: Address,
+        index: U256,
+        value: U256,
+    ) -> Option<StateLoad<SStoreResult>> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn tload(&mut self, _address: Address, index: U256) -> U256 {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn tstore(&mut self, _address: Address, index: U256, value: U256) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn log(&mut self, log: Log) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn selfdestruct(
+        &mut self,
+        _address: Address,
+        _target: Address,
+    ) -> Option<StateLoad<SelfDestructResult>> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/host.rs">
+```rust
+use crate::primitives::{Address, Bytes, Env, Log, B256, U256};
+use core::ops::{Deref, DerefMut};
+
+mod dummy;
+pub use dummy::DummyHost;
+
+/// EVM context host.
+pub trait Host {
+    /// Returns a reference to the environment.
+    fn env(&self) -> &Env;
+
+    /// Returns a mutable reference to the environment.
+    fn env_mut(&mut self) -> &mut Env;
+
+    /// Load an account code.
+    fn load_account_delegated(&mut self, address: Address) -> Option<AccountLoad>;
+
+    /// Get the block hash of the given block `number`.
+    fn block_hash(&mut self, number: u64) -> Option<B256>;
+
+    /// Get balance of `address` and if the account is cold.
+    fn balance(&mut self, address: Address) -> Option<StateLoad<U256>>;
+
+    /// Get code of `address` and if the account is cold.
+    fn code(&mut self, address: Address) -> Option<Eip7702CodeLoad<Bytes>>;
+
+    /// Get code hash of `address` and if the account is cold.
+    fn code_hash(&mut self, address: Address) -> Option<Eip7702CodeLoad<B256>>;
+
+    /// Get storage value of `address` at `index` and if the account is cold.
+    fn sload(&mut self, address: Address, index: U256) -> Option<StateLoad<U256>>;
+
+    /// Set storage value of account address at index.
+    ///
+    /// Returns [`StateLoad`] with [`SStoreResult`] that contains original/new/old storage value.
+    fn sstore(
+        &mut self,
+        address: Address,
+        index: U256,
+        value: U256,
+    ) -> Option<StateLoad<SStoreResult>>;
+
+    /// Get the transient storage value of `address` at `index`.
+    fn tload(&mut self, address: Address, index: U256) -> U256;
+
+    /// Set the transient storage value of `address` at `index`.
+    fn tstore(&mut self, address: Address, index: U256, value: U256);
+
+    /// Emit a log owned by `address` with given `LogData`.
+    fn log(&mut self, log: Log);
+
+    /// Mark `address` to be deleted, with funds transferred to `target`.
+    fn selfdestruct(
+        &mut self,
+        address: Address,
+        target: Address,
+    ) -> Option<StateLoad<SelfDestructResult>>;
+}
+
+/// Represents the result of an `sstore` operation.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SStoreResult {
+    /// Value of the storage when it is first read
+    pub original_value: U256,
+    /// Current value of the storage
+    pub present_value: U256,
+    /// New value that is set
+    pub new_value: U256,
+}
+
+impl SStoreResult {
+    /// Returns `true` if the new value is equal to the present value.
+    #[inline]
+    pub fn is_new_eq_present(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the original value is equal to the present value.
+    #[inline]
+    pub fn is_original_eq_present(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the original value is equal to the new value.
+    #[inline]
+    pub fn is_original_eq_new(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the original value is zero.
+    #[inline]
+    pub fn is_original_zero(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the present value is zero.
+    #[inline]
+    pub fn is_present_zero(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the new value is zero.
+    #[inline]
+    pub fn is_new_zero(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Result of the account load from Journal state.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AccountLoad {
+    /// Is account and delegate code are loaded
+    pub load: Eip7702CodeLoad<()>,
+    /// Is account empty, if true account is not created.
+    pub is_empty: bool,
+}
+
+impl Deref for AccountLoad {
+    type Target = Eip7702CodeLoad<()>;
+
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+impl DerefMut for AccountLoad {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+/// State load information that contains the data and if the account or storage is cold loaded.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StateLoad<T> {
+    /// returned data
+    pub data: T,
+    /// True if account is cold loaded.
+    pub is_cold: bool,
+}
+
+impl<T> Deref for StateLoad<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> DerefMut for StateLoad<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> StateLoad<T> {
+    /// Returns a new [`StateLoad`] with the given data and cold load status.
+    pub fn new(data: T, is_cold: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Maps the data of the [`StateLoad`] to a new value.
+    ///
+    /// Useful for transforming the data of the [`StateLoad`] without changing the cold load status.
+    pub fn map<B, F>(self, f: F) -> StateLoad<B>
+    where
+        F: FnOnce(T) -> B,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+/// EIP-7702 code load result that contains optional delegation is_cold information.
+///
+/// [`Self::is_delegate_account_cold`] will be [`Some`] if account has delegation.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Eip7702CodeLoad<T> {
+    /// returned data
+    pub state_load: StateLoad<T>,
+    /// True if account has delegate code and delegated account is cold loaded.
+    pub is_delegate_account_cold: Option<bool>,
+}
+
+impl<T> Deref for Eip7702CodeLoad<T> {
+    type Target = StateLoad<T>;
+
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> DerefMut for Eip7702CodeLoad<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> Eip7702CodeLoad<T> {
+    /// Returns a new [`Eip7702CodeLoad`] with the given data and without delegation.
+    pub fn new_state_load(state_load: StateLoad<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a new [`Eip7702CodeLoad`] with the given data and without delegation.
+    pub fn new_not_delegated(data: T, is_cold: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Deconstructs the [`Eip7702CodeLoad`] by extracting data and
+    /// returning a new [`Eip7702CodeLoad`] with empty data.
+    pub fn into_components(self) -> (T, Eip7702CodeLoad<()>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets the delegation cold load status.
+    pub fn set_delegate_load(&mut self, is_delegate_account_cold: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a new [`Eip7702CodeLoad`] with the given data and delegation cold load status.
+    pub fn new(state_load: StateLoad<T>, is_delegate_account_cold: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Result of a selfdestruct action.
+///
+/// Value returned are needed to calculate the gas spent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SelfDestructResult {
+    pub had_value: bool,
+    pub target_exists: bool,
+    pub previously_destroyed: bool,
+}
+```
+</file>
+
+<file path="src/instruction_result.rs">
+```rust
+use crate::primitives::{HaltReason, OutOfGasError, SuccessReason};
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum InstructionResult {
+    // Success Codes
+    #[default]
+    /// Execution should continue to the next one.
+    Continue = 0x00,
+    /// Encountered a `STOP` opcode
+    Stop,
+    /// Return from the current call.
+    Return,
+    /// Self-destruct the current contract.
+    SelfDestruct,
+    /// Return a contract (used in contract creation).
+    ReturnContract,
+
+    // Revert Codes
+    /// Revert the transaction.
+    Revert = 0x10,
+    /// Exceeded maximum call depth.
+    CallTooDeep,
+    /// Insufficient funds for transfer.
+    OutOfFunds,
+    /// Revert if `CREATE`/`CREATE2` starts with `0xEF00`.
+    CreateInitCodeStartingEF00,
+    /// Invalid EVM Object Format (EOF) init code.
+    InvalidEOFInitCode,
+    /// `ExtDelegateCall` calling a non EOF contract.
+    InvalidExtDelegateCallTarget,
+
+    // Action Codes
+    /// Indicates a call or contract creation.
+    CallOrCreate = 0x20,
+
+    // Error Codes
+    /// Out of gas error.
+    OutOfGas = 0x50,
+    /// Out of gas error encountered during memory expansion.
+    MemoryOOG,
+    /// The memory limit of the EVM has been exceeded.
+    MemoryLimitOOG,
+    /// Out of gas error encountered during the execution of a precompiled contract.
+    PrecompileOOG,
+    /// Out of gas error encountered while calling an invalid operand.
+    InvalidOperandOOG,
+    /// Unknown or invalid opcode.
+    OpcodeNotFound,
+    /// Invalid `CALL` with value transfer in static context.
+    CallNotAllowedInsideStatic,
+    /// Invalid state modification in static call.
+    StateChangeDuringStaticCall,
+    /// An undefined bytecode value encountered during execution.
+    InvalidFEOpcode,
+    /// Invalid jump destination. Dynamic jumps points to invalid not jumpdest opcode.
+    InvalidJump,
+    /// The feature or opcode is not activated in this version of the EVM.
+    NotActivated,
+    /// Attempting to pop a value from an empty stack.
+    StackUnderflow,
+    /// Attempting to push a value onto a full stack.
+    StackOverflow,
+    /// Invalid memory or storage offset.
+    OutOfOffset,
+    /// Address collision during contract creation.
+    CreateCollision,
+    /// Payment amount overflow.
+    OverflowPayment,
+    /// Error in precompiled contract execution.
+    PrecompileError,
+    /// Nonce overflow.
+    NonceOverflow,
+    /// Exceeded contract size limit during creation.
+    CreateContractSizeLimit,
+    /// Created contract starts with invalid bytes (`0xEF`).
+    CreateContractStartingWithEF,
+    /// Exceeded init code size limit (EIP-3860:  Limit and meter initcode).
+    CreateInitCodeSizeLimit,
+    /// Fatal external error. Returned by database.
+    FatalExternalError,
+    /// `RETURNCONTRACT` called outside init EOF code.
+    ReturnContractInNotInitEOF,
+    /// Legacy contract is calling opcode that is enabled only in EOF.
+    EOFOpcodeDisabledInLegacy,
+    /// Stack overflow in EOF subroutine function calls.
+    EOFFunctionStackOverflow,
+    /// Aux data overflow, new aux data is larger than `u16` max size.
+    EofAuxDataOverflow,
+    /// Aux data is smaller then already present data size.
+    EofAuxDataTooSmall,
+    /// `EXT*CALL` target address needs to be padded with 0s.
+    InvalidEXTCALLTarget,
+}
+
+impl From<SuccessReason> for InstructionResult {
+    fn from(value: SuccessReason) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<HaltReason> for InstructionResult {
+    fn from(value: HaltReason) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[macro_export]
+macro_rules! return_ok {
+    () => {
+        InstructionResult::Continue
+            | InstructionResult::Stop
+            | InstructionResult::Return
+            | InstructionResult::SelfDestruct
+            | InstructionResult::ReturnContract
+    };
+}
+
+#[macro_export]
+macro_rules! return_revert {
+    () => {
+        InstructionResult::Revert
+            | InstructionResult::CallTooDeep
+            | InstructionResult::OutOfFunds
+            | InstructionResult::InvalidEOFInitCode
+            | InstructionResult::CreateInitCodeStartingEF00
+            | InstructionResult::InvalidExtDelegateCallTarget
+    };
+}
+
+#[macro_export]
+macro_rules! return_error {
+    () => {
+        InstructionResult::OutOfGas
+            | InstructionResult::MemoryOOG
+            | InstructionResult::MemoryLimitOOG
+            | InstructionResult::PrecompileOOG
+            | InstructionResult::InvalidOperandOOG
+            | InstructionResult::OpcodeNotFound
+            | InstructionResult::CallNotAllowedInsideStatic
+            | InstructionResult::StateChangeDuringStaticCall
+            | InstructionResult::InvalidFEOpcode
+            | InstructionResult::InvalidJump
+            | InstructionResult::NotActivated
+            | InstructionResult::StackUnderflow
+            | InstructionResult::StackOverflow
+            | InstructionResult::OutOfOffset
+            | InstructionResult::CreateCollision
+            | InstructionResult::OverflowPayment
+            | InstructionResult::PrecompileError
+            | InstructionResult::NonceOverflow
+            | InstructionResult::CreateContractSizeLimit
+            | InstructionResult::CreateContractStartingWithEF
+            | InstructionResult::CreateInitCodeSizeLimit
+            | InstructionResult::FatalExternalError
+            | InstructionResult::ReturnContractInNotInitEOF
+            | InstructionResult::EOFOpcodeDisabledInLegacy
+            | InstructionResult::EOFFunctionStackOverflow
+            | InstructionResult::EofAuxDataTooSmall
+            | InstructionResult::EofAuxDataOverflow
+            | InstructionResult::InvalidEXTCALLTarget
+    };
+}
+
+impl InstructionResult {
+    /// Returns whether the result is a success.
+    #[inline]
+    pub const fn is_ok(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the result is a revert.
+    #[inline]
+    pub const fn is_revert(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the result is an error.
+    #[inline]
+    pub const fn is_error(self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Internal result that are not ex
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum InternalResult {
+    /// Internal instruction that signals Interpreter should continue running.
+    InternalContinue,
+    /// Internal instruction that signals call or create.
+    InternalCallOrCreate,
+    /// Internal CREATE/CREATE starts with 0xEF00
+    CreateInitCodeStartingEF00,
+    /// Internal to ExtDelegateCall
+    InvalidExtDelegateCallTarget,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum SuccessOrHalt {
+    Success(SuccessReason),
+    Revert,
+    Halt(HaltReason),
+    FatalExternalError,
+    Internal(InternalResult),
+}
+
+impl SuccessOrHalt {
+    /// Returns true if the transaction returned successfully without halts.
+    #[inline]
+    pub fn is_success(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the [SuccessReason] value if this a successful result
+    #[inline]
+    pub fn to_success(self) -> Option<SuccessReason> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns true if the transaction reverted.
+    #[inline]
+    pub fn is_revert(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns true if the EVM has experienced an exceptional halt
+    #[inline]
+    pub fn is_halt(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the [HaltReason] value the EVM has experienced an exceptional halt
+    #[inline]
+    pub fn to_halt(self) -> Option<HaltReason> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<InstructionResult> for SuccessOrHalt {
+    fn from(result: InstructionResult) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/instructions/stack.rs">
+```rust
+use crate::{
+    gas, primitives::{Spec, U256},
+    Host, Interpreter,
+};
+pub fn pop<H: Host + ?Sized>(interpreter: &mut Interpreter, _host: &mut H) {
+    /* body omitted: interface retained */
+}
+/// EIP-3855: PUSH0 instruction
+///
+/// Introduce a new instruction which pushes the constant value 0 onto the stack.
+pub fn push0<H: Host + ?Sized, SPEC: Spec>(
+    interpreter: &mut Interpreter,
+    _host: &mut H,
+) {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+pub fn push<const N: usize, H: Host + ?Sized>(
+    interpreter: &mut Interpreter,
+    _host: &mut H,
+) {
+    /* body omitted: interface retained */
+}
+pub fn dup<const N: usize, H: Host + ?Sized>(
+    interpreter: &mut Interpreter,
+    _host: &mut H,
+) {
+    gas!(interpreter, gas::VERYLOW);
+    if let Err(result) = interpreter.stack.dup(N) {
+        interpreter.instruction_result = result;
+    }
+}
+pub fn swap<const N: usize, H: Host + ?Sized>(
+    interpreter: &mut Interpreter,
+    _host: &mut H,
+) {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+pub fn dupn<H: Host + ?Sized>(interpreter: &mut Interpreter, _host: &mut H) {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+pub fn swapn<H: Host + ?Sized>(interpreter: &mut Interpreter, _host: &mut H) {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+pub fn exchange<H: Host + ?Sized>(interpreter: &mut Interpreter, _host: &mut H) {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/interpreter/contract.rs">
+```rust
+use revm_primitives::TxKind;
+
+use super::analysis::to_analysed;
+use crate::{
+    primitives::{Address, Bytecode, Bytes, Env, B256, U256},
+    CallInputs,
+};
+
+/// EVM contract information.
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Contract {
+    /// Contracts data
+    pub input: Bytes,
+    /// Bytecode contains contract code, size of original code, analysis with gas block and jump table.
+    /// Note that current code is extended with push padding and STOP at end.
+    pub bytecode: Bytecode,
+    /// Bytecode hash for legacy. For EOF this would be None.
+    pub hash: Option<B256>,
+    /// Target address of the account. Storage of this address is going to be modified.
+    pub target_address: Address,
+    /// Address of the account the bytecode was loaded from. This can be different from target_address
+    /// in the case of DELEGATECALL or CALLCODE
+    pub bytecode_address: Option<Address>,
+    /// Caller of the EVM.
+    pub caller: Address,
+    /// Value send to contract from transaction or from CALL opcodes.
+    pub call_value: U256,
+}
+
+impl Contract {
+    /// Instantiates a new contract by analyzing the given bytecode.
+    #[inline]
+    pub fn new(
+        input: Bytes,
+        bytecode: Bytecode,
+        hash: Option<B256>,
+        target_address: Address,
+        bytecode_address: Option<Address>,
+        caller: Address,
+        call_value: U256,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new contract from the given [`Env`].
+    #[inline]
+    pub fn new_env(env: &Env, bytecode: Bytecode, hash: Option<B256>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new contract from the given inputs.
+    #[inline]
+    pub fn new_with_context(
+        input: Bytes,
+        bytecode: Bytecode,
+        hash: Option<B256>,
+        call_context: &CallInputs,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the given position is a valid jump destination.
+    #[inline]
+    pub fn is_valid_jump(&self, pos: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/interpreter/shared_memory.rs">
+```rust
+use core::{cmp::min, fmt, ops::Range};
+use revm_primitives::{B256, U256};
+use std::vec::Vec;
+/// A sequential memory shared between calls, which uses
+/// a `Vec` for internal representation.
+/// A [SharedMemory] instance should always be obtained using
+/// the `new` static method to ensure memory safety.
+#[derive(Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SharedMemory {
+    /// The underlying buffer.
+    buffer: Vec<u8>,
+    /// Memory checkpoints for each depth.
+    /// Invariant: these are always in bounds of `data`.
+    checkpoints: Vec<usize>,
+    /// Invariant: equals `self.checkpoints.last()`
+    last_checkpoint: usize,
+    /// Memory limit. See [`CfgEnv`](revm_primitives::CfgEnv).
+    #[cfg(feature = "memory_limit")]
+    memory_limit: u64,
+}
+/// Empty shared memory.
+///
+/// Used as placeholder inside Interpreter when it is not running.
+pub const EMPTY_SHARED_MEMORY: SharedMemory = SharedMemory {
+    buffer: Vec::new(),
+    checkpoints: Vec::new(),
+    last_checkpoint: 0,
+    #[cfg(feature = "memory_limit")]
+    memory_limit: u64::MAX,
+};
+impl fmt::Debug for SharedMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl Default for SharedMemory {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl SharedMemory {
+    /// Creates a new memory instance that can be shared between calls.
+    ///
+    /// The default initial capacity is 4KiB.
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new memory instance that can be shared between calls with the given `capacity`.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new memory instance that can be shared between calls,
+    /// with `memory_limit` as upper bound for allocation size.
+    ///
+    /// The default initial capacity is 4KiB.
+    #[cfg(feature = "memory_limit")]
+    #[inline]
+    pub fn new_with_memory_limit(memory_limit: u64) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns `true` if the `new_size` for the current context memory will
+    /// make the shared buffer length exceed the `memory_limit`.
+    #[cfg(feature = "memory_limit")]
+    #[inline]
+    pub fn limit_reached(&self, new_size: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Prepares the shared memory for a new context.
+    #[inline]
+    pub fn new_context(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Prepares the shared memory for returning to the previous context.
+    #[inline(never)]
+    pub fn free_context(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length of the current memory range.
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns `true` if the current memory range is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns the gas cost for the current memory expansion.
+    #[inline]
+    pub fn current_expansion_cost(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+    /// Resizes the memory in-place so that `len` is equal to `new_len`.
+    #[inline]
+    pub fn resize(&mut self, new_size: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn slice(&self, offset: usize, size: usize) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns a byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn slice_range(&self, range @ Range { start, end }: Range<usize>) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns a byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn slice_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    pub fn get_byte(&self, offset: usize) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns a 32-byte slice of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    pub fn get_word(&self, offset: usize) -> B256 {
+        /* body omitted: interface retained */
+    }
+    /// Returns a U256 of the memory region at the given offset.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    pub fn get_u256(&self, offset: usize) -> U256 {
+        /* body omitted: interface retained */
+    }
+    /// Sets the `byte` at the given `index`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set_byte(&mut self, offset: usize, byte: u8) {
+        /* body omitted: interface retained */
+    }
+    /// Sets the given 32-byte `value` to the memory region at the given `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set_word(&mut self, offset: usize, value: &B256) {
+        /* body omitted: interface retained */
+    }
+    /// Sets the given U256 `value` to the memory region at the given `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set_u256(&mut self, offset: usize, value: U256) {
+        /* body omitted: interface retained */
+    }
+    /// Set memory region at given `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn set(&mut self, offset: usize, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Set memory from data. Our memory offset+len is expected to be correct but we
+    /// are doing bound checks on data/data_offeset/len and zeroing parts that is not copied.
+    ///
+    /// # Panics
+    ///
+    /// Panics if memory is out of bounds.
+    #[cfg_attr(debug_assertions, track_caller)]
+    #[inline(never)]
+    pub fn set_data(
+        &mut self,
+        memory_offset: usize,
+        data_offset: usize,
+        len: usize,
+        data: &[u8],
+    ) {
+        /* body omitted: interface retained */
+    }
+    /// Copies elements from one part of the memory to another part of itself.
+    ///
+    /// # Panics
+    ///
+    /// Panics on out of bounds.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn copy(&mut self, dst: usize, src: usize, len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to the memory of the current context, the active memory.
+    #[inline(never)]
+    pub fn context_memory(&self) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to the memory of the current context.
+    #[inline(never)]
+    pub fn context_memory_mut(&mut self) -> &mut [u8] {
+        /* body omitted: interface retained */
+    }
+}
+/// Returns number of words what would fit to provided number of bytes,
+/// i.e. it rounds up the number bytes to number of words.
+#[inline]
+pub const fn num_words(len: u64) -> u64 {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/interpreter/stack.rs">
+```rust
+use crate::{
+    primitives::{B256, U256},
+    InstructionResult,
+};
+use core::{fmt, ptr};
+use std::vec::Vec;
+/// EVM interpreter stack limit.
+pub const STACK_LIMIT: usize = 1024;
+/// EVM stack with [STACK_LIMIT] capacity of words.
+#[derive(Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Stack {
+    /// The underlying data of the stack.
+    data: Vec<U256>,
+}
+impl fmt::Display for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl Default for Stack {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl Stack {
+    /// Instantiate a new stack with the [default stack limit][STACK_LIMIT].
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length of the stack in words.
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the stack is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to the underlying data buffer.
+    #[inline]
+    pub fn data(&self) -> &Vec<U256> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to the underlying data buffer.
+    #[inline]
+    pub fn data_mut(&mut self) -> &mut Vec<U256> {
+        /* body omitted: interface retained */
+    }
+    /// Consumes the stack and returns the underlying data buffer.
+    #[inline]
+    pub fn into_data(self) -> Vec<U256> {
+        /* body omitted: interface retained */
+    }
+    /// Removes the topmost element from the stack and returns it, or `StackUnderflow` if it is
+    /// empty.
+    #[inline]
+    pub fn pop(&mut self) -> Result<U256, InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Removes the topmost element from the stack and returns it.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline(never)]
+    pub unsafe fn pop_unsafe(&mut self) -> U256 {
+        /* body omitted: interface retained */
+    }
+    /// Peeks the top of the stack.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline(never)]
+    pub unsafe fn top_unsafe(&mut self) -> &mut U256 {
+        /* body omitted: interface retained */
+    }
+    /// Pop the topmost value, returning the value and the new topmost value.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline]
+    pub unsafe fn pop_top_unsafe(&mut self) -> (U256, &mut U256) {
+        /* body omitted: interface retained */
+    }
+    /// Pops 2 values from the stack.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline]
+    pub unsafe fn pop2_unsafe(&mut self) -> (U256, U256) {
+        /* body omitted: interface retained */
+    }
+    /// Pops 2 values from the stack and returns them, in addition to the new topmost value.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline]
+    pub unsafe fn pop2_top_unsafe(&mut self) -> (U256, U256, &mut U256) {
+        /* body omitted: interface retained */
+    }
+    /// Pops 3 values from the stack.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline]
+    pub unsafe fn pop3_unsafe(&mut self) -> (U256, U256, U256) {
+        /* body omitted: interface retained */
+    }
+    /// Pops 4 values from the stack.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline]
+    pub unsafe fn pop4_unsafe(&mut self) -> (U256, U256, U256, U256) {
+        /* body omitted: interface retained */
+    }
+    /// Pops 5 values from the stack.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for checking the length of the stack.
+    #[inline]
+    pub unsafe fn pop5_unsafe(&mut self) -> (U256, U256, U256, U256, U256) {
+        /* body omitted: interface retained */
+    }
+    /// Push a new value into the stack. If it will exceed the stack limit,
+    /// returns `StackOverflow` error and leaves the stack unchanged.
+    #[inline]
+    pub fn push_b256(&mut self, value: B256) -> Result<(), InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Push a new value onto the stack.
+    ///
+    /// If it will exceed the stack limit, returns `StackOverflow` error and leaves the stack
+    /// unchanged.
+    #[inline]
+    pub fn push(&mut self, value: U256) -> Result<(), InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Peek a value at given index for the stack, where the top of
+    /// the stack is at index `0`. If the index is too large,
+    /// `StackError::Underflow` is returned.
+    #[inline]
+    pub fn peek(&self, no_from_top: usize) -> Result<U256, InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Duplicates the `N`th value from the top of the stack.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n` is 0.
+    #[cfg_attr(debug_assertions, track_caller)]
+    #[inline(never)]
+    pub fn dup(&mut self, n: usize) -> Result<(), InstructionResult> {
+        assume!(n > 0, "attempted to dup 0");
+        let len = self.data.len();
+        if len < n {
+            Err(InstructionResult::StackUnderflow)
+        } else if len + 1 > STACK_LIMIT {
+            Err(InstructionResult::StackOverflow)
+        } else {
+            unsafe {
+                let __klee_arg0 = self.data.as_mut_ptr();
+                klee_ext_bind::bind_arg_ptr_value(0, __klee_arg0);
+                klee_ext_bind::bind_arg_u64_value(1, &len);
+                klee_ext_bind::callsite!("src-interpreter-stack-rs-241-27");
+                let mut __klee_ret_src_interpreter_stack_rs_241_27_add = __klee_arg0
+                    .add(len);
+                let ptr = __klee_ret_src_interpreter_stack_rs_241_27_add;
+                klee_ext_bind::bind_arg_ptr_value(0, ptr);
+                klee_ext_bind::bind_arg_u64_value(1, &n);
+                klee_ext_bind::callsite!("src-interpreter-stack-rs-242-42");
+                let mut __klee_ret_src_interpreter_stack_rs_242_42_sub = ptr.sub(n);
+                let __klee_arg1 = 1;
+                klee_ext_bind::callsite!("src-interpreter-stack-rs-242-17");
+                let mut __klee_ret_src_interpreter_stack_rs_242_17_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                    __klee_ret_src_interpreter_stack_rs_242_42_sub,
+                    ptr,
+                    __klee_arg1,
+                );
+                let __klee_arg2 = len + 1;
+                klee_ext_bind::callsite!("src-interpreter-stack-rs-243-17");
+                let mut __klee_ret_src_interpreter_stack_rs_243_17_set_len = self
+                    .data
+                    .set_len(__klee_arg2);
+            }
+            Ok(())
+        }
+    }
+    /// Swaps the topmost value with the `N`th value from the top.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n` is 0.
+    #[inline(always)]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn swap(&mut self, n: usize) -> Result<(), InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Exchange two values on the stack.
+    ///
+    /// `n` is the first index, and the second index is calculated as `n + m`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `m` is zero.
+    #[cfg_attr(debug_assertions, track_caller)]
+    #[inline(never)]
+    pub fn exchange(&mut self, n: usize, m: usize) -> Result<(), InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Pushes an arbitrary length slice of bytes onto the stack, padding the last word with zeros
+    /// if necessary.
+    #[inline(never)]
+    pub fn push_slice(&mut self, slice: &[u8]) -> Result<(), InstructionResult> {
+        /* body omitted: interface retained */
+    }
+    /// Set a value at given index for the stack, where the top of the
+    /// stack is at index `0`. If the index is too large,
+    /// `StackError::Underflow` is returned.
+    #[inline]
+    pub fn set(
+        &mut self,
+        no_from_top: usize,
+        val: U256,
+    ) -> Result<(), InstructionResult> {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Stack {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/interpreter.rs">
+```rust
+pub mod analysis;
+mod contract;
+#[cfg(feature = "serde")]
+pub mod serde;
+mod shared_memory;
+mod stack;
+pub use contract::Contract;
+pub use shared_memory::{num_words, SharedMemory, EMPTY_SHARED_MEMORY};
+pub use stack::{Stack, STACK_LIMIT};
+use crate::{
+    gas, primitives::Bytes, push, push_b256, return_ok, return_revert, CallOutcome,
+    CreateOutcome, FunctionStack, Gas, Host, InstructionResult, InterpreterAction,
+};
+use core::cmp::min;
+use revm_primitives::{Bytecode, Eof, U256};
+use std::borrow::ToOwned;
+use std::sync::Arc;
+/// EVM bytecode interpreter.
+#[derive(Debug)]
+pub struct Interpreter {
+    /// The current instruction pointer.
+    pub instruction_pointer: *const u8,
+    /// The gas state.
+    pub gas: Gas,
+    /// Contract information and invoking data
+    pub contract: Contract,
+    /// The execution control flag. If this is not set to `Continue`, the interpreter will stop
+    /// execution.
+    pub instruction_result: InstructionResult,
+    /// Currently run Bytecode that instruction result will point to.
+    /// Bytecode is owned by the contract.
+    pub bytecode: Bytes,
+    /// Whether we are Interpreting the Ethereum Object Format (EOF) bytecode.
+    /// This is local field that is set from `contract.is_eof()`.
+    pub is_eof: bool,
+    /// Is init flag for eof create
+    pub is_eof_init: bool,
+    /// Shared memory.
+    ///
+    /// Note: This field is only set while running the interpreter loop.
+    /// Otherwise it is taken and replaced with empty shared memory.
+    pub shared_memory: SharedMemory,
+    /// Stack.
+    pub stack: Stack,
+    /// EOF function stack.
+    pub function_stack: FunctionStack,
+    /// The return data buffer for internal calls.
+    /// It has multi usage:
+    ///
+    /// * It contains the output bytes of call sub call.
+    /// * When this interpreter finishes execution it contains the output bytes of this contract.
+    pub return_data_buffer: Bytes,
+    /// Whether the interpreter is in "staticcall" mode, meaning no state changes can happen.
+    pub is_static: bool,
+    /// Actions that the EVM should do.
+    ///
+    /// Set inside CALL or CREATE instructions and RETURN or REVERT instructions. Additionally those instructions will set
+    /// InstructionResult to CallOrCreate/Return/Revert so we know the reason.
+    pub next_action: InterpreterAction,
+}
+impl Default for Interpreter {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl Interpreter {
+    /// Create new interpreter
+    pub fn new(contract: Contract, gas_limit: u64, is_static: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Set is_eof_init to true, this is used to enable `RETURNCONTRACT` opcode.
+    #[inline]
+    pub fn set_is_eof_init(&mut self) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn eof(&self) -> Option<&Arc<Eof>> {
+        /* body omitted: interface retained */
+    }
+    /// Test related helper
+    /// Load EOF code into interpreter. PC is assumed to be correctly set
+    #[inline(never)]
+    pub(crate) fn load_eof_code(&mut self, idx: usize, pc: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Inserts the output of a `create` call into the interpreter.
+    ///
+    /// This function is used after a `create` call has been executed. It processes the outcome
+    /// of that call and updates the state of the interpreter accordingly.
+    ///
+    /// # Arguments
+    ///
+    /// * `create_outcome` - A `CreateOutcome` struct containing the results of the `create` call.
+    ///
+    /// # Behavior
+    ///
+    /// The function updates the `return_data_buffer` with the data from `create_outcome`.
+    /// Depending on the `InstructionResult` indicated by `create_outcome`, it performs one of the following:
+    ///
+    /// - `Ok`: Pushes the address from `create_outcome` to the stack, updates gas costs, and records any gas refunds.
+    /// - `Revert`: Pushes `U256::ZERO` to the stack and updates gas costs.
+    /// - `FatalExternalError`: Sets the `instruction_result` to `InstructionResult::FatalExternalError`.
+    /// - `Default`: Pushes `U256::ZERO` to the stack.
+    ///
+    /// # Side Effects
+    ///
+    /// - Updates `return_data_buffer` with the data from `create_outcome`.
+    /// - Modifies the stack by pushing values depending on the `InstructionResult`.
+    /// - Updates gas costs and records refunds in the interpreter's `gas` field.
+    /// - May alter `instruction_result` in case of external errors.
+    pub fn insert_create_outcome(&mut self, create_outcome: CreateOutcome) {
+        /* body omitted: interface retained */
+    }
+    pub fn insert_eofcreate_outcome(&mut self, create_outcome: CreateOutcome) {
+        /* body omitted: interface retained */
+    }
+    /// Inserts the outcome of a call into the virtual machine's state.
+    ///
+    /// This function takes the result of a call, represented by `CallOutcome`,
+    /// and updates the virtual machine's state accordingly. It involves updating
+    /// the return data buffer, handling gas accounting, and setting the memory
+    /// in shared storage based on the outcome of the call.
+    ///
+    /// # Arguments
+    ///
+    /// * `shared_memory` - A mutable reference to the shared memory used by the virtual machine.
+    /// * `call_outcome` - The outcome of the call to be processed, containing details such as
+    ///   instruction result, gas information, and output data.
+    ///
+    /// # Behavior
+    ///
+    /// The function first copies the output data from the call outcome to the virtual machine's
+    /// return data buffer. It then checks the instruction result from the call outcome:
+    ///
+    /// - `return_ok!()`: Processes successful execution, refunds gas, and updates shared memory.
+    /// - `return_revert!()`: Handles a revert by only updating the gas usage and shared memory.
+    /// - `InstructionResult::FatalExternalError`: Sets the instruction result to a fatal external error.
+    /// - Any other result: No specific action is taken.
+    pub fn insert_call_outcome(
+        &mut self,
+        shared_memory: &mut SharedMemory,
+        call_outcome: CallOutcome,
+    ) {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode at the current instruction pointer.
+    #[inline(never)]
+    pub fn current_opcode(&self) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to the contract.
+    #[inline]
+    pub fn contract(&self) -> &Contract {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to the interpreter's gas state.
+    #[inline]
+    pub fn gas(&self) -> &Gas {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to the interpreter's stack.
+    #[inline]
+    pub fn stack(&self) -> &Stack {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to the interpreter's stack.
+    #[inline]
+    pub fn stack_mut(&mut self) -> &mut Stack {
+        /* body omitted: interface retained */
+    }
+    /// Returns the current program counter.
+    #[inline(never)]
+    pub fn program_counter(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Executes the instruction at the current instruction pointer.
+    ///
+    /// Internally it will increment instruction pointer by one.
+    #[inline(never)]
+    pub(crate) fn step<FN, H: Host + ?Sized>(
+        &mut self,
+        instruction_table: &[FN; 256],
+        host: &mut H,
+    )
+    where
+        FN: Fn(&mut Interpreter, &mut H),
+    {
+        /* body omitted: interface retained */
+    }
+    /// Take memory and replace it with empty memory.
+    pub fn take_memory(&mut self) -> SharedMemory {
+        /* body omitted: interface retained */
+    }
+    /// Executes the interpreter until it returns or stops.
+    pub fn run<FN, H: Host + ?Sized>(
+        &mut self,
+        shared_memory: SharedMemory,
+        instruction_table: &[FN; 256],
+        host: &mut H,
+    ) -> InterpreterAction
+    where
+        FN: Fn(&mut Interpreter, &mut H),
+    {
+        /* body omitted: interface retained */
+    }
+    /// Resize the memory to the new size. Returns whether the gas was enough to resize the memory.
+    #[inline]
+    #[must_use]
+    pub fn resize_memory(&mut self, new_size: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+/// The result of an interpreter operation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(::serde::Serialize, ::serde::Deserialize))]
+pub struct InterpreterResult {
+    /// The result of the instruction execution.
+    pub result: InstructionResult,
+    /// The output of the instruction execution.
+    pub output: Bytes,
+    /// The gas usage information.
+    pub gas: Gas,
+}
+impl InterpreterResult {
+    /// Returns a new `InterpreterResult` with the given values.
+    pub fn new(result: InstructionResult, output: Bytes, gas: Gas) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the instruction result is a success.
+    #[inline]
+    pub const fn is_ok(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the instruction result is a revert.
+    #[inline]
+    pub const fn is_revert(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the instruction result is an error.
+    #[inline]
+    pub const fn is_error(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+/// Resize the memory to the new size. Returns whether the gas was enough to resize the memory.
+#[inline(never)]
+#[cold]
+#[must_use]
+pub fn resize_memory(memory: &mut SharedMemory, gas: &mut Gas, new_size: usize) -> bool {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/interpreter_action/call_outcome.rs">
+```rust
+use crate::{Gas, InstructionResult, InterpreterResult};
+use core::ops::Range;
+use revm_primitives::Bytes;
+
+/// Represents the outcome of a call operation in a virtual machine.
+///
+/// This struct encapsulates the result of executing an instruction by an interpreter, including
+/// the result itself, gas usage information, and the memory offset where output data is stored.
+///
+/// # Fields
+///
+/// * `result` - The result of the interpreter's execution, including output data and gas usage.
+/// * `memory_offset` - The range in memory where the output data is located.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CallOutcome {
+    pub result: InterpreterResult,
+    pub memory_offset: Range<usize>,
+}
+
+impl CallOutcome {
+    /// Constructs a new `CallOutcome`.
+    ///
+    /// Creates an instance of `CallOutcome` with the given interpreter result and memory offset.
+    ///
+    /// # Arguments
+    ///
+    /// * `result` - The result of the interpreter's execution.
+    /// * `memory_offset` - The range in memory indicating where the output data is stored.
+    pub fn new(result: InterpreterResult, memory_offset: Range<usize>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a reference to the instruction result.
+    ///
+    /// Provides access to the result of the executed instruction.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `InstructionResult`.
+    pub fn instruction_result(&self) -> &InstructionResult {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the gas usage information.
+    ///
+    /// Provides access to the gas usage details of the executed instruction.
+    ///
+    /// # Returns
+    ///
+    /// An instance of `Gas` representing the gas usage.
+    pub fn gas(&self) -> Gas {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a reference to the output data.
+    ///
+    /// Provides access to the output data generated by the executed instruction.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the output data as `Bytes`.
+    pub fn output(&self) -> &Bytes {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the start position of the memory offset.
+    ///
+    /// Provides the starting index of the memory range where the output data is stored.
+    ///
+    /// # Returns
+    ///
+    /// The starting index of the memory offset as `usize`.
+    pub fn memory_start(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the length of the memory range.
+    ///
+    /// Provides the length of the memory range where the output data is stored.
+    ///
+    /// # Returns
+    ///
+    /// The length of the memory range as `usize`.
+    pub fn memory_length(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/interpreter_action/create_outcome.rs">
+```rust
+use crate::{Gas, InstructionResult, InterpreterResult};
+use revm_primitives::{Address, Bytes};
+
+/// Represents the outcome of a create operation in an interpreter.
+///
+/// This struct holds the result of the operation along with an optional address.
+/// It provides methods to determine the next action based on the result of the operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CreateOutcome {
+    // The result of the interpreter operation.
+    pub result: InterpreterResult,
+    // An optional address associated with the create operation.
+    pub address: Option<Address>,
+}
+
+impl CreateOutcome {
+    /// Constructs a new `CreateOutcome`.
+    ///
+    /// # Arguments
+    ///
+    /// * `result` - An `InterpreterResult` representing the result of the interpreter operation.
+    /// * `address` - An optional `Address` associated with the create operation.
+    ///
+    /// # Returns
+    ///
+    /// A new `CreateOutcome` instance.
+    pub fn new(result: InterpreterResult, address: Option<Address>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Retrieves a reference to the `InstructionResult` from the `InterpreterResult`.
+    ///
+    /// This method provides access to the `InstructionResult` which represents the
+    /// outcome of the instruction execution. It encapsulates the result information
+    /// such as whether the instruction was executed successfully, resulted in a revert,
+    /// or encountered a fatal error.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `InstructionResult`.
+    pub fn instruction_result(&self) -> &InstructionResult {
+        /* body omitted: interface retained */
+    }
+
+    /// Retrieves a reference to the output bytes from the `InterpreterResult`.
+    ///
+    /// This method returns the output of the interpreted operation. The output is
+    /// typically used when the operation successfully completes and returns data.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the output `Bytes`.
+    pub fn output(&self) -> &Bytes {
+        /* body omitted: interface retained */
+    }
+
+    /// Retrieves a reference to the `Gas` details from the `InterpreterResult`.
+    ///
+    /// This method provides access to the gas details of the operation, which includes
+    /// information about gas used, remaining, and refunded. It is essential for
+    /// understanding the gas consumption of the operation.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `Gas` details.
+    pub fn gas(&self) -> &Gas {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/interpreter_action.rs">
+```rust
+mod call_inputs;
+mod call_outcome;
+mod create_inputs;
+mod create_outcome;
+mod eof_create_inputs;
+
+pub use call_inputs::{CallInputs, CallScheme, CallValue};
+pub use call_outcome::CallOutcome;
+pub use create_inputs::{CreateInputs, CreateScheme};
+pub use create_outcome::CreateOutcome;
+pub use eof_create_inputs::{EOFCreateInputs, EOFCreateKind};
+
+use crate::InterpreterResult;
+use std::boxed::Box;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum InterpreterAction {
+    /// CALL, CALLCODE, DELEGATECALL, STATICCALL
+    /// or EOF EXT instruction called.
+    Call { inputs: Box<CallInputs> },
+    /// CREATE or CREATE2 instruction called.
+    Create { inputs: Box<CreateInputs> },
+    /// EOF CREATE instruction called.
+    EOFCreate { inputs: Box<EOFCreateInputs> },
+    /// Interpreter finished execution.
+    Return { result: InterpreterResult },
+    /// No action
+    #[default]
+    None,
+}
+
+impl InterpreterAction {
+    /// Returns true if action is call.
+    pub fn is_call(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns true if action is create.
+    pub fn is_create(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns true if action is return.
+    pub fn is_return(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns true if action is none.
+    pub fn is_none(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns true if action is some.
+    pub fn is_some(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns result if action is return.
+    pub fn into_result_return(self) -> Option<InterpreterResult> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! # revm-interpreter
+//!
+//! REVM Interpreter.
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc as std;
+
+#[macro_use]
+mod macros;
+
+// silence lint
+
+
+mod function_stack;
+pub mod gas;
+mod host;
+mod instruction_result;
+pub mod instructions;
+pub mod interpreter;
+pub mod interpreter_action;
+pub mod opcode;
+
+// Reexport primary types.
+pub use function_stack::{FunctionReturnFrame, FunctionStack};
+pub use gas::Gas;
+pub use host::{
+    AccountLoad, DummyHost, Eip7702CodeLoad, Host, SStoreResult, SelfDestructResult, StateLoad,
+};
+pub use instruction_result::*;
+pub use interpreter::{
+    analysis, num_words, Contract, Interpreter, InterpreterResult, SharedMemory, Stack,
+    EMPTY_SHARED_MEMORY, STACK_LIMIT,
+};
+pub use interpreter_action::{
+    CallInputs, CallOutcome, CallScheme, CallValue, CreateInputs, CreateOutcome, CreateScheme,
+    EOFCreateInputs, EOFCreateKind, InterpreterAction,
+};
+pub use opcode::{Instruction, OpCode, OPCODE_INFO_JUMPTABLE};
+pub use primitives::{MAX_CODE_SIZE, MAX_INITCODE_SIZE};
+
+#[doc(hidden)]
+pub use revm_primitives as primitives;
+```
+</file>
+
+<file path="src/opcode/tables.rs">
+```rust
+#![allow(clippy::wrong_self_convention)]
+
+use super::instruction;
+use crate::{instructions::control, primitives::Spec, Host, Interpreter};
+use std::boxed::Box;
+
+/// EVM opcode function signature.
+pub type Instruction<H> = fn(&mut Interpreter, &mut H);
+
+/// Instruction table is list of instruction function pointers mapped to 256 EVM opcodes.
+pub type InstructionTable<H> = [Instruction<H>; 256];
+
+/// EVM dynamic opcode function signature.
+pub type DynInstruction<'a, H> = dyn Fn(&mut Interpreter, &mut H) + 'a;
+
+/// EVM boxed dynamic opcode function signature.
+pub type BoxedInstruction<'a, H> = Box<DynInstruction<'a, H>>;
+
+/// A table of boxed instructions.
+pub type BoxedInstructionTable<'a, H> = [BoxedInstruction<'a, H>; 256];
+
+/// Either a plain, static instruction table, or a boxed, dynamic instruction table.
+///
+/// Note that `Plain` variant is about 10-20% faster in Interpreter execution.
+pub enum InstructionTables<'a, H: ?Sized> {
+    Plain(InstructionTable<H>),
+    Boxed(BoxedInstructionTable<'a, H>),
+}
+
+impl<'a, H: Host + ?Sized> InstructionTables<'a, H> {
+    /// Creates a plain instruction table for the given spec. See [`make_instruction_table`].
+    #[inline]
+    pub const fn new_plain<SPEC: Spec>() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a, H: Host + ?Sized + 'a> InstructionTables<'a, H> {
+    /// Inserts the instruction into the table with the specified index.
+    #[inline]
+    pub fn insert(&mut self, opcode: u8, instruction: Instruction<H>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Converts the current instruction table to a boxed variant if it is not already, and returns
+    /// a mutable reference to the boxed table.
+    #[inline]
+    pub fn to_boxed(&mut self) -> &mut BoxedInstructionTable<'a, H> {
+        /* body omitted: interface retained */
+    }
+
+    /// Converts the current instruction table to a boxed variant if it is not already with `f`,
+    /// and returns a mutable reference to the boxed table.
+    #[inline]
+    pub fn to_boxed_with<F>(&mut self, f: F) -> &mut BoxedInstructionTable<'a, H>
+    where
+        F: FnMut(Instruction<H>) -> BoxedInstruction<'a, H>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    #[cold]
+    fn to_boxed_with_slow<F>(&mut self, f: F) -> &mut BoxedInstructionTable<'a, H>
+    where
+        F: FnMut(Instruction<H>) -> BoxedInstruction<'a, H>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a mutable reference to the boxed instruction at the specified index.
+    #[inline]
+    pub fn get_boxed(&mut self, opcode: u8) -> &mut BoxedInstruction<'a, H> {
+        /* body omitted: interface retained */
+    }
+
+    /// Inserts a boxed instruction into the table at the specified index.
+    #[inline]
+    pub fn insert_boxed(&mut self, opcode: u8, instruction: BoxedInstruction<'a, H>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Replaces a boxed instruction into the table at the specified index, returning the previous
+    /// instruction.
+    #[inline]
+    pub fn replace_boxed(
+        &mut self,
+        opcode: u8,
+        instruction: BoxedInstruction<'a, H>,
+    ) -> BoxedInstruction<'a, H> {
+        /* body omitted: interface retained */
+    }
+
+    /// Updates a single instruction in the table at the specified index with `f`.
+    #[inline]
+    pub fn update_boxed<F>(&mut self, opcode: u8, f: F)
+    where
+        F: Fn(&DynInstruction<'a, H>, &mut Interpreter, &mut H) + 'a,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Updates every instruction in the table by calling `f`.
+    #[inline]
+    pub fn update_all<F>(&mut self, f: F)
+    where
+        F: Fn(&DynInstruction<'a, H>, &mut Interpreter, &mut H) + Copy + 'a,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Make instruction table.
+#[inline]
+pub const fn make_instruction_table<H: Host + ?Sized, SPEC: Spec>() -> InstructionTable<H> {
+    /* body omitted: interface retained */
+}
+
+/// Make boxed instruction table that calls `f` closure for every instruction.
+#[inline]
+pub fn make_boxed_instruction_table<'a, H, FN>(
+    table: &InstructionTable<H>,
+    mut f: FN,
+) -> BoxedInstructionTable<'a, H>
+where
+    H: Host + ?Sized,
+    FN: FnMut(Instruction<H>) -> BoxedInstruction<'a, H>,
+{
+    /* body omitted: interface retained */
+}
+
+/// Updates a boxed instruction with a new one.
+#[inline]
+pub fn update_boxed_instruction<'a, H, F>(instruction: &mut BoxedInstruction<'a, H>, f: F)
+where
+    H: Host + ?Sized + 'a,
+    F: Fn(&DynInstruction<'a, H>, &mut Interpreter, &mut H) + 'a,
+{
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/opcode.rs">
+```rust
+//! EVM opcode definitions and utilities.
+pub mod eof_printer;
+mod tables;
+pub use tables::{
+    make_boxed_instruction_table, make_instruction_table, update_boxed_instruction,
+    BoxedInstruction, BoxedInstructionTable, DynInstruction, Instruction,
+    InstructionTable, InstructionTables,
+};
+use crate::{instructions::*, primitives::Spec, Host};
+use core::{fmt, ptr::NonNull};
+/// An error indicating that an opcode is invalid.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg(feature = "parse")]
+pub struct OpCodeError(());
+#[cfg(feature = "parse")]
+impl fmt::Display for OpCodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(all(feature = "std", feature = "parse"))]
+impl std::error::Error for OpCodeError {}
+/// An EVM opcode.
+///
+/// This is always a valid opcode, as declared in the [`opcode`][self] module or the
+/// [`OPCODE_INFO_JUMPTABLE`] constant.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct OpCode(u8);
+impl fmt::Display for OpCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "parse")]
+impl core::str::FromStr for OpCode {
+    type Err = OpCodeError;
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        /* body omitted: interface retained */
+    }
+}
+impl OpCode {
+    /// Instantiate a new opcode from a u8.
+    #[inline]
+    pub const fn new(opcode: u8) -> Option<Self> {
+        /* body omitted: interface retained */
+    }
+    /// Parses an opcode from a string. This is the inverse of [`as_str`](Self::as_str).
+    #[inline]
+    #[cfg(feature = "parse")]
+    pub fn parse(s: &str) -> Option<Self> {
+        /* body omitted: interface retained */
+    }
+    /// Returns true if the opcode is a jump destination.
+    #[inline]
+    pub const fn is_jumpdest(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Takes a u8 and returns true if it is a jump destination.
+    #[inline]
+    pub const fn is_jumpdest_by_op(opcode: u8) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns true if the opcode is a legacy jump instruction.
+    #[inline]
+    pub const fn is_jump(self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Takes a u8 and returns true if it is a jump instruction.
+    #[inline]
+    pub const fn is_jump_by_op(opcode: u8) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns true if the opcode is a `PUSH` instruction.
+    #[inline]
+    pub const fn is_push(self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Takes a u8 and returns true if it is a push instruction.
+    #[inline]
+    pub fn is_push_by_op(opcode: u8) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Instantiate a new opcode from a u8 without checking if it is valid.
+    ///
+    /// # Safety
+    ///
+    /// All code using `Opcode` values assume that they are valid opcodes, so providing an invalid
+    /// opcode may cause undefined behavior.
+    #[inline]
+    pub unsafe fn new_unchecked(opcode: u8) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode as a string. This is the inverse of [`parse`](Self::parse).
+    #[doc(alias = "name")]
+    #[inline]
+    pub const fn as_str(self) -> &'static str {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode name.
+    #[inline]
+    pub const fn name_by_op(opcode: u8) -> &'static str {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of input stack elements.
+    #[inline]
+    pub const fn inputs(&self) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of output stack elements.
+    #[inline]
+    pub const fn outputs(&self) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Calculates the difference between the number of input and output stack elements.
+    #[inline]
+    pub const fn io_diff(&self) -> i16 {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode information for the given opcode.
+    #[inline]
+    pub const fn info_by_op(opcode: u8) -> Option<OpCodeInfo> {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode information.
+    #[inline]
+    pub const fn info(&self) -> OpCodeInfo {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of both input and output stack elements.
+    ///
+    /// Can be slightly faster that calling `inputs` and `outputs` separately.
+    pub const fn input_output(&self) -> (u8, u8) {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode as a u8.
+    #[inline]
+    pub const fn get(self) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns true if the opcode modifies memory.
+    /// <https://bluealloy.github.io/revm/crates/interpreter/memory.html#opcodes>
+    /// <https://github.com/crytic/evm-opcodes>
+    #[inline]
+    pub const fn modifies_memory(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+/// Information about opcode, such as name, and stack inputs and outputs.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct OpCodeInfo {
+    /// Invariant: `(name_ptr, name_len)` is a `&'static str`. It is a shorted variant of `str` as
+    /// the name length is always less than 256 characters.
+    name_ptr: NonNull<u8>,
+    name_len: u8,
+    /// Stack inputs.
+    inputs: u8,
+    /// Stack outputs.
+    outputs: u8,
+    /// Number of intermediate bytes.
+    ///
+    /// RJUMPV is a special case where the bytes len depends on bytecode value,
+    /// for RJUMV size will be set to one byte as it is the minimum immediate size.
+    immediate_size: u8,
+    /// Used by EOF verification. All not EOF opcodes are marked false.
+    not_eof: bool,
+    /// If the opcode stops execution. aka STOP, RETURN, ..
+    terminating: bool,
+}
+impl fmt::Debug for OpCodeInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl OpCodeInfo {
+    /// Creates a new opcode info with the given name and default values.
+    pub const fn new(name: &'static str) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the opcode name.
+    #[inline]
+    pub const fn name(&self) -> &'static str {
+        /* body omitted: interface retained */
+    }
+    /// Calculates the difference between the number of input and output stack elements.
+    #[inline]
+    pub const fn io_diff(&self) -> i16 {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of input stack elements.
+    #[inline]
+    pub const fn inputs(&self) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of output stack elements.
+    #[inline]
+    pub const fn outputs(&self) -> u8 {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether this opcode is disabled in EOF bytecode.
+    #[inline]
+    pub const fn is_disabled_in_eof(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether this opcode terminates execution, e.g. `STOP`, `RETURN`, etc.
+    #[inline]
+    pub const fn is_terminating(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns the size of the immediate value in bytes.
+    #[inline]
+    pub const fn immediate_size(&self) -> u8 {
+        /* body omitted: interface retained */
+    }
+}
+/// Sets the EOF flag to false.
+#[inline]
+pub const fn not_eof(mut op: OpCodeInfo) -> OpCodeInfo {
+    /* body omitted: interface retained */
+}
+/// Sets the immediate bytes number.
+///
+/// RJUMPV is special case where the bytes len is depending on bytecode value,
+/// for RJUMPV size will be set to one byte while minimum is two.
+#[inline]
+pub const fn immediate_size(mut op: OpCodeInfo, n: u8) -> OpCodeInfo {
+    /* body omitted: interface retained */
+}
+/// Sets the terminating flag to true.
+#[inline]
+pub const fn terminating(mut op: OpCodeInfo) -> OpCodeInfo {
+    /* body omitted: interface retained */
+}
+/// Sets the number of stack inputs and outputs.
+#[inline]
+pub const fn stack_io(mut op: OpCodeInfo, inputs: u8, outputs: u8) -> OpCodeInfo {
+    /* body omitted: interface retained */
+}
+/// Alias for the [`JUMPDEST`] opcode.
+pub const NOP: u8 = JUMPDEST;
+/// Callback for creating a [`phf`] map with `stringify_with_cb`.
+#[cfg(feature = "parse")]
+macro_rules! phf_map_cb {
+    ($(#[doc = $s:literal] $id:ident)*) => {
+        phf::phf_map! { $($s => OpCode::$id),* }
+    };
+}
+/// Stringifies identifiers with `paste` so that they are available as literals.
+/// This doesn't work with `stringify!` because it cannot be expanded inside of another macro.
+#[cfg(feature = "parse")]
+macro_rules! stringify_with_cb {
+    ($callback:ident; $($id:ident)*) => {
+        paste::paste! { $callback ! { $(#[doc = "" $id ""] $id)* } }
+    };
+}
+macro_rules! opcodes {
+    (
+        $($val:literal => $name:ident => $f:expr => $($modifier:ident
+        $(($($modifier_arg:expr),*))?),*);* $(;)?
+    ) => {
+        $(#[doc = concat!("The `", stringify!($val), "` (\"", stringify!($name),
+        "\") opcode.")] pub const $name : u8 = $val;)* impl OpCode { $(#[doc =
+        concat!("The `", stringify!($val), "` (\"", stringify!($name), "\") opcode.")]
+        pub const $name : Self = Self($val);)* } #[doc =
+        " Maps each opcode to its info."] pub const OPCODE_INFO_JUMPTABLE : [Option <
+        OpCodeInfo >; 256] = { let mut map = [None; 256]; let mut prev : u8 = 0; $(let
+        val : u8 = $val; assert!(val == 0 || val > prev,
+        "opcodes must be sorted in ascending order"); prev = val; let info =
+        OpCodeInfo::new(stringify!($name)); $(let info = $modifier (info,
+        $($($modifier_arg),*)?);)* map[$val] = Some(info);)* let _ = prev; map }; #[doc =
+        " Maps each name to its opcode."] #[cfg(feature = "parse")] static NAME_TO_OPCODE
+        : phf::Map <&'static str, OpCode > = stringify_with_cb! { phf_map_cb; $($name)*
+        }; #[doc = " Returns the instruction function for the given opcode and spec."]
+        pub const fn instruction < H : Host + ? Sized, SPEC : Spec > (opcode : u8) ->
+        Instruction < H > {
+            /* body omitted: interface retained */
+        }
+    };
+}
+opcodes! {
+    0x00 => STOP => control::stop => stack_io(0, 0), terminating; 0x01 => ADD =>
+    arithmetic::add => stack_io(2, 1); 0x02 => MUL => arithmetic::mul => stack_io(2, 1);
+    0x03 => SUB => arithmetic::sub => stack_io(2, 1); 0x04 => DIV => arithmetic::div =>
+    stack_io(2, 1); 0x05 => SDIV => arithmetic::sdiv => stack_io(2, 1); 0x06 => MOD =>
+    arithmetic::rem => stack_io(2, 1); 0x07 => SMOD => arithmetic::smod => stack_io(2,
+    1); 0x08 => ADDMOD => arithmetic::addmod => stack_io(3, 1); 0x09 => MULMOD =>
+    arithmetic::mulmod => stack_io(3, 1); 0x0A => EXP => arithmetic::exp::< H, SPEC > =>
+    stack_io(2, 1); 0x0B => SIGNEXTEND => arithmetic::signextend => stack_io(2, 1); 0x10
+    => LT => bitwise::lt => stack_io(2, 1); 0x11 => GT => bitwise::gt => stack_io(2, 1);
+    0x12 => SLT => bitwise::slt => stack_io(2, 1); 0x13 => SGT => bitwise::sgt =>
+    stack_io(2, 1); 0x14 => EQ => bitwise::eq => stack_io(2, 1); 0x15 => ISZERO =>
+    bitwise::iszero => stack_io(1, 1); 0x16 => AND => bitwise::bitand => stack_io(2, 1);
+    0x17 => OR => bitwise::bitor => stack_io(2, 1); 0x18 => XOR => bitwise::bitxor =>
+    stack_io(2, 1); 0x19 => NOT => bitwise::not => stack_io(1, 1); 0x1A => BYTE =>
+    bitwise::byte => stack_io(2, 1); 0x1B => SHL => bitwise::shl::< H, SPEC > =>
+    stack_io(2, 1); 0x1C => SHR => bitwise::shr::< H, SPEC > => stack_io(2, 1); 0x1D =>
+    SAR => bitwise::sar::< H, SPEC > => stack_io(2, 1); 0x20 => KECCAK256 =>
+    system::keccak256 => stack_io(2, 1); 0x30 => ADDRESS => system::address =>
+    stack_io(0, 1); 0x31 => BALANCE => host::balance::< H, SPEC > => stack_io(1, 1); 0x32
+    => ORIGIN => host_env::origin => stack_io(0, 1); 0x33 => CALLER => system::caller =>
+    stack_io(0, 1); 0x34 => CALLVALUE => system::callvalue => stack_io(0, 1); 0x35 =>
+    CALLDATALOAD => system::calldataload => stack_io(1, 1); 0x36 => CALLDATASIZE =>
+    system::calldatasize => stack_io(0, 1); 0x37 => CALLDATACOPY => system::calldatacopy
+    => stack_io(3, 0); 0x38 => CODESIZE => system::codesize => stack_io(0, 1), not_eof;
+    0x39 => CODECOPY => system::codecopy => stack_io(3, 0), not_eof; 0x3A => GASPRICE =>
+    host_env::gasprice => stack_io(0, 1); 0x3B => EXTCODESIZE => host::extcodesize::< H,
+    SPEC > => stack_io(1, 1), not_eof; 0x3C => EXTCODECOPY => host::extcodecopy::< H,
+    SPEC > => stack_io(4, 0), not_eof; 0x3D => RETURNDATASIZE =>
+    system::returndatasize::< H, SPEC > => stack_io(0, 1); 0x3E => RETURNDATACOPY =>
+    system::returndatacopy::< H, SPEC > => stack_io(3, 0); 0x3F => EXTCODEHASH =>
+    host::extcodehash::< H, SPEC > => stack_io(1, 1), not_eof; 0x40 => BLOCKHASH =>
+    host::blockhash::< H, SPEC > => stack_io(1, 1); 0x41 => COINBASE =>
+    host_env::coinbase => stack_io(0, 1); 0x42 => TIMESTAMP => host_env::timestamp =>
+    stack_io(0, 1); 0x43 => NUMBER => host_env::block_number => stack_io(0, 1); 0x44 =>
+    DIFFICULTY => host_env::difficulty::< H, SPEC > => stack_io(0, 1); 0x45 => GASLIMIT
+    => host_env::gaslimit => stack_io(0, 1); 0x46 => CHAINID => host_env::chainid::< H,
+    SPEC > => stack_io(0, 1); 0x47 => SELFBALANCE => host::selfbalance::< H, SPEC > =>
+    stack_io(0, 1); 0x48 => BASEFEE => host_env::basefee::< H, SPEC > => stack_io(0, 1);
+    0x49 => BLOBHASH => host_env::blob_hash::< H, SPEC > => stack_io(1, 1); 0x4A =>
+    BLOBBASEFEE => host_env::blob_basefee::< H, SPEC > => stack_io(0, 1); 0x50 => POP =>
+    stack::pop => stack_io(1, 0); 0x51 => MLOAD => memory::mload => stack_io(1, 1); 0x52
+    => MSTORE => memory::mstore => stack_io(2, 0); 0x53 => MSTORE8 => memory::mstore8 =>
+    stack_io(2, 0); 0x54 => SLOAD => host::sload::< H, SPEC > => stack_io(1, 1); 0x55 =>
+    SSTORE => host::sstore::< H, SPEC > => stack_io(2, 0); 0x56 => JUMP => control::jump
+    => stack_io(1, 0), not_eof; 0x57 => JUMPI => control::jumpi => stack_io(2, 0),
+    not_eof; 0x58 => PC => control::pc => stack_io(0, 1), not_eof; 0x59 => MSIZE =>
+    memory::msize => stack_io(0, 1); 0x5A => GAS => system::gas => stack_io(0, 1),
+    not_eof; 0x5B => JUMPDEST => control::jumpdest_or_nop => stack_io(0, 0); 0x5C =>
+    TLOAD => host::tload::< H, SPEC > => stack_io(1, 1); 0x5D => TSTORE =>
+    host::tstore::< H, SPEC > => stack_io(2, 0); 0x5E => MCOPY => memory::mcopy::< H,
+    SPEC > => stack_io(3, 0); 0x5F => PUSH0 => stack::push0::< H, SPEC > => stack_io(0,
+    1); 0x60 => PUSH1 => stack::push::< 1, H > => stack_io(0, 1), immediate_size(1); 0x61
+    => PUSH2 => stack::push::< 2, H > => stack_io(0, 1), immediate_size(2); 0x62 => PUSH3
+    => stack::push::< 3, H > => stack_io(0, 1), immediate_size(3); 0x63 => PUSH4 =>
+    stack::push::< 4, H > => stack_io(0, 1), immediate_size(4); 0x64 => PUSH5 =>
+    stack::push::< 5, H > => stack_io(0, 1), immediate_size(5); 0x65 => PUSH6 =>
+    stack::push::< 6, H > => stack_io(0, 1), immediate_size(6); 0x66 => PUSH7 =>
+    stack::push::< 7, H > => stack_io(0, 1), immediate_size(7); 0x67 => PUSH8 =>
+    stack::push::< 8, H > => stack_io(0, 1), immediate_size(8); 0x68 => PUSH9 =>
+    stack::push::< 9, H > => stack_io(0, 1), immediate_size(9); 0x69 => PUSH10 =>
+    stack::push::< 10, H > => stack_io(0, 1), immediate_size(10); 0x6A => PUSH11 =>
+    stack::push::< 11, H > => stack_io(0, 1), immediate_size(11); 0x6B => PUSH12 =>
+    stack::push::< 12, H > => stack_io(0, 1), immediate_size(12); 0x6C => PUSH13 =>
+    stack::push::< 13, H > => stack_io(0, 1), immediate_size(13); 0x6D => PUSH14 =>
+    stack::push::< 14, H > => stack_io(0, 1), immediate_size(14); 0x6E => PUSH15 =>
+    stack::push::< 15, H > => stack_io(0, 1), immediate_size(15); 0x6F => PUSH16 =>
+    stack::push::< 16, H > => stack_io(0, 1), immediate_size(16); 0x70 => PUSH17 =>
+    stack::push::< 17, H > => stack_io(0, 1), immediate_size(17); 0x71 => PUSH18 =>
+    stack::push::< 18, H > => stack_io(0, 1), immediate_size(18); 0x72 => PUSH19 =>
+    stack::push::< 19, H > => stack_io(0, 1), immediate_size(19); 0x73 => PUSH20 =>
+    stack::push::< 20, H > => stack_io(0, 1), immediate_size(20); 0x74 => PUSH21 =>
+    stack::push::< 21, H > => stack_io(0, 1), immediate_size(21); 0x75 => PUSH22 =>
+    stack::push::< 22, H > => stack_io(0, 1), immediate_size(22); 0x76 => PUSH23 =>
+    stack::push::< 23, H > => stack_io(0, 1), immediate_size(23); 0x77 => PUSH24 =>
+    stack::push::< 24, H > => stack_io(0, 1), immediate_size(24); 0x78 => PUSH25 =>
+    stack::push::< 25, H > => stack_io(0, 1), immediate_size(25); 0x79 => PUSH26 =>
+    stack::push::< 26, H > => stack_io(0, 1), immediate_size(26); 0x7A => PUSH27 =>
+    stack::push::< 27, H > => stack_io(0, 1), immediate_size(27); 0x7B => PUSH28 =>
+    stack::push::< 28, H > => stack_io(0, 1), immediate_size(28); 0x7C => PUSH29 =>
+    stack::push::< 29, H > => stack_io(0, 1), immediate_size(29); 0x7D => PUSH30 =>
+    stack::push::< 30, H > => stack_io(0, 1), immediate_size(30); 0x7E => PUSH31 =>
+    stack::push::< 31, H > => stack_io(0, 1), immediate_size(31); 0x7F => PUSH32 =>
+    stack::push::< 32, H > => stack_io(0, 1), immediate_size(32); 0x80 => DUP1 =>
+    stack::dup::< 1, H > => stack_io(1, 2); 0x81 => DUP2 => stack::dup::< 2, H > =>
+    stack_io(2, 3); 0x82 => DUP3 => stack::dup::< 3, H > => stack_io(3, 4); 0x83 => DUP4
+    => stack::dup::< 4, H > => stack_io(4, 5); 0x84 => DUP5 => stack::dup::< 5, H > =>
+    stack_io(5, 6); 0x85 => DUP6 => stack::dup::< 6, H > => stack_io(6, 7); 0x86 => DUP7
+    => stack::dup::< 7, H > => stack_io(7, 8); 0x87 => DUP8 => stack::dup::< 8, H > =>
+    stack_io(8, 9); 0x88 => DUP9 => stack::dup::< 9, H > => stack_io(9, 10); 0x89 =>
+    DUP10 => stack::dup::< 10, H > => stack_io(10, 11); 0x8A => DUP11 => stack::dup::<
+    11, H > => stack_io(11, 12); 0x8B => DUP12 => stack::dup::< 12, H > => stack_io(12,
+    13); 0x8C => DUP13 => stack::dup::< 13, H > => stack_io(13, 14); 0x8D => DUP14 =>
+    stack::dup::< 14, H > => stack_io(14, 15); 0x8E => DUP15 => stack::dup::< 15, H > =>
+    stack_io(15, 16); 0x8F => DUP16 => stack::dup::< 16, H > => stack_io(16, 17); 0x90 =>
+    SWAP1 => stack::swap::< 1, H > => stack_io(2, 2); 0x91 => SWAP2 => stack::swap::< 2,
+    H > => stack_io(3, 3); 0x92 => SWAP3 => stack::swap::< 3, H > => stack_io(4, 4); 0x93
+    => SWAP4 => stack::swap::< 4, H > => stack_io(5, 5); 0x94 => SWAP5 => stack::swap::<
+    5, H > => stack_io(6, 6); 0x95 => SWAP6 => stack::swap::< 6, H > => stack_io(7, 7);
+    0x96 => SWAP7 => stack::swap::< 7, H > => stack_io(8, 8); 0x97 => SWAP8 =>
+    stack::swap::< 8, H > => stack_io(9, 9); 0x98 => SWAP9 => stack::swap::< 9, H > =>
+    stack_io(10, 10); 0x99 => SWAP10 => stack::swap::< 10, H > => stack_io(11, 11); 0x9A
+    => SWAP11 => stack::swap::< 11, H > => stack_io(12, 12); 0x9B => SWAP12 =>
+    stack::swap::< 12, H > => stack_io(13, 13); 0x9C => SWAP13 => stack::swap::< 13, H >
+    => stack_io(14, 14); 0x9D => SWAP14 => stack::swap::< 14, H > => stack_io(15, 15);
+    0x9E => SWAP15 => stack::swap::< 15, H > => stack_io(16, 16); 0x9F => SWAP16 =>
+    stack::swap::< 16, H > => stack_io(17, 17); 0xA0 => LOG0 => host::log::< 0, H > =>
+    stack_io(2, 0); 0xA1 => LOG1 => host::log::< 1, H > => stack_io(3, 0); 0xA2 => LOG2
+    => host::log::< 2, H > => stack_io(4, 0); 0xA3 => LOG3 => host::log::< 3, H > =>
+    stack_io(5, 0); 0xA4 => LOG4 => host::log::< 4, H > => stack_io(6, 0); 0xD0 =>
+    DATALOAD => data::data_load => stack_io(1, 1); 0xD1 => DATALOADN => data::data_loadn
+    => stack_io(0, 1), immediate_size(2); 0xD2 => DATASIZE => data::data_size =>
+    stack_io(0, 1); 0xD3 => DATACOPY => data::data_copy => stack_io(3, 0); 0xE0 => RJUMP
+    => control::rjump => stack_io(0, 0), immediate_size(2), terminating; 0xE1 => RJUMPI
+    => control::rjumpi => stack_io(1, 0), immediate_size(2); 0xE2 => RJUMPV =>
+    control::rjumpv => stack_io(1, 0), immediate_size(1); 0xE3 => CALLF => control::callf
+    => stack_io(0, 0), immediate_size(2); 0xE4 => RETF => control::retf => stack_io(0,
+    0), terminating; 0xE5 => JUMPF => control::jumpf => stack_io(0, 0),
+    immediate_size(2), terminating; 0xE6 => DUPN => stack::dupn => stack_io(0, 1),
+    immediate_size(1); 0xE7 => SWAPN => stack::swapn => stack_io(0, 0),
+    immediate_size(1); 0xE8 => EXCHANGE => stack::exchange => stack_io(0, 0),
+    immediate_size(1); 0xEC => EOFCREATE => contract::eofcreate => stack_io(4, 1),
+    immediate_size(1); 0xEE => RETURNCONTRACT => contract::return_contract => stack_io(2,
+    0), immediate_size(1), terminating; 0xF0 => CREATE => contract::create::< false, H,
+    SPEC > => stack_io(3, 1), not_eof; 0xF1 => CALL => contract::call::< H, SPEC > =>
+    stack_io(7, 1), not_eof; 0xF2 => CALLCODE => contract::call_code::< H, SPEC > =>
+    stack_io(7, 1), not_eof; 0xF3 => RETURN => control::ret => stack_io(2, 0),
+    terminating; 0xF4 => DELEGATECALL => contract::delegate_call::< H, SPEC > =>
+    stack_io(6, 1), not_eof; 0xF5 => CREATE2 => contract::create::< true, H, SPEC > =>
+    stack_io(4, 1), not_eof; 0xF7 => RETURNDATALOAD => system::returndataload =>
+    stack_io(1, 1); 0xF8 => EXTCALL => contract::extcall::< H, SPEC > => stack_io(4, 1);
+    0xF9 => EXTDELEGATECALL => contract::extdelegatecall::< H, SPEC > => stack_io(3, 1);
+    0xFA => STATICCALL => contract::static_call::< H, SPEC > => stack_io(6, 1), not_eof;
+    0xFB => EXTSTATICCALL => contract::extstaticcall => stack_io(3, 1); 0xFD => REVERT =>
+    control::revert::< H, SPEC > => stack_io(2, 0), terminating; 0xFE => INVALID =>
+    control::invalid => stack_io(0, 0), terminating; 0xFF => SELFDESTRUCT =>
+    host::selfdestruct::< H, SPEC > => stack_io(1, 0), not_eof, terminating;
+}
+```
+</file>
+</rust context>

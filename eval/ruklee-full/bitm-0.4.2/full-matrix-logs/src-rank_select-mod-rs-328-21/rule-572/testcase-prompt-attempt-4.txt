@@ -1,0 +1,2675 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 128968789327888; get_arg(1) = 1; get_arg(2) = 0; target counterexample query was unsat.
+- The rule is `get_arg(2) < get_arg(1)`. This failed observation had `get_arg(2) = 0` and `get_arg(1) = 1`; the next testcase must reach the same target but make `get_arg(2) >= get_arg(1)` true at the actual unsafe call.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-rank-select-mod-rs-328-21-rule-572-eace8f05f3`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_rank_select_mod_rs_328_21_rule_572_eace8f05f3`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-rank-select-mod-rs-328-21-rule-572-eace8f05f3")]`.
+- Define `pub extern "C" fn __unsat_poc_src_rank_select_mod_rs_328_21_rule_572_eace8f05f3()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-rank-select-mod-rs-328-21-rule-572-eace8f05f3")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_rank_select_mod_rs_328_21_rule_572_eace8f05f3() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "rank_select::RankSimple",
+    "path": "src/rank_select/mod.rs",
+    "line_start": 294,
+    "body_end": 294,
+    "is_public": true
+  },
+  "caller": {
+    "name": "rank_select::RankSimple::<BV>::try_rank",
+    "path": "src/rank_select/mod.rs",
+    "line_start": 323,
+    "line_end": 323,
+    "body_end": 333,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "std::option::Option<u32>"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 625,
+    "line_end": 657,
+    "body_end": 657,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&<I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 328,
+    "col": 21,
+    "path": "src/rank_select/mod.rs",
+    "id": "src-rank_select-mod-rs-328-21"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u32",
+      "layout_control": "fixed"
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "usize",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `rank_select::RankSimple` for `receiver` using fields visible from the injection module when that better controls the target caller state: `content`, `ranks` -> call target caller `rank_select::RankSimple::<BV>::try_rank` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `rank_select::RankSimple::<BV>::try_rank`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::ops::Deref;
+use self::select::{U64_PER_L1_ENTRY, U64_PER_L2_ENTRY, U64_PER_L2_RECORDS};
+use super::{ceiling_div, n_lowest_bits};
+use dyn_size_of::GetSize;
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `aligned_vec::...`, `dyn_size_of::...`.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/rank_select/mod.rs:328
+```rust
+320:         (Self{content, ranks: result.into_boxed_slice()}, current_rank)
+321:     }
+322: 
+323:     pub fn try_rank(&self, index: usize) -> Option<u32> {
+324:         let word_idx = index / 64;
+325:         let word_offset = index as u8 % 64;
+326:         let block = index / 512;
+327:         let mut r = (self.content.get(word_idx)? & n_lowest_bits(word_offset)).count_ones() as u32;
+328:         r += unsafe{self.ranks.get_unchecked(block)};
+329:         for w in block * (512 / 64)..word_idx {
+330:             r += unsafe{self.content.get_unchecked(w)}.count_ones();
+331:         }
+332:         Some(r)
+333:     }
+334: 
+335:     pub fn rank(&self, index: usize) -> u32 {
+336:         let word_idx = index / 64;
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/rank_select/mod.rs:323-328
+```rust
+323:     pub fn try_rank(&self, index: usize) -> Option<u32> {
+324:         let word_idx = index / 64;
+325:         let word_offset = index as u8 % 64;
+326:         let block = index / 512;
+327:         let mut r = (self.content.get(word_idx)? & n_lowest_bits(word_offset)).count_ones() as u32;
+328:         r += unsafe{self.ranks.get_unchecked(block)};
+```
+
+Inferred prefix path obligations from the actual-containing function. These are not the unsafe API rule; they are safe-path conditions needed to reach the target callsite:
+- `self.content.get(word_idx)` must return normally on the path to the target; construct the receiver and argument values so the lookup/index is accepted.
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-rank_select-mod-rs-328-21
+
+Rule id: rule-572
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-rank_select-mod-rs-328-21`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-rank_select-mod-rs-328-21` -> `src-rank_select-mod-rs-330-25`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-rank_select-mod-rs-328-21` and reproduce the target counterexample there.
+The metadata caller `rank_select::RankSimple::<BV>::try_rank` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 128968789327888; get_arg(1) = 1; get_arg(2) = 0; target counterexample query was unsat.
+  The rule is `get_arg(2) < get_arg(1)`. This failed observation had `get_arg(2) = 0` and `get_arg(1) = 1`; the next testcase must reach the same target but make `get_arg(2) >= get_arg(1)` true at the actual unsafe call.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+
+</previous attempt feedback>
+
+
+<rust context>
+
+<file path="benches/bitvec-iai.rs">
+```rust
+use iai_callgrind::{black_box, main, library_benchmark_group, library_benchmark};
+use bitm::BitAccess;
+
+#[library_benchmark]
+#[bench::short(&[0x6A_21_55_79_10_90_32_F3; 2], 10, 30)]
+#[bench::long(&[0x6A_21_55_79_10_90_32_F3; 2], 10, 60)]
+fn get_bits(tab: &[u64], index: usize, v_size: u8) -> u64 {
+    black_box(tab.get_bits(index, v_size))
+}
+
+#[library_benchmark]
+#[bench::short(&[0x6A_21_55_79_10_90_32_F3; 2], 10, 30)]
+#[bench::long(&[0x6A_21_55_79_10_90_32_F3; 2], 10, 60)]
+fn get_bits_unchecked(tab: &[u64], index: usize, v_size: u8) -> u64 {
+    black_box(unsafe{tab.get_bits_unchecked(index, v_size)})
+}
+
+#[library_benchmark]
+#[bench::short(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, 0xaa_aa_aa, 30)]
+#[bench::long(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, 0xaa_aa_aa_aa_aa_aa, 60)]
+fn set_bits(tab: &mut [u64], index: usize, v: u64, v_size: u8) {
+    tab.set_bits(index, v, v_size)
+}
+
+#[library_benchmark]
+#[bench::short(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, 0xaa_aa_aa, 30)]
+#[bench::long(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, 0xaa_aa_aa_aa_aa_aa, 60)]
+fn set_bits_unchecked(tab: &mut [u64], index: usize, v: u64, v_size: u8) {
+    unsafe { tab.set_bits_unchecked(index, v, v_size) }
+}
+
+#[library_benchmark]
+#[bench::zero(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, false)]
+#[bench::one(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, true)]
+fn set_bit_to(tab: &mut [u64], index: usize, value: bool) {
+    tab.set_bit_to(index, value)
+}
+
+#[library_benchmark]
+#[bench::zero(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, false)]
+#[bench::one(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, true)]
+fn set_bit_to_unchecked(tab: &mut [u64], index: usize, value: bool) {
+    unsafe{tab.set_bit_to_unchecked(index, value)}
+}
+
+#[library_benchmark]
+#[bench::short(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, 30)]
+#[bench::long(&mut [0x6A_21_55_79_10_90_32_F3; 2], 10, 60)]
+fn conditionally_change_bits(tab: &mut [u64], index: usize, v_size: u8) -> u64 {
+    black_box(tab.conditionally_change_bits(|v| (v>2).then(|| v-1), index, v_size))
+}
+
+library_benchmark_group!(
+    name = bitvec;
+    benchmarks =
+        get_bits, get_bits_unchecked,
+        set_bits, set_bits_unchecked,
+        set_bit_to, set_bit_to_unchecked,
+        conditionally_change_bits
+);
+
+main!(library_benchmark_groups = bitvec);
+```
+</file>
+
+<file path="benches/bitvec.rs">
+```rust
+use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use bitm::BitAccess;
+
+pub fn get_bits(c: &mut Criterion) {
+    let v = [0x6A_21_55_79_10_90_32_F3; 4];
+
+    c.bench_function("get_bit (checked)", |b| b.iter(|| v.get_bit(black_box(30))));
+    c.bench_function("get_bit (unchecked)", |b| b.iter(|| unsafe{v.get_bit_unchecked(black_box(30))}));
+
+    let mut group = c.benchmark_group("get_bits (checked)");
+    for size in [20, 40, 60].iter() {
+        //group.throughput(Throughput::Bytes(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            b.iter(|| v.get_bits(black_box(30), size))
+        });
+    }
+    group.finish();
+
+    let mut group = c.benchmark_group("get_bits_unchecked");
+    for size in [20, 40, 60].iter() {
+        //group.throughput(Throughput::Bytes(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            b.iter(|| unsafe{ v.get_bits_unchecked(black_box(30), size) })
+        });
+    }
+    group.finish();
+}
+
+pub fn set_bits(c: &mut Criterion) {
+    let mut v = [0x6A_21_55_79_10_90_32_F3; 4];
+
+    c.bench_function("set_bit (checked)", |b| b.iter(|| v.set_bit(black_box(30))));
+    c.bench_function("set_bit (unchecked)", |b| b.iter(|| unsafe{v.set_bit_unchecked(black_box(30))}));
+
+    let mut group = c.benchmark_group("set_bit_to (checked)");
+    for value in [false, true] {
+        group.bench_with_input(BenchmarkId::from_parameter(value), &value, |b, value| {
+            b.iter(|| v.set_bit_to(black_box(30), black_box(*value)))
+        });
+    }
+    group.finish();
+
+    let mut group = c.benchmark_group("set_bit_to (unchecked)");
+    for value in [false, true] {
+        group.bench_with_input(BenchmarkId::from_parameter(value), &value, |b, value| {
+            b.iter(|| unsafe{v.set_bit_to_unchecked(black_box(30), black_box(*value))})
+        });
+    }
+    group.finish();
+
+    c.bench_function("set_bit_to (checked)", |b| b.iter(|| v.set_bit_to(black_box(30), true)));
+    c.bench_function("set_bit_to (unchecked)", |b| b.iter(|| unsafe{v.set_bit_unchecked(black_box(30))}));
+
+    let mut group = c.benchmark_group("set_bits (checked)");
+    for size in [20, 40, 60].iter() {
+        //group.throughput(Throughput::Bytes(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            b.iter(|| v.set_bits(black_box(30), black_box(0), size))
+        });
+    }
+    group.finish();
+
+    let mut group = c.benchmark_group("set_bits_unchecked");
+    for size in [20, 40, 60].iter() {
+        //group.throughput(Throughput::Bytes(*size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            b.iter(|| unsafe{v.set_bits_unchecked(black_box(30), black_box(0), size)})
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(bit_vector, get_bits, set_bits);
+criterion_main!(bit_vector);
+```
+</file>
+
+<file path="benches/rank_select.rs">
+```rust
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use bitm::{RankSelect101111, Rank};
+
+pub fn rank(c: &mut Criterion) {
+    let bitmap = vec![0x6A_21_55_79_10_90_32_F3; 16].into_boxed_slice();
+    let r: RankSelect101111 = bitmap.into();
+
+    c.bench_function("rank (checked)", |b| b.iter(|| r.rank(black_box(18*7))));
+    c.bench_function("try_rank", |b| b.iter(|| r.try_rank(black_box(18*7))));
+    c.bench_function("rank_unchecked", |b| b.iter(|| unsafe{r.rank_unchecked(black_box(18*7))}));
+}
+
+criterion_group!(rank_select, rank);
+criterion_main!(rank_select);
+```
+</file>
+
+<file path="src/bitvec.rs">
+```rust
+use std::{iter::FusedIterator, ops::Range};
+use super::{ceiling_div, n_lowest_bits, n_lowest_bits_1_64};
+
+/// Iterator over indices of bits set to 1 (if `B` is `true`) or 0 (if `B` is `false`) in slice of `u64`.
+pub struct BitBIterator<'a, const B: bool> {
+    /// Iterator over 64-bit segments.
+    segment_iter: std::slice::Iter<'a, u64>,
+    /// 64 * index of the current segment.
+    first_segment_bit: usize,
+    /// Copy of the current segment (or its negation if `!B`) with zeroed already exposed bits.
+    current_segment: u64
+}
+
+impl<'a, const B: bool> BitBIterator<'a, B> {
+    /// Constructs iterator over bits set in the given `slice`.
+    pub fn new(slice: &'a [u64]) -> Self {
+        let mut segment_iter = slice.into_iter();
+        let current_segment = if B {
+            segment_iter.next().copied().unwrap_or(0)
+        } else {
+            !segment_iter.next().copied().unwrap_or(0)
+        };
+        Self {
+            segment_iter,
+            first_segment_bit: 0,
+            current_segment
+        }
+    }
+}
+
+impl<'a, const B: bool> Iterator for BitBIterator<'a, B> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current_segment == 0 {
+            self.current_segment = if B { *self.segment_iter.next()? } else { !*self.segment_iter.next()? };
+            self.first_segment_bit += 64;
+        }
+        let result = self.current_segment.trailing_zeros();
+        self.current_segment ^= 1<<result;
+        Some(self.first_segment_bit + (result as usize))
+    }
+
+    #[inline] fn size_hint(&self) -> (usize, Option<usize>) {
+        let result = self.len();
+        (result, Some(result))
+    }
+}
+
+impl<'a, const B: bool> ExactSizeIterator for BitBIterator<'a, B> {
+    #[inline] fn len(&self) -> usize {
+        if B {
+            self.current_segment.count_ones() as usize + self.segment_iter.as_slice().count_bit_ones()
+        } else {
+            self.current_segment.count_zeros() as usize + self.segment_iter.as_slice().count_bit_zeros()
+        }
+    }
+}
+
+impl<'a, const B: bool> FusedIterator for BitBIterator<'a, B> where std::slice::Iter<'a, u64>: FusedIterator {}
+
+/// Iterator over bits set to 1 in slice of `u64`.
+pub type BitOnesIterator<'a> = BitBIterator<'a, true>;
+
+/// Iterator over bits set to 0 in slice of `u64`.
+pub type BitZerosIterator<'a> = BitBIterator<'a, false>;
+
+
+
+/// Iterator over bits in slice of `u64`. It yields `true` for bit 1 and `false` for 0.
+pub struct BitIterator<'bv> {
+    bit_vec: &'bv [u64],
+    bit_range: Range<usize>,
+}
+
+impl<'bv> BitIterator<'bv> {
+    /// Constructs iterator over all bits in the given `bit_vec`.
+    #[inline] pub fn new(bit_vec: &'bv [u64]) -> Self {
+        Self { bit_vec, bit_range: 0..bit_vec.len()*64 }
+    }
+
+    /// Constructs iterator over given bit range of `bit_vec`.
+    #[inline] pub unsafe fn with_range_unchecked(bit_vec: &'bv [u64], bit_range: Range<usize>) -> Self {
+        Self { bit_vec, bit_range }
+    }
+
+    /// Constructs iterator over given bit range of `bit_vec`.
+    #[inline] pub fn with_range(bit_vec: &'bv [u64], bit_range: Range<usize>) -> Self {
+        assert!(bit_range.end <= bit_vec.len()*64, "BitIterator bit range out of bounds.");
+        Self { bit_vec, bit_range }
+    }
+
+    /// Returns the remaining range of bits to be yielded by `self`.
+    #[inline] pub fn bit_range(&self) -> &Range<usize> { &self.bit_range }
+
+    /// Returns underling bit vector (slice).
+    #[inline] pub fn bit_vec(&self) -> &'bv [u64] { &self.bit_vec }
+}
+
+impl<'bv> Iterator for BitIterator<'bv> {
+    type Item = bool;
+
+    #[inline] fn next(&mut self) -> Option<Self::Item> {
+        self.bit_range.next().map(|bit_nr| unsafe { self.bit_vec.get_bit_unchecked(bit_nr) })
+    }
+
+    #[inline] fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.bit_range.nth(n).map(|bit_nr| unsafe { self.bit_vec.get_bit_unchecked(bit_nr) })
+    }
+
+    #[inline] fn size_hint(&self) -> (usize, Option<usize>) {
+        self.bit_range.size_hint()
+    }
+}
+
+impl<'bv> DoubleEndedIterator for BitIterator<'bv> {
+    #[inline] fn next_back(&mut self) -> Option<Self::Item> {
+        self.bit_range.next_back().map(|bit_nr| unsafe { self.bit_vec.get_bit_unchecked(bit_nr) })
+    }
+
+    #[inline] fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.bit_range.nth_back(n).map(|bit_nr| unsafe { self.bit_vec.get_bit_unchecked(bit_nr) })
+    }
+}
+
+impl<'a> ExactSizeIterator for BitIterator<'a> where Range<usize>: ExactSizeIterator {
+    #[inline] fn len(&self) -> usize { self.bit_range.len() }
+}
+
+impl<'a> FusedIterator for BitIterator<'a> where Range<usize>: FusedIterator {}
+
+
+/// The trait that is implemented for the array of `u64` and extends it with methods for
+/// accessing and modifying single bits or arbitrary fragments consisted of few (up to 63) bits.
+pub trait BitAccess {
+    /// Gets bit with given index `bit_nr`. Panics if `bit_nr` is out of bounds.
+    fn get_bit(&self, bit_nr: usize) -> bool;
+
+    /// Gets bit with given index `bit_nr`, without bounds checking.
+    unsafe fn get_bit_unchecked(&self, bit_nr: usize) -> bool;
+
+    /// Gets bit with given index `bit_nr`. Returns `None` if `bit_nr` is out of bounds.
+    fn try_get_bit(&self, bit_nr: usize) -> Option<bool>;
+
+    /// Gets bit with given index `bit_nr` and increase `bit_nr` by 1. Panics if `bit_nr` is out of bounds.
+    #[inline] fn get_successive_bit(&self, bit_nr: &mut usize) -> bool {
+        let result = self.get_bit(*bit_nr);
+        *bit_nr += 1;
+        result
+    }
+
+    /// Set bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise). Panics if `bit_nr` is out of bounds.
+    fn set_bit_to(&mut self, bit_nr: usize, value: bool);
+
+    /// Set bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise), without bounds checking.
+    unsafe fn set_bit_to_unchecked(&mut self, bit_nr: usize, value: bool);
+
+    /// Set bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise) and increase `bit_nr` by 1.
+    /// Panics if `bit_nr` is out of bound.
+    #[inline] fn set_successive_bit_to(&mut self, bit_nr: &mut usize, value: bool) {
+        self.set_bit_to(*bit_nr, value); *bit_nr += 1;
+    }
+
+    /// Set bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise) and increase `bit_nr` by 1.
+    /// The result is undefined if `bit_nr` is out of bound.
+    #[inline] unsafe fn set_successive_bit_to_unchecked(&mut self, bit_nr: &mut usize, value: bool) {
+        self.set_bit_to_unchecked(*bit_nr, value); *bit_nr += 1;
+    }
+
+    /// Initialize bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise).
+    /// Before initialization, the bit is assumed to be cleared or already set to `value`.
+    /// Panics if `bit_nr` is out of bounds.
+    fn init_bit(&mut self, bit_nr: usize, value: bool);
+
+    /// Initialize bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise).
+    /// Before initialization, the bit is assumed to be cleared or already set to `value`.
+    /// The result is undefined if `bit_nr` is out of bounds.
+    unsafe fn init_bit_unchecked(&mut self, bit_nr: usize, value: bool);
+
+    /// Initialize bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise)
+    /// and increase `bit_nr` by 1.
+    /// Before initialization, the bit is assumed to be cleared or already set to `value`.
+    /// Panics if `bit_nr` is out of bounds.
+    #[inline] fn init_successive_bit(&mut self, bit_nr: &mut usize, value: bool) {
+        self.init_bit(*bit_nr, value); *bit_nr += 1;
+    }
+
+    /// Initialize bit with given index `bit_nr` to `value` (`1` if `true`, `0` otherwise)
+    /// and increase `bit_nr` by 1.
+    /// Before initialization, the bit is assumed to be cleared or already set to `value`.
+    /// The result is undefined if `bit_nr` is out of bounds.
+    #[inline] unsafe fn init_successive_bit_unchecked(&mut self, bit_nr: &mut usize, value: bool) {
+        self.init_bit_unchecked(*bit_nr, value); *bit_nr += 1;
+    }
+
+    /// Sets bit with given index `bit_nr` to `1`. Panics if `bit_nr` is out of bounds.
+    fn set_bit(&mut self, bit_nr: usize);
+
+    /// Sets bit with given index `bit_nr` to `1`, without bounds checking.
+    unsafe fn set_bit_unchecked(&mut self, bit_nr: usize);
+
+    /// Sets bit with given index `bit_nr` to `0`. Panics if `bit_nr` is out of bounds.
+    fn clear_bit(&mut self, bit_nr: usize);
+
+    /// Sets bit with given index `bit_nr` to `0`, without bounds checking.
+    unsafe fn clear_bit_unchecked(&mut self, bit_nr: usize);
+
+    /// Gets at least `len` bits beginning from the bit index `begin`. Panics if the range is out of bounds.
+    #[inline] fn get_bits_unmasked(&self, begin: usize, len: u8) -> u64 {
+        self.try_get_bits_unmasked(begin, len).expect("bit range out of bounds")
+    }
+
+    /// Gets bits `[begin, begin+len)`. Panics if the range is out of bounds.
+    #[inline] fn get_bits(&self, begin: usize, len: u8) -> u64 {
+        //if len == 0 { return 0; }
+        self.get_bits_unmasked(begin, len) & n_lowest_bits(len)
+    }
+
+    /// Gets at least `len` bits beginning from the bit index `begin`.
+    /// Returns [`None`] if the range is out of bounds.
+    fn try_get_bits_unmasked(&self, begin: usize, len: u8) -> Option<u64>;
+
+    /// Gets bits `[begin, begin+len)`. Returns [`None`] if the range is out of bounds.
+    #[inline(always)] fn try_get_bits(&self, begin: usize, len: u8) -> Option<u64> {
+        self.try_get_bits_unmasked(begin, len).map(|result| result & n_lowest_bits(len))
+    }
+
+    /// Gets at least `len` bits beginning from the bit index `begin` without bounds checking.
+    unsafe fn get_bits_unmasked_unchecked(&self, begin: usize, len: u8) -> u64;
+
+    /// Gets bits `[begin, begin+len)` without bounds checking.
+    #[inline(always)] unsafe fn get_bits_unchecked(&self, begin: usize, len: u8) -> u64 {
+        self.get_bits_unmasked_unchecked(begin, len) & n_lowest_bits(len)
+    }
+
+    /// Gets bits `[begin, begin+len)` and increase `bit_nr` by `len`.
+    #[inline] fn get_successive_bits(&self, begin: &mut usize, len: u8) -> u64 {
+        let result = self.get_bits(*begin, len);
+        *begin += len as usize;
+        result
+    }
+
+    /// Initialize bits `[begin, begin+len)` to `v`.
+    /// Before initialization, the bits are assumed to be cleared or already set to `v`.
+    fn init_bits(&mut self, begin: usize, v: u64, len: u8);
+
+    /// Initialize bits `[begin, begin+len)` to `v` and increase `begin` by `len`.
+    /// Before initialization, the bits are assumed to be cleared or already set to `v`.
+    #[inline] fn init_successive_bits(&mut self, begin: &mut usize, v: u64, len: u8) {
+        self.init_bits(*begin, v, len); *begin += len as usize;
+    }
+
+    /// Sets bits `[begin, begin+len)` to the content of `v`. Panics if the range is out of bounds.
+    fn set_bits(&mut self, begin: usize, v: u64, len: u8);
+
+    /// Sets bits `[begin, begin+len)` to the content of `v` and increase `begin` by `len`. Panics if the range is out of bounds.
+    #[inline] fn set_successive_bits(&mut self, begin: &mut usize, v: u64, len: u8) {
+        self.set_bits(*begin, v, len);  *begin += len as usize;
+    }
+
+    /// Sets bits `[begin, begin+len)` to the content of `v`, without bounds checking.
+    unsafe fn set_bits_unchecked(&mut self, begin: usize, v: u64, len: u8);
+
+    /// Xor at least `len` bits of `self`, staring from index `begin`, with `v`. Panics if the range is out of bounds.
+    fn xor_bits(&mut self, begin: usize, v: u64, len: u8);
+
+    /// Xor at least `len` bits of `self`, staring from index `begin`, with `v` and increase `begin` by `len`.
+    /// Panics if the range is out of bounds.
+    fn xor_successive_bits(&mut self, begin: &mut usize, v: u64, len: u8) {
+        self.xor_bits(*begin, v, len);  *begin += len as usize;
+    }
+
+    /// Returns the number of zeros (cleared bits).
+    fn count_bit_zeros(&self) -> usize;
+
+    /// Returns the number of ones (set bits).
+    fn count_bit_ones(&self) -> usize;
+
+    /// Returns iterator over indices of ones (set bits).
+    fn bit_ones(&self) -> BitOnesIterator;
+
+    /// Returns iterator over indices of ones (set bits).
+    fn bit_zeros(&self) -> BitZerosIterator;
+
+    /// Returns iterator over all bits in `self` that yields `true` for each one and `false` for each zero.
+    fn bit_iter(&self) -> BitIterator;
+
+    /// Returns iterator over given range of `self` bits that yields `true` for each one and `false` for each zero.
+    fn bit_in_range_iter(&self, bit_range: Range<usize>) -> BitIterator;
+
+    /// Returns iterator over given range (whose bounds are unchecked) of `self` bits
+    /// that yields `true` for each one and `false` for each zero.
+    unsafe fn bit_in_unchecked_range_iter(&self, bit_range: Range<usize>) -> BitIterator;
+
+    /// Gets `index`-th fragment of at least `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`).
+    /// Panics if the range is out of bounds.
+    #[inline(always)] fn get_fragment_unmasked(&self, index: usize, v_size: u8) -> u64 {
+        self.get_bits_unmasked(index * v_size as usize, v_size)
+    }
+
+    /// Gets `index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`).
+    /// Panics if the range is out of bounds.
+    #[inline(always)] fn get_fragment(&self, index: usize, v_size: u8) -> u64 {
+        self.get_bits(index * v_size as usize, v_size)
+    }
+
+    /// Gets `index`-th fragment of at least `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`).
+    /// Returns [`None`] if the range is out of bounds.
+    #[inline(always)] fn try_get_fragment_unmasked(&self, index: usize, v_size: u8) -> Option<u64> {
+        self.try_get_bits_unmasked(index * v_size as usize, v_size)
+    }
+
+    /// Gets `index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`).
+    /// Returns [`None`] if the range is out of bounds.
+    #[inline(always)] fn try_get_fragment(&self, index: usize, v_size: u8) -> Option<u64> {
+        self.try_get_bits(index * v_size as usize, v_size)
+    }
+
+    /// Gets `index`-th fragment of at least `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`),
+    /// without bounds checking.
+    #[inline(always)] unsafe fn get_fragment_unmasked_unchecked(&self, index: usize, v_size: u8) -> u64 {
+        self.get_bits_unmasked_unchecked(index * v_size as usize, v_size)
+    }
+
+    /// Gets `index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`),
+    /// without bounds checking.
+    #[inline(always)] unsafe fn get_fragment_unchecked(&self, index: usize, v_size: u8) -> u64 {
+        self.get_bits_unchecked(index * v_size as usize, v_size)
+    }
+
+    /// Gets `index`-th fragment of `v_size` bits and increases `index` by 1.
+    #[inline(always)] fn get_successive_fragment(&self, index: &mut usize, v_size: u8) -> u64 {
+        let result = self.get_fragment(*index, v_size);
+        *index += 1;
+        result
+    }
+
+    /// Initializes `index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`), to `v`.
+    /// Panics if the range is out of bounds. Before initialization, the bits are assumed to be cleared or already set to `v`.
+    #[inline(always)] fn init_fragment(&mut self, index: usize, v: u64, v_size: u8) {
+        self.init_bits(index * v_size as usize, v, v_size)
+    }
+
+    /// Initializes `index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`), to `v`
+    /// Next, increases `index` by 1. Panics if the range is out of bounds.
+    /// Before initialization, the bits are assumed to be cleared or already set to `v`.
+    #[inline(always)] fn init_successive_fragment(&mut self, index: &mut usize, v: u64, v_size: u8) {
+        self.init_fragment(*index, v, v_size);  *index += 1;
+    }
+
+    /// Sets index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`), to `v`.
+    /// Panics if the range is out of bounds.
+    #[inline(always)] fn set_fragment(&mut self, index: usize, v: u64, v_size: u8) {
+        self.set_bits(index * v_size as usize, v, v_size)
+    }
+
+    /// Sets `index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`), to `v`.
+    /// The result is undefined if the range is out of bounds.
+    #[inline(always)] unsafe fn set_fragment_unchecked(&mut self, index: usize, v: u64, v_size: u8) {
+        self.set_bits_unchecked(index * v_size as usize, v, v_size)
+    }
+
+    /// Sets index`-th fragment of `v_size` bits, i.e. bits with indices in range [`index*v_size`, `index*v_size+v_size`), to `v`.
+    /// Next, increases `index` by 1. Panics if the range is out of bounds.
+    #[inline(always)] fn set_successive_fragment(&mut self, index: &mut usize, v: u64, v_size: u8) {
+        self.set_fragment(*index, v, v_size);   *index += 1;
+    }
+
+    /// Xor at least `v_size` bits of `self` begging from `index*v_size` with `v`. Panics if the range is out of bounds.
+    #[inline(always)] fn xor_fragment(&mut self, index: usize, v: u64, v_size: u8) {
+        self.xor_bits(index * v_size as usize, v, v_size)
+    }
+
+    /// Xor at least `v_size` bits of `self` begging from `index*v_size` with `v` and increase `index` by 1.
+    /// Panics if the range is out of bounds.
+    #[inline(always)] fn xor_successive_fragment(&mut self, index: &mut usize, v: u64, v_size: u8) {
+        self.xor_fragment(*index, v, v_size);   *index += 1;
+    }
+
+    /// Swaps ranges of bits: [`index1*v_size`, `index1*v_size+v_size`) with [`index2*v_size`, `index2*v_size+v_size`).
+    fn swap_fragments(&mut self, index1: usize, index2: usize, v_size: u8) {
+        // TODO faster implementation
+        let v1 = self.get_fragment(index1, v_size);
+        unsafe{self.set_fragment_unchecked(index1, self.get_fragment(index2, v_size), v_size)};
+        unsafe{self.set_fragment_unchecked(index2, v1, v_size);}
+    }
+
+    /// Conditionally (if `new_value` does not return [`None`]) changes
+    /// the value `old` stored at bits `[begin, begin+v_size)`
+    /// to the one returned by `new_value` (whose argument is `old`).
+    /// Returns `old` (the value before change).
+    fn conditionally_change_bits<NewValue>(&mut self, new_value: NewValue, begin: usize, v_size: u8) -> u64
+        where NewValue: FnOnce(u64) -> Option<u64>
+    {
+        let old = self.get_bits(begin, v_size);
+        if let Some(new) = new_value(old) { unsafe{self.set_bits_unchecked(begin, new, v_size)}; }
+        old
+    }
+
+    /// Conditionally (if `new_value` does not return [`None`]) changes
+    /// the value `old` stored at bits [`index*v_size`, `index*v_size+v_size`)
+    /// to the one returned by `new_value` (whose argument is `old`).
+    /// Returns `old` (the value before change).
+    #[inline(always)] fn conditionally_change_fragment<NewValue>(&mut self, new_value: NewValue, index: usize, v_size: u8) -> u64
+        where NewValue: FnOnce(u64) -> Option<u64>
+    {
+        self.conditionally_change_bits(new_value, index * v_size as usize, v_size)
+    }
+
+    /// Conditionally (if `predicate` return `true`) replaces the bits
+    /// [`begin`, `begin+v_size`) of `self` by the bits [`begin`, `begin+v_size`) of `src`.
+    /// Subsequent `predicate` arguments are the bits [`begin`, `begin+v_size`) of:
+    /// `self` and `src`.
+    #[inline(always)] fn conditionally_copy_bits<Pred>(&mut self, src: &Self, predicate: Pred, begin: usize, v_size: u8)
+        where Pred: FnOnce(u64, u64) -> bool
+    {
+        let src_bits = src.get_bits(begin, v_size);
+        self.conditionally_change_bits(|self_bits| predicate(self_bits, src_bits).then(|| src_bits), begin, v_size);
+    }
+
+    /// Conditionally (if `predicate` return `true`) replaces the bits
+    /// [`index*v_size`, `index*v_size+v_size`) of `self`
+    /// by the bits [`index*v_size`, `index*v_size+v_size`) of `src`.
+    /// Subsequent `predicate` arguments are the bits [`index*v_size`, `index*v_size+v_size`) of:
+    /// `self` and `src`.
+    #[inline(always)] fn conditionally_copy_fragment<Pred>(&mut self, src: &Self, predicate: Pred, index: usize, v_size: u8)
+        where Pred: FnOnce(u64, u64) -> bool
+    {
+        self.conditionally_copy_bits(src, predicate, index * v_size as usize, v_size)
+    }
+
+    /// Returns the number of trailing 0 bits.
+    fn trailing_zero_bits(&self) -> usize;
+
+    /// Returns the lowest index of 1-bit that is grater or equal to `start_index`.
+    /// The result is undefined if there is no such index.
+    unsafe fn find_bit_one_unchecked(&self, start_index: usize) -> usize;
+
+    /// Returns the lowest index of 1-bit that is grater or equal to `start_index`.
+    /// Retruns [`None`] if there is no such index.
+    fn find_bit_one(&self, start_index: usize) -> Option<usize>;
+
+    /// Returns the greatest index of 1-bit that is lower or equal to `start_index`.
+    /// The result is undefined if there is no such index.
+    unsafe fn rfind_bit_one_unchecked(&self, start_index: usize) -> usize;
+}
+
+/// The trait that is implemented for `Box<[u64]>` and extends it with bit-oriented constructors.
+pub trait BitVec where Self: Sized {
+    /// Returns vector of `segments_len` 64 bit segments, each segment initialized to `segments_value`.
+    fn with_64bit_segments(segments_value: u64, segments_len: usize) -> Self;
+
+    /// Returns vector of bits filled with `words_count` `word`s of length `word_len_bits` bits each.
+    fn with_bitwords(word: u64, word_len_bits: u8, words_count: usize) -> Self;
+
+    /// Returns vector of `segments_len` 64 bit segments, with all bits set to `0`.
+    #[inline(always)] fn with_zeroed_64bit_segments(segments_len: usize) -> Self {
+        Self::with_64bit_segments(0, segments_len)
+    }
+
+    /// Returns vector of `segments_len` 64 bit segments, with all bits set to `1`.
+    #[inline(always)] fn with_filled_64bit_segments(segments_len: usize) -> Self {
+        Self::with_64bit_segments(u64::MAX, segments_len)
+    }
+
+    /// Returns vector of `bit_len` bits, all set to `0`.
+    #[inline(always)] fn with_zeroed_bits(bit_len: usize) -> Self {
+        Self::with_zeroed_64bit_segments(ceiling_div(bit_len, 64))
+    }
+
+    /// Returns vector of `bit_len` bits, all set to `1`.
+    #[inline(always)] fn with_filled_bits(bit_len: usize) -> Self {
+        Self::with_filled_64bit_segments(ceiling_div(bit_len, 64))
+    }
+
+    //fn with_bit_fragments<V: Into<u64>, I: IntoIterator<Item=V>>(items: I, fragment_count: usize, bits_per_fragment: u8) -> Box<[u64]>
+}
+
+impl BitVec for Box<[u64]> {
+    #[inline(always)] fn with_64bit_segments(segments_value: u64, segments_len: usize) -> Self {
+        vec![segments_value; segments_len].into_boxed_slice()
+    }
+
+    fn with_bitwords(word: u64, word_len_bits: u8, words_count: usize) -> Self {
+        let mut result = Self::with_zeroed_bits(words_count * word_len_bits as usize);
+        for index in 0..words_count { result.init_fragment(index, word, word_len_bits); }
+        result
+    }
+}
+
+#[cfg(feature = "aligned-vec")]
+impl BitVec for aligned_vec::ABox<[u64]> {
+    #[inline(always)] fn with_64bit_segments(segments_value: u64, segments_len: usize) -> Self {
+        aligned_vec::avec![segments_value; segments_len].into_boxed_slice()
+    }
+
+    fn with_bitwords(word: u64, word_len_bits: u8, words_count: usize) -> Self {
+        let mut result = Self::with_zeroed_bits(words_count * word_len_bits as usize);
+        for index in 0..words_count { result.init_fragment(index, word, word_len_bits); }
+        result
+    }
+}
+
+/*#[inline(always)] pub fn bitvec_len_for_bits(bits_len: usize) -> usize { ceiling_div(bits_len, 64) }
+
+#[inline(always)] pub fn bitvec_with_segments_len_and_value(segments_len: usize, segments_value: u64) -> Box<[u64]> {
+    vec![segments_value; segments_len].into_boxed_slice()
+}
+#[inline(always)] pub fn bitvec_with_segments_len_zeroed(segments_len: usize) -> Box<[u64]> {
+    bitvec_with_segments_len_and_value(segments_len, 0)
+}
+#[inline(always)] pub fn bitvec_with_segments_len_filled(segments_len: usize) -> Box<[u64]> {
+    bitvec_with_segments_len_and_value(segments_len, u64::MAX)
+}
+#[inline(always)] pub fn bitvec_with_bits_len_zeroed(bits_len: usize) -> Box<[u64]> {
+    bitvec_with_segments_len_zeroed(bitvec_len_for_bits(bits_len))
+}
+#[inline(always)] pub fn bitvec_with_bits_len_filled(bits_len: usize) -> Box<[u64]> {
+    bitvec_with_segments_len_filled(bitvec_len_for_bits(bits_len))
+}
+
+pub fn bitvec_with_items<V: Into<u64>, I: IntoIterator<Item=V>>(items: I, fragment_count: usize, bits_per_fragment: u8) -> Box<[u64]> {
+    let mut result = bitvec_with_bits_len_zeroed(fragment_count * bits_per_fragment as usize);
+    for (i, v) in items.into_iter().enumerate() {
+        result.init_fragment(i, v.into(), bits_per_fragment);
+    }
+    result
+}*/
+
+/// Set `bit_nr` bit of `v` to given `value`.
+#[inline(always)] fn set_bit_to(to_change: &mut u64, bit_nr: usize, value: bool) {
+    *to_change &= !(1u64 << bit_nr);
+    *to_change |= (value as u64) << bit_nr;
+    // Conditionally set or clear bits without branching 
+    // https://graphics.stanford.edu/~seander/bithacks.html#ConditionalSetOrClearBitsWithoutBranching
+    // Slower due to benchmark:
+    //let m = 1 << bit_nr;
+    //*to_change = (*to_change & !m) | ((value as u64).wrapping_neg() & m);
+}
+
+#[inline(always)] fn set_bits_to(to_change: &mut u64, shifted_v: u64, shifted_v_mask: u64) {
+    *to_change &= !shifted_v_mask;
+    *to_change |= shifted_v;
+}
+
+impl BitAccess for [u64] {
+    #[inline(always)] fn get_bit(&self, bit_nr: usize) -> bool {
+        self[bit_nr / 64] & (1u64 << (bit_nr % 64)) != 0
+    }
+
+    #[inline(always)] fn set_bit_to(&mut self, bit_nr: usize, value: bool) {
+        set_bit_to(&mut self[bit_nr / 64], bit_nr % 64, value)
+    }
+
+    #[inline(always)] unsafe fn set_bit_to_unchecked(&mut self, bit_nr: usize, value: bool) {
+        set_bit_to(self.get_unchecked_mut(bit_nr / 64), bit_nr % 64, value)
+        //if value { self.set_bit_unchecked(bit_nr) } else { self.clear_bit_unchecked(bit_nr) }
+    }
+
+    #[inline(always)] unsafe fn get_bit_unchecked(&self, bit_nr: usize) -> bool {
+        self.get_unchecked(bit_nr / 64) & (1u64 << (bit_nr % 64) as u64) != 0
+    }
+
+    #[inline(always)] fn try_get_bit(&self, bit_nr: usize) -> Option<bool> {
+        Some(self.get(bit_nr / 64)? & (1u64 << (bit_nr % 64) as u64) != 0)
+    }
+
+    #[inline(always)] fn init_bit(&mut self, bit_nr: usize, value: bool) {
+        self[bit_nr / 64] |= (value as u64) << (bit_nr % 64);
+    }
+
+    #[inline] unsafe fn init_bit_unchecked(&mut self, bit_nr: usize, value: bool) {
+        *self.get_unchecked_mut(bit_nr / 64) |= (value as u64) << (bit_nr % 64);
+    }
+
+    #[inline(always)] fn set_bit(&mut self, bit_nr: usize) {
+        self[bit_nr / 64] |= 1u64 << (bit_nr % 64)
+    }
+
+    #[inline(always)] unsafe fn set_bit_unchecked(&mut self, bit_nr: usize) {
+        *self.get_unchecked_mut(bit_nr / 64) |= 1u64 << (bit_nr % 64)
+    }
+
+    #[inline(always)] fn clear_bit(&mut self, bit_nr: usize) {
+        self[bit_nr / 64] &= !((1u64) << (bit_nr % 64))
+    }
+
+    #[inline(always)] unsafe fn clear_bit_unchecked(&mut self, bit_nr: usize) {
+        *self.get_unchecked_mut(bit_nr / 64) &= !((1u64) << (bit_nr % 64))
+    }
+
+    fn count_bit_zeros(&self) -> usize {
+        self.into_iter().map(|s| s.count_zeros() as usize).sum()
+    }
+
+    fn count_bit_ones(&self) -> usize {
+        self.into_iter().map(|s| s.count_ones() as usize).sum()
+    }
+
+    #[inline(always)] fn bit_ones(&self) -> BitOnesIterator {
+        BitOnesIterator::new(self)
+    }
+
+    #[inline(always)] fn bit_zeros(&self) -> BitZerosIterator {
+        BitZerosIterator::new(self)
+    }
+
+    #[inline(always)] fn bit_iter(&self) -> BitIterator {
+        BitIterator::new(self)
+    }
+
+    #[inline(always)] fn bit_in_range_iter(&self, bit_range: Range<usize>) -> BitIterator {
+        BitIterator::with_range(self, bit_range)
+    }
+
+    #[inline(always)] unsafe fn bit_in_unchecked_range_iter(&self, bit_range: Range<usize>) -> BitIterator {
+        BitIterator::with_range_unchecked(self, bit_range)
+    }
+
+    #[inline] fn try_get_bits_unmasked(&self, begin: usize, len: u8) -> Option<u64> {
+        //((begin+(len as usize))/64 < self.len()).then(|| unsafe{self.get_bits_unmasked_unchecked(begin, len)})
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        let w1 = self.get(segment)? >> offset;
+        //let bits_in_w1 = 64-offset;
+        Some(if offset+len > 64 /*len > bits_in_w1*/ { // do we need more bits (from next segment)? Does len > bits_in_w1?
+            let bits_in_w1 = 64-offset; // w1 has bits_in_w1 lowest bit set (copied from index_segment)
+            w1 | (self.get(segment+1)? << bits_in_w1)
+        } else {
+            w1
+        })
+    }
+
+    #[inline] unsafe fn get_bits_unmasked_unchecked(&self, begin: usize, len: u8) -> u64 {
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        let w1 = self.get_unchecked(segment) >> offset;
+        if offset+len > 64 /*len > bits_in_w1*/ { // do we need more bits (from next segment)?
+            let bits_in_w1 = 64-offset; // w1 has bits_in_w1 lowest bit set (copied from index_segment)
+            w1 | (self.get_unchecked(segment+1) << bits_in_w1)
+        } else {
+            w1
+        }
+    }
+
+    fn init_bits(&mut self, begin: usize, v: u64, len: u8) {
+        debug_assert!({let f = self.get_bits(begin, len); f == 0 || f == v});
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        if offset + len > 64 {
+            self[segment+1] |= v >> (64-offset);
+        }
+        self[segment] |= v << offset;
+    }
+
+    fn set_bits(&mut self, begin: usize, v: u64, len: u8) {
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        let v_mask = n_lowest_bits(len);
+        //let lo_bit_len = 64-offset;
+        if offset + len > 64 /*len > lo_bit_len*/ {
+            let shift = 64-offset; //lo_bit_len
+            set_bits_to(&mut self[segment+1], v>>shift, v_mask>>shift);
+        }
+        set_bits_to(&mut self[segment], v<<offset, v_mask<<offset);
+    }
+
+    unsafe fn set_bits_unchecked(&mut self, begin: usize, v: u64, len: u8) {
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        let v_mask = n_lowest_bits(len);
+        if offset + len > 64 {
+            let shift = 64-offset; //lo_bit_len
+            set_bits_to(self.get_unchecked_mut(segment+1), v>>shift, v_mask>>shift);
+        }
+        set_bits_to(self.get_unchecked_mut(segment), v<<offset, v_mask<<offset);
+    }
+
+    fn xor_bits(&mut self, begin: usize, v: u64, len: u8) {
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        if offset + len > 64 {
+            let shift = 64-offset;
+            self[segment+1] ^= v >> shift;
+        }
+        self[segment] ^= v << offset;
+    }
+
+    fn conditionally_change_bits<NewValue>(&mut self, new_value: NewValue, begin: usize, v_size: u8) -> u64
+        where NewValue: FnOnce(u64) -> Option<u64>
+    {
+        let (segment, offset) = (begin / 64, (begin % 64) as u64);
+        let w1 = self[segment]>>offset;
+        let bits_in_w1 = 64-offset;
+        let v_mask = n_lowest_bits(v_size);
+        let r = if v_size as u64 > bits_in_w1 {
+            w1 | (self[segment+1] << bits_in_w1)
+        } else {
+            w1
+        } & v_mask;
+        if let Some(v) = new_value(r) {
+            if v_size as u64 > bits_in_w1 {
+                set_bits_to(&mut self[segment + 1], v >> bits_in_w1, v_mask >> bits_in_w1);
+            }
+            set_bits_to(&mut self[segment], v << offset, v_mask << offset);
+        }
+        r
+    }
+
+    fn conditionally_copy_bits<Pred>(&mut self, src: &Self, predicate: Pred, begin: usize, v_size: u8)
+        where Pred: FnOnce(u64, u64) -> bool
+    {
+        let (segment, offset) = (begin / 64, (begin % 64) as u8);
+        let self_w1 = self[segment]>>offset;
+        let mut src_w1 = src[segment]>>offset;
+        let bits_in_w1 = 64-offset;
+        let v_mask = n_lowest_bits(v_size);
+        if v_size > bits_in_w1 {
+            let w2_mask = v_mask >> bits_in_w1;
+            let self_bits = self_w1 | ((self[segment+1] & w2_mask) << bits_in_w1);
+            let src_w2 = src[segment+1] & w2_mask;
+            if predicate(self_bits, src_w1 | (src_w2 << bits_in_w1)) {
+                set_bits_to(&mut self[segment+1], src_w2, w2_mask);
+                set_bits_to(&mut self[segment], src_w1 << offset, v_mask << offset);
+            }
+        } else {
+            src_w1 &= v_mask;
+            if predicate(self_w1 & v_mask, src_w1) {
+                set_bits_to(&mut self[segment], src_w1 << offset, v_mask << offset);
+            }
+        };
+    }
+
+    fn trailing_zero_bits(&self) -> usize {
+        for (i, v) in self.iter().copied().enumerate() {
+            if v != 0 { return i * 64 + v.trailing_zeros() as usize; }
+        }
+        self.len() * 64 // the vector contains only zeros
+    }
+
+    fn find_bit_one(&self, start_index: usize) -> Option<usize> {
+        let mut word_index = start_index / 64;
+        let mut bits = self.get(word_index)? & !n_lowest_bits((start_index % 64) as u8);
+        while bits == 0 {
+            word_index += 1;
+            bits = *self.get(word_index)?;
+        }
+        Some(word_index * 64 + (bits.trailing_zeros() as usize))
+    }
+
+    unsafe fn find_bit_one_unchecked(&self, start_index: usize) -> usize {
+        let mut word_index = start_index / 64;
+        let mut bits = self.get_unchecked(word_index) & !n_lowest_bits((start_index % 64) as u8);
+        while bits == 0 {
+            word_index += 1;
+            bits = *self.get_unchecked(word_index);
+        }
+        word_index * 64 + bits.trailing_zeros() as usize
+    }
+
+    unsafe fn rfind_bit_one_unchecked(&self, start_index: usize) -> usize {
+        let mut word_index = start_index / 64;
+        let mut bits = self.get_unchecked(word_index) & n_lowest_bits_1_64((start_index % 64) as u8 + 1);
+        while bits == 0 {
+            word_index -= 1;
+            bits = *self.get_unchecked(word_index);
+        }
+        word_index * 64 + bits.ilog2() as usize
+    }
+}
+
+
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("../README.md")]
+
+mod rank_select;
+
+pub use rank_select::{RankSimple, ArrayWithRankSimple, RankSelect101111, ArrayWithRank101111,
+     Rank, Select, Select0, SelectForRank101111, Select0ForRank101111, select64, optimal_combined_sampling,
+     BinaryRankSearch, CombinedSampling, ConstCombinedSamplingDensity, AdaptiveCombinedSamplingDensity, };
+
+mod bitvec;
+pub use bitvec::*;
+
+/// Returns ceil of `n/d`.
+#[inline(always)] pub const fn ceiling_div(n: usize, d: usize) -> usize { (n+d-1)/d }
+
+/// Returns the largest `how_many`-bit number, i.e. 0..01..1 mask with `how_many` ones. `how_many` must be in range [0, 63].
+#[inline(always)] pub const fn n_lowest_bits(how_many: u8) -> u64 { (1u64 << how_many).wrapping_sub(1) }
+
+/// Returns the largest `how_many`-bit number, i.e. 0..01..1 mask with `how_many` ones. `how_many` must be in range [1, 64].
+#[inline(always)] pub const fn n_lowest_bits_1_64(how_many: u8) -> u64 { u64::MAX >> (64-how_many) }
+
+/// Returns the largest `how_many`-bit number, i.e. 0..01..1 mask with `how_many` ones. `how_many` must be in range [0, 64].
+/// 
+/// It is a bit slower than [`n_lowest_bits`] and [`n_lowest_bits_1_64`].
+#[inline(always)] pub const fn n_lowest_bits_0_64(how_many: u8) -> u64 {
+    // 1u64.checked_shl(how_many as u32).unwrap_or(0).wrapping_sub(1) gives the same assembly (as version with how_many >= 64) but is not allowed in const fn
+    // version with how_many == 64 gives a bit different, very similar assembly
+    if how_many >= 64 { return u64::MAX; }
+    n_lowest_bits(how_many)
+}
+
+/// Calculates the minimal number of bits needed to store values from `0` to given `max_value`.
+///
+/// # Example
+///
+/// ```
+/// use bitm::bits_to_store;
+///
+/// assert_eq!(bits_to_store(0u8), 0);
+/// assert_eq!(bits_to_store(1u16), 1);
+/// assert_eq!(bits_to_store(7u32), 3);
+/// assert_eq!(bits_to_store(8u64), 4);
+/// ```
+#[inline] pub fn bits_to_store<V: Into<u64>>(max_value: V) -> u8 {
+    /*let max_value: u64 = max_value.into();
+    (if max_value.is_power_of_two() {
+        max_value.trailing_zeros()+1
+    } else {
+        max_value.checked_next_power_of_two().unwrap_or(0).trailing_zeros()
+    }) as u8*/
+    max_value.into().checked_ilog2().map_or(0, |v| v as u8+1)
+}
+
+
+```
+</file>
+
+<file path="src/rank_select/mod.rs">
+```rust
+mod utils;
+mod select;
+use std::ops::Deref;
+use self::select::{U64_PER_L1_ENTRY, U64_PER_L2_ENTRY, U64_PER_L2_RECORDS};
+pub use self::select::{
+    Select, Select0, BinaryRankSearch, CombinedSampling, ConstCombinedSamplingDensity,
+    AdaptiveCombinedSamplingDensity, SelectForRank101111, Select0ForRank101111, select64,
+    optimal_combined_sampling,
+};
+use super::{ceiling_div, n_lowest_bits};
+use dyn_size_of::GetSize;
+/// Trait for rank queries on bit vector.
+/// Rank query returns the number of ones (or zeros) in requested number of the first bits.
+pub trait Rank {
+    /// Returns the number of ones in first `index` bits or [`None`] if `index` is out of bounds.
+    fn try_rank(&self, index: usize) -> Option<usize>;
+    /// Returns the number of ones in first `index` bits or panics if `index` is out of bounds.
+    #[inline]
+    fn rank(&self, index: usize) -> usize {
+        self.try_rank(index).expect("rank index out of bound")
+    }
+    /// Returns the number of ones in first `index` bits.
+    /// The result is undefined if `index` is out of bounds.
+    #[inline]
+    unsafe fn rank_unchecked(&self, index: usize) -> usize {
+        self.rank(index)
+    }
+    /// Returns the number of zeros in first `index` bits or [`None`] if `index` is out of bounds.
+    #[inline]
+    fn try_rank0(&self, index: usize) -> Option<usize> {
+        self.try_rank(index).map(|r| index - r)
+    }
+    /// Returns the number of zeros in first `index` bits or panics if `index` is out of bounds.
+    #[inline]
+    fn rank0(&self, index: usize) -> usize {
+        index - self.rank(index)
+    }
+    /// Returns the number of ones in first `index` bits.
+    /// The result is undefined if `index` is out of bounds.
+    #[inline]
+    unsafe fn rank0_unchecked(&self, index: usize) -> usize {
+        index - self.rank_unchecked(index)
+    }
+}
+/// Returns number of bits set (to one) in `content` whose length does not exceeds 8.
+#[inline]
+fn count_bits_in(content: &[u64]) -> usize {
+    let mut it = content.iter().map(|v| v.count_ones() as usize);
+    let mut result = 0;
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    } else {
+        return result;
+    }
+    if let Some(v) = it.next() {
+        result += v;
+    }
+    return result;
+}
+/// Returns number of bits set (to one) in `content` whose length does not exceeds 8.
+/// Returns number of bits set (to one) in `content` whose length does not exceeds 8.
+/// The structure that holds bit vector `content` and `ranks` structure that takes no more than 3.125% extra space.
+/// It can return the number of ones (or zeros) in first `index` bits of the `content` (see `rank` and `rank0` method) in *O(1)* time.
+/// In addition, it supports select queries utilizing binary search over ranks (see [`BinaryRankSearch`])
+/// or (optionally, at the cost of extra space overhead; about 0.39% with default settings)
+/// combined sampling (which is usually faster; see [`CombinedSampling`]).
+///
+/// Any type that implements the [`Deref`] trait with `Target = [u64]` can be used as a bit vector.
+/// It is recommended to use this structure with bit vectors allocated with alignment to the CPU cache line or 64 bytes.
+/// Such a vector can be constructed, for example, by compiling `bitm` with the `aligned-vec` feature and using implementation
+/// of [`crate::BitVec`] trait for `aligned_vec::ABox<[u64]>`, for example: `ABox::with_zeroed_bits(number_of_bits)`.
+///
+/// The structure supports vectors up to 2<sup>64</sup> bits and its design is based on a 3-level (compact due to relative addressing)
+/// index that samples rank responses every 512 bits and is CPU cache friendly as the first level is small
+/// (each its entry covers 2<sup>32</sup> bits) and the other two are interleaved.
+///
+/// It uses modified version of the structure described in the paper:
+/// - Zhou D., Andersen D.G., Kaminsky M. (2013) "Space-Efficient, High-Performance Rank and Select Structures on Uncompressed Bit Sequences".
+///   In: Bonifaci V., Demetrescu C., Marchetti-Spaccamela A. (eds) Experimental Algorithms. SEA 2013.
+///   Lecture Notes in Computer Science, vol 7933. Springer, Berlin, Heidelberg. <https://doi.org/10.1007/978-3-642-38527-8_15>
+///
+/// The modification consists of different level 2 entries that hold 4 rank values (r0 <= r1 <= r2 <= r3) relative to level 1 entry.
+/// The content of level 2 entry, listing from the least significant bits, is:
+/// - original: r0 stored on 32 bits, r1-r0 on 10 bits, r2-r1 on 10 bits, r3-r2 on 10 bits;
+/// - our: r0 stored on 32 bits, r3-r0 on 11 bits, r2-r0 on 11 bits, r1-r0 on 10 bits.
+/// With this layout, we can read the corresponding value in the rank query without branching.
+///
+/// Another modification that makes our implementation unique is the ability of the select support structure to adapt
+/// the sampling density to the content of the bit vector (see [`CombinedSampling`] and [`AdaptiveCombinedSamplingDensity`]).
+///
+/// For in-word selection, the structure uses the [`select64`] function.
+#[derive(Clone)]
+pub struct RankSelect101111<
+    Select = BinaryRankSearch,
+    Select0 = BinaryRankSearch,
+    BV = Box<[u64]>,
+> {
+    pub content: BV,
+    pub l1ranks: Box<[usize]>,
+    pub l2ranks: Box<[u64]>,
+    select: Select,
+    select0: Select0,
+}
+impl<S, S0, BV> RankSelect101111<S, S0, BV> {
+    /// Returns reference to structure that support select (one) operation.
+    #[inline]
+    pub fn select_support(&self) -> &S {
+        &self.select
+    }
+    /// Returns reference to structure that support select zero operation.
+    #[inline]
+    pub fn select0_support(&self) -> &S0 {
+        &self.select0
+    }
+}
+impl<S: GetSize, S0: GetSize, BV: GetSize> GetSize for RankSelect101111<S, S0, BV> {
+    fn size_bytes_dyn(&self) -> usize {
+        self.content.size_bytes_dyn() + self.l2ranks.size_bytes_dyn()
+            + self.l1ranks.size_bytes_dyn() + self.select.size_bytes_dyn()
+            + self.select0.size_bytes_dyn()
+    }
+    const USES_DYN_MEM: bool = true;
+}
+impl<
+    S: SelectForRank101111,
+    S0: Select0ForRank101111,
+    BV: Deref<Target = [u64]>,
+> From<BV> for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn from(value: BV) -> Self {
+        Self::build(value).0
+    }
+}
+impl<S: SelectForRank101111, S0, BV: Deref<Target = [u64]>> Select
+for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn try_select(&self, rank: usize) -> Option<usize> {
+        self.select.select(&self.content, &self.l1ranks, &self.l2ranks, rank)
+    }
+    #[inline]
+    unsafe fn select_unchecked(&self, rank: usize) -> usize {
+        self.select.select_unchecked(&self.content, &self.l1ranks, &self.l2ranks, rank)
+    }
+}
+impl<S, S0: Select0ForRank101111, BV: Deref<Target = [u64]>> Select0
+for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn try_select0(&self, rank: usize) -> Option<usize> {
+        self.select0.select0(&self.content, &self.l1ranks, &self.l2ranks, rank)
+    }
+    #[inline]
+    unsafe fn select0_unchecked(&self, rank: usize) -> usize {
+        self.select0.select0_unchecked(&self.content, &self.l1ranks, &self.l2ranks, rank)
+    }
+}
+impl<S: SelectForRank101111, S0: Select0ForRank101111, BV: Deref<Target = [u64]>> Rank
+for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn try_rank(&self, index: usize) -> Option<usize> {
+        let block = index / 512;
+        let word_idx = index / 64;
+        let mut r = (self.content.get(word_idx)? & n_lowest_bits(index as u8 % 64))
+            .count_ones() as usize;
+        let block_content = *unsafe { self.l2ranks.get_unchecked(index / 2048) };
+        r
+            += unsafe { *self.l1ranks.get_unchecked(index >> 32) }
+                + (block_content & 0xFFFFFFFFu64) as usize;
+        r += (((block_content >> (11 * (!block & 3))) >> 32) & 0b1_11111_11111) as usize;
+        Some(
+            r
+                + count_bits_in(unsafe {
+                    self.content.get_unchecked(word_idx & !7..word_idx)
+                }),
+        )
+    }
+    #[inline]
+    unsafe fn rank_unchecked(&self, index: usize) -> usize {
+        let block = index / 512;
+        let word_idx = index / 64;
+        let block_content = *unsafe { self.l2ranks.get_unchecked(index / 2048) };
+        let mut r = *self.l1ranks.get_unchecked(index >> 32)
+            + (block_content & 0xFFFFFFFFu64) as usize;
+        r
+            += (self.content.get_unchecked(word_idx) & n_lowest_bits(index as u8 % 64))
+                .count_ones() as usize;
+        r += (((block_content >> (11 * (!block & 3))) >> 32) & 0b1_11111_11111) as usize;
+        r + count_bits_in(self.content.get_unchecked(word_idx & !7..word_idx))
+    }
+}
+impl<
+    S: SelectForRank101111,
+    S0: Select0ForRank101111,
+    BV: Deref<Target = [u64]>,
+> RankSelect101111<S, S0, BV> {
+    pub fn build(content: BV) -> (Self, usize) {
+        let mut l1ranks = Vec::with_capacity(
+            ceiling_div(content.len(), U64_PER_L1_ENTRY),
+        );
+        let mut l2ranks = Vec::with_capacity(
+            ceiling_div(content.len(), U64_PER_L2_ENTRY),
+        );
+        let mut current_total_rank: usize = 0;
+        for content in content.chunks(U64_PER_L1_ENTRY) {
+            l1ranks.push(current_total_rank);
+            let mut current_rank: u64 = 0;
+            for chunk in content.chunks(U64_PER_L2_ENTRY) {
+                let mut to_append = current_rank;
+                let mut vals = chunk
+                    .chunks(U64_PER_L2_RECORDS)
+                    .map(|c| count_bits_in(c));
+                if let Some(v) = vals.next() {
+                    let mut chunk_sum = v as u64;
+                    to_append |= chunk_sum << (32 + 11 + 11);
+                    if let Some(v) = vals.next() {
+                        chunk_sum += v as u64;
+                        to_append |= chunk_sum << (32 + 11);
+                        if let Some(v) = vals.next() {
+                            chunk_sum += v as u64;
+                            to_append |= chunk_sum << 32;
+                            if let Some(v) = vals.next() {
+                                chunk_sum += v as u64;
+                            }
+                        } else {
+                            to_append |= chunk_sum << 32;
+                        }
+                    } else {
+                        to_append |= (chunk_sum << 32) | (chunk_sum << (32 + 11));
+                    }
+                    current_rank += chunk_sum;
+                }
+                l2ranks.push(to_append);
+            }
+            current_total_rank += current_rank as usize;
+        }
+        let l1ranks = l1ranks.into_boxed_slice();
+        let l2ranks = l2ranks.into_boxed_slice();
+        let select = S::new(&content, &l1ranks, &l2ranks, current_total_rank);
+        let select0 = S0::new0(&content, &l1ranks, &l2ranks, current_total_rank);
+        (
+            Self {
+                content,
+                l1ranks,
+                l2ranks,
+                select,
+                select0,
+            },
+            current_total_rank,
+        )
+    }
+}
+impl<
+    S: SelectForRank101111,
+    S0: Select0ForRank101111,
+    BV: Deref<Target = [u64]>,
+> AsRef<[u64]> for RankSelect101111<S, S0, BV> {
+    #[inline]
+    fn as_ref(&self) -> &[u64] {
+        &self.content
+    }
+}
+/// Alias for backward compatibility. [`RankSelect101111`] with [`BinaryRankSearch`] (which does not introduce a space overhead) for select queries.
+pub type ArrayWithRank101111 = RankSelect101111<BinaryRankSearch, BinaryRankSearch>;
+/// The structure that holds array of bits `content` and `ranks` structure that takes no more than 6.25% extra space.
+/// It can returns the number of ones in first `index` bits of the `content` (see `rank` method) in *O(1)* time.
+/// Only `content` with less than 2<sup>32</sup> bit ones is supported.
+/// Any type that implements the [`Deref`] trait with `Target = [u64]` can be used as a bit vector.
+///
+/// Usually [`RankSelect101111`] should be preferred to [`ArrayWithRankSimple`].
+#[derive(Clone)]
+pub struct RankSimple<BV = Box<[u64]>> {
+    pub content: BV,
+    pub ranks: Box<[u32]>,
+}
+impl<BV: GetSize> GetSize for RankSimple<BV> {
+    fn size_bytes_dyn(&self) -> usize {
+        self.content.size_bytes_dyn() + self.ranks.size_bytes_dyn()
+    }
+    const USES_DYN_MEM: bool = true;
+}
+impl<BV: Deref<Target = [u64]>> From<BV> for RankSimple<BV> {
+    #[inline]
+    fn from(value: BV) -> Self {
+        Self::build(value).0
+    }
+}
+impl<BV: Deref<Target = [u64]>> RankSimple<BV> {
+    /// Constructs `ArrayWithRankSimple` and count number of bits set in `content`. Returns both.
+    pub fn build(content: BV) -> (Self, u32) {
+        let mut result = Vec::with_capacity(ceiling_div(content.len(), 8usize));
+        let mut current_rank: u32 = 0;
+        for seg_nr in 0..content.len() {
+            if seg_nr % 8 == 0 {
+                result.push(current_rank);
+            }
+            current_rank += content[seg_nr].count_ones();
+        }
+        (
+            Self {
+                content,
+                ranks: result.into_boxed_slice(),
+            },
+            current_rank,
+        )
+    }
+    #[inline(never)]
+    pub fn try_rank(&self, index: usize) -> Option<u32> {
+        let word_idx = index / 64;
+        let word_offset = index as u8 % 64;
+        let block = index / 512;
+        let mut r = (self.content.get(word_idx)? & n_lowest_bits(word_offset))
+            .count_ones() as u32;
+        r
+            += unsafe {
+                let __klee_arg0 = &self.ranks;
+                klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
+                klee_ext_bind::bind_arg_u64_value(2, &block);
+                klee_ext_bind::callsite!("src-rank_select-mod-rs-328-21");
+                let mut __klee_ret_src_rank_select_mod_rs_328_21_get_unchecked = __klee_arg0
+                    .get_unchecked(block);
+                __klee_ret_src_rank_select_mod_rs_328_21_get_unchecked
+            };
+        for w in block * (512 / 64)..word_idx {
+            r
+                += unsafe {
+                    let __klee_arg1 = &self.content;
+                    klee_ext_bind::bind_arg_u64(1, (__klee_arg1).len() as u64);
+                    klee_ext_bind::bind_arg_u64_value(2, &w);
+                    klee_ext_bind::callsite!("src-rank_select-mod-rs-330-25");
+                    let mut __klee_ret_src_rank_select_mod_rs_330_25_get_unchecked = __klee_arg1
+                        .get_unchecked(w);
+                    __klee_ret_src_rank_select_mod_rs_330_25_get_unchecked
+                }
+                    .count_ones();
+        }
+        Some(r)
+    }
+    pub fn rank(&self, index: usize) -> u32 {
+        let word_idx = index / 64;
+        let word_offset = index as u8 % 64;
+        let block = index / 512;
+        let mut r = self.ranks[block];
+        for w in block * (512 / 64)..word_idx {
+            r += self.content[w].count_ones();
+        }
+        r + (self.content[word_idx] & n_lowest_bits(word_offset)).count_ones() as u32
+    }
+}
+impl<BV: Deref<Target = [u64]>> AsRef<[u64]> for RankSimple<BV> {
+    #[inline]
+    fn as_ref(&self) -> &[u64] {
+        &self.content
+    }
+}
+impl<BV: Deref<Target = [u64]>> Rank for RankSimple<BV> {
+    #[inline]
+    fn try_rank(&self, index: usize) -> Option<usize> {
+        Self::try_rank(self, index).map(|r| r as usize)
+    }
+    #[inline]
+    fn rank(&self, index: usize) -> usize {
+        Self::rank(self, index) as usize
+    }
+}
+/// Alias for backward compatibility.
+pub type ArrayWithRankSimple = RankSimple;
+
+```
+</file>
+
+<file path="src/rank_select/select.rs">
+```rust
+use dyn_size_of::GetSize;
+#[cfg(all(target_arch = "x86", target_feature = "bmi2"))]
+use core::arch::x86 as arch;
+#[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+use core::arch::x86_64 as arch;
+use crate::ceiling_div;
+use super::utils::partition_point_with_index;
+pub const BITS_PER_L1_ENTRY: usize = 1 << 32;
+pub const U64_PER_L1_ENTRY: usize = 1 << (32 - 6);
+pub const U64_PER_L2_ENTRY: usize = 32;
+pub const BITS_PER_L2_ENTRY: usize = U64_PER_L2_ENTRY * 64;
+pub const U64_PER_L2_RECORDS: usize = 8;
+pub const BITS_PER_L2_RECORDS: u64 = U64_PER_L2_RECORDS as u64 * 64;
+pub const L2_ENTRIES_PER_L1_ENTRY: usize = U64_PER_L1_ENTRY / U64_PER_L2_ENTRY;
+/// Trait implemented by the types that support select (one) queries,
+/// i.e. can (quickly) find the position of the n-th one in the bitmap.
+pub trait Select {
+    /// Returns the position of the `rank`-th one (counting from 0) in `self` or [`None`] if there are no such many ones in `self`.
+    fn try_select(&self, rank: usize) -> Option<usize>;
+    /// Returns the position of the `rank`-th one (counting from 0) in `self` or panics if there are no such many ones in `self`.
+    #[inline(always)]
+    fn select(&self, rank: usize) -> usize {
+        self.try_select(rank)
+            .expect("cannot select rank-th one as there are no such many ones")
+    }
+    /// Returns the position of the `rank`-th one (counting from 0) in `self`.
+    /// The result is undefined if there are no such many ones in `self`.
+    #[inline(always)]
+    unsafe fn select_unchecked(&self, rank: usize) -> usize {
+        self.select(rank)
+    }
+}
+/// Trait implemented by the types that support select zero queries,
+/// i.e. can (quickly) find the position of the n-th zero in the bitmap.
+pub trait Select0 {
+    /// Returns the position of the `rank`-th zero (counting from 0) in `self` or [`None`] if there are no such many zeros in `self`.
+    fn try_select0(&self, rank: usize) -> Option<usize>;
+    /// Returns the position of the `rank`-th zero (counting from 0) in `self` or panics if there are no such many zeros in `self`.
+    #[inline(always)]
+    fn select0(&self, rank: usize) -> usize {
+        self.try_select0(rank)
+            .expect("cannot select rank-th zero as there are no such many zeros")
+    }
+    /// Returns the position of the `rank`-th zero (counting from 0) in `self`.
+    /// The result is undefined if there are no such many zeros in `self`.
+    #[inline(always)]
+    unsafe fn select0_unchecked(&self, rank: usize) -> usize {
+        self.select0(rank)
+    }
+}
+/// Trait implemented by strategies for select (ones) operations for `ArrayWithRank101111`.
+pub trait SelectForRank101111 {
+    fn new(
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self;
+    fn select(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize>;
+    #[inline(always)]
+    unsafe fn select_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        self.select(content, l1ranks, l2ranks, rank).unwrap_unchecked()
+    }
+}
+/// Trait implemented by strategies for select zeros operations for `ArrayWithRank101111`.
+pub trait Select0ForRank101111 {
+    fn new0(
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self;
+    fn select0(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize>;
+    #[inline(always)]
+    unsafe fn select0_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        self.select0(content, l1ranks, l2ranks, rank).unwrap_unchecked()
+    }
+}
+/// Returns the position of the `rank`-th (counting from 0) one in the bit representation of `n`,
+/// i.e. the index of the one with the given rank.
+///
+/// On x86-64 CPU with the BMI2 instruction set, it uses the method described in:
+/// - Prashant Pandey, Michael A. Bender, Rob Johnson, and Rob Patro,
+///   "A General-Purpose Counting Filter: Making Every Bit Count",
+///   In Proceedings of the 2017 ACM International Conference on Management of Data (SIGMOD '17).
+///   Association for Computing Machinery, New York, NY, USA, 775–787. <https://doi.org/10.1145/3035918.3035963>
+/// - Prashant Pandey, Michael A. Bender, Rob Johnson, "A Fast x86 Implementation of Select", arXiv:1706.00990
+///
+/// If BMI2 is not available, the implementation uses the broadword selection algorithm by Vigna, improved by Gog and Petri, and Vigna:
+/// - Sebastiano Vigna, "Broadword Implementation of Rank/Select Queries", WEA, 2008
+/// - Simon Gog, Matthias Petri, "Optimized succinct data structures for massive data". Software: Practice and Experience 44, 2014
+/// - Sebastiano Vigna, The selection problem <https://sux4j.di.unimi.it/select.php>
+///
+/// The implementation is based on the one contained in folly library by Meta.
+#[inline(never)]
+pub fn select64(n: u64, rank: u8) -> u8 {
+    #[cfg(
+        all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "bmi2")
+    )] { unsafe { arch::_pdep_u64(1u64 << rank, n) }.trailing_zeros() as u8 }
+    #[cfg(
+        not(
+            all(
+                any(target_arch = "x86", target_arch = "x86_64"),
+                target_feature = "bmi2"
+            )
+        )
+    )]
+    {
+        use std::num::Wrapping as W;
+        let rank = W(rank as u64);
+        const ONES_STEP4: W<u64> = W(0x1111111111111111);
+        const ONES_STEP8: W<u64> = W(0x0101010101010101);
+        const MSB_STEP8: W<u64> = W(0x80 * ONES_STEP8.0);
+        let mut s = W(n);
+        s = s - ((s & W(0xA) * ONES_STEP4) >> 1);
+        s = (s & W(0x3) * ONES_STEP4) + ((s >> 2) & W(0x3) * ONES_STEP4);
+        s = (s + (s >> 4)) & W(0xF) * ONES_STEP8;
+        let byte_sums = s * ONES_STEP8;
+        let step8 = rank * ONES_STEP8;
+        let geq_step8 = ((step8 | MSB_STEP8) - byte_sums) & MSB_STEP8;
+        let place = geq_step8.0.count_ones() as u8 * 8;
+        let byte_rank = rank.0 - (((byte_sums.0 << 8) >> place) & 0xFF);
+        place
+            + unsafe {
+                let __klee_arg0 = (((n >> place) & 0xFF) | (byte_rank << 8)) as usize;
+                klee_ext_bind::bind_arg_u64(1, (SELECT_U8).len() as u64);
+                klee_ext_bind::bind_arg_u64_value(2, &__klee_arg0);
+                klee_ext_bind::callsite!("src-rank_select-select-rs-115-26");
+                let mut __klee_ret_src_rank_select_select_rs_115_26_get_unchecked = SELECT_U8
+                    .get_unchecked(__klee_arg0);
+                __klee_ret_src_rank_select_select_rs_115_26_get_unchecked
+            }
+    }
+}
+/// A select strategy for [`RankSelect101111`](crate::RankSelect101111)
+/// that does not introduce any overhead (on space or construction speed)
+/// and is based on a binary search over ranks.
+#[derive(Clone, Copy)]
+pub struct BinaryRankSearch;
+impl GetSize for BinaryRankSearch {}
+/// Find index of L1 chunk that contains `rank`-th one (or zero if `ONE` is `false`)
+/// and decrease `rank` by number of ones (or zeros) in previous chunks.
+#[inline]
+fn select_l1<const ONE: bool>(l1ranks: &[usize], rank: &mut usize) -> usize {
+    if ONE {
+        let i = l1ranks.partition_point(|v| v <= rank) - 1;
+        *rank -= unsafe { l1ranks.get_unchecked(i) };
+        return i;
+    } else {
+        let i = partition_point_with_index(
+            &l1ranks,
+            |v, i| i * BITS_PER_L1_ENTRY - *v <= *rank,
+        ) - 1;
+        *rank -= i as usize * BITS_PER_L1_ENTRY - unsafe { l1ranks.get_unchecked(i) };
+        return i;
+    }
+}
+#[inline(always)]
+fn consider_l2entry<const ONE: bool>(
+    l2_index: usize,
+    mut l2_entry: u64,
+    rank: &mut usize,
+) -> usize {
+    if !ONE {
+        const HI: u64 = ((3 * BITS_PER_L2_RECORDS) << 32)
+            | ((2 * BITS_PER_L2_RECORDS) << (32 + 11))
+            | (BITS_PER_L2_RECORDS << (32 + 22));
+        l2_entry = (((l2_index as u64 % L2_ENTRIES_PER_L1_ENTRY as u64)
+            * BITS_PER_L2_ENTRY as u64) | HI)
+            .wrapping_sub(l2_entry);
+    }
+    *rank -= (l2_entry & 0xFFFFFFFF) as usize;
+    let to_subtract = ((l2_entry >> (32 + 11)) & 0b1_11111_11111) as usize;
+    if *rank >= to_subtract {
+        let to_subtract_more = ((l2_entry >> 32) & 0b1_11111_11111) as usize;
+        if *rank >= to_subtract_more {
+            *rank -= to_subtract_more;
+            3 * U64_PER_L2_RECORDS
+        } else {
+            *rank -= to_subtract;
+            2 * U64_PER_L2_RECORDS
+        }
+    } else {
+        let to_subtract = (l2_entry >> (32 + 22)) as usize;
+        if *rank >= to_subtract {
+            *rank -= to_subtract;
+            U64_PER_L2_RECORDS
+        } else {
+            0
+        }
+    }
+}
+/// Select from `l2ranks` entry pointed by `l2_index`, without `l2_entry` entry bounds checking.
+#[inline(always)]
+unsafe fn select_from_l2_unchecked<const ONE: bool>(
+    content: &[u64],
+    l2ranks: &[u64],
+    l2_index: usize,
+    mut rank: usize,
+) -> usize {
+    let l2_entry = *l2ranks.get_unchecked(l2_index);
+    let mut c = l2_index * U64_PER_L2_ENTRY
+        + consider_l2entry::<ONE>(l2_index, l2_entry, &mut rank);
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize;
+    }
+    rank -= ones;
+    c += 1;
+    let v = unsafe { content.get_unchecked(c) };
+    c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize
+}
+/// Select from `l2ranks` entry pointed by `l2_index`, without `l2_entry` entry bounds checking.
+#[inline(always)]
+unsafe fn select_from_l2<const ONE: bool>(
+    content: &[u64],
+    l2ranks: &[u64],
+    l2_index: usize,
+    mut rank: usize,
+) -> Option<usize> {
+    let l2_entry = *l2ranks.get_unchecked(l2_index);
+    let mut c = l2_index * U64_PER_L2_ENTRY
+        + consider_l2entry::<ONE>(l2_index, l2_entry, &mut rank);
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    rank -= ones;
+    c += 1;
+    let v = content.get(c)?;
+    let ones = if ONE { v.count_ones() } else { v.count_zeros() } as usize;
+    if ones > rank {
+        return Some(c * 64 + select64(if ONE { *v } else { !*v }, rank as u8) as usize);
+    }
+    None
+}
+impl BinaryRankSearch {
+    #[inline(always)]
+    fn select_l2index<const ONE: bool>(
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: &mut usize,
+    ) -> usize {
+        let l2_begin = select_l1::<ONE>(l1ranks, rank) * L2_ENTRIES_PER_L1_ENTRY;
+        let rank = *rank;
+        l2_begin
+            + if ONE {
+                l2ranks[l2_begin..l2ranks.len().min(l2_begin + L2_ENTRIES_PER_L1_ENTRY)]
+                    .partition_point(|v| (v & 0xFFFFFFFF) as usize <= rank) - 1
+            } else {
+                super::utils::partition_point_with_index(
+                    &l2ranks[l2_begin..l2ranks
+                        .len()
+                        .min(l2_begin + L2_ENTRIES_PER_L1_ENTRY)],
+                    |v, i| i * BITS_PER_L2_ENTRY - (v & 0xFFFFFFFF) as usize <= rank,
+                ) - 1
+            }
+    }
+}
+impl SelectForRank101111 for BinaryRankSearch {
+    #[inline]
+    fn new(
+        _content: &[u64],
+        _l1ranks: &[usize],
+        _l2ranks: &[u64],
+        _total_rank: usize,
+    ) -> Self {
+        Self
+    }
+    fn select(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> Option<usize> {
+        if l1ranks.is_empty() {
+            return None;
+        }
+        let l2_index = BinaryRankSearch::select_l2index::<
+            true,
+        >(l1ranks, l2ranks, &mut rank);
+        unsafe {
+            if l2_index + 1 == l2ranks.len() {
+                return select_from_l2::<true>(content, l2ranks, l2_index, rank);
+            }
+            Some(select_from_l2_unchecked::<true>(content, l2ranks, l2_index, rank))
+        }
+    }
+    unsafe fn select_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> usize {
+        let l2_index = BinaryRankSearch::select_l2index::<
+            true,
+        >(l1ranks, l2ranks, &mut rank);
+        select_from_l2_unchecked::<true>(content, l2ranks, l2_index, rank)
+    }
+}
+impl Select0ForRank101111 for BinaryRankSearch {
+    #[inline]
+    fn new0(
+        _content: &[u64],
+        _l1ranks: &[usize],
+        _l2ranks: &[u64],
+        _total_rank: usize,
+    ) -> Self {
+        Self
+    }
+    fn select0(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> Option<usize> {
+        if l1ranks.is_empty() {
+            return None;
+        }
+        let l2_index = BinaryRankSearch::select_l2index::<
+            false,
+        >(l1ranks, l2ranks, &mut rank);
+        unsafe {
+            if l2_index + 1 == l2ranks.len() {
+                return select_from_l2::<false>(content, l2ranks, l2_index, rank);
+            }
+            Some(select_from_l2_unchecked::<false>(content, l2ranks, l2_index, rank))
+        }
+    }
+    unsafe fn select0_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> usize {
+        let l2_index = BinaryRankSearch::select_l2index::<
+            false,
+        >(l1ranks, l2ranks, &mut rank);
+        select_from_l2_unchecked::<false>(content, l2ranks, l2_index, rank)
+    }
+}
+/// Calculates such a sampling density of select values that provides an approximately constant space overhead
+/// (independent of set/unset bits ratio in the vector) of [`CombinedSampling`].
+///
+/// The parameters describe the bit vector and the desired result range:
+/// - `n` -- numbers of ones (for select) or zeros (for select0) in the vector,
+/// - `len` -- length of the vector in bits,
+/// - `max_result` -- the largest possible result, returned only and always for n >= 75%len
+///                   (must be in range [7, 31]).
+///
+/// The result is the base 2 logarithm of the recommended sampling, and it is always in range [7, `max_result`].
+/// The actual sampling is 2 times denser, but every second sample sometimes cannot be recorded accurately.
+/// The minimum value is 7, as we never sample two bits in the same 64-bit word.
+///
+/// A good value for `max_result` is 13, which leads to about 0.39% space overhead,
+/// and, for n = 50%u, results in sampling positions of every 2^12(/2)=4096(/2) ones (or zeros for select0).
+/// As `max_result` decreases, the speed of select queries increases
+/// at the cost of higher space overhead (which doubles with each decrease by 1).
+pub const fn optimal_combined_sampling(mut n: usize, len: usize, max_result: u8) -> u8 {
+    if 4 * n >= 3 * len {
+        return max_result;
+    }
+    if 2 * n > len {
+        n = len - n;
+    }
+    if n == 0 {
+        return 7;
+    }
+    let r = max_result.saturating_sub((len / n).ilog2() as u8);
+    return if r <= 7 { 7 } else { r };
+}
+/// Trait that determines the sampling density of select values by [`CombinedSampling`].
+pub trait CombinedSamplingDensity: Copy {
+    type SamplingDensity: Copy;
+    /// Returns density for given parameters of bit vector:
+    /// - `number_of_items` -- numbers of ones (for select) or zeros (for select0) in the vector,
+    /// - `len` -- length of the vector in bits.
+    fn density_for(number_of_items: usize, len: usize) -> Self::SamplingDensity;
+    fn items_per_sample_log2(density: Self::SamplingDensity) -> u8;
+    /// Returns number of bit ones or zeros (in the case of select0) per each sample (entry).
+    #[inline(always)]
+    fn items_per_sample(density: Self::SamplingDensity) -> u32 {
+        1 << Self::items_per_sample_log2(density)
+    }
+    /// Returns `index` divided by [`Self::items_per_sample(density)`].
+    #[inline(always)]
+    fn divide(index: usize, density: Self::SamplingDensity) -> usize {
+        index >> Self::items_per_sample_log2(density)
+    }
+    #[inline(always)]
+    fn is_in_second_half(index: usize, density: Self::SamplingDensity) -> bool {
+        (index >> (Self::items_per_sample_log2(density) - 1)) & 1 != 0
+    }
+}
+/// Specifies a constant sampling of select values by [`CombinedSampling`], given as
+/// the base 2 logarithm (which can be calculated by [`optimal_combined_sampling`] function).
+/// The actual sampling is 2 times denser, but every second sample sometimes cannot be recorded accurately.
+///
+/// `VALUE_LOG2` must be in range [7, 31].
+/// Default value 13 means sampling positions of every 2^13(/2)=8192(/2) ones (or zeros for select0),
+/// which leads to about 0.20% space overhead in vectors filled with bit ones in about half.
+/// As sampling decreases, the speed of select queries increases at the expense of higher
+/// space overhead (which doubles with each decrease by 1).
+#[derive(Clone, Copy)]
+pub struct ConstCombinedSamplingDensity<const VALUE_LOG2: u8 = 13>;
+impl<const VALUE_LOG2: u8> CombinedSamplingDensity
+for ConstCombinedSamplingDensity<VALUE_LOG2> {
+    type SamplingDensity = ();
+    #[inline(always)]
+    fn density_for(_number_of_items: usize, _len: usize) -> Self::SamplingDensity {
+        ()
+    }
+    #[inline(always)]
+    fn items_per_sample_log2(_density: Self::SamplingDensity) -> u8 {
+        VALUE_LOG2
+    }
+}
+/// Specifies adaptive sampling of select values by [`CombinedSampling`].
+///
+/// The sampling density is calculated based on the content of the bit vector
+/// using the [`optimal_combined_sampling`] function, with the given `MAX_RESULT` parameter.
+/// `MAX_RESULT` must be in range [7, 31].
+/// As `MAX_RESULT` decreases, the speed of select queries increases
+/// at the cost of higher space overhead (which doubles with each decrease by 1).
+/// Its value 13 leads to about 0.39% space overhead, and, for vectors filled with bit ones in about half,
+/// results in sampling positions of every 2^12(/2)=4096(/2) ones (or zeros for select0).
+#[derive(Clone, Copy)]
+pub struct AdaptiveCombinedSamplingDensity<const MAX_RESULT: u8 = 13>;
+impl<const MAX_RESULT: u8> CombinedSamplingDensity
+for AdaptiveCombinedSamplingDensity<MAX_RESULT> {
+    type SamplingDensity = u8;
+    #[inline(always)]
+    fn density_for(number_of_items: usize, len: usize) -> Self::SamplingDensity {
+        optimal_combined_sampling(number_of_items, len, MAX_RESULT)
+    }
+    #[inline(always)]
+    fn items_per_sample_log2(density: Self::SamplingDensity) -> u8 {
+        density
+    }
+}
+/// Fast select strategy for [`RankSelect101111`](crate::RankSelect101111) with about 0.39% space overhead.
+///
+/// Space/speed trade-off can be adjusted by the template parameter, by giving one of:
+/// - [`AdaptiveCombinedSamplingDensity`] (default) -- works well with a wide range of bit vectors,
+/// - [`ConstCombinedSamplingDensity`] -- recommended for vectors with a known ratio of set/unset bits;
+///                with default parameters, recommended for vectors filled with bit ones in about half.
+///
+/// The implementation generally follows the paper:
+/// - Zhou D., Andersen D.G., Kaminsky M. (2013) "Space-Efficient, High-Performance Rank and Select Structures on Uncompressed Bit Sequences".
+///   In: Bonifaci V., Demetrescu C., Marchetti-Spaccamela A. (eds) Experimental Algorithms. SEA 2013.
+///   Lecture Notes in Computer Science, vol 7933. Springer, Berlin, Heidelberg. <https://doi.org/10.1007/978-3-642-38527-8_15>
+/// However, our implementation can automatically adjust the sampling density according to the content of the vector
+/// (see [`AdaptiveCombinedSamplingDensity`]).
+///
+/// Combined Sampling was proposed in:
+/// - G. Navarro, E. Providel, "Fast, small, simple rank/select on bitmaps",
+///   in: R. Klasing (Ed.), Experimental Algorithms, Springer Berlin Heidelberg, Berlin, Heidelberg, 2012, pp. 295–306
+#[derive(Clone)]
+pub struct CombinedSampling<
+    D: CombinedSamplingDensity = AdaptiveCombinedSamplingDensity,
+> {
+    /// Bit indices (relative to level 1) of every d-th (d depends on D) one (or zero in the case of select 0) in content,
+    /// starting from the first one.
+    select: Box<[u32]>,
+    /// [`select_begin`] indices that begin descriptions of subsequent first-level entries.
+    select_begin: Box<[usize]>,
+    /// Sampling density (ZST for const density).
+    density: D::SamplingDensity,
+}
+impl<D: CombinedSamplingDensity> GetSize for CombinedSampling<D>
+where
+    D::SamplingDensity: GetSize,
+{
+    fn size_bytes_dyn(&self) -> usize {
+        self.select.size_bytes_dyn() + self.select_begin.size_bytes_dyn()
+            + self.density.size_bytes_dyn()
+    }
+    const USES_DYN_MEM: bool = true;
+}
+impl<D: CombinedSamplingDensity> CombinedSampling<D> {
+    #[inline]
+    fn new<const ONE: bool>(
+        content: &[u64],
+        l1ranks: &[usize],
+        total_rank: usize,
+    ) -> Self {
+        let density = D::density_for(
+            if ONE { total_rank } else { content.len() * 64 - total_rank },
+            content.len() * 64,
+        );
+        if content.is_empty() {
+            return Self {
+                select: Default::default(),
+                select_begin: Default::default(),
+                density,
+            };
+        }
+        let mut ones_positions_begin = Vec::with_capacity(l1ranks.len());
+        let mut ones_positions_len = 0;
+        ones_positions_begin.push(0);
+        for ones in l1ranks.windows(2) {
+            let chunk_len = ceiling_div(
+                if ONE {
+                    ones[1] - ones[0]
+                } else {
+                    BITS_PER_L1_ENTRY - (ones[1] - ones[0])
+                },
+                D::items_per_sample(density) as usize,
+            );
+            ones_positions_len += chunk_len;
+            ones_positions_begin.push(ones_positions_len);
+        }
+        ones_positions_len
+            += ceiling_div(
+                if ONE {
+                    (total_rank - l1ranks.last().unwrap()) as usize
+                } else {
+                    ((content.len() - 1) % U64_PER_L1_ENTRY + 1) * 64
+                        - (total_rank - l1ranks.last().unwrap()) as usize
+                },
+                D::items_per_sample(density) as usize,
+            );
+        let mut ones_positions = Vec::with_capacity(ones_positions_len);
+        for content in content.chunks(U64_PER_L1_ENTRY) {
+            let mut bit_index = 0;
+            let mut rank = 0;
+            let mut second_half = false;
+            for c in content.iter() {
+                let c_ones = if ONE { c.count_ones() } else { c.count_zeros() };
+                if c_ones > rank {
+                    let l2index = (bit_index
+                        + select64(if ONE { *c } else { !c }, rank as u8) as u32) >> 11;
+                    if second_half {
+                        let prev: &mut u32 = unsafe {
+                            ones_positions.last_mut().unwrap_unchecked()
+                        };
+                        *prev |= (l2index - *prev).min((1u32 << 11) - 1) << 21;
+                        second_half = false;
+                    } else {
+                        ones_positions.push(l2index);
+                        second_half = true;
+                    }
+                    rank += D::items_per_sample(density) / 2;
+                }
+                rank -= c_ones;
+                bit_index = bit_index.wrapping_add(64);
+            }
+        }
+        debug_assert_eq!(ones_positions.len(), ones_positions_len);
+        Self {
+            select: ones_positions.into_boxed_slice(),
+            select_begin: ones_positions_begin.into_boxed_slice(),
+            density,
+        }
+    }
+    #[inline(always)]
+    fn select<const ONE: bool>(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> Option<usize> {
+        if l1ranks.is_empty() {
+            return None;
+        }
+        let l1_index = select_l1::<ONE>(l1ranks, &mut rank);
+        let l2_begin = l1_index * L2_ENTRIES_PER_L1_ENTRY;
+        let mut l2_index = l2_begin
+            + self
+                .decode_shift(
+                    *self
+                        .select
+                        .get(
+                            unsafe { self.select_begin.get_unchecked(l1_index) }
+                                + D::divide(rank, self.density),
+                        )?,
+                    rank,
+                ) as usize;
+        let l2_chunk_end = l2ranks.len().min(l2_begin + L2_ENTRIES_PER_L1_ENTRY);
+        while l2_index + 1 < l2_chunk_end
+            && if ONE {
+                (unsafe { l2ranks.get_unchecked(l2_index + 1) } & 0xFF_FF_FF_FF) as usize
+            } else {
+                (l2_index + 1 - l2_begin) * BITS_PER_L2_ENTRY
+                    - (unsafe { l2ranks.get_unchecked(l2_index + 1) } & 0xFF_FF_FF_FF)
+                        as usize
+            } <= rank
+        {
+            l2_index += 1;
+        }
+        unsafe {
+            if l2_index + 1 == l2ranks.len() {
+                return select_from_l2::<ONE>(content, l2ranks, l2_index, rank);
+            }
+            Some(select_from_l2_unchecked::<ONE>(content, l2ranks, l2_index, rank))
+        }
+    }
+    #[inline(always)]
+    unsafe fn select_unchecked<const ONE: bool>(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        mut rank: usize,
+    ) -> usize {
+        let l1_index = select_l1::<ONE>(l1ranks, &mut rank);
+        let l2_begin = l1_index * L2_ENTRIES_PER_L1_ENTRY;
+        let mut l2_index = l2_begin
+            + self
+                .decode_shift(
+                    *self
+                        .select
+                        .get_unchecked(
+                            self.select_begin.get_unchecked(l1_index)
+                                + D::divide(rank, self.density),
+                        ),
+                    rank,
+                ) as usize;
+        let l2_chunk_end = l2ranks.len().min(l2_begin + L2_ENTRIES_PER_L1_ENTRY);
+        while l2_index + 1 < l2_chunk_end
+            && if ONE {
+                (l2ranks.get_unchecked(l2_index + 1) & 0xFF_FF_FF_FF) as usize
+            } else {
+                (l2_index + 1 - l2_begin) * BITS_PER_L2_ENTRY
+                    - (l2ranks.get_unchecked(l2_index + 1) & 0xFF_FF_FF_FF) as usize
+            } <= rank
+        {
+            l2_index += 1;
+        }
+        unsafe { select_from_l2_unchecked::<ONE>(content, l2ranks, l2_index, rank) }
+    }
+    #[inline(always)]
+    fn decode_shift(&self, mut s: u32, rank: usize) -> u32 {
+        if D::is_in_second_half(rank, self.density) {
+            s += s >> 21;
+        }
+        s & ((1 << 21) - 1)
+    }
+}
+impl<D: CombinedSamplingDensity> SelectForRank101111 for CombinedSampling<D> {
+    fn new(
+        content: &[u64],
+        l1ranks: &[usize],
+        _l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self {
+        Self::new::<true>(content, l1ranks, total_rank)
+    }
+    fn select(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize> {
+        Self::select::<true>(&self, content, l1ranks, l2ranks, rank)
+    }
+    unsafe fn select_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        Self::select_unchecked::<true>(&self, content, l1ranks, l2ranks, rank)
+    }
+}
+impl<D: CombinedSamplingDensity> Select0ForRank101111 for CombinedSampling<D> {
+    fn new0(
+        content: &[u64],
+        l1ranks: &[usize],
+        _l2ranks: &[u64],
+        total_rank: usize,
+    ) -> Self {
+        Self::new::<false>(content, l1ranks, total_rank)
+    }
+    fn select0(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> Option<usize> {
+        Self::select::<false>(&self, content, l1ranks, l2ranks, rank)
+    }
+    unsafe fn select0_unchecked(
+        &self,
+        content: &[u64],
+        l1ranks: &[usize],
+        l2ranks: &[u64],
+        rank: usize,
+    ) -> usize {
+        Self::select_unchecked::<false>(&self, content, l1ranks, l2ranks, rank)
+    }
+}
+/// For any n<256 and rank<8, the value at index 256*rank+n is the index of the (rank+1)-th one in the bit representation of n, or 8.
+#[cfg(
+    not(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "bmi2"))
+)]
+const SELECT_U8: [u8; 2048] = [
+    8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 8, 8, 8, 1, 8, 2, 2, 1, 8, 3, 3, 1, 3, 2, 2, 1, 8, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1,
+    4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1,
+    6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1,
+    3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 7, 7, 1, 7, 2, 2, 1,
+    7, 3, 3, 1, 3, 2, 2, 1, 7, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 7, 5, 5, 1,
+    5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1,
+    7, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1, 6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1,
+    3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 8, 8, 8, 8, 8, 8, 2, 8, 8, 8, 3, 8, 3, 3, 2, 8, 8, 8, 4,
+    8, 4, 4, 2, 8, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 5, 8, 5, 5, 2, 8, 5, 5, 3, 5, 3, 3, 2,
+    8, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 6, 8, 6, 6, 2, 8, 6, 6, 3,
+    6, 3, 3, 2, 8, 6, 6, 4, 6, 4, 4, 2, 6, 4, 4, 3, 4, 3, 3, 2, 8, 6, 6, 5, 6, 5, 5, 2,
+    6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 7,
+    8, 7, 7, 2, 8, 7, 7, 3, 7, 3, 3, 2, 8, 7, 7, 4, 7, 4, 4, 2, 7, 4, 4, 3, 4, 3, 3, 2,
+    8, 7, 7, 5, 7, 5, 5, 2, 7, 5, 5, 3, 5, 3, 3, 2, 7, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3,
+    4, 3, 3, 2, 8, 7, 7, 6, 7, 6, 6, 2, 7, 6, 6, 3, 6, 3, 3, 2, 7, 6, 6, 4, 6, 4, 4, 2,
+    6, 4, 4, 3, 4, 3, 3, 2, 7, 6, 6, 5, 6, 5, 5, 2, 6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4,
+    5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 3,
+    8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 4, 8, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5,
+    8, 5, 5, 3, 8, 8, 8, 5, 8, 5, 5, 4, 8, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 3, 8, 8, 8, 6, 8, 6, 6, 4, 8, 6, 6, 4, 6, 4, 4, 3, 8, 8, 8, 6,
+    8, 6, 6, 5, 8, 6, 6, 5, 6, 5, 5, 3, 8, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 3, 8, 8, 8, 7, 8, 7, 7, 4, 8, 7, 7, 4,
+    7, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 3, 8, 7, 7, 5, 7, 5, 5, 4,
+    7, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 3, 8, 7, 7, 6,
+    7, 6, 6, 4, 7, 6, 6, 4, 6, 4, 4, 3, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 3,
+    7, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5, 8, 5, 5, 4, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 4,
+    8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 6, 8, 6, 6, 5, 8, 6, 6, 5,
+    6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 7,
+    8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 4, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6,
+    7, 6, 6, 5, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 5,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 5, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7,
+];
+
+```
+</file>
+
+<file path="src/rank_select/utils.rs">
+```rust
+#[inline(never)]
+pub(super) fn partition_point_with_index<T, F>(tab: &[T], mut f: F) -> usize
+where
+    F: FnMut(&T, usize) -> bool,
+{
+    let mut size = tab.len();
+    let mut left = 0;
+    let mut right = size;
+    while size > 0 {
+        let mid = left + size / 2;
+        if f(
+            unsafe {
+                klee_ext_bind::bind_arg_u64(1, (tab).len() as u64);
+                klee_ext_bind::bind_arg_u64_value(2, &mid);
+                klee_ext_bind::callsite!("src-rank_select-utils-rs-33-23");
+                let mut __klee_ret_src_rank_select_utils_rs_33_23_get_unchecked = tab
+                    .get_unchecked(mid);
+                __klee_ret_src_rank_select_utils_rs_33_23_get_unchecked
+            },
+            mid,
+        ) {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+        size = right - left;
+    }
+    right
+}
+
+```
+</file>
+</rust context>

@@ -1,0 +1,42 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-host-rs-121-5-rule-576-be65e526ba")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_host_rs_121_5_rule_576_be65e526ba() {
+    use crate::{
+        gas::Gas,
+        host::DummyHost,
+        interpreter::{Contract, Interpreter},
+        primitives::{Address, Bytecode, Bytes, U256},
+        InstructionResult,
+    };
+
+    let mut interpreter = Interpreter::new(
+        Contract::new(
+            Bytes::new(),
+            Bytecode::LegacyRaw(Bytes::from([0x00])),
+            None,
+            Address::ZERO,
+            None,
+            Address::ZERO,
+            U256::ZERO,
+        ),
+        10_000,
+        false,
+    );
+
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.gas = Gas::new(10_000);
+
+    interpreter.stack.data_mut().clear();
+    interpreter.stack.data_mut().push(U256::from(1u64));
+    interpreter.stack.data_mut().push(U256::from(2u64));
+
+    let mut host = DummyHost::default();
+    host.storage.insert(U256::from(2u64), U256::from(0xdead_u64));
+
+    crate::instructions::host::sload::<DummyHost, crate::primitives::PragueSpec>(
+        &mut interpreter,
+        &mut host,
+    );
+}
+```

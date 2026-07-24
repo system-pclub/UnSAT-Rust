@@ -1,0 +1,44 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-host-rs-121-5-rule-576-be65e526ba")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_host_rs_121_5_rule_576_be65e526ba() {
+    use crate::{
+        instructions::host,
+        interpreter::{Contract, Interpreter},
+        primitives::{Address, Bytecode, Bytes, U256},
+        DummyHost, Gas, InstructionResult,
+    };
+
+    let mut interp = Interpreter {
+        instruction_pointer: core::ptr::null(),
+        gas: Gas::new(10_000),
+        contract: Contract {
+            input: Bytes::new(),
+            bytecode: Bytecode::LegacyRaw(Bytes::from([0x00])),
+            hash: None,
+            target_address: Address::ZERO,
+            bytecode_address: None,
+            caller: Address::ZERO,
+            call_value: U256::ZERO,
+        },
+        instruction_result: InstructionResult::Continue,
+        bytecode: Bytes::from([0x00]),
+        is_eof: true,
+        is_eof_init: false,
+        shared_memory: crate::SharedMemory::new(),
+        stack: crate::Stack::new(),
+        function_stack: crate::FunctionStack::new(),
+        return_data_buffer: Bytes::new(),
+        is_static: false,
+        next_action: crate::InterpreterAction::None,
+    };
+
+    interp.stack.data_mut().push(U256::from(1));
+    interp.stack.data_mut().push(U256::from(2));
+
+    let mut host = DummyHost::default();
+    host.storage.insert(U256::from(2), U256::from(0xdead_beefu64));
+
+    host::sload::<DummyHost, crate::primitives::BerlinSpec>(&mut interp, &mut host);
+}
+```

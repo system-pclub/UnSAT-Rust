@@ -1,0 +1,38 @@
+```rust
+#[cfg(feature = "unsat-poc-src-interpreter-rs-360-45-rule-291-ff4a83a2ac")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_interpreter_rs_360_45_rule_291_ff4a83a2ac() {
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterAction};
+    use revm_primitives::{Bytecode, Bytes};
+
+    let code = Bytes::from_static(&[0x00, 0x00]);
+    let contract = crate::Contract {
+        input: Bytes::new(),
+        bytecode: Bytecode::new_legacy(code.clone()),
+        hash: None,
+        target_address: revm_primitives::Address::ZERO,
+        bytecode_address: None,
+        caller: revm_primitives::Address::ZERO,
+        call_value: U256::ZERO,
+    };
+
+    let mut interp = Interpreter::new(contract, 1, false);
+    interp.instruction_pointer = code.as_ptr();
+    interp.gas = Gas::new(1);
+    interp.instruction_result = InstructionResult::Continue;
+    interp.bytecode = code.clone();
+    interp.is_eof = false;
+    interp.is_eof_init = false;
+    interp.shared_memory = crate::SharedMemory::new();
+    interp.stack = crate::Stack::new();
+    interp.function_stack = crate::FunctionStack::new();
+    interp.return_data_buffer = Bytes::new();
+    interp.is_static = false;
+    interp.next_action = InterpreterAction::None;
+
+    let table = crate::opcode::make_instruction_table::<DummyHost, crate::primitives::Spec>();
+    let mut host = DummyHost::default();
+
+    interp.step(&table, &mut host);
+}
+```

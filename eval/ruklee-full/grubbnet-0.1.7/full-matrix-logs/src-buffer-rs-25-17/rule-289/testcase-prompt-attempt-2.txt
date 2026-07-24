@@ -1,0 +1,449 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-buffer-rs-25-17-rule-289-33338729f6`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_buffer_rs_25_17_rule_289_33338729f6`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-buffer-rs-25-17-rule-289-33338729f6")]`.
+- Define `pub extern "C" fn __unsat_poc_src_buffer_rs_25_17_rule_289_33338729f6()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-buffer-rs-25-17-rule-289-33338729f6")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_buffer_rs_25_17_rule_289_33338729f6() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "buffer::NetworkBuffer",
+    "path": "src/buffer.rs",
+    "line_start": 7,
+    "body_end": 7,
+    "is_public": true
+  },
+  "caller": {
+    "name": "buffer::NetworkBuffer::drain",
+    "path": "src/buffer.rs",
+    "line_start": 20,
+    "line_end": 21,
+    "body_end": 32,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::ptr::const_ptr::<impl *const T>::offset",
+    "path": "rust/library/core/src/ptr/const_ptr.rs",
+    "line_start": 374,
+    "line_end": 421,
+    "body_end": 421,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*const T"
+  },
+  "callsite": {
+    "line": 25,
+    "col": 17,
+    "path": "src/buffer.rs",
+    "id": "src-buffer-rs-25-17"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `buffer::NetworkBuffer` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `buffer::NetworkBuffer::drain`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::ptr;
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/buffer.rs:25
+```rust
+17:         }
+18:     }
+19: 
+20:     /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+21:     pub fn drain(&mut self, count: usize) {
+22:         unsafe {
+23:             use std::ptr;
+24:             ptr::copy(
+25:                 self.data.as_ptr().offset(count as isize),
+26:                 self.data.as_mut_ptr(),
+27:                 self.offset - count,
+28:             );
+29:         }
+30: 
+31:         self.offset -= count;
+32:     }
+33: 
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/buffer.rs:21-25
+```rust
+21:     pub fn drain(&mut self, count: usize) {
+22:         unsafe {
+23:             use std::ptr;
+24:             ptr::copy(
+25:                 self.data.as_ptr().offset(count as isize),
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-buffer-rs-25-17
+
+Rule id: rule-289
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7':
+stdout: 
+stderr:    Compiling grubbnet v0.1.7 (/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7)
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
+  --> src/buffer.rs:69:21
+   |
+69 |         data: [0u8; buffer::MAX_BUFFER_SIZE],
+   |                     ^^^^^^ use of unresolved module or unlinked crate `buffer`
+   |
+   = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
+  --> src/buffer.rs:68:19
+   |
+68 |     let mut buf = buffer::NetworkBuffer {
+   |                   ^^^^^^ use of unresolved module or unlinked crate `buffer`
+   |
+   = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `grubbnet` (lib) due to 2 previous errors
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-buffer-rs-25-17-rule-289-33338729f6', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling grubbnet v0.1.7 (/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7)
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
+  --> src/buffer.rs:69:21
+   |
+69 |         data: [0u8; buffer::MAX_BUFFER_SIZE],
+   |                     ^^^^^^ use of unresolved module or unlinked crate `buffer`
+   |
+   = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
+  --> src/buffer.rs:68:19
+   |
+68 |     let mut buf = buffer::NetworkBuffer {
+   |                   ^^^^^^ use of unresolved module or unlinked crate `buffer`
+   |
+   = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `grubbnet` (lib) due to 2 previous errors
+
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer.rs">
+```rust
+pub const MAX_BUFFER_SIZE: usize = 1024 * 16;
+/// A simple byte buffer, useful for storing bytes that are going to be consumed in packets.
+pub struct NetworkBuffer {
+    pub data: [u8; MAX_BUFFER_SIZE],
+    pub offset: usize,
+}
+impl NetworkBuffer {
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+    #[inline(never)]
+    pub fn drain(&mut self, count: usize) {
+        unsafe {
+            use std::ptr;
+            let __klee_arg0 = self.data.as_ptr();
+            let __klee_arg1 = count as isize;
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg0);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg1);
+            klee_ext_bind::callsite!("src-buffer-rs-25-17");
+            let mut __klee_ret_src_buffer_rs_25_17_offset = __klee_arg0
+                .offset(__klee_arg1);
+            let __klee_arg2 = self.data.as_mut_ptr();
+            let __klee_arg3 = self.offset - count;
+            klee_ext_bind::callsite!("src-buffer-rs-24-13");
+            let mut __klee_ret_src_buffer_rs_24_13_copy = ptr::copy(
+                __klee_ret_src_buffer_rs_25_17_offset,
+                __klee_arg2,
+                __klee_arg3,
+            );
+        }
+        self.offset -= count;
+    }
+    pub fn clear(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+mod client;
+mod error;
+mod server;
+
+pub mod buffer;
+pub mod packet;
+
+#[cfg(feature = "crypto")]
+pub mod crypto;
+
+use mio::net::TcpStream;
+use std::io::Write;
+
+pub use client::{Client, ClientEvent};
+pub use error::{Error, Result};
+pub use mio::Token;
+pub use server::{Server, ServerEvent};
+
+pub enum PacketRecipient {
+    All,
+    Single(Token),
+    Exclude(Token),
+    ExcludeMany(Vec<Token>),
+    Include(Vec<Token>),
+}
+
+
+/// Send some bytes to a socket.
+/// Returns the number of bytes sent, or an `Error`.
+pub fn send_bytes(socket: &mut TcpStream, buffer: &[u8]) -> Result<usize> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

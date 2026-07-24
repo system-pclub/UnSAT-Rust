@@ -1,0 +1,59 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-82-48-rule-291-c384f4c11f")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_82_48_rule_291_c384f4c11f() {
+    use crate::{
+        gas::Gas,
+        interpreter::{Contract, Interpreter},
+        interpreter_action::{CallScheme, CallValue},
+        primitives::{Address, Bytes, Eof},
+        DummyHost, InstructionResult,
+    };
+    use std::sync::Arc;
+
+    let eof_bytes = Bytes::from_static(&[
+        0xef, 0x00, 0x01, 0x01, 0x00, 0x04, 0x02, 0x00, 0x01, 0x00, 0x01, 0x04, 0x00, 0x00,
+        0x00, 0x00, 0x80, 0x00, 0x00, 0xfe,
+    ]);
+    let mut eof = Eof::decode(eof_bytes).unwrap();
+    eof.body.container_section = vec![eof_bytes.clone()];
+    eof.header.container_sizes = vec![eof_bytes.len() as u16];
+    eof.header.sum_container_sizes = eof_bytes.len();
+    eof.body.is_data_filled = true;
+
+    let contract = Contract {
+        input: Bytes::new(),
+        bytecode: crate::primitives::Bytecode::Eof(Arc::new(eof)),
+        hash: None,
+        target_address: Address::ZERO,
+        bytecode_address: None,
+        caller: Address::ZERO,
+        call_value: Default::default(),
+    };
+
+    let mut interpreter = Interpreter::new(contract, 1_000_000, false);
+    interpreter.is_eof = true;
+    interpreter.is_static = false;
+    interpreter.instruction_result = InstructionResult::Continue;
+    interpreter.gas = Gas::new(1_000_000);
+    interpreter.shared_memory = crate::interpreter::SharedMemory::with_capacity(1);
+    interpreter.stack = crate::interpreter::Stack::new();
+    interpreter.function_stack = crate::FunctionStack::new();
+    interpreter.return_data_buffer = Bytes::new();
+    interpreter.next_action = crate::InterpreterAction::None;
+
+    let ip = [0u8, 1u8];
+    interpreter.instruction_pointer = ip.as_ptr();
+
+    interpreter.stack.push(Default::default()).unwrap();
+    interpreter.stack.push(Default::default()).unwrap();
+    interpreter.stack.push(Default::default()).unwrap();
+    interpreter.stack.push(Default::default()).unwrap();
+
+    let mut host = DummyHost::default();
+    crate::instructions::contract::eofcreate(&mut interpreter, &mut host);
+
+    let _ = CallScheme::Call;
+    let _ = CallValue::default();
+}
+```

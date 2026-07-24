@@ -1,0 +1,39 @@
+```rust
+#[cfg(feature = "unsat-poc-src-binary-reader-rs-103-30-rule-608-54db9f4601")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_binary_reader_rs_103_30_rule_608_54db9f4601() {
+    use std::io::Cursor;
+
+    struct OneByteRead {
+        done: bool,
+        byte: u8,
+    }
+
+    impl std::io::Read for OneByteRead {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            if self.done || out.is_empty() {
+                return Ok(0);
+            }
+            out[0] = self.byte;
+            self.done = true;
+            Ok(1)
+        }
+    }
+
+    let reader = OneByteRead {
+        done: false,
+        byte: 0x43,
+    };
+
+    let mut tr = crate::binary::TokenReader::builder()
+        .buffer_len(8)
+        .build(reader);
+
+    let _ = tr.read_bytes(1);
+
+    let mut tr2 = crate::binary::TokenReader::builder()
+        .buffer_len(8)
+        .build(Cursor::new(vec![0x43, 0x44, 0x45, 0x46, 0x47, 0x48]));
+    let _ = tr2.read_bytes(5);
+}
+```

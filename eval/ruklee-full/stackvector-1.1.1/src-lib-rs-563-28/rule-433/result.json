@@ -1,0 +1,137 @@
+{
+  "schema_version": 2,
+  "updated_at": "2026-07-23T23:15:49.837851+00:00",
+  "crate": "/workspaces/UnSAT-Rust/benchmark/ruklee/stackvector-1.1.1",
+  "injected_crate": "/workspaces/UnSAT-Rust/crates_inj/stackvector-1.1.1",
+  "metadata": "/workspaces/UnSAT-Rust/crates/stackvector-1.1.1.json",
+  "callsite": {
+    "target_index": 11,
+    "id": "src-lib-rs-563-28",
+    "llvm_id": "src-lib-rs-563-28",
+    "path": "src/lib.rs",
+    "line": 563,
+    "col": 28,
+    "caller": "StackVec::<A>::insert",
+    "unsafe_callee": "std::ptr::mut_ptr::<impl *mut T>::offset",
+    "unsafe_callee_path": "rust/library/core/src/ptr/mut_ptr.rs",
+    "unsafe_callee_line_start": 371
+  },
+  "rule": {
+    "id": "rule-433",
+    "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+    "name": "const unsafe fn offset",
+    "rule": "If the computed offset is non-zero, the range between self and the result must not wrap around the edge of the address space.",
+    "dsl": "(!((get_arg(1) * get_field(get_type_at_func(0), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\"))"
+  },
+  "result": {
+    "init_status": "violation",
+    "llm_status": "reproduced",
+    "rerun_status": "reported-sat",
+    "rerun_returncode": 0,
+    "rerun_reported_callsite": true,
+    "rerun_dsl_sat": true,
+    "rerun_has_certain_symbol": true,
+    "full_rerun_passed": true
+  },
+  "stages": {
+    "init": {
+      "status": "violation",
+      "returncode": 0,
+      "timed_out": false,
+      "duration_sec": 4.436,
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee-out",
+      "certainty_chain": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee-control-chains.json",
+      "has_certain_symbol": true
+    },
+    "llm": {
+      "status": "reproduced",
+      "artifact_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433",
+      "source_path": "src/lib.rs",
+      "source_line": 2003,
+      "prompt": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/testcase-prompt.txt",
+      "response": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/testcase-response.txt",
+      "context_stats": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/testcase-context-stats.json",
+      "context_policy": "slice",
+      "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/testcase-build.log",
+      "attempts": [
+        {
+          "attempt": 1,
+          "context_mode": "slice",
+          "source_path": "src/lib.rs",
+          "source_line": 2003,
+          "status": "rerun-miss",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/testcase-build-attempt-1.log",
+          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/rerun-ir/stackvector.ll",
+          "rerun": {
+            "status": "callsite-not-reported",
+            "returncode": 0,
+            "timed_out": false,
+            "reported_callsite": false,
+            "dsl_sat": false,
+            "has_certain_symbol": false,
+            "full_rerun_passed": false,
+            "external_calls": [],
+            "observed_callsites": [],
+            "saw_rust_panic": true,
+            "duration_sec": 8.928,
+            "mode": "rerun"
+          },
+          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee-rerun-attempt-1.log",
+          "feedback": "The testcase compiled but did not reproduce the target violation.\nKLEE did not report the exact target callsite `src-lib-rs-563-28`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.\nKLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.\nThe metadata caller `StackVec::<A>::insert` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test."
+        },
+        {
+          "attempt": 2,
+          "context_mode": "slice",
+          "source_path": "src/lib.rs",
+          "source_line": 2003,
+          "status": "reproduced",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/testcase-build-attempt-2.log",
+          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/rerun-ir/stackvector.ll",
+          "rerun": {
+            "status": "reported-sat",
+            "returncode": 0,
+            "timed_out": false,
+            "reported_callsite": true,
+            "dsl_sat": true,
+            "has_certain_symbol": true,
+            "full_rerun_passed": true,
+            "external_calls": [],
+            "observed_callsites": [
+              {
+                "site": "src-lib-rs-563-28",
+                "target": "src-lib-rs-563-28"
+              }
+            ],
+            "saw_rust_panic": false,
+            "duration_sec": 9.374,
+            "mode": "rerun"
+          },
+          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee-rerun-attempt-2.log"
+        }
+      ],
+      "rerun_sym": null
+    },
+    "rerun": {
+      "status": "reported-sat",
+      "returncode": 0,
+      "timed_out": false,
+      "reported_callsite": true,
+      "dsl_sat": true,
+      "has_certain_symbol": true,
+      "full_rerun_passed": true,
+      "external_calls": [],
+      "observed_callsites": [
+        {
+          "site": "src-lib-rs-563-28",
+          "target": "src-lib-rs-563-28"
+        }
+      ],
+      "saw_rust_panic": false,
+      "duration_sec": 9.374,
+      "mode": "rerun",
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee-rerun.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/stackvector-1.1.1/full-matrix-logs/src-lib-rs-563-28/rule-433/klee-rerun"
+    }
+  }
+}

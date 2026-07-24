@@ -1,0 +1,48 @@
+```rust
+#[cfg(feature = "unsat-poc-src-interpreter-stack-rs-283-44-rule-348-4ef8bb58ce")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_interpreter_stack_rs_283_44_rule_348_4ef8bb58ce() {
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterAction};
+    use revm_primitives::{Address, Bytecode, Bytes, U256};
+
+    let mut stack = crate::Stack::new();
+    stack.data_mut().push(U256::from(11u64));
+    stack.data_mut().push(U256::from(22u64));
+    stack.data_mut().push(U256::from(33u64));
+    stack.data_mut().push(U256::from(44u64));
+
+    let contract = crate::Contract::new(
+        Bytes::new(),
+        Bytecode::LegacyRaw(Bytes::from([0x00])),
+        None,
+        Address::ZERO,
+        None,
+        Address::ZERO,
+        U256::ZERO,
+    );
+
+    let mut interp = Interpreter {
+        instruction_pointer: core::ptr::null(),
+        gas: Gas::new(100000),
+        contract,
+        instruction_result: InstructionResult::Continue,
+        bytecode: Bytes::from([0x00]),
+        is_eof: false,
+        is_eof_init: false,
+        shared_memory: crate::SharedMemory::new(),
+        stack,
+        function_stack: crate::FunctionStack::new(),
+        return_data_buffer: Bytes::new(),
+        is_static: false,
+        next_action: InterpreterAction::None,
+    };
+
+    let mut host = DummyHost::default();
+
+    let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 2);
+    let _ = interp.stack.exchange(1, 2);
+
+    let _ = (&mut interp, &mut host);
+}
+```

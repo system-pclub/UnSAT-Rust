@@ -1,0 +1,560 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/error.rs">
+```rust
+/// A type alias for handling errors throughout meshopt
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// An error that can occur
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// An error that occurred interfacing with native code through FFI.
+    #[error("native error: {0}")]
+    Native(i32),
+
+    /// An error that occurred while accessing or allocating memory
+    #[error("memory error: {0}")]
+    Memory(std::borrow::Cow<'static, str>),
+
+    /// An error that occurred while parsing a data source
+    #[error("parse error: {0}")]
+    Parse(String),
+
+    /// An error that occurred while working with a file path.
+    #[error("path error: {0}")]
+    Path(std::path::PathBuf),
+
+    /// Generally, these errors correspond to bugs in this library.
+    #[error("BUG: Please report this bug with a backtrace to https://github.com/gwihlidal/meshopt-rs\n{0}")]
+    Bug(String),
+
+    /// An error occurred while reading/writing a configuration
+    #[error("config error: {0}")]
+    Config(String),
+
+    /// An unexpected I/O error occurred.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    // An error occurred while parsing a number in a free-form query.
+    //Number,
+}
+
+impl Error {
+    #[inline]
+    pub(crate) fn memory(msg: &'static str) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub(crate) fn memory_dynamic(msg: String) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[inline]
+pub(crate) fn error_or<T>(code: i32, ok: T) -> Result<T> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+// BEGIN - Embark standard lints v5 for Rust 1.55+
+// do not change or add/remove here, but one can add exceptions after this section
+// for more info see: <https://github.com/EmbarkStudios/rust-ecosystem/issues/59>
+#![deny(unsafe_code)]
+#![warn(
+    clippy::all,
+    clippy::await_holding_lock,
+    clippy::char_lit_as_u8,
+    clippy::checked_conversions,
+    clippy::dbg_macro,
+    clippy::debug_assert_with_mut_call,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::doc_markdown,
+    clippy::empty_enum,
+    clippy::enum_glob_use,
+    clippy::exit,
+    clippy::expl_impl_clone_on_copy,
+    clippy::explicit_deref_methods,
+    clippy::explicit_into_iter_loop,
+    clippy::fallible_impl_from,
+    clippy::filter_map_next,
+    clippy::flat_map_option,
+    clippy::float_cmp_const,
+    clippy::fn_params_excessive_bools,
+    clippy::from_iter_instead_of_collect,
+    clippy::if_let_mutex,
+    clippy::implicit_clone,
+    clippy::imprecise_flops,
+    clippy::inefficient_to_string,
+    clippy::invalid_upcast_comparisons,
+    clippy::large_digit_groups,
+    clippy::large_stack_arrays,
+    clippy::large_types_passed_by_value,
+    clippy::let_unit_value,
+    clippy::linkedlist,
+    clippy::lossy_float_literal,
+    clippy::macro_use_imports,
+    clippy::manual_ok_or,
+    clippy::map_err_ignore,
+    clippy::map_flatten,
+    clippy::map_unwrap_or,
+    clippy::match_on_vec_items,
+    clippy::match_same_arms,
+    clippy::match_wild_err_arm,
+    clippy::match_wildcard_for_single_variants,
+    clippy::mem_forget,
+    clippy::mismatched_target_os,
+    clippy::missing_enforced_import_renames,
+    clippy::mut_mut,
+    clippy::mutex_integer,
+    clippy::needless_borrow,
+    clippy::needless_continue,
+    clippy::needless_for_each,
+    clippy::option_option,
+    clippy::path_buf_push_overwrite,
+    clippy::ptr_as_ptr,
+    clippy::rc_mutex,
+    clippy::ref_option_ref,
+    clippy::rest_pat_in_fully_bound_structs,
+    clippy::same_functions_in_if_condition,
+    clippy::semicolon_if_nothing_returned,
+    clippy::single_match_else,
+    clippy::string_add_assign,
+    clippy::string_add,
+    clippy::string_lit_as_bytes,
+    clippy::string_to_string,
+    clippy::todo,
+    clippy::trait_duplication_in_bounds,
+    clippy::unimplemented,
+    clippy::unnested_or_patterns,
+    clippy::unused_self,
+    clippy::useless_transmute,
+    clippy::verbose_file_reads,
+    clippy::zero_sized_map_values,
+    future_incompatible,
+    nonstandard_style,
+    rust_2018_idioms
+)]
+// END - Embark standard lints v0.5 for Rust 1.55+
+// crate-specific exceptions:
+// This crate is doing a lot of FFI and byte munging
+#![allow(unsafe_code)]
+
+pub mod analyze;
+pub mod clusterize;
+pub mod encoding;
+pub mod error;
+pub mod ffi;
+pub mod optimize;
+pub mod packing;
+pub mod remap;
+pub mod shadow;
+pub mod simplify;
+pub mod stripify;
+pub mod utilities;
+
+pub use crate::{
+    analyze::*, clusterize::*, encoding::*, error::*, optimize::*, packing::*, remap::*, shadow::*,
+    simplify::*, stripify::*, utilities::*,
+};
+
+use std::marker::PhantomData;
+
+/// Vertex attribute stream, similar to `glVertexPointer`
+///
+/// Each element takes size bytes, with stride controlling
+/// the spacing between successive elements.
+#[derive(Debug, Copy, Clone)]
+pub struct VertexStream<'a> {
+    /// Pointer to buffer which contains vertex data.
+    pub data: *const u8,
+    /// Space between vertices inside the buffer (in bytes).
+    pub stride: usize,
+    /// The size in bytes of the vertex attribute this Stream is representing.
+    pub size: usize,
+
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a> VertexStream<'a> {
+    /// Create a `VertexStream` for a buffer consisting only of elements of type `T`.
+    pub fn new<T>(ptr: *const T) -> VertexStream<'a> {
+        /* body omitted: interface retained */
+    }
+
+    /// Create a `VertexStream` for a buffer that contains elements of type `VertexType`.
+    ///
+    /// The buffer pointed to by `ptr` starts with one value of `T`, the next value of T
+    /// is `*(ptr + stride)`.
+    ///
+    /// (The `VertexType` does not need to be a concrete type,
+    /// it is only used here to avoid casts on the caller side).
+    pub fn new_with_stride<T, VertexType>(
+        ptr: *const VertexType,
+        stride: usize,
+    ) -> VertexStream<'a> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/packing.rs">
+```rust
+use crate::{quantize_half, quantize_snorm};
+use float_cmp::ApproxEqUlps;
+
+pub trait DecodePosition {
+    fn decode_position(&self) -> [f32; 3];
+}
+
+impl DecodePosition for [f32; 3] {
+    fn decode_position(&self) -> [f32; 3] {
+        /* body omitted: interface retained */
+    }
+}
+
+pub trait FromVertex {
+    fn fill_from_vertex(&mut self, vertex: &Vertex);
+}
+
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(C)]
+pub struct PackedVertex {
+    /// Unsigned 16-bit value, use pos_offset/pos_scale to unpack
+    pub p: [u16; 4],
+
+    /// Normalized signed 8-bit value
+    pub n: [i8; 4],
+
+    /// Unsigned 16-bit value, use uv_offset/uv_scale to unpack
+    pub t: [u16; 2],
+}
+
+impl FromVertex for PackedVertex {
+    fn fill_from_vertex(&mut self, vertex: &Vertex) {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(C)]
+pub struct PackedVertexOct {
+    pub p: [u16; 3],
+    pub n: [u8; 2], // octahedron encoded normal, aliases .pw
+    pub t: [u16; 2],
+}
+
+impl FromVertex for PackedVertexOct {
+    fn fill_from_vertex(&mut self, vertex: &Vertex) {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialOrd)]
+#[repr(C)]
+/// A basic Vertex type that can be used with most mesh processing functions.
+/// You don't _need_ to use this type, you can use your own type by implementing
+/// the `DecodePosition` trait and making a [`VertexDataAdapter`] from slices of it.
+pub struct Vertex {
+    pub p: [f32; 3],
+    pub n: [f32; 3],
+    pub t: [f32; 2],
+}
+
+impl PartialEq for Vertex {
+    fn eq(&self, other: &Vertex) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Eq for Vertex {}
+
+impl Vertex {}
+
+impl DecodePosition for Vertex {
+    fn decode_position(&self) -> [f32; 3] {
+        /* body omitted: interface retained */
+    }
+}
+
+pub fn pack_vertices<T: FromVertex + Default + Clone>(input: &[Vertex]) -> Vec<T> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/simplify.rs">
+```rust
+use crate::{ffi, DecodePosition, VertexDataAdapter};
+use bitflags::bitflags;
+use std::mem;
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] pub struct
+    SimplifyOptions : u32 { const None = 0; #[doc =
+    " Locks the vertices that lie on the topological border of the mesh in place such that"]
+    #[doc = " they don't move during simplification."] #[doc =
+    " This can be valuable to simplify independent chunks of a mesh, for example terrain,"]
+    #[doc =
+    " to ensure that individual levels of detail can be stitched together later without gaps."]
+    const LockBorder = 1; #[doc =
+    " Improve simplification performance assuming input indices are a sparse subset of the mesh."]
+    #[doc = " Note that error becomes relative to subset extents."] const Sparse = 2;
+    #[doc =
+    " Treat error limit and resulting error as absolute instead of relative to mesh extents."]
+    const ErrorAbsolute = 4; }
+}
+/// Reduces the number of triangles in the mesh, attempting to preserve mesh
+/// appearance as much as possible.
+///
+/// The resulting index buffer references vertices from the original vertex buffer.
+///
+/// If the original vertex data isn't required, creating a compact vertex buffer
+/// using `optimize_vertex_fetch` is recommended.
+#[inline(never)]
+pub fn simplify(
+    indices: &[u32],
+    vertices: &VertexDataAdapter<'_>,
+    target_count: usize,
+    target_error: f32,
+    options: SimplifyOptions,
+    result_error: Option<&mut f32>,
+) -> Vec<u32> {
+    /* body omitted: interface retained */
+}
+/// Reduces the number of triangles in the mesh, attempting to preserve mesh
+/// appearance as much as possible.
+///
+/// The resulting index buffer references vertices from the original vertex buffer.
+///
+/// If the original vertex data isn't required, creating a compact vertex buffer
+/// using `optimize_vertex_fetch` is recommended.
+pub fn simplify_decoder<T: DecodePosition>(
+    indices: &[u32],
+    vertices: &[T],
+    target_count: usize,
+    target_error: f32,
+    options: SimplifyOptions,
+    result_error: Option<&mut f32>,
+) -> Vec<u32> {
+    /* body omitted: interface retained */
+}
+/// Reduces the number of triangles in the mesh, attempting to preserve mesh
+/// appearance as much as possible, while respecting the given vertex locks
+///
+/// The resulting index buffer references vertices from the original vertex buffer.
+///
+/// If the original vertex data isn't required, creating a compact vertex buffer
+/// using `optimize_vertex_fetch` is recommended.
+#[inline(never)]
+pub fn simplify_with_locks(
+    indices: &[u32],
+    vertices: &VertexDataAdapter<'_>,
+    vertex_lock: &[bool],
+    target_count: usize,
+    target_error: f32,
+    options: SimplifyOptions,
+) -> Vec<u32> {
+    let vertex_data = vertices.reader.get_ref();
+    let vertex_data = vertex_data.as_ptr().cast::<u8>();
+    let positions = unsafe {
+        let __klee_arg1 = vertices.position_offset;
+        klee_ext_bind::bind_arg_ptr_value(0, vertex_data);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg1);
+        klee_ext_bind::callsite!("src-simplify-rs-114-30");
+        let mut __klee_ret_src_simplify_rs_114_30_add = vertex_data.add(__klee_arg1);
+        __klee_ret_src_simplify_rs_114_30_add
+    };
+    let mut result: Vec<u32> = vec![0; indices.len()];
+    let index_count = unsafe {
+        ffi::meshopt_simplifyWithAttributes(
+            result.as_mut_ptr().cast(),
+            indices.as_ptr().cast(),
+            indices.len(),
+            positions.cast::<f32>(),
+            vertices.vertex_count,
+            vertices.vertex_stride,
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            0,
+            vertex_lock.as_ptr().cast(),
+            target_count,
+            target_error,
+            options.bits(),
+            std::ptr::null_mut(),
+        )
+    };
+    result.resize(index_count, 0u32);
+    result
+}
+/// Reduces the number of triangles in the mesh, attempting to preserve mesh
+/// appearance as much as possible, while respecting the given vertex locks
+///
+/// The resulting index buffer references vertices from the original vertex buffer.
+///
+/// If the original vertex data isn't required, creating a compact vertex buffer
+/// using `optimize_vertex_fetch` is recommended.
+pub fn simplify_with_locks_decoder<T: DecodePosition>(
+    indices: &[u32],
+    vertices: &[T],
+    vertex_lock: &[bool],
+    target_count: usize,
+    target_error: f32,
+    options: SimplifyOptions,
+) -> Vec<u32> {
+    /* body omitted: interface retained */
+}
+/// Reduces the number of triangles in the mesh, sacrificing mesh appearance for simplification performance.
+/// The algorithm doesn't preserve mesh topology but is always able to reach target triangle count.
+///
+/// The resulting index buffer references vertices from the original vertex buffer.
+///
+/// If the original vertex data isn't required, creating a compact vertex buffer using `optimize_vertex_fetch`
+/// is recommended.
+#[inline(never)]
+pub fn simplify_sloppy(
+    indices: &[u32],
+    vertices: &VertexDataAdapter<'_>,
+    target_count: usize,
+    target_error: f32,
+    result_error: Option<&mut f32>,
+) -> Vec<u32> {
+    /* body omitted: interface retained */
+}
+/// Reduces the number of triangles in the mesh, sacrificing mesh appearance for simplification performance.
+/// The algorithm doesn't preserve mesh topology but is always able to reach target triangle count.
+///
+/// The resulting index buffer references vertices from the original vertex buffer.
+///
+/// If the original vertex data isn't required, creating a compact vertex buffer using `optimize_vertex_fetch`
+/// is recommended.
+pub fn simplify_sloppy_decoder<T: DecodePosition>(
+    indices: &[u32],
+    vertices: &[T],
+    target_count: usize,
+    target_error: f32,
+    result_error: Option<&mut f32>,
+) -> Vec<u32> {
+    /* body omitted: interface retained */
+}
+/// Returns the error scaling factor used by the simplifier to convert between absolute and relative extents
+///
+/// Absolute error must be *divided* by the scaling factor before passing it to `simplify` as `target_error`
+/// Relative error returned by `simplify` via `result_error` must be *multiplied* by the scaling factor to get absolute error.
+pub fn simplify_scale(vertices: &VertexDataAdapter<'_>) -> f32 {
+    /* body omitted: interface retained */
+}
+/// Returns the error scaling factor used by the simplifier to convert between absolute and relative extents
+///
+/// Absolute error must be *divided* by the scaling factor before passing it to `simplify` as `target_error`
+/// Relative error returned by `simplify` via `result_error` must be *multiplied* by the scaling factor to get absolute error.
+pub fn simplify_scale_decoder<T: DecodePosition>(vertices: &[T]) -> f32 {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/utilities.rs">
+```rust
+use crate::{Error, Result};
+use std::io::{Cursor, Read};
+#[inline(always)]
+pub fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+pub fn typed_to_bytes<T: Sized>(typed: &[T]) -> &[u8] {
+    /* body omitted: interface retained */
+}
+pub fn convert_indices_32_to_16(indices: &[u32]) -> Result<Vec<u16>> {
+    /* body omitted: interface retained */
+}
+pub fn convert_indices_16_to_32(indices: &[u16]) -> Result<Vec<u32>> {
+    /* body omitted: interface retained */
+}
+/// Quantize a float in [0..1] range into an N-bit fixed point unorm value.
+///
+/// Assumes reconstruction function (q / (2^N-1)), which is the case for
+/// fixed-function normalized fixed point conversion.
+///
+/// Maximum reconstruction error: 1/2^(N+1).
+#[inline(always)]
+pub fn quantize_unorm(v: f32, n: i32) -> i32 {
+    /* body omitted: interface retained */
+}
+/// Quantize a float in [-1..1] range into an N-bit fixed point snorm value.
+///
+/// Assumes reconstruction function (q / (2^(N-1)-1)), which is the case for
+/// fixed-function normalized fixed point conversion (except early OpenGL versions).
+///
+/// Maximum reconstruction error: 1/2^N.
+#[inline(always)]
+pub fn quantize_snorm(v: f32, n: u32) -> i32 {
+    /* body omitted: interface retained */
+}
+#[repr(C)]
+union FloatUInt {
+    fl: f32,
+    ui: u32,
+}
+/// Quantize a float into half-precision floating point value.
+/// Generates +-inf for overflow, preserves NaN, flushes denormals to zero, rounds to nearest.
+/// Representable magnitude range: [6e-5; 65504].
+/// Maximum relative reconstruction error: 5e-4.
+#[inline(always)]
+pub fn quantize_half(v: f32) -> u16 {
+    /* body omitted: interface retained */
+}
+/// Quantize a float into a floating point value with a limited number of significant mantissa bits.
+/// Generates +-inf for overflow, preserves NaN, flushes denormals to zero, rounds to nearest.
+/// Assumes N is in a valid mantissa precision range, which is 1..23
+#[inline(always)]
+pub fn quantize_float(v: f32, n: i32) -> f32 {
+    /* body omitted: interface retained */
+}
+#[inline(always)]
+pub fn rcp_safe(v: f32) -> f32 {
+    /* body omitted: interface retained */
+}
+pub struct VertexDataAdapter<'a> {
+    pub reader: Cursor<&'a [u8]>,
+    pub vertex_count: usize,
+    pub vertex_stride: usize,
+    pub position_offset: usize,
+}
+impl<'a> VertexDataAdapter<'a> {
+    pub fn new(
+        data: &'a [u8],
+        vertex_stride: usize,
+        position_offset: usize,
+    ) -> Result<VertexDataAdapter<'a>> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn xyz_f32_at(&mut self, vertex: usize) -> Result<[f32; 3]> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn pos_ptr(&self) -> *const f32 {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> Read for VertexDataAdapter<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::result::Result<usize, std::io::Error> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

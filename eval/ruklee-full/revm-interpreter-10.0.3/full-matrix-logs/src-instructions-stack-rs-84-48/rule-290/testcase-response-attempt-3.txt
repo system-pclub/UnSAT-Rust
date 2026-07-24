@@ -1,0 +1,49 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-stack-rs-84-48-rule-290-05fd70ae9d")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_stack_rs_84_48_rule_290_05fd70ae9d() {
+    use crate::{
+        gas::Gas,
+        instructions::stack,
+        primitives::{Bytecode, Bytes},
+        DummyHost, Interpreter,
+    };
+    use std::sync::Arc;
+
+    let mut code = Bytes::from(vec![0x00, 0x00]);
+    let bytecode = Bytecode::new_legacy(code.clone());
+
+    let mut interpreter = Interpreter::new(
+        crate::Contract::new(
+            Bytes::new(),
+            bytecode,
+            None,
+            crate::primitives::Address::ZERO,
+            None,
+            crate::primitives::Address::ZERO,
+            crate::primitives::U256::ZERO,
+        ),
+        10_000,
+        false,
+    );
+
+    interpreter.is_eof = true;
+    interpreter.gas = Gas::new(10_000);
+
+    let ip_storage = vec![0x11u8, 0x00u8];
+    interpreter.instruction_pointer = ip_storage.as_ptr();
+
+    interpreter.stack.data_mut().clear();
+    interpreter.stack.data_mut().extend_from_slice(&[
+        crate::primitives::U256::from(1u64),
+        crate::primitives::U256::from(2u64),
+        crate::primitives::U256::from(3u64),
+        crate::primitives::U256::from(4u64),
+    ]);
+
+    let mut host = DummyHost::default();
+    stack::exchange(&mut interpreter, &mut host);
+
+    let _ = Arc::new(code);
+}
+```

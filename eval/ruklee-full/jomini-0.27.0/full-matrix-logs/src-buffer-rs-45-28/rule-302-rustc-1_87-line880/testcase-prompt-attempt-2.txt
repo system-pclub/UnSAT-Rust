@@ -1,0 +1,2150 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 122548914225152; get_arg(1) = 2; get_arg(2) = 1; target counterexample query was unsat.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-buffer-rs-45-28-rule-302-rustc-1-87-line880-faf94d8517`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_buffer_rs_45_28_rule_302_rustc_1_87_line880_faf94d8517`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-buffer-rs-45-28-rule-302-rustc-1-87-line880-faf94d8517")]`.
+- Define `pub extern "C" fn __unsat_poc_src_buffer_rs_45_28_rule_302_rustc_1_87_line880_faf94d8517()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-buffer-rs-45-28-rule-302-rustc-1-87-line880-faf94d8517")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_buffer_rs_45_28_rule_302_rustc_1_87_line880_faf94d8517() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "buffer::BufferWindow",
+    "path": "src/buffer.rs",
+    "line_start": 5,
+    "body_end": 5,
+    "is_public": true
+  },
+  "caller": {
+    "name": "buffer::BufferWindow::advance",
+    "path": "src/buffer.rs",
+    "line_start": 44,
+    "line_end": 44,
+    "body_end": 48,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::ptr::const_ptr::<impl *const T>::add",
+    "path": "rust/library/core/src/ptr/const_ptr.rs",
+    "line_start": 880,
+    "line_end": 931,
+    "body_end": 931,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*const T"
+  },
+  "callsite": {
+    "line": 45,
+    "col": 28,
+    "path": "src/buffer.rs",
+    "id": "src-buffer-rs-45-28"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `buffer::BufferWindow` for `receiver` using fields visible from the injection module when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::advance` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `buffer::BufferWindow::advance`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use crate::Scalar;
+use std::{io::Read, ops::Range};
+use super::BufferWindow;
+use std::io::{Cursor, Read, Result};
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/buffer.rs:45
+```rust
+37:     #[inline]
+38:     pub fn advance_to(&mut self, ptr: *const u8) {
+39:         debug_assert!((self.start..=self.end).contains(&ptr));
+40:         self.start = ptr;
+41:     }
+42: 
+43:     #[inline]
+44:     pub fn advance(&mut self, amt: usize) {
+45:         let ptr = unsafe { self.start.add(amt) };
+46:         debug_assert!((self.start..=self.end).contains(&ptr));
+47:         self.start = ptr;
+48:     }
+49: 
+50:     #[inline]
+51:     pub fn window(&self) -> &[u8] {
+52:         unsafe { std::slice::from_raw_parts(self.start, self.window_len()) }
+53:     }
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/buffer.rs:44-45
+```rust
+44:     pub fn advance(&mut self, amt: usize) {
+45:         let ptr = unsafe { self.start.add(amt) };
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.228/src/core/de/impls.rs:2419-2558
+```rust
+2419: //     struct Range<Idx> {
+2420: //         start: Idx,
+2421: //         end: Idx,
+2422: //     }
+2423: impl<'de, Idx> Deserialize<'de> for Range<Idx>
+2424: where
+2425:     Idx: Deserialize<'de>,
+2426: {
+2427:     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2428:     where
+2429:         D: Deserializer<'de>,
+2430:     {
+2431:         let (start, end) = tri!(deserializer.deserialize_struct(
+2432:             "Range",
+2433:             range::FIELDS,
+2434:             range::RangeVisitor {
+2435:                 expecting: "struct Range",
+2436:                 phantom: PhantomData,
+2437:             },
+2438:         ));
+2439:         Ok(start..end)
+2440:     }
+2441: }
+2442: 
+2443: impl<'de, Idx> Deserialize<'de> for RangeInclusive<Idx>
+2444: where
+2445:     Idx: Deserialize<'de>,
+2446: {
+2447:     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2448:     where
+2449:         D: Deserializer<'de>,
+2450:     {
+2451:         let (start, end) = tri!(deserializer.deserialize_struct(
+2452:             "RangeInclusive",
+2453:             range::FIELDS,
+2454:             range::RangeVisitor {
+2455:                 expecting: "struct RangeInclusive",
+2456:                 phantom: PhantomData,
+2457:             },
+2458:         ));
+2459:         Ok(RangeInclusive::new(start, end))
+2460:     }
+2461: }
+2462: 
+2463: mod range {
+2464:     use crate::lib::*;
+2465: 
+2466:     use crate::de::{Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor};
+2467:     use crate::private;
+2468: 
+2469:     pub const FIELDS: &[&str] = &["start", "end"];
+2470: 
+2471:     // If this were outside of the serde crate, it would just use:
+2472:     //
+2473:     //    #[derive(Deserialize)]
+2474:     //    #[serde(field_identifier, rename_all = "lowercase")]
+2475:     enum Field {
+2476:         Start,
+2477:         End,
+2478:     }
+2479: 
+2480:     impl<'de> Deserialize<'de> for Field {
+2481:         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2482:         where
+2483:             D: Deserializer<'de>,
+2484:         {
+2485:             struct FieldVisitor;
+2486: 
+2487:             impl<'de> Visitor<'de> for FieldVisitor {
+2488:                 type Value = Field;
+2489: 
+2490:                 fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+2491:                     formatter.write_str("`start` or `end`")
+2492:                 }
+2493: 
+2494:                 fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+2495:                 where
+2496:                     E: Error,
+2497:                 {
+2498:                     match value {
+2499:                         "start" => Ok(Field::Start),
+2500:                         "end" => Ok(Field::End),
+2501:                         _ => Err(Error::unknown_field(value, FIELDS)),
+2502:                     }
+2503:                 }
+2504: 
+2505:                 fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+2506:                 where
+2507:                     E: Error,
+2508:                 {
+2509:                     match value {
+2510:                         b"start" => Ok(Field::Start),
+2511:                         b"end" => Ok(Field::End),
+2512:                         _ => {
+2513:                             let value = private::string::from_utf8_lossy(value);
+2514:                             Err(Error::unknown_field(&*value, FIELDS))
+2515:                         }
+2516:                     }
+2517:                 }
+2518:             }
+2519: 
+2520:             deserializer.deserialize_identifier(FieldVisitor)
+2521:         }
+2522:     }
+2523: 
+2524:     pub struct RangeVisitor<Idx> {
+2525:         pub expecting: &'static str,
+2526:         pub phantom: PhantomData<Idx>,
+2527:     }
+2528: 
+2529:     impl<'de, Idx> Visitor<'de> for RangeVisitor<Idx>
+2530:     where
+2531:         Idx: Deserialize<'de>,
+2532:     {
+2533:         type Value = (Idx, Idx);
+2534: 
+2535:         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+2536:             formatter.write_str(self.expecting)
+2537:         }
+2538: 
+2539:         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+2540:         where
+2541:             A: SeqAccess<'de>,
+2542:         {
+2543:             let start: Idx = match tri!(seq.next_element()) {
+2544:                 Some(value) => value,
+2545:                 None => {
+2546:                     return Err(Error::invalid_length(0, &self));
+2547:                 }
+2548:             };
+2549:             let end: Idx = match tri!(seq.next_element()) {
+2550:                 Some(value) => value,
+2551:                 None => {
+2552:                     return Err(Error::invalid_length(1, &self));
+2553:                 }
+2554:             };
+2555:             Ok((start, end))
+2556:         }
+2557: 
+2558:         fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde_json-1.0.150/src/de.rs:1972-2111
+```rust
+1972: struct MapAccess<'a, R: 'a> {
+1973:     de: &'a mut Deserializer<R>,
+1974:     first: bool,
+1975: }
+1976: 
+1977: impl<'a, R: 'a> MapAccess<'a, R> {
+1978:     fn new(de: &'a mut Deserializer<R>) -> Self {
+1979:         MapAccess { de, first: true }
+1980:     }
+1981: }
+1982: 
+1983: impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
+1984:     type Error = Error;
+1985: 
+1986:     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+1987:     where
+1988:         K: de::DeserializeSeed<'de>,
+1989:     {
+1990:         fn has_next_key<'de, 'a, R: Read<'de> + 'a>(map: &mut MapAccess<'a, R>) -> Result<bool> {
+1991:             let peek = match tri!(map.de.parse_whitespace()) {
+1992:                 Some(b) => b,
+1993:                 None => {
+1994:                     return Err(map.de.peek_error(ErrorCode::EofWhileParsingObject));
+1995:                 }
+1996:             };
+1997: 
+1998:             if peek == b'}' {
+1999:                 Ok(false)
+2000:             } else if map.first {
+2001:                 map.first = false;
+2002:                 if peek == b'"' {
+2003:                     Ok(true)
+2004:                 } else {
+2005:                     Err(map.de.peek_error(ErrorCode::KeyMustBeAString))
+2006:                 }
+2007:             } else if peek == b',' {
+2008:                 map.de.eat_char();
+2009:                 match tri!(map.de.parse_whitespace()) {
+2010:                     Some(b'"') => Ok(true),
+2011:                     Some(b'}') => Err(map.de.peek_error(ErrorCode::TrailingComma)),
+2012:                     Some(_) => Err(map.de.peek_error(ErrorCode::KeyMustBeAString)),
+2013:                     None => Err(map.de.peek_error(ErrorCode::EofWhileParsingValue)),
+2014:                 }
+2015:             } else {
+2016:                 Err(map.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd))
+2017:             }
+2018:         }
+2019: 
+2020:         if tri!(has_next_key(self)) {
+2021:             Ok(Some(tri!(seed.deserialize(MapKey { de: &mut *self.de }))))
+2022:         } else {
+2023:             Ok(None)
+2024:         }
+2025:     }
+2026: 
+2027:     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+2028:     where
+2029:         V: de::DeserializeSeed<'de>,
+2030:     {
+2031:         tri!(self.de.parse_object_colon());
+2032: 
+2033:         seed.deserialize(&mut *self.de)
+2034:     }
+2035: }
+2036: 
+2037: struct VariantAccess<'a, R: 'a> {
+2038:     de: &'a mut Deserializer<R>,
+2039: }
+2040: 
+2041: impl<'a, R: 'a> VariantAccess<'a, R> {
+2042:     fn new(de: &'a mut Deserializer<R>) -> Self {
+2043:         VariantAccess { de }
+2044:     }
+2045: }
+2046: 
+2047: impl<'de, 'a, R: Read<'de> + 'a> de::EnumAccess<'de> for VariantAccess<'a, R> {
+2048:     type Error = Error;
+2049:     type Variant = Self;
+2050: 
+2051:     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self)>
+2052:     where
+2053:         V: de::DeserializeSeed<'de>,
+2054:     {
+2055:         match tri!(self.de.parse_whitespace()) {
+2056:             Some(b'"') => {}
+2057:             Some(b'}') => return Err(self.de.peek_error(ErrorCode::ExpectedSomeValue)),
+2058:             Some(_) => return Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
+2059:             None => return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject)),
+2060:         }
+2061: 
+2062:         let val = match seed.deserialize(MapKey { de: &mut *self.de }) {
+2063:             Ok(value) => value,
+2064:             Err(err) => return Err(self.de.fix_position(err)),
+2065:         };
+2066:         tri!(self.de.parse_object_colon());
+2067:         Ok((val, self))
+2068:     }
+2069: }
+2070: 
+2071: impl<'de, 'a, R: Read<'de> + 'a> de::VariantAccess<'de> for VariantAccess<'a, R> {
+2072:     type Error = Error;
+2073: 
+2074:     fn unit_variant(self) -> Result<()> {
+2075:         de::Deserialize::deserialize(self.de)
+2076:     }
+2077: 
+2078:     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
+2079:     where
+2080:         T: de::DeserializeSeed<'de>,
+2081:     {
+2082:         seed.deserialize(self.de)
+2083:     }
+2084: 
+2085:     fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+2086:     where
+2087:         V: de::Visitor<'de>,
+2088:     {
+2089:         de::Deserializer::deserialize_seq(self.de, visitor)
+2090:     }
+2091: 
+2092:     fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+2093:     where
+2094:         V: de::Visitor<'de>,
+2095:     {
+2096:         de::Deserializer::deserialize_struct(self.de, "", fields, visitor)
+2097:     }
+2098: }
+2099: 
+2100: struct UnitVariantAccess<'a, R: 'a> {
+2101:     de: &'a mut Deserializer<R>,
+2102: }
+2103: 
+2104: impl<'a, R: 'a> UnitVariantAccess<'a, R> {
+2105:     fn new(de: &'a mut Deserializer<R>) -> Self {
+2106:         UnitVariantAccess { de }
+2107:     }
+2108: }
+2109: 
+2110: impl<'de, 'a, R: Read<'de> + 'a> de::EnumAccess<'de> for UnitVariantAccess<'a, R> {
+2111:     type Error = Error;
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde_json-1.0.150/src/error.rs:236-375
+```rust
+236: pub(crate) enum ErrorCode {
+237:     /// Catchall for syntax error messages
+238:     Message(Box<str>),
+239: 
+240:     /// Some I/O error occurred while serializing or deserializing.
+241:     Io(io::Error),
+242: 
+243:     /// EOF while parsing a list.
+244:     EofWhileParsingList,
+245: 
+246:     /// EOF while parsing an object.
+247:     EofWhileParsingObject,
+248: 
+249:     /// EOF while parsing a string.
+250:     EofWhileParsingString,
+251: 
+252:     /// EOF while parsing a JSON value.
+253:     EofWhileParsingValue,
+254: 
+255:     /// Expected this character to be a `':'`.
+256:     ExpectedColon,
+257: 
+258:     /// Expected this character to be either a `','` or a `']'`.
+259:     ExpectedListCommaOrEnd,
+260: 
+261:     /// Expected this character to be either a `','` or a `'}'`.
+262:     ExpectedObjectCommaOrEnd,
+263: 
+264:     /// Expected to parse either a `true`, `false`, or a `null`.
+265:     ExpectedSomeIdent,
+266: 
+267:     /// Expected this character to start a JSON value.
+268:     ExpectedSomeValue,
+269: 
+270:     /// Expected this character to be a `"`.
+271:     ExpectedDoubleQuote,
+272: 
+273:     /// Invalid hex escape code.
+274:     InvalidEscape,
+275: 
+276:     /// Invalid number.
+277:     InvalidNumber,
+278: 
+279:     /// Number is bigger than the maximum value of its type.
+280:     NumberOutOfRange,
+281: 
+282:     /// Invalid unicode code point.
+283:     InvalidUnicodeCodePoint,
+284: 
+285:     /// Control character found while parsing a string.
+286:     ControlCharacterWhileParsingString,
+287: 
+288:     /// Object key is not a string.
+289:     KeyMustBeAString,
+290: 
+291:     /// Contents of key were supposed to be a number.
+292:     ExpectedNumericKey,
+293: 
+294:     /// Object key is a non-finite float value.
+295:     FloatKeyMustBeFinite,
+296: 
+297:     /// Lone leading surrogate in hex escape.
+298:     LoneLeadingSurrogateInHexEscape,
+299: 
+300:     /// JSON has a comma after the last value in an array or map.
+301:     TrailingComma,
+302: 
+303:     /// JSON has non-whitespace trailing characters after the value.
+304:     TrailingCharacters,
+305: 
+306:     /// Unexpected end of hex escape.
+307:     UnexpectedEndOfHexEscape,
+308: 
+309:     /// Encountered nesting of JSON maps and arrays more than 128 layers deep.
+310:     RecursionLimitExceeded,
+311: }
+312: 
+313: impl Error {
+314:     #[cold]
+315:     pub(crate) fn syntax(code: ErrorCode, line: usize, column: usize) -> Self {
+316:         Error {
+317:             err: Box::new(ErrorImpl { code, line, column }),
+318:         }
+319:     }
+320: 
+321:     // Not public API. Should be pub(crate).
+322:     //
+323:     // Update `eager_json` crate when this function changes.
+324:     #[doc(hidden)]
+325:     #[cold]
+326:     pub fn io(error: io::Error) -> Self {
+327:         Error {
+328:             err: Box::new(ErrorImpl {
+329:                 code: ErrorCode::Io(error),
+330:                 line: 0,
+331:                 column: 0,
+332:             }),
+333:         }
+334:     }
+335: 
+336:     #[cold]
+337:     pub(crate) fn fix_position<F>(self, f: F) -> Self
+338:     where
+339:         F: FnOnce(ErrorCode) -> Error,
+340:     {
+341:         if self.err.line == 0 {
+342:             f(self.err.code)
+343:         } else {
+344:             self
+345:         }
+346:     }
+347: }
+348: 
+349: impl Display for ErrorCode {
+350:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+351:         match self {
+352:             ErrorCode::Message(msg) => f.write_str(msg),
+353:             ErrorCode::Io(err) => Display::fmt(err, f),
+354:             ErrorCode::EofWhileParsingList => f.write_str("EOF while parsing a list"),
+355:             ErrorCode::EofWhileParsingObject => f.write_str("EOF while parsing an object"),
+356:             ErrorCode::EofWhileParsingString => f.write_str("EOF while parsing a string"),
+357:             ErrorCode::EofWhileParsingValue => f.write_str("EOF while parsing a value"),
+358:             ErrorCode::ExpectedColon => f.write_str("expected `:`"),
+359:             ErrorCode::ExpectedListCommaOrEnd => f.write_str("expected `,` or `]`"),
+360:             ErrorCode::ExpectedObjectCommaOrEnd => f.write_str("expected `,` or `}`"),
+361:             ErrorCode::ExpectedSomeIdent => f.write_str("expected ident"),
+362:             ErrorCode::ExpectedSomeValue => f.write_str("expected value"),
+363:             ErrorCode::ExpectedDoubleQuote => f.write_str("expected `\"`"),
+364:             ErrorCode::InvalidEscape => f.write_str("invalid escape"),
+365:             ErrorCode::InvalidNumber => f.write_str("invalid number"),
+366:             ErrorCode::NumberOutOfRange => f.write_str("number out of range"),
+367:             ErrorCode::InvalidUnicodeCodePoint => f.write_str("invalid unicode code point"),
+368:             ErrorCode::ControlCharacterWhileParsingString => {
+369:                 f.write_str("control character (\\u0000-\\u001F) found while parsing a string")
+370:             }
+371:             ErrorCode::KeyMustBeAString => f.write_str("key must be a string"),
+372:             ErrorCode::ExpectedNumericKey => {
+373:                 f.write_str("invalid value: expected key to be a number in quotes")
+374:             }
+375:             ErrorCode::FloatKeyMustBeFinite => {
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.228/src/private/de.rs:1339-1478
+```rust
+1339:                 //     enum Message {
+1340:                 //         Info(Info),
+1341:                 //     }
+1342:                 //
+1343:                 // We want {"topic":"Info"} to deserialize even though
+1344:                 // ordinarily unit structs do not deserialize from empty map/seq.
+1345:                 Content::Map(ref v) if v.is_empty() => visitor.visit_unit(),
+1346:                 Content::Seq(ref v) if v.is_empty() => visitor.visit_unit(),
+1347:                 _ => self.deserialize_any(visitor),
+1348:             }
+1349:         }
+1350: 
+1351:         fn deserialize_newtype_struct<V>(
+1352:             self,
+1353:             _name: &str,
+1354:             visitor: V,
+1355:         ) -> Result<V::Value, Self::Error>
+1356:         where
+1357:             V: Visitor<'de>,
+1358:         {
+1359:             match self.content {
+1360:                 Content::Newtype(v) => visitor.visit_newtype_struct(ContentDeserializer::new(*v)),
+1361:                 _ => visitor.visit_newtype_struct(self),
+1362:             }
+1363:         }
+1364: 
+1365:         fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+1366:         where
+1367:             V: Visitor<'de>,
+1368:         {
+1369:             match self.content {
+1370:                 Content::Seq(v) => visit_content_seq(v, visitor),
+1371:                 _ => Err(self.invalid_type(&visitor)),
+1372:             }
+1373:         }
+1374: 
+1375:         fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
+1376:         where
+1377:             V: Visitor<'de>,
+1378:         {
+1379:             self.deserialize_seq(visitor)
+1380:         }
+1381: 
+1382:         fn deserialize_tuple_struct<V>(
+1383:             self,
+1384:             _name: &'static str,
+1385:             _len: usize,
+1386:             visitor: V,
+1387:         ) -> Result<V::Value, Self::Error>
+1388:         where
+1389:             V: Visitor<'de>,
+1390:         {
+1391:             self.deserialize_seq(visitor)
+1392:         }
+1393: 
+1394:         fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+1395:         where
+1396:             V: Visitor<'de>,
+1397:         {
+1398:             match self.content {
+1399:                 Content::Map(v) => visit_content_map(v, visitor),
+1400:                 _ => Err(self.invalid_type(&visitor)),
+1401:             }
+1402:         }
+1403: 
+1404:         fn deserialize_struct<V>(
+1405:             self,
+1406:             _name: &'static str,
+1407:             _fields: &'static [&'static str],
+1408:             visitor: V,
+1409:         ) -> Result<V::Value, Self::Error>
+1410:         where
+1411:             V: Visitor<'de>,
+1412:         {
+1413:             match self.content {
+1414:                 Content::Seq(v) => visit_content_seq(v, visitor),
+1415:                 Content::Map(v) => visit_content_map(v, visitor),
+1416:                 _ => Err(self.invalid_type(&visitor)),
+1417:             }
+1418:         }
+1419: 
+1420:         fn deserialize_enum<V>(
+1421:             self,
+1422:             _name: &str,
+1423:             _variants: &'static [&'static str],
+1424:             visitor: V,
+1425:         ) -> Result<V::Value, Self::Error>
+1426:         where
+1427:             V: Visitor<'de>,
+1428:         {
+1429:             let (variant, value) = match self.content {
+1430:                 Content::Map(value) => {
+1431:                     let mut iter = value.into_iter();
+1432:                     let (variant, value) = match iter.next() {
+1433:                         Some(v) => v,
+1434:                         None => {
+1435:                             return Err(de::Error::invalid_value(
+1436:                                 de::Unexpected::Map,
+1437:                                 &"map with a single key",
+1438:                             ));
+1439:                         }
+1440:                     };
+1441:                     // enums are encoded in json as maps with a single key:value pair
+1442:                     if iter.next().is_some() {
+1443:                         return Err(de::Error::invalid_value(
+1444:                             de::Unexpected::Map,
+1445:                             &"map with a single key",
+1446:                         ));
+1447:                     }
+1448:                     (variant, Some(value))
+1449:                 }
+1450:                 s @ Content::String(_) | s @ Content::Str(_) => (s, None),
+1451:                 other => {
+1452:                     return Err(de::Error::invalid_type(
+1453:                         content_unexpected(&other),
+1454:                         &"string or map",
+1455:                     ));
+1456:                 }
+1457:             };
+1458: 
+1459:             visitor.visit_enum(EnumDeserializer::new(variant, value))
+1460:         }
+1461: 
+1462:         fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+1463:         where
+1464:             V: Visitor<'de>,
+1465:         {
+1466:             match self.content {
+1467:                 Content::String(v) => visitor.visit_string(v),
+1468:                 Content::Str(v) => visitor.visit_borrowed_str(v),
+1469:                 Content::ByteBuf(v) => visitor.visit_byte_buf(v),
+1470:                 Content::Bytes(v) => visitor.visit_borrowed_bytes(v),
+1471:                 Content::U8(v) => visitor.visit_u8(v),
+1472:                 Content::U64(v) => visitor.visit_u64(v),
+1473:                 _ => Err(self.invalid_type(&visitor)),
+1474:             }
+1475:         }
+1476: 
+1477:         fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+1478:         where
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.228/src/core/private/content.rs:10-39
+```rust
+10: pub enum Content<'de> {
+11:     Bool(bool),
+12: 
+13:     U8(u8),
+14:     U16(u16),
+15:     U32(u32),
+16:     U64(u64),
+17: 
+18:     I8(i8),
+19:     I16(i16),
+20:     I32(i32),
+21:     I64(i64),
+22: 
+23:     F32(f32),
+24:     F64(f64),
+25: 
+26:     Char(char),
+27:     String(String),
+28:     Str(&'de str),
+29:     ByteBuf(Vec<u8>),
+30:     Bytes(&'de [u8]),
+31: 
+32:     None,
+33:     Some(Box<Content<'de>>),
+34: 
+35:     Unit,
+36:     Newtype(Box<Content<'de>>),
+37:     Seq(Vec<Content<'de>>),
+38:     Map(Vec<(Content<'de>, Content<'de>)>),
+39: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.228/src/core/de/mod.rs:864-1003
+```rust
+ 864: ///    - For example `struct Unit` or `PhantomData<T>`. It represents a named
+ 865: ///      value containing no data.
+ 866: ///  - **unit_variant**
+ 867: ///    - For example the `E::A` and `E::B` in `enum E { A, B }`.
+ 868: ///  - **newtype_struct**
+ 869: ///    - For example `struct Millimeters(u8)`.
+ 870: ///  - **newtype_variant**
+ 871: ///    - For example the `E::N` in `enum E { N(u8) }`.
+ 872: ///  - **seq**
+ 873: ///    - A variably sized heterogeneous sequence of values, for example `Vec<T>`
+ 874: ///      or `HashSet<T>`. When serializing, the length may or may not be known
+ 875: ///      before iterating through all the data. When deserializing, the length
+ 876: ///      is determined by looking at the serialized data.
+ 877: ///  - **tuple**
+ 878: ///    - A statically sized heterogeneous sequence of values for which the
+ 879: ///      length will be known at deserialization time without looking at the
+ 880: ///      serialized data, for example `(u8,)` or `(String, u64, Vec<T>)` or
+ 881: ///      `[u64; 10]`.
+ 882: ///  - **tuple_struct**
+ 883: ///    - A named tuple, for example `struct Rgb(u8, u8, u8)`.
+ 884: ///  - **tuple_variant**
+ 885: ///    - For example the `E::T` in `enum E { T(u8, u8) }`.
+ 886: ///  - **map**
+ 887: ///    - A heterogeneous key-value pairing, for example `BTreeMap<K, V>`.
+ 888: ///  - **struct**
+ 889: ///    - A heterogeneous key-value pairing in which the keys are strings and
+ 890: ///      will be known at deserialization time without looking at the serialized
+ 891: ///      data, for example `struct S { r: u8, g: u8, b: u8 }`.
+ 892: ///  - **struct_variant**
+ 893: ///    - For example the `E::S` in `enum E { S { r: u8, g: u8, b: u8 } }`.
+ 894: ///
+ 895: /// The `Deserializer` trait supports two entry point styles which enables
+ 896: /// different kinds of deserialization.
+ 897: ///
+ 898: /// 1. The `deserialize_any` method. Self-describing data formats like JSON are
+ 899: ///    able to look at the serialized data and tell what it represents. For
+ 900: ///    example the JSON deserializer may see an opening curly brace (`{`) and
+ 901: ///    know that it is seeing a map. If the data format supports
+ 902: ///    `Deserializer::deserialize_any`, it will drive the Visitor using whatever
+ 903: ///    type it sees in the input. JSON uses this approach when deserializing
+ 904: ///    `serde_json::Value` which is an enum that can represent any JSON
+ 905: ///    document. Without knowing what is in a JSON document, we can deserialize
+ 906: ///    it to `serde_json::Value` by going through
+ 907: ///    `Deserializer::deserialize_any`.
+ 908: ///
+ 909: /// 2. The various `deserialize_*` methods. Non-self-describing formats like
+ 910: ///    Postcard need to be told what is in the input in order to deserialize it.
+ 911: ///    The `deserialize_*` methods are hints to the deserializer for how to
+ 912: ///    interpret the next piece of input. Non-self-describing formats are not
+ 913: ///    able to deserialize something like `serde_json::Value` which relies on
+ 914: ///    `Deserializer::deserialize_any`.
+ 915: ///
+ 916: /// When implementing `Deserialize`, you should avoid relying on
+ 917: /// `Deserializer::deserialize_any` unless you need to be told by the
+ 918: /// Deserializer what type is in the input. Know that relying on
+ 919: /// `Deserializer::deserialize_any` means your data type will be able to
+ 920: /// deserialize from self-describing formats only, ruling out Postcard and many
+ 921: /// others.
+ 922: ///
+ 923: /// [Serde data model]: https://serde.rs/data-model.html
+ 924: ///
+ 925: /// # Lifetime
+ 926: ///
+ 927: /// The `'de` lifetime of this trait is the lifetime of data that may be
+ 928: /// borrowed from the input when deserializing. See the page [Understanding
+ 929: /// deserializer lifetimes] for a more detailed explanation of these lifetimes.
+ 930: ///
+ 931: /// [Understanding deserializer lifetimes]: https://serde.rs/lifetimes.html
+ 932: ///
+ 933: /// # Example implementation
+ 934: ///
+ 935: /// The [example data format] presented on the website contains example code for
+ 936: /// a basic JSON `Deserializer`.
+ 937: ///
+ 938: /// [example data format]: https://serde.rs/data-format.html
+ 939: #[cfg_attr(
+ 940:     not(no_diagnostic_namespace),
+ 941:     diagnostic::on_unimplemented(
+ 942:         message = "the trait bound `{Self}: serde::de::Deserializer<'de>` is not satisfied",
+ 943:     )
+ 944: )]
+ 945: pub trait Deserializer<'de>: Sized {
+ 946:     /// The error type that can be returned if some error occurs during
+ 947:     /// deserialization.
+ 948:     type Error: Error;
+ 949: 
+ 950:     /// Require the `Deserializer` to figure out how to drive the visitor based
+ 951:     /// on what data type is in the input.
+ 952:     ///
+ 953:     /// When implementing `Deserialize`, you should avoid relying on
+ 954:     /// `Deserializer::deserialize_any` unless you need to be told by the
+ 955:     /// Deserializer what type is in the input. Know that relying on
+ 956:     /// `Deserializer::deserialize_any` means your data type will be able to
+ 957:     /// deserialize from self-describing formats only, ruling out Postcard and
+ 958:     /// many others.
+ 959:     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 960:     where
+ 961:         V: Visitor<'de>;
+ 962: 
+ 963:     /// Hint that the `Deserialize` type is expecting a `bool` value.
+ 964:     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 965:     where
+ 966:         V: Visitor<'de>;
+ 967: 
+ 968:     /// Hint that the `Deserialize` type is expecting an `i8` value.
+ 969:     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 970:     where
+ 971:         V: Visitor<'de>;
+ 972: 
+ 973:     /// Hint that the `Deserialize` type is expecting an `i16` value.
+ 974:     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 975:     where
+ 976:         V: Visitor<'de>;
+ 977: 
+ 978:     /// Hint that the `Deserialize` type is expecting an `i32` value.
+ 979:     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 980:     where
+ 981:         V: Visitor<'de>;
+ 982: 
+ 983:     /// Hint that the `Deserialize` type is expecting an `i64` value.
+ 984:     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 985:     where
+ 986:         V: Visitor<'de>;
+ 987: 
+ 988:     /// Hint that the `Deserialize` type is expecting an `i128` value.
+ 989:     ///
+ 990:     /// The default behavior unconditionally returns an error.
+ 991:     fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+ 992:     where
+ 993:         V: Visitor<'de>,
+ 994:     {
+ 995:         let _ = visitor;
+ 996:         Err(Error::custom("i128 is not supported"))
+ 997:     }
+ 998: 
+ 999:     /// Hint that the `Deserialize` type is expecting a `u8` value.
+1000:     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+1001:     where
+1002:         V: Visitor<'de>;
+1003: 
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde_json-1.0.150/src/map.rs:29-168
+```rust
+ 29: pub struct Map<K, V> {
+ 30:     map: MapImpl<K, V>,
+ 31: }
+ 32: 
+ 33: #[cfg(not(feature = "preserve_order"))]
+ 34: type MapImpl<K, V> = BTreeMap<K, V>;
+ 35: #[cfg(feature = "preserve_order")]
+ 36: type MapImpl<K, V> = IndexMap<K, V>;
+ 37: 
+ 38: impl Map<String, Value> {
+ 39:     /// Makes a new empty Map.
+ 40:     #[inline]
+ 41:     pub fn new() -> Self {
+ 42:         Map {
+ 43:             map: MapImpl::new(),
+ 44:         }
+ 45:     }
+ 46: 
+ 47:     /// Makes a new empty Map with the given initial capacity.
+ 48:     #[inline]
+ 49:     pub fn with_capacity(capacity: usize) -> Self {
+ 50:         Map {
+ 51:             #[cfg(not(feature = "preserve_order"))]
+ 52:             map: {
+ 53:                 // does not support with_capacity
+ 54:                 let _ = capacity;
+ 55:                 BTreeMap::new()
+ 56:             },
+ 57:             #[cfg(feature = "preserve_order")]
+ 58:             map: IndexMap::with_capacity(capacity),
+ 59:         }
+ 60:     }
+ 61: 
+ 62:     /// Clears the map, removing all values.
+ 63:     #[inline]
+ 64:     pub fn clear(&mut self) {
+ 65:         self.map.clear();
+ 66:     }
+ 67: 
+ 68:     /// Returns a reference to the value corresponding to the key.
+ 69:     ///
+ 70:     /// The key may be any borrowed form of the map's key type, but the ordering
+ 71:     /// on the borrowed form *must* match the ordering on the key type.
+ 72:     #[inline]
+ 73:     pub fn get<Q>(&self, key: &Q) -> Option<&Value>
+ 74:     where
+ 75:         String: Borrow<Q>,
+ 76:         Q: ?Sized + Ord + Eq + Hash,
+ 77:     {
+ 78:         self.map.get(key)
+ 79:     }
+ 80: 
+ 81:     /// Returns true if the map contains a value for the specified key.
+ 82:     ///
+ 83:     /// The key may be any borrowed form of the map's key type, but the ordering
+ 84:     /// on the borrowed form *must* match the ordering on the key type.
+ 85:     #[inline]
+ 86:     pub fn contains_key<Q>(&self, key: &Q) -> bool
+ 87:     where
+ 88:         String: Borrow<Q>,
+ 89:         Q: ?Sized + Ord + Eq + Hash,
+ 90:     {
+ 91:         self.map.contains_key(key)
+ 92:     }
+ 93: 
+ 94:     /// Returns a mutable reference to the value corresponding to the key.
+ 95:     ///
+ 96:     /// The key may be any borrowed form of the map's key type, but the ordering
+ 97:     /// on the borrowed form *must* match the ordering on the key type.
+ 98:     #[inline]
+ 99:     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut Value>
+100:     where
+101:         String: Borrow<Q>,
+102:         Q: ?Sized + Ord + Eq + Hash,
+103:     {
+104:         self.map.get_mut(key)
+105:     }
+106: 
+107:     /// Returns the key-value pair matching the given key.
+108:     ///
+109:     /// The key may be any borrowed form of the map's key type, but the ordering
+110:     /// on the borrowed form *must* match the ordering on the key type.
+111:     #[inline]
+112:     pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&String, &Value)>
+113:     where
+114:         String: Borrow<Q>,
+115:         Q: ?Sized + Ord + Eq + Hash,
+116:     {
+117:         self.map.get_key_value(key)
+118:     }
+119: 
+120:     /// Inserts a key-value pair into the map.
+121:     ///
+122:     /// If the map did not have this key present, `None` is returned.
+123:     ///
+124:     /// If the map did have this key present, the value is updated, and the old
+125:     /// value is returned.
+126:     #[inline]
+127:     pub fn insert(&mut self, k: String, v: Value) -> Option<Value> {
+128:         self.map.insert(k, v)
+129:     }
+130: 
+131:     /// Insert a key-value pair in the map at the given index.
+132:     ///
+133:     /// If the map did not have this key present, `None` is returned.
+134:     ///
+135:     /// If the map did have this key present, the key is moved to the new
+136:     /// position, the value is updated, and the old value is returned.
+137:     #[cfg(feature = "preserve_order")]
+138:     #[cfg_attr(docsrs, doc(cfg(feature = "preserve_order")))]
+139:     #[inline]
+140:     pub fn shift_insert(&mut self, index: usize, k: String, v: Value) -> Option<Value> {
+141:         self.map.shift_insert(index, k, v)
+142:     }
+143: 
+144:     /// Removes a key from the map, returning the value at the key if the key
+145:     /// was previously in the map.
+146:     ///
+147:     /// The key may be any borrowed form of the map's key type, but the ordering
+148:     /// on the borrowed form *must* match the ordering on the key type.
+149:     ///
+150:     /// If serde_json's "preserve_order" is enabled, `.remove(key)` is
+151:     /// equivalent to [`.swap_remove(key)`][Self::swap_remove], replacing this
+152:     /// entry's position with the last element. If you need to preserve the
+153:     /// relative order of the keys in the map, use
+154:     /// [`.shift_remove(key)`][Self::shift_remove] instead.
+155:     #[inline]
+156:     pub fn remove<Q>(&mut self, key: &Q) -> Option<Value>
+157:     where
+158:         String: Borrow<Q>,
+159:         Q: ?Sized + Ord + Eq + Hash,
+160:     {
+161:         #[cfg(feature = "preserve_order")]
+162:         return self.swap_remove(key);
+163:         #[cfg(not(feature = "preserve_order"))]
+164:         return self.map.remove(key);
+165:     }
+166: 
+167:     /// Removes a key from the map, returning the stored key and value if the
+168:     /// key was previously in the map.
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/binary/tape.rs:1033-1052
+```rust
+1033: 
+1034:     #[test]
+1035:     fn test_string_keys() {
+1036:         let mut data = vec![0xcc, 0x29, 0x01, 0x00, 0x03, 0x00, 0x0f, 0x00, 0x11, 0x00];
+1037:         data.extend_from_slice(b"schools_initiated");
+1038:         data.extend_from_slice(&[0x01, 0x00, 0x0f, 0x00, 0x0b, 0x00]);
+1039:         data.extend_from_slice(b"1444.11.11\n");
+1040:         data.extend_from_slice(&LexemeId::CLOSE.0.to_le_bytes());
+1041:         let tape = parse(&data[..]).unwrap();
+1042:         assert_eq!(
+1043:             tape.token_tape,
+1044:             vec![
+1045:                 BinaryToken::Token(0x29cc),
+1046:                 BinaryToken::Object(4),
+1047:                 BinaryToken::Quoted(Scalar::new(b"schools_initiated")),
+1048:                 BinaryToken::Quoted(Scalar::new(b"1444.11.11\n")),
+1049:                 BinaryToken::End(1),
+1050:             ]
+1051:         );
+1052:     }
+```
+
+src/binary/de.rs:1487-1528
+```rust
+1487: 
+1488: fn visit_key<'b, 'de: 'b, 'res: 'de, RES: TokenResolver, F: BinaryFlavor, V: Visitor<'de>>(
+1489:     tape_idx: usize,
+1490:     tokens: &'b [BinaryToken<'de>],
+1491:     config: &'b BinaryConfig<'res, RES, F>,
+1492:     visitor: V,
+1493: ) -> Result<V::Value, Error> {
+1494:     match tokens[tape_idx] {
+1495:         BinaryToken::Object(_)
+1496:         | BinaryToken::Array(_)
+1497:         | BinaryToken::End(_)
+1498:         | BinaryToken::Rgb(_) => Err(Error::from(DeserializeError {
+1499:             kind: DeserializeErrorKind::Unsupported(String::from("unable to deserialize key type")),
+1500:         })),
+1501:         BinaryToken::MixedContainer | BinaryToken::Equal => visitor.visit_unit(),
+1502:         BinaryToken::Bool(x) => visitor.visit_bool(x),
+1503:         BinaryToken::U32(x) => visitor.visit_u32(x),
+1504:         BinaryToken::U64(x) => visitor.visit_u64(x),
+1505:         BinaryToken::I64(x) => visitor.visit_i64(x),
+1506:         BinaryToken::I32(x) => visitor.visit_i32(x),
+1507:         BinaryToken::Quoted(x) | BinaryToken::Unquoted(x) => {
+1508:             match config.flavor.decode(x.as_bytes()) {
+1509:                 Cow::Borrowed(s) => visitor.visit_borrowed_str(s),
+1510:                 Cow::Owned(s) => visitor.visit_string(s),
+1511:             }
+1512:         }
+1513:         BinaryToken::F32(x) => visitor.visit_f32(config.flavor.visit_f32(x)),
+1514:         BinaryToken::F64(x) => visitor.visit_f64(config.flavor.visit_f64(x)),
+1515:         BinaryToken::Token(s) => match config.resolver.resolve(s) {
+1516:             Some(id) => visitor.visit_borrowed_str(id),
+1517:             None => match config.failed_resolve_strategy {
+1518:                 FailedResolveStrategy::Error => Err(Error::from(DeserializeError {
+1519:                     kind: DeserializeErrorKind::UnknownToken { token_id: s },
+1520:                 })),
+1521:                 FailedResolveStrategy::Stringify => visitor.visit_string(format!("0x{:x}", s)),
+1522:                 FailedResolveStrategy::Ignore => {
+1523:                     visitor.visit_borrowed_str("__internal_identifier_ignore")
+1524:                 }
+1525:             },
+1526:         },
+1527:     }
+1528: }
+```
+
+src/binary/tape.rs:1108-1133
+```rust
+1108: 
+1109:     #[test]
+1110:     fn test_empty_objects_to_skip1() {
+1111:         let data = [
+1112:             0x38, 0x28, 0x01, 0x00, 0x03, 0x00, 0x63, 0x28, 0x01, 0x00, 0x17, 0x00, 0x07, 0x00,
+1113:             0x77, 0x65, 0x73, 0x74, 0x65, 0x72, 0x6e, 0x03, 0x00, 0x04, 0x00, 0x03, 0x00, 0x04,
+1114:             0x00, 0x03, 0x00, 0x04, 0x00, 0x03, 0x00, 0x04, 0x00, 0x03, 0x00, 0x04, 0x00, 0x03,
+1115:             0x00, 0x04, 0x00, 0x03, 0x00, 0x04, 0x00, 0x03, 0x00, 0x04, 0x00, 0x03, 0x00, 0x04,
+1116:             0x00, 0x0f, 0x00, 0x09, 0x00, 0x31, 0x34, 0x34, 0x36, 0x2e, 0x35, 0x2e, 0x33, 0x31,
+1117:             0x01, 0x00, 0x38, 0x28, 0x04, 0x00,
+1118:         ];
+1119: 
+1120:         let tape = parse(&data[..]).unwrap();
+1121:         assert_eq!(
+1122:             tape.token_tape,
+1123:             vec![
+1124:                 BinaryToken::Token(0x2838),
+1125:                 BinaryToken::Object(6),
+1126:                 BinaryToken::Token(0x2863),
+1127:                 BinaryToken::Unquoted(Scalar::new(b"western")),
+1128:                 BinaryToken::Quoted(Scalar::new(b"1446.5.31")),
+1129:                 BinaryToken::Token(0x2838),
+1130:                 BinaryToken::End(1),
+1131:             ]
+1132:         );
+1133:     }
+```
+
+src/binary/de.rs:1570-1594
+```rust
+1570: 
+1571:     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+1572:     where
+1573:         V: Visitor<'de>,
+1574:     {
+1575:         let idx = self.value_ind;
+1576:         match &self.tokens[idx] {
+1577:             BinaryToken::Array(x) => visitor.visit_seq(BinarySequence {
+1578:                 config: self.config,
+1579:                 tokens: self.tokens,
+1580:                 idx: idx + 1,
+1581:                 end_idx: *x,
+1582:             }),
+1583:             BinaryToken::Rgb(x) => visitor.visit_seq(ColorSequence::new(*x)),
+1584:             BinaryToken::Object(x) => {
+1585:                 visitor.visit_map(BinaryMap::new(self.config, self.tokens, idx + 1, *x))
+1586:             }
+1587:             BinaryToken::End(_x) => Err(Error::from(DeserializeError {
+1588:                 kind: DeserializeErrorKind::Unsupported(String::from(
+1589:                     "encountered end when trying to deserialize",
+1590:                 )),
+1591:             })),
+1592:             _ => visit_key(idx, self.tokens, self.config, visitor),
+1593:         }
+1594:     }
+```
+
+src/binary/tape.rs:959-984
+```rust
+959: 
+960:     #[test]
+961:     fn test_string_array() {
+962:         let data = [
+963:             0xe1, 0x2e, 0x01, 0x00, 0x03, 0x00, 0x0f, 0x00, 0x0a, 0x00, 0x41, 0x72, 0x74, 0x20,
+964:             0x6f, 0x66, 0x20, 0x57, 0x61, 0x72, 0x0f, 0x00, 0x14, 0x00, 0x43, 0x6f, 0x6e, 0x71,
+965:             0x75, 0x65, 0x73, 0x74, 0x20, 0x6f, 0x66, 0x20, 0x50, 0x61, 0x72, 0x61, 0x64, 0x69,
+966:             0x73, 0x65, 0x0f, 0x00, 0x0b, 0x00, 0x52, 0x65, 0x73, 0x20, 0x50, 0x75, 0x62, 0x6c,
+967:             0x69, 0x63, 0x61, 0x0f, 0x00, 0x11, 0x00, 0x57, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x20,
+968:             0x6f, 0x66, 0x20, 0x4e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x04, 0x00,
+969:         ];
+970: 
+971:         let tape = parse(&data[..]).unwrap();
+972:         assert_eq!(
+973:             tape.token_tape,
+974:             vec![
+975:                 BinaryToken::Token(0x2ee1),
+976:                 BinaryToken::Array(6),
+977:                 BinaryToken::Quoted(Scalar::new(b"Art of War")),
+978:                 BinaryToken::Quoted(Scalar::new(b"Conquest of Paradise")),
+979:                 BinaryToken::Quoted(Scalar::new(b"Res Publica")),
+980:                 BinaryToken::Quoted(Scalar::new(b"Wealth of Nations")),
+981:                 BinaryToken::End(1),
+982:             ]
+983:         );
+984:     }
+```
+
+src/buffer.rs:126-140
+```rust
+126: 
+127:     #[test]
+128:     fn buffer_window_unsafe_paths_instantiate() {
+129:         let data = b"abcdef";
+130:         let mut window = BufferWindow::from_slice(data);
+131: 
+132:         window.advance(1);
+133:         let _ = window.window();
+134:         let _ = window.window_len();
+135:         let _ = window.consumed_data();
+136:         let _ = window.get(window.start..window.end);
+137: 
+138:         window.buf = vec![0; 8].into_boxed_slice();
+139:         let _ = window.fill_buf(Cursor::new(b"ghij"));
+140:     }
+```
+
+src/text/tape.rs:507-586
+```rust
+507:     #[inline]
+508:     pub fn parse(&mut self) -> Result<(), Error> {
+509:         let mut data = self.data;
+510:         let mut state = ParseState::Key;
+511: 
+512:         self.utf8_bom = data.get(..3).map_or(false, |x| x == [0xef, 0xbb, 0xbf]);
+513:         if self.utf8_bom {
+514:             data = &data[3..];
+515:         }
+516: 
+517:         let mut mixed_mode = false;
+518:         let mut parent_ind = 0;
+519:         loop {
+520:             let d = match self.skip_ws_t(data) {
+521:                 Some(d) => d,
+522:                 None => {
+523:                     if state != ParseState::Key {
+524:                         return Err(Error::eof());
+525:                     }
+526: 
+527:                     if parent_ind == 0 {
+528:                         return Ok(());
+529:                     } else {
+530:                         // Support for files that don't have enough closing brackets (ugh)
+531:                         let grand_ind = match self.token_tape.get(parent_ind) {
+532:                             Some(TextToken::Array { end, .. }) => *end,
+533:                             Some(TextToken::Object { end, .. }) => *end,
+534:                             _ => 0,
+535:                         };
+536: 
+537:                         if grand_ind == 0 {
+538:                             let end = self.token_tape.len();
+539:                             self.token_tape.push(TextToken::End(parent_ind));
+540:                             self.token_tape[parent_ind] = TextToken::Object { end, mixed: false };
+541:                             return Ok(());
+542:                         } else {
+543:                             return Err(Error::eof());
+544:                         }
+545:                     }
+546:                 }
+547:             };
+548: 
+549:             data = d;
+550:             match state {
+551:                 ParseState::Key => {
+552:                     match data[0] {
+553:                         b'}' | b']' => {
+554:                             let saved_mixed = mixed_mode;
+555:                             let grand_ind = match self.token_tape.get(parent_ind) {
+556:                                 Some(TextToken::Array { end, .. }) => *end,
+557:                                 Some(TextToken::Object { end, .. }) => *end,
+558:                                 _ => 0,
+559:                             };
+560: 
+561:                             match self.token_tape.get(grand_ind) {
+562:                                 Some(TextToken::Array { mixed, .. }) => {
+563:                                     mixed_mode = *mixed;
+564:                                     state = ParseState::ArrayValue;
+565:                                 }
+566:                                 Some(TextToken::Object { mixed, .. }) => {
+567:                                     mixed_mode = *mixed;
+568:                                     state = if mixed_mode {
+569:                                         ParseState::ArrayValue
+570:                                     } else {
+571:                                         ParseState::Key
+572:                                     }
+573:                                 }
+574:                                 _ => {
+575:                                     mixed_mode = false;
+576:                                     state = ParseState::Key;
+577:                                 }
+578:                             };
+579: 
+580:                             let end_idx = self.token_tape.len();
+581:                             if parent_ind == 0 && grand_ind == 0 {
+582:                                 // Allow extraneous close braces to support malformatted game files (ugh)
+583:                                 data = &data[1..];
+584:                                 continue;
+585:                             }
+586: 
+```
+
+src/binary/tape.rs:910-925
+```rust
+910: 
+911:     #[test]
+912:     fn test_string1_event() {
+913:         let data = [
+914:             0x82, 0x2d, 0x01, 0x00, 0x0f, 0x00, 0x03, 0x00, 0x45, 0x4e, 0x47,
+915:         ];
+916: 
+917:         let tape = parse(&data[..]).unwrap();
+918:         assert_eq!(
+919:             tape.token_tape,
+920:             vec![
+921:                 BinaryToken::Token(0x2d82),
+922:                 BinaryToken::Quoted(Scalar::new(b"ENG")),
+923:             ]
+924:         );
+925:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-buffer-rs-45-28
+
+Rule id: rule-302-rustc-1_87-line880
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-buffer-rs-45-28`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-buffer-rs-45-28`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-buffer-rs-45-28` and reproduce the target counterexample there.
+KLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.
+The metadata caller `buffer::BufferWindow::advance` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 122548914225152; get_arg(1) = 2; get_arg(2) = 1; target counterexample query was unsat.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer.rs">
+```rust
+use crate::Scalar;
+use std::{io::Read, ops::Range};
+#[derive(Debug)]
+pub struct BufferWindow {
+    pub buf: Box<[u8]>,
+    start_buf: *const u8,
+    pub start: *const u8,
+    pub end: *const u8,
+    pub prior_reads: usize,
+}
+pub enum BufferError {
+    Io(std::io::Error),
+    BufferFull,
+}
+impl BufferWindow {
+    #[inline]
+    pub fn from_slice(data: &[u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn advance_to(&mut self, ptr: *const u8) {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn advance(&mut self, amt: usize) {
+        let ptr = unsafe {
+            let __klee_arg0 = &self.start;
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg0);
+            klee_ext_bind::bind_arg_u64_value(1, &amt);
+            klee_ext_bind::callsite!("src-buffer-rs-45-28");
+            let mut __klee_ret_src_buffer_rs_45_28_add = __klee_arg0.add(amt);
+            __klee_ret_src_buffer_rs_45_28_add
+        };
+        debug_assert!((self.start..= self.end).contains(& ptr));
+        self.start = ptr;
+    }
+    #[inline(never)]
+    pub fn window(&self) -> &[u8] {
+        unsafe {
+            let __klee_arg1 = self.start;
+            let __klee_arg2 = self.window_len();
+            klee_ext_bind::callsite!("src-buffer-rs-52-18");
+            let mut __klee_ret_src_buffer_rs_52_18_from_raw_parts = std::slice::from_raw_parts(
+                __klee_arg1,
+                __klee_arg2,
+            );
+            __klee_ret_src_buffer_rs_52_18_from_raw_parts
+        }
+    }
+    #[inline(never)]
+    pub fn window_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn position(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn consumed_data(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn get(&self, range: Range<*const u8>) -> Scalar {
+        /* body omitted: interface retained */
+    }
+    /// This seems similar to `BufRead::fill_buf`, but whereas the `BufRead`
+    /// will only call the underlying read if the buffer is currently empty,
+    /// this function will copy over the bytes that haven't been consumed to the
+    /// start.
+    #[inline(never)]
+    pub fn fill_buf(&mut self, mut reader: impl Read) -> Result<usize, BufferError> {
+        /* body omitted: interface retained */
+    }
+}
+#[derive(Debug)]
+pub struct BufferWindowBuilder {
+    buffer: Option<Box<[u8]>>,
+    buffer_len: usize,
+}
+impl Default for BufferWindowBuilder {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl BufferWindowBuilder {
+    #[inline]
+    pub fn buffer(mut self, val: Box<[u8]>) -> BufferWindowBuilder {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn buffer_len(mut self, val: usize) -> BufferWindowBuilder {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn build(self) -> BufferWindow {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+/*!
+
+A low level, performance oriented parser for save and game files from [Paradox Development Studio](https://en.wikipedia.org/wiki/Paradox_Development_Studio) titles (eg: Europa Universalis (EU4), Hearts of Iron (HOI4), and Crusader Kings (CK3), Imperator, Stellaris, and Victoria).
+
+For an in-depth look at the Paradox Clausewitz format and the pitfalls that come
+trying to support all variations, consult [the write-up](https://pdx.tools/blog/a-tour-of-pds-clausewitz-syntax). In short, it's extremely difficult to write a robust and
+fast parser that abstracts over the format difference between games as well as differences between game patches. Jomini hits the sweet spot between flexibility while still being ergonomic.
+
+Jomini is the cornerstone of the [online EU4 save file
+analyzer](https://pdx.tools). This library also powers the [Paradox Game
+Converters](https://github.com/ParadoxGameConverters) and
+[pdxu](https://github.com/crschnick/pdx_unlimiter).
+
+## Features
+
+- ✔ Versatile: Handle both plaintext and binary encoded data
+- ✔ Fast: Parse data at over 1 GB/s
+- ✔ Small: Compile with zero dependencies
+- ✔ Safe: Extensively fuzzed against potential malicious input
+- ✔ Ergonomic: Use [serde](https://serde.rs/derive.html)-like macros to have parsing logic automatically implemented
+- ✔ Embeddable: Cross platform native apps, statically compiled services, or in the browser via [Wasm](https://webassembly.org/)
+
+## Quick Start
+
+Below is a demonstration of deserializing plaintext data using serde.
+Several additional serde-like attributes are used to reconcile the serde
+data model with structure of these files.
+
+```rust
+# #[cfg(feature = "derive")] {
+use jomini::{
+    text::{Operator, Property},
+    JominiDeserialize,
+};
+
+#[derive(JominiDeserialize, PartialEq, Debug)]
+pub struct Model {
+    human: bool,
+    first: Option<u16>,
+    third: Property<u16>,
+    #[jomini(alias = "forth")]
+    fourth: u16,
+    #[jomini(alias = "core", duplicated)]
+    cores: Vec<String>,
+    names: Vec<String>,
+    #[jomini(take_last)]
+    checksum: String,
+}
+
+let data = br#"
+    human = yes
+    third < 5
+    forth = 10
+    core = "HAB"
+    names = { "Johan" "Frederick" }
+    core = FRA
+    checksum = "first"
+    checksum = "second"
+"#;
+
+let expected = Model {
+    human: true,
+    first: None,
+    third: Property::new(Operator::LessThan, 5),
+    fourth: 10,
+    cores: vec!["HAB".to_string(), "FRA".to_string()],
+    names: vec!["Johan".to_string(), "Frederick".to_string()],
+    checksum: "second".to_string(),
+};
+
+let actual: Model = jomini::text::de::from_windows1252_slice(data)?;
+assert_eq!(actual, expected);
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+## Binary Deserialization
+
+Deserializing data encoded in the binary format is done in a similar fashion but with a couple extra steps for the caller to supply:
+
+- How text should be decoded (typically Windows-1252 or UTF-8)
+- How rational (floating point) numbers are decoded
+- How tokens, which are 16 bit integers that uniquely identify strings, are resolved
+
+Implementors be warned, not only does each Paradox game have a different binary format, but the binary format can vary between patches!
+
+Below is an example that defines a sample binary format and uses a hashmap token lookup.
+
+```rust
+# #[cfg(feature = "derive")] {
+use jomini::{Encoding, JominiDeserialize, Windows1252Encoding, binary::BinaryFlavor};
+use std::{borrow::Cow, collections::HashMap};
+
+#[derive(JominiDeserialize, PartialEq, Debug)]
+struct MyStruct {
+    field1: String,
+}
+
+#[derive(Debug, Default)]
+pub struct BinaryTestFlavor;
+
+impl BinaryFlavor for BinaryTestFlavor {
+    fn visit_f32(&self, data: [u8; 4]) -> f32 {
+        f32::from_le_bytes(data)
+    }
+
+    fn visit_f64(&self, data: [u8; 8]) -> f64 {
+        f64::from_le_bytes(data)
+    }
+}
+
+impl Encoding for BinaryTestFlavor {
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        Windows1252Encoding::decode(data)
+    }
+}
+
+let data = [ 0x82, 0x2d, 0x01, 0x00, 0x0f, 0x00, 0x03, 0x00, 0x45, 0x4e, 0x47 ];
+
+let mut map = HashMap::new();
+map.insert(0x2d82, "field1");
+
+let actual: MyStruct = BinaryTestFlavor.deserialize_slice(&data[..], &map)?;
+assert_eq!(actual, MyStruct { field1: "ENG".to_string() });
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+When done correctly, one can use the same structure to represent both the plaintext and binary data
+without any duplication.
+
+One can configure the behavior when a token is unknown (ie: fail immediately or try to continue).
+
+### Direct identifier deserialization with `token` attribute
+
+There may be some performance loss during binary deserialization as
+tokens are resolved to strings via a `TokenResolver` and then matched against the
+string representations of a struct's fields.
+
+We can fix this issue by directly encoding the expected token value into the struct:
+
+```rust
+# #[cfg(feature = "derive")] {
+# use jomini::{Encoding, JominiDeserialize, Windows1252Encoding, BinaryDeserializer};
+# use std::{borrow::Cow, collections::HashMap};
+#
+# #[derive(Debug, Default)]
+# pub struct BinaryTestFlavor;
+#
+# impl jomini::binary::BinaryFlavor for BinaryTestFlavor {
+#     fn visit_f32(&self, data: [u8; 4]) -> f32 {
+#         f32::from_le_bytes(data)
+#     }
+#
+#     fn visit_f64(&self, data: [u8; 8]) -> f64 {
+#         f64::from_le_bytes(data)
+#     }
+# }
+#
+# impl Encoding for BinaryTestFlavor {
+#     fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+#         Windows1252Encoding::decode(data)
+#     }
+# }
+#
+# let data = [ 0x82, 0x2d, 0x01, 0x00, 0x0f, 0x00, 0x03, 0x00, 0x45, 0x4e, 0x47 ];
+#
+#[derive(JominiDeserialize, PartialEq, Debug)]
+struct MyStruct {
+    #[jomini(token = 0x2d82)]
+    field1: String,
+}
+
+// Empty token to string resolver
+let map = HashMap::<u16, String>::new();
+
+let actual: MyStruct = BinaryDeserializer::builder_flavor(BinaryTestFlavor)
+    .deserialize_slice(&data[..], &map)?;
+assert_eq!(actual, MyStruct { field1: "ENG".to_string() });
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+Couple notes:
+- This does not obviate need for the token to string resolver as tokens may be used as values.
+- If the `token` attribute is specified on one field on a struct, it must be specified on all fields of that struct.
+
+## Caveats
+
+Before calling any Jomini API, callers are expected to:
+
+- Determine the correct format (text or binary) ahead of time.
+- Strip off any header that may be present (eg: `EU4txt` / `EU4bin`)
+- Provide the token resolver for the binary format
+- Provide the conversion to reconcile how, for example, a date may be encoded as an integer in
+  the binary format, but as a string when in plaintext.
+
+## The Mid-level API
+
+If the automatic deserialization via `JominiDeserialize` is too high level, there is a mid-level
+api where one can easily iterate through the parsed document and interrogate fields for
+their information.
+
+```rust
+use jomini::TextTape;
+
+let data = b"name=aaa name=bbb core=123 name=ccc name=ddd";
+let tape = TextTape::from_slice(data).unwrap();
+let reader = tape.windows1252_reader();
+
+for (key, _op, value) in reader.fields() {
+    println!("{:?}={:?}", key.read_str(), value.read_str().unwrap());
+}
+```
+
+For even lower level of parisng, see the respective [binary] and [text] module documentation.
+
+*/
+#![cfg_attr(
+    feature = "json",
+    doc = r##"
+### JSON
+
+The mid-level API also provides the excellent utility of converting the
+plaintext Clausewitz format to JSON when the `json` feature is enabled.
+
+```rust
+use jomini::TextTape;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let tape = TextTape::from_slice(b"foo=bar")?;
+let reader = tape.windows1252_reader();
+let actual = reader.json().to_string();
+assert_eq!(actual, r#"{"foo":"bar"}"#);
+# Ok(())
+# }
+```
+"##
+)]
+/*!
+
+## Write API
+
+There are two targeted use cases for the write API. One is when a text tape is on hand.
+This is useful when one needs to reformat a document (note that comments are not
+preserved):
+
+```rust
+use jomini::{TextTape, TextWriterBuilder};
+
+let tape = TextTape::from_slice(b"hello   = world")?;
+let mut out: Vec<u8> = Vec::new();
+let mut writer = TextWriterBuilder::new().from_writer(&mut out);
+writer.write_tape(&tape)?;
+assert_eq!(&out, b"hello=world");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+The writer normalizes any formatting issues. The writer is not able to
+losslessly write all parsed documents, but these are limited to truly
+esoteric situations and hope to be resolved in future releases.
+
+The other use case is geared more towards incremental writing that can be
+found in melters or those crafting documents by hand. These use cases need to
+manually drive the writer:
+
+```rust
+use jomini::TextWriterBuilder;
+let mut out: Vec<u8> = Vec::new();
+let mut writer = TextWriterBuilder::new().from_writer(&mut out);
+writer.write_unquoted(b"hello")?;
+writer.write_unquoted(b"world")?;
+writer.write_unquoted(b"foo")?;
+writer.write_unquoted(b"bar")?;
+assert_eq!(&out, b"hello=world\nfoo=bar");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+*/
+#![warn(missing_docs)]
+pub mod binary;
+pub(crate) mod buffer;
+pub mod common;
+mod copyless;
+mod data;
+#[cfg(feature = "derive")]
+pub(crate) mod de;
+mod encoding;
+mod errors;
+#[cfg(feature = "json")]
+pub mod json;
+mod scalar;
+pub mod text;
+pub(crate) mod util;
+
+#[doc(inline)]
+pub use self::binary::{BinaryTape, BinaryToken};
+pub use self::encoding::*;
+pub use self::errors::*;
+pub use self::scalar::{Scalar, ScalarError};
+#[doc(inline)]
+pub use self::text::{TextTape, TextToken, TextWriter, TextWriterBuilder};
+
+#[cfg(feature = "derive")]
+#[doc(inline)]
+pub use self::{binary::de::BinaryDeserializer, text::de::TextDeserializer};
+#[cfg(feature = "derive")]
+pub use jomini_derive::*;
+```
+</file>
+
+<file path="src/scalar.rs">
+```rust
+use crate::decode_windows1252;
+use std::convert::TryFrom;
+use std::error;
+use std::fmt;
+
+/// An error that can occur when converting a scalar into the requested type.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScalarError {
+    /// The scalar did not contain only numbers
+    AllDigits,
+
+    /// The scalar caused an overflow when calculating its numerical value
+    Overflow,
+
+    /// The scalar was not a recognized boolean value
+    InvalidBool,
+
+    /// The scalar would lose precision if the given float was returned
+    PrecisionLoss(f64),
+}
+
+impl fmt::Display for ScalarError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl error::Error for ScalarError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A byte slice that represents a single value.
+///
+/// A scalars does not carry with it an encoding, so an appropriate encoder must be used
+/// if text is wished to be extracted from a scalar
+///
+/// ```
+/// use jomini::Scalar;
+///
+/// let v1 = Scalar::new(b"10");
+/// assert_eq!(v1.to_u64(), Ok(10));
+/// assert_eq!(v1.to_i64(), Ok(10));
+/// assert_eq!(v1.to_f64(), Ok(10.0));
+/// assert!(v1.to_bool().is_err());
+/// ```
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub struct Scalar<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> Scalar<'a> {
+    /// Create a new scalar backed by a byte slice
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Scalar<'a> {
+        /* body omitted: interface retained */
+    }
+
+    /// View the raw data
+    #[inline]
+    pub fn as_bytes(self) -> &'a [u8] {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to f64
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"1.000");
+    /// assert_eq!(v1.to_f64(), Ok(1.0));
+    ///
+    /// let v2 = Scalar::new(b"-5.67821");
+    /// assert_eq!(v2.to_f64(), Ok(-5.67821));
+    /// ```
+    #[inline]
+    pub fn to_f64(self) -> Result<f64, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to boolean, only "yes" and "no" can be mapped:
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"yes");
+    /// assert_eq!(v1.to_bool(), Ok(true));
+    ///
+    /// let v2 = Scalar::new(b"no");
+    /// assert_eq!(v2.to_bool(), Ok(false));
+    /// ```
+    #[inline]
+    pub fn to_bool(self) -> Result<bool, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to i64
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"-50");
+    /// assert_eq!(v1.to_i64(), Ok(-50));
+    ///
+    /// let v2 = Scalar::new(b"120");
+    /// assert_eq!(v2.to_i64(), Ok(120));
+    /// ```
+    #[inline]
+    pub fn to_i64(self) -> Result<i64, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Try converting the scalar to u64
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"50");
+    /// assert_eq!(v1.to_i64(), Ok(50));
+    ///
+    /// let v2 = Scalar::new(b"120");
+    /// assert_eq!(v2.to_i64(), Ok(120));
+    /// ```
+    #[inline]
+    pub fn to_u64(self) -> Result<u64, ScalarError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns if the scalar contains only ascii values
+    ///
+    /// ```
+    /// use jomini::Scalar;
+    ///
+    /// let v1 = Scalar::new(b"a");
+    /// assert!(v1.is_ascii());
+    ///
+    /// let v2 = Scalar::new(&[255][..]);
+    /// assert!(!v2.is_ascii());
+    /// ```
+    #[inline]
+    pub fn is_ascii(self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> fmt::Debug for Scalar<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> fmt::Display for Scalar<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+#[inline]
+fn to_bool(d: &[u8]) -> Result<bool, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+/// Inspired by https://github.com/lemire/fast_double_parser
+#[inline]
+fn to_f64(d: &[u8]) -> Result<f64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn to_i64(d: &[u8]) -> Result<i64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+pub(crate) fn to_i64_t(d: &[u8]) -> Result<(i64, &[u8]), ScalarError> {
+    /* body omitted: interface retained */
+}
+
+/// Convert a buffer to an u64. This function is micro-optimized for small
+/// inputs. Previous implementations had higher throughput on larger input but
+/// couldn't parse small inputs as quickly. Micro-optimizing this function for
+/// small inputs shaved ~7% off deserializing 120MB save as 10% of all time
+/// was spent in this function. Dates are a common occurrence of numbers that
+/// are 1-4 digits in length
+#[inline]
+pub(crate) fn to_u64(d: &[u8]) -> Result<u64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+/// Similar to `to_u64` except a plus sign is not allowed
+#[inline]
+pub(crate) fn to_u64_t(d: &[u8], start: u64) -> Result<(u64, &[u8]), ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn to_u64_t2(d: &[u8], start: u64) -> Result<(u64, &[u8]), ScalarError> {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn overflow_mul_add(acc: u64, digit: u8) -> Result<u64, ScalarError> {
+    /* body omitted: interface retained */
+}
+
+const POWER_OF_TEN: [f64; 23] = [
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
+    1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
+];
+```
+</file>
+</rust context>

@@ -1,0 +1,1596 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/c/aegis128l.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-128L key
+pub type Key = [u8; 16];
+/// AEGIS-128L nonce
+pub type Nonce = [u8; 16];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis128l_state {
+    opaque: [u8; 256],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis128l_mac_state {
+    opaque: [u8; 384],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis128l_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128l_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128l_mac_init(st_: *mut aegis128l_mac_state, k: *const u8, npub: *const u8);
+    fn aegis128l_mac_update(
+        st_: *mut aegis128l_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis128l_mac_final(
+        st_: *mut aegis128l_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128l_mac_verify(
+        st_: *mut aegis128l_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128l_mac_reset(st_: *mut aegis128l_mac_state);
+    fn aegis128l_mac_state_clone(
+        dst: *mut aegis128l_mac_state,
+        src: *const aegis128l_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis128L<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-128L authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis128L<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-128L instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 16 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-128L
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-128L
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-128L
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-128L
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis128LMac<const TAG_BYTES: usize> {
+    st: aegis128l_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis128LMac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis128LMac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis128l_mac_state>::uninit();
+        unsafe {
+            aegis128l_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis128LMac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis128l-rs-321-26");
+                let mut __klee_ret_src_c_aegis128l_rs_321_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis128l_rs_321_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis128x2.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-128X2 key
+pub type Key = [u8; 16];
+/// AEGIS-128X2 nonce
+pub type Nonce = [u8; 16];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x2_state {
+    opaque: [u8; 448],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x2_mac_state {
+    opaque: [u8; 704],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis128x2_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x2_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x2_mac_init(
+        st_: *mut aegis128x2_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis128x2_mac_update(
+        st_: *mut aegis128x2_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis128x2_mac_final(
+        st_: *mut aegis128x2_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x2_mac_verify(
+        st_: *mut aegis128x2_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x2_mac_reset(st_: *mut aegis128x2_mac_state);
+    fn aegis128x2_mac_state_clone(
+        dst: *mut aegis128x2_mac_state,
+        src: *const aegis128x2_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis128X2<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-128X2 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis128X2<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-128X2 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 16 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-128X2
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-128X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-128X2
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-128X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis128X2Mac<const TAG_BYTES: usize> {
+    st: aegis128x2_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis128X2Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis128X2Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis128x2_mac_state>::uninit();
+        unsafe {
+            aegis128x2_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis128X2Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis128x2-rs-326-26");
+                let mut __klee_ret_src_c_aegis128x2_rs_326_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis128x2_rs_326_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis128x4.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-128X4 key
+pub type Key = [u8; 16];
+/// AEGIS-128X4 nonce
+pub type Nonce = [u8; 16];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x4_state {
+    opaque: [u8; 832],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis128x4_mac_state {
+    opaque: [u8; 1344],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis128x4_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x4_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis128x4_mac_init(
+        st_: *mut aegis128x4_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis128x4_mac_update(
+        st_: *mut aegis128x4_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis128x4_mac_final(
+        st_: *mut aegis128x4_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x4_mac_verify(
+        st_: *mut aegis128x4_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis128x4_mac_reset(st_: *mut aegis128x4_mac_state);
+    fn aegis128x4_mac_state_clone(
+        dst: *mut aegis128x4_mac_state,
+        src: *const aegis128x4_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis128X4<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-128X4 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis128X4<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-128X4 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 16 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-128X4
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-128X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-128X4
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-128X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis128X4Mac<const TAG_BYTES: usize> {
+    st: aegis128x4_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis128X4Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis128X4Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis128x4_mac_state>::uninit();
+        unsafe {
+            aegis128x4_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis128X4Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis128x4-rs-325-26");
+                let mut __klee_ret_src_c_aegis128x4_rs_325_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis128x4_rs_325_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis256.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-256 key
+pub type Key = [u8; 32];
+/// AEGIS-256 nonce
+pub type Nonce = [u8; 32];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(16))]
+#[derive(Debug)]
+struct aegis256_state {
+    opaque: [u8; 192],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(16))]
+#[derive(Debug)]
+struct aegis256_mac_state {
+    opaque: [u8; 288],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis256_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256_mac_init(st_: *mut aegis256_mac_state, k: *const u8, npub: *const u8);
+    fn aegis256_mac_update(
+        st_: *mut aegis256_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis256_mac_final(
+        st_: *mut aegis256_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256_mac_verify(
+        st_: *mut aegis256_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256_mac_reset(st_: *mut aegis256_mac_state);
+    fn aegis256_mac_state_clone(
+        dst: *mut aegis256_mac_state,
+        src: *const aegis256_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis256<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-256 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis256<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-256 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 32 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-256
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-256
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-256
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-256
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis256Mac<const TAG_BYTES: usize> {
+    st: aegis256_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis256Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis256Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis256_mac_state>::uninit();
+        unsafe {
+            aegis256_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis256Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis256-rs-321-26");
+                let mut __klee_ret_src_c_aegis256_rs_321_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis256_rs_321_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis256x2.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-256X2 key
+pub type Key = [u8; 32];
+/// AEGIS-256X2 nonce
+pub type Nonce = [u8; 32];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis256x2_state {
+    opaque: [u8; 320],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+struct aegis256x2_mac_state {
+    opaque: [u8; 512],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis256x2_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x2_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x2_mac_init(
+        st_: *mut aegis256x2_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis256x2_mac_update(
+        st_: *mut aegis256x2_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis256x2_mac_final(
+        st_: *mut aegis256x2_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x2_mac_verify(
+        st_: *mut aegis256x2_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x2_mac_reset(st_: *mut aegis256x2_mac_state);
+    fn aegis256x2_mac_state_clone(
+        dst: *mut aegis256x2_mac_state,
+        src: *const aegis256x2_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis256X2<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-256X2 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis256X2<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-256X2 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 32 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-256X2
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-256X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-256X2
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-256X2
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis256X2Mac<const TAG_BYTES: usize> {
+    st: aegis256x2_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis256X2Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis256X2Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis256x2_mac_state>::uninit();
+        unsafe {
+            aegis256x2_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis256X2Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis256x2-rs-325-26");
+                let mut __klee_ret_src_c_aegis256x2_rs_325_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis256x2_rs_325_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/aegis256x4.rs">
+```rust
+use core::{ffi::c_int, mem::MaybeUninit};
+pub use crate::Error;
+/// AEGIS-256X4 key
+pub type Key = [u8; 32];
+/// AEGIS-256X4 nonce
+pub type Nonce = [u8; 32];
+#[allow(non_camel_case_types, dead_code)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis256x4_state {
+    opaque: [u8; 576],
+}
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug)]
+struct aegis256x4_mac_state {
+    opaque: [u8; 960],
+}
+extern "C" {
+    fn aegis_init() -> c_int;
+    fn aegis256x4_encrypt_detached(
+        c: *mut u8,
+        mac: *mut u8,
+        maclen: usize,
+        m: *const u8,
+        mlen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x4_decrypt_detached(
+        m: *mut u8,
+        c: *const u8,
+        clen: usize,
+        mac: *const u8,
+        maclen: usize,
+        ad: *const u8,
+        adlen: usize,
+        npub: *const u8,
+        k: *const u8,
+    ) -> c_int;
+    fn aegis256x4_mac_init(
+        st_: *mut aegis256x4_mac_state,
+        k: *const u8,
+        npub: *const u8,
+    );
+    fn aegis256x4_mac_update(
+        st_: *mut aegis256x4_mac_state,
+        m: *const u8,
+        mlen: usize,
+    ) -> c_int;
+    fn aegis256x4_mac_final(
+        st_: *mut aegis256x4_mac_state,
+        mac: *mut u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x4_mac_verify(
+        st_: *mut aegis256x4_mac_state,
+        mac: *const u8,
+        maclen: usize,
+    ) -> c_int;
+    fn aegis256x4_mac_reset(st_: *mut aegis256x4_mac_state);
+    fn aegis256x4_mac_state_clone(
+        dst: *mut aegis256x4_mac_state,
+        src: *const aegis256x4_mac_state,
+    );
+}
+#[cfg(feature = "std")]
+static INIT: std::sync::Once = std::sync::Once::new();
+#[cfg(not(feature = "std"))]
+static INITIALIZED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+#[cfg(not(feature = "std"))]
+static INITIALIZING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(
+    false,
+);
+/// Tag length in bytes must be 16 (128 bits) or 32 (256 bits)
+#[derive(Copy, Clone, Debug)]
+pub struct Aegis256X4<const TAG_BYTES: usize> {
+    key: Key,
+    nonce: Nonce,
+}
+/// AEGIS-256X4 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+impl<const TAG_BYTES: usize> Aegis256X4<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new AEGIS-256X4 instance from a key and a nonce.
+    ///
+    /// `key` and `nonce` must be 32 bytes long.
+    ///
+    /// # Panics
+    /// Panics if `TAG_BYTES` is not 16 or 32.
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message using AEGIS-256X4
+    /// # Arguments
+    /// * `m` - Message
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    #[cfg(feature = "std")]
+    pub fn encrypt(self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+    /// Encrypts a message in-place using AEGIS-256X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Encrypted message and authentication tag.
+    pub fn encrypt_in_place(self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message using AEGIS-256X4
+    /// # Arguments
+    /// * `c` - Ciphertext
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    /// # Returns
+    /// Decrypted message.
+    #[cfg(feature = "std")]
+    pub fn decrypt(
+        &self,
+        c: &[u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Decrypts a message in-place using AEGIS-256X4
+    /// # Arguments
+    /// * `mc` - Input and output buffer
+    /// * `tag` - Authentication tag
+    /// * `ad` - Associated data
+    pub fn decrypt_in_place(
+        &self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// AEGIS, used as a MAC, with support for incremental updates.
+///
+/// The state can be cloned to authenticate multiple messages with the same key.
+///
+/// 256-bit output tags are recommended for security.
+///
+/// Note that AEGIS is not a hash function. It is a MAC that requires a secret key.
+/// Inputs leading to a state collision can be efficiently computed if the key is known.
+#[derive(Debug)]
+pub struct Aegis256X4Mac<const TAG_BYTES: usize> {
+    st: aegis256x4_mac_state,
+}
+impl<const TAG_BYTES: usize> Clone for Aegis256X4Mac<TAG_BYTES> {
+    fn clone(&self) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<const TAG_BYTES: usize> Aegis256X4Mac<TAG_BYTES> {
+    fn ensure_init() {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    #[inline(never)]
+    pub fn new_with_nonce(key: &Key, npub: &Nonce) -> Self {
+        assert!(
+            TAG_BYTES == 16 || TAG_BYTES == 32, "Invalid tag length, must be 16 or 32"
+        );
+        Self::ensure_init();
+        let mut st = MaybeUninit::<aegis256x4_mac_state>::uninit();
+        unsafe {
+            aegis256x4_mac_init(st.as_mut_ptr(), key.as_ptr(), npub.as_ptr());
+        }
+        Aegis256X4Mac {
+            st: unsafe {
+                klee_ext_bind::callsite!("src-c-aegis256x4-rs-325-26");
+                let mut __klee_ret_src_c_aegis256x4_rs_325_26_assume_init = st
+                    .assume_init();
+                __klee_ret_src_c_aegis256x4_rs_325_26_assume_init
+            },
+        }
+    }
+    /// Updates the MAC state with a message
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, m: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC and returns the authentication tag
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Finalizes the MAC, resets the state for reuse, and returns the authentication tag
+    pub fn finalize_and_reset(&mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+    /// Verifies the authentication tag
+    pub fn verify(mut self, tag: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Resets the MAC state
+    pub fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/c/mod.rs">
+```rust
+/// Encrypted random-access file I/O built on top of the AEGIS ciphers.
+#[cfg(feature = "raf-core")]
+#[cfg_attr(docsrs, doc(cfg(feature = "raf")))]
+pub mod raf;
+
+/// AEGIS-128L.
+pub mod aegis128l;
+/// AEGIS-128X2, the 2-lane variant of AEGIS-128L.
+pub mod aegis128x2;
+/// AEGIS-128X4, the 4-lane variant of AEGIS-128L.
+pub mod aegis128x4;
+/// AEGIS-256.
+pub mod aegis256;
+/// AEGIS-256X2, the 2-lane variant of AEGIS-256.
+pub mod aegis256x2;
+/// AEGIS-256X4, the 4-lane variant of AEGIS-256.
+pub mod aegis256x4;
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("../README.md")]
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+#[cfg(feature = "std")]
+use std::fmt;
+
+#[cfg(all(feature = "raf-core", feature = "pure-rust"))]
+compile_error!(
+    "The `raf` and `pure-rust` features are mutually exclusive. RAF requires the C backend."
+);
+
+#[cfg(feature = "pure-rust")]
+mod pure_rust;
+#[cfg(feature = "pure-rust")]
+pub use pure_rust::*;
+
+#[cfg(not(feature = "pure-rust"))]
+#[cfg_attr(docsrs, doc(cfg(all())))]
+mod c;
+#[cfg(not(feature = "pure-rust"))]
+#[cfg_attr(docsrs, doc(cfg(all())))]
+pub use c::*;
+
+/// Errors returned by the AEGIS encryption and authentication functions.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Error {
+    /// The authentication tag did not match: the ciphertext or associated data
+    /// has been altered, or the wrong key or nonce was used.
+    InvalidTag,
+}
+
+#[cfg(feature = "std")]
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
+/// Implementations of third-party crate traits for the AEGIS ciphers.
+pub mod compat;
+```
+</file>
+
+<file path="src/pure_rust/aegis128x2.rs">
+```rust
+use super::{AesBlock, AesBlock2};
+pub use crate::Error;
+
+/// AEGIS-128X2 key
+pub type Key = [u8; 16];
+
+/// AEGIS-128X2 nonce
+pub type Nonce = [u8; 16];
+
+/// AEGIS-128X2 authentication tag
+pub type Tag<const TAG_BYTES: usize> = [u8; TAG_BYTES];
+
+/// State for AEGIS-128X2 with 8 rows of 2 parallel AES blocks
+#[derive(Clone, Copy)]
+struct State {
+    s0: AesBlock2,
+    s1: AesBlock2,
+    s2: AesBlock2,
+    s3: AesBlock2,
+    s4: AesBlock2,
+    s5: AesBlock2,
+    s6: AesBlock2,
+    s7: AesBlock2,
+}
+
+impl State {
+    #[inline(always)]
+    fn update(&mut self, m0: AesBlock2, m1: AesBlock2) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn absorb(&mut self, src: &[u8; 64]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn enc(&mut self, dst: &mut [u8; 64], src: &[u8; 64]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn dec(&mut self, dst: &mut [u8; 64], src: &[u8; 64]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn dec_partial(&mut self, dst: &mut [u8], src: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn mac<const TAG_BYTES: usize>(&mut self, adlen: usize, mlen: usize) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn mac_finalize<const TAG_BYTES: usize>(&mut self, data_len: usize) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// AEGIS-128X2 authenticated encryption
+#[derive(Clone, Copy)]
+pub struct Aegis128X2<const TAG_BYTES: usize> {
+    state: State,
+}
+
+impl<const TAG_BYTES: usize> Aegis128X2<TAG_BYTES> {
+    /// Create a new AEGIS-128X2 instance
+    pub fn new(key: &Key, nonce: &Nonce) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Encrypt a message
+    #[cfg(feature = "std")]
+    pub fn encrypt(mut self, m: &[u8], ad: &[u8]) -> (Vec<u8>, Tag<TAG_BYTES>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Encrypt in place
+    pub fn encrypt_in_place(mut self, mc: &mut [u8], ad: &[u8]) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+
+    /// Decrypt a message
+    #[cfg(feature = "std")]
+    pub fn decrypt(mut self, c: &[u8], tag: &Tag<TAG_BYTES>, ad: &[u8]) -> Result<Vec<u8>, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Decrypt in place
+    pub fn decrypt_in_place(
+        mut self,
+        mc: &mut [u8],
+        tag: &Tag<TAG_BYTES>,
+        ad: &[u8],
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// AEGIS-128X2 MAC
+#[derive(Clone)]
+pub struct Aegis128X2Mac<const TAG_BYTES: usize> {
+    state: State,
+    buf: [u8; 64],
+    buf_len: usize,
+    msg_len: usize,
+}
+
+impl<const TAG_BYTES: usize> Aegis128X2Mac<TAG_BYTES> {
+    /// Initializes the MAC state with a key.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    pub fn new(key: &Key) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes the MAC state with a key and a nonce.
+    ///
+    /// The state can be cloned to authenticate multiple messages with the same key.
+    pub fn new_with_nonce(key: &Key, nonce: &Nonce) -> Self {
+        Aegis128X2Mac {
+            state: State::new(key, nonce),
+            buf: [0u8; 64],
+            buf_len: 0,
+            msg_len: 0,
+        }
+    }
+
+    /// Updates the MAC state with a message.
+    ///
+    /// This function can be called multiple times to update the MAC state with additional data.
+    pub fn update(&mut self, data: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    /// Finalizes the MAC and returns the authentication tag.
+    pub fn finalize(mut self) -> Tag<TAG_BYTES> {
+        /* body omitted: interface retained */
+    }
+
+    /// Verifies the authentication tag.
+    pub fn verify(self, expected: &Tag<TAG_BYTES>) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

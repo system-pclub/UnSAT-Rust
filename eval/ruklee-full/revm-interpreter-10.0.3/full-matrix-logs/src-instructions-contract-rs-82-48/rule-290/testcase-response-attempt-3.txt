@@ -1,0 +1,44 @@
+```rust
+#[cfg(feature = "unsat-poc-src-instructions-contract-rs-82-48-rule-290-9a99bf7a3f")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_instructions_contract_rs_82_48_rule_290_9a99bf7a3f() {
+    use std::sync::Arc;
+
+    let eof_bytes = revm_primitives::Bytes::from_static(
+        b"\xef\x00\x01\x01\x00\x04\x02\x00\x01\x00\x01\x04\x00\x00\x00\x00\x80\x00\x00\xfe",
+    );
+    let mut eof = revm_primitives::Eof::decode(eof_bytes).expect("valid eof");
+    eof.body.container_section = vec![revm_primitives::Bytes::from_static(
+        b"\xef\x00\x01\x01\x00\x04\x02\x00\x01\x00\x01\x04\x00\x00\x00\x00\x80\x00\x00\xfe",
+    )];
+    eof.header.container_sizes = vec![eof.body.container_section[0].len() as u16];
+    eof.header.sum_container_sizes = eof.body.container_section[0].len();
+
+    let bytecode = revm_primitives::Bytecode::Eof(Arc::new(eof));
+    let contract = crate::Contract::new(
+        revm_primitives::Bytes::new(),
+        bytecode,
+        None,
+        revm_primitives::Address::ZERO,
+        None,
+        revm_primitives::Address::ZERO,
+        revm_primitives::U256::ZERO,
+    );
+
+    let mut interpreter = crate::Interpreter::new(contract, 1_000_000, false);
+    interpreter.is_eof = true;
+    interpreter.is_static = false;
+    interpreter.stack.data_mut().extend([
+        revm_primitives::U256::ZERO,
+        revm_primitives::U256::ZERO,
+        revm_primitives::U256::ZERO,
+        revm_primitives::U256::ZERO,
+    ]);
+
+    let ip_storage = [1u8, 0u8];
+    interpreter.instruction_pointer = ip_storage.as_ptr();
+
+    let mut host = crate::DummyHost::default();
+    crate::instructions::contract::eofcreate(&mut interpreter, &mut host);
+}
+```
