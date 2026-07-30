@@ -1,0 +1,60 @@
+[package]
+name = "musli"
+version = "0.0.149"
+authors = ["John-John Tedro <udoprog@tedro.se>"]
+edition = "2024"
+rust-version = "1.85"
+description = """
+Müsli is a flexible and efficient serialization framework.
+"""
+documentation = "https://docs.rs/musli"
+readme = "README.md"
+homepage = "https://github.com/udoprog/musli"
+repository = "https://github.com/udoprog/musli"
+license = "MIT OR Apache-2.0"
+keywords = ["binary", "json", "no_std", "serialization"]
+categories = ["encoding", "no-std", "no-std::no-alloc"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg", "--generate-link-to-definition"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(doc_cfg, loom)'] }
+
+[features]
+default = ["std", "alloc"]
+std = ["musli-core/std", "serde?/std", "simdutf8?/std"]
+alloc = ["musli-core/alloc", "serde?/alloc"]
+verbose = ["musli-core/verbose"]
+storage = []
+wire = []
+descriptive = ["value"]
+json = ["value", "dep:itoa", "dep:ryu"]
+parse-full = []
+value = []
+serde = ["dep:serde"]
+
+test = ["storage", "wire", "descriptive", "json", "parse-full", "value", "serde"]
+
+[dependencies]
+musli-core = { version = "0.1.2", path = "../musli-core", default-features = false }
+
+simdutf8 = { version = "0.1.4", optional = true, default-features = false }
+itoa = { version = "1.0.10", optional = true }
+ryu = { version = "1.0.17", optional = true }
+serde = { version = "1.0.198", optional = true, default-features = false}
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7.2"
+
+[dev-dependencies]
+musli = { path = ".", features = ["test"] }
+tests = { path = "../../tests" }
+
+anyhow = "1.0.81"
+rand = "0.9.0"
+serde = { version = "1.0.198", features = ["derive"] }
+url = { version = "2.5.0", features = ["serde"] }
+trybuild = "1.0.90"
+bstr = "1.9.1"

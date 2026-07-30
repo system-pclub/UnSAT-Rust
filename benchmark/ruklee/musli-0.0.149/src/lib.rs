@@ -1,0 +1,786 @@
+//! [<img alt="github" src="https://img.shields.io/badge/github-udoprog/musli-8da0cb?style=for-the-badge&logo=github" height="20">](https://github.com/udoprog/musli)
+//! [<img alt="crates.io" src="https://img.shields.io/crates/v/musli.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/musli)
+//! [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-musli-66c2a5?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" height="20">](https://docs.rs/musli)
+//!
+//! Excellent performance, no compromises[^1]!
+//!
+//! Müsli is a flexible, fast, and generic binary serialization framework for
+//! Rust, in the same vein as [`serde`].
+//!
+//! It provides a set of [formats](#formats), each with its own well-documented
+//! set of features and tradeoffs. Every byte-oriented serialization method
+//! including escaped formats like [`musli::json`] has full `#[no_std]` support
+//! with or without `alloc`. And a particularly neat component providing
+//! low-level refreshingly simple [zero-copy serialization][zerocopy].
+//!
+//! [^1]: As in Müsli should be able to do everything you need and more.
+//!
+//! <br>
+//!
+//! ## Overview
+//!
+//! * See [`derives`] to learn how to implement [`Encode`] and [`Decode`].
+//! * See [`data_model`] to learn about the abstract data model of Müsli.
+//! * See [benchmarks] and [size comparisons] to learn about the performance of
+//!   this framework.
+//! * See [`tests`] to learn how this library is tested.
+//! * See [`musli::serde`] for seamless compatibility with [`serde`]. You might
+//!   also be interested to learn how [Müsli is different][different].
+//!
+//! [different]: #müsli-is-different-from-serde
+//!
+//! <br>
+//!
+//! ## Usage
+//!
+//! Add the following to your `Cargo.toml` using the [format](#formats) you want
+//! to use:
+//!
+//! ```toml
+//! [dependencies]
+//! musli = { version = "0.0.149", features = ["storage"] }
+//! ```
+//!
+//! <br>
+//!
+//! ## Design
+//!
+//! The heavy lifting is done by the [`Encode`] and [`Decode`] derives which are
+//! documented in the [`derives`] module.
+//!
+//! Müsli operates based on the schema represented by the types which implement
+//! these traits.
+//!
+//! ```
+//! use musli::{Encode, Decode};
+//!
+//! #[derive(Encode, Decode)]
+//! struct Person {
+//!     /* .. fields .. */
+//! }
+//! ```
+//!
+//! > **Note** by default a field is identified by its *numerical index* which
+//! > would change if they are re-ordered. Renaming fields and setting a default
+//! > naming policy can be done by configuring the [`derives`].
+//!
+//! The binary serialization formats provided aim to efficiently and accurately
+//! encode every type and data structure available in Rust. Each format comes
+//! with [well-documented tradeoffs](#formats) and aims to be fully memory safe
+//! to use.
+//!
+//! Internally we use the terms "encoding", "encode", and "decode" because it's
+//! distinct from [`serde`]'s use of "serialization", "serialize", and
+//! "deserialize" allowing for the clearer interoperability between the two
+//! libraries. Encoding and decoding also has more of a "binary serialization"
+//! vibe, which more closely reflects the focus of this framework.
+//!
+//! Müsli is designed on similar principles as [`serde`]. Relying on Rust's
+//! powerful trait system to generate code which can largely be optimized away.
+//! The end result should be very similar to handwritten, highly optimized code.
+//!
+//! As an example of this, these two functions both produce the same assembly
+//! (built with `--release`):
+//!
+//! ```
+//! # use musli::{Decode, Encode};
+//! # use musli::mode::Binary;
+//! # use musli::options::{self, Options, Integer, ByteOrder};
+//! # use musli::storage::Encoding;
+//! # type Result<T, E = musli::storage::Error> = core::result::Result<T, E>;
+//! const OPTIONS: Options = options::new().fixed().native_byte_order().build();
+//! const ENCODING: Encoding<OPTIONS> = Encoding::new().with_options();
+//!
+//! #[derive(Encode, Decode)]
+//! #[musli(packed)]
+//! pub struct Storage {
+//!     left: u32,
+//!     right: u32,
+//! }
+//!
+//! fn with_musli(storage: &Storage) -> Result<[u8; 8]> {
+//!     let mut array = [0; 8];
+//!     ENCODING.encode(&mut array[..], storage)?;
+//!     Ok(array)
+//! }
+//!
+//! fn without_musli(storage: &Storage) -> Result<[u8; 8]> {
+//!     let mut array = [0; 8];
+//!     array[..4].copy_from_slice(&storage.left.to_ne_bytes());
+//!     array[4..].copy_from_slice(&storage.right.to_ne_bytes());
+//!     Ok(array)
+//! }
+//! ```
+//!
+//! <br>
+//!
+//! ## Müsli is different from [`serde`]
+//!
+//! **Müsli's data model does not speak Rust**. There are no
+//! `serialize_struct_variant` methods which provides metadata about the type
+//! being serialized. The [`Encoder`] and [`Decoder`] traits are agnostic on
+//! this. Compatibility with Rust types is entirely handled using the [`Encode`]
+//! and [`Decode`] derives in combination with [modes](#Modes).
+//!
+//! **We use GATs** to provide easier to use abstractions. GATs were not
+//! available when serde was designed.
+//!
+//! **Everything is a [`Decoder`] or [`Encoder`]**. Field names are therefore
+//! not limited to be strings or indexes, but can be named to [arbitrary
+//! types][musli-name-type] if needed.
+//!
+//! **Visitor are only used when needed**. `serde` [completely uses visitors]
+//! when deserializing and the corresponding method is treated as a "hint" to
+//! the underlying format. The deserializer is then free to call any method on
+//! the visitor depending on what the underlying format actually contains. In
+//! Müsli, we swap this around. If the caller wants to decode an arbitrary type
+//! it calls [`decode_any`]. The format can then either signal the appropriate
+//! underlying type or call [`Visitor::visit_unknown`] telling the implementer
+//! that it does not have access to type information.
+//!
+//! **We've invented [*moded encoding*](#Modes)** allowing the same Rust types
+//! to be encoded in many different ways with much greater control over how
+//! things encoded. By default we include the [`Binary`] and [`Text`] modes
+//! providing sensible defaults for binary and text-based formats.
+//!
+//! **Müsli fully supports [no-std and no-alloc]** from the ground up without
+//! compromising on features using safe and efficient [scoped allocations].
+//!
+//! **We support [detailed tracing]** when decoding for much improved
+//! diagnostics of *where* something went wrong.
+//!
+//! <br>
+//!
+//! ## Formats
+//!
+//! Formats are currently distinguished by supporting various degrees of
+//! *upgrade stability*. A fully upgrade stable encoding format must tolerate
+//! that one model can add fields that an older version of the model should be
+//! capable of ignoring.
+//!
+//! Partial upgrade stability can still be useful as is the case of the
+//! [`musli::storage`] format below, because reading from storage only requires
+//! decoding to be upgrade stable. So if correctly managed with
+//! `#[musli(default)]` this will never result in any readers seeing unknown
+//! fields.
+//!
+//! The available formats and their capabilities are:
+//!
+//! | | `reorder` | `missing` | `unknown` | `self` |
+//! |-|-|-|-|-|
+//! | [`musli::packed`] (with `#[musli(packed)]`) | ✗ | ✗ | ✗ | ✗ |
+//! | [`musli::storage`]                          | ✔ | ✔ | ✗ | ✗ |
+//! | [`musli::wire`]                             | ✔ | ✔ | ✔ | ✗ |
+//! | [`musli::descriptive`]                      | ✔ | ✔ | ✔ | ✔ |
+//! | [`musli::json`] [^json]                     | ✔ | ✔ | ✔ | ✔ |
+//!
+//! `reorder` determines whether fields must occur in exactly the order in which
+//! they are specified in their type. Reordering fields in such a type would
+//! cause unknown but safe behavior of some kind. This is only suitable for
+//! communication where the data models of each client are strictly
+//! synchronized.
+//!
+//! `missing` determines if reading can handle missing fields through something
+//! like `Option<T>`. This is suitable for on-disk storage, because it means
+//! that new optional fields can be added as the schema evolves.
+//!
+//! `unknown` determines if the format can skip over unknown fields. This is
+//! suitable for network communication. At this point you've reached [*upgrade
+//! stability*](#upgrade-stability). Some level of introspection is possible
+//! here, because the serialized format must contain enough information about
+//! fields to know what to skip which usually allows for reasoning about basic
+//! types.
+//!
+//! `self` determines if the format is self-descriptive. Allowing the structure
+//! of the data to be fully reconstructed from its serialized state. These
+//! formats do not require models to decode and can be converted to and from
+//! dynamic containers such as [`musli::value`] for introspection. Such formats
+//! also allows for type-coercions to be performed, so that a signed number can
+//! be correctly read as an unsigned number if it fits in the destination type.
+//!
+//! For every feature you drop, the format becomes more compact and efficient.
+//! [`musli::storage`] using `#[musli(packed)]` for example is roughly as compact
+//! as [`bincode`] while [`musli::wire`] is comparable in size to something like
+//! [`protobuf`]. All formats are primarily byte-oriented, but some might
+//! perform [bit packing] if the benefits are obvious.
+//!
+//! [^json]: This is strictly not a binary serialization, but it was implemented
+//! as a litmus test to ensure that Müsli has the necessary framework features
+//! to support it. Luckily, the implementation is also quite good!
+//!
+//! <br>
+//!
+//! ## Upgrade stability
+//!
+//! The following is an example of *full upgrade stability* using
+//! [`musli::wire`]. `Version1` can be decoded from an instance of `Version2`
+//! because it understands how to skip fields which are part of `Version2`.
+//! We're also explicitly adding `#[musli(name = ..)]` to the fields to ensure
+//! that they don't change in case they are re-ordered.
+//!
+//! ```
+//! use musli::{Encode, Decode};
+//!
+//! #[derive(Debug, PartialEq, Encode, Decode)]
+//! struct Version1 {
+//!     #[musli(Binary, name = 0)]
+//!     name: String,
+//! }
+//!
+//! #[derive(Debug, PartialEq, Encode, Decode)]
+//! struct Version2 {
+//!     #[musli(Binary, name = 0)]
+//!     name: String,
+//!     #[musli(Binary, name = 1)]
+//!     #[musli(default)]
+//!     age: Option<u32>,
+//! }
+//!
+//! let version2 = musli::wire::to_vec(&Version2 {
+//!     name: String::from("Aristotle"),
+//!     age: Some(61),
+//! })?;
+//!
+//! let version1: Version1 = musli::wire::decode(version2.as_slice())?;
+//! # Ok::<_, musli::wire::Error>(())
+//! ```
+//!
+//! The following is an example of *partial upgrade stability* using
+//! [`musli::storage`] on the same data models. Note how `Version2` can be
+//! decoded from `Version1` but *not* the other way around making it suitable
+//! for on-disk storage where the schema can evolve from older to newer
+//! versions.
+//!
+//! ```
+//! # use musli::{Encode, Decode};
+//! # #[derive(Debug, PartialEq, Encode, Decode)]
+//! # struct Version1 { name: String }
+//! # #[derive(Debug, PartialEq, Encode, Decode)]
+//! # struct Version2 { name: String, #[musli(default)] age: Option<u32> }
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
+//! let version2 = musli::storage::to_vec(&Version2 {
+//!     name: String::from("Aristotle"),
+//!     age: Some(61),
+//! })?;
+//!
+//! assert!(musli::storage::decode::<_, Version1>(version2.as_slice()).is_err());
+//!
+//! let version1 = musli::storage::to_vec(&Version1 {
+//!     name: String::from("Aristotle"),
+//! })?;
+//!
+//! let version2: Version2 = musli::storage::decode(version1.as_slice())?;
+//! # Ok(()) }
+//! ```
+//!
+//! <br>
+//!
+//! ## Modes
+//!
+//! In Müsli in contrast to [`serde`] the same model can be serialized in
+//! different ways. Instead of requiring the use of distinct models we support
+//! implementing different *modes* for a single model.
+//!
+//! A mode is a type parameter, which allows for different attributes to apply
+//! depending on which mode an encoder is configured to use. A mode can apply to
+//! *any* musli attributes giving you a lot of flexibility.
+//!
+//! If a mode is not specified, an implementation will apply to all modes (`M`),
+//! if at least one mode is specified it will be implemented for all modes which
+//! are present in a model and [`Binary`] and [`Text`]. This way, an encoding
+//! which uses [`Binary`] or [`Text`] which are the default modes should always
+//! work.
+//!
+//! For more information on how to configure modes, see [`derives`].
+//!
+//! Below is a simple example of how we can use two modes to provide two
+//! completely different formats using a single struct:
+//!
+//! ```
+//! use musli::{Decode, Encode};
+//! use musli::json::Encoding;
+//!
+//! enum Alt {}
+//!
+//! #[derive(Decode, Encode)]
+//! #[musli(Text, name_all = "name")]
+//! #[musli(mode = Alt, packed)]
+//! struct Word<'a> {
+//!     text: &'a str,
+//!     teineigo: bool,
+//! }
+//!
+//! const TEXT: Encoding = Encoding::new();
+//! const ALT: Encoding<Alt> = Encoding::new().with_mode();
+//!
+//! let word = Word {
+//!     text: "あります",
+//!     teineigo: true,
+//! };
+//!
+//! let out = TEXT.to_string(&word)?;
+//! assert_eq!(out, r#"{"text":"あります","teineigo":true}"#);
+//!
+//! let out = ALT.to_string(&word)?;
+//! assert_eq!(out, r#"["あります",true]"#);
+//! # Ok::<_, musli::json::Error>(())
+//! ```
+//!
+//! <br>
+//!
+//! ## Going very fast
+//!
+//! With the previous sections it should be apparent that speed is primarily a
+//! game of tradeoffs. If we make every tradeoff in favor of speed Müsli is
+//! designed to be the fastest framework out there.
+//!
+//! The tradeoffs we will be showcasing to achieve speed here are:
+//!
+//! * *Pre-allocate serialization space*. This avoids all allocations during
+//!   serialization. The tradeoff is that if the data we are serializing
+//!   contains dynamically sized information which goes beyond the pre-allocated
+//!   space, we will error.
+//! * *Use fixed-sized integers and floats*. We use more space, but the cost of
+//!   serializing numerical fields essentially boils down to copying them.
+//! * *Use a native byte order*. With this we avoid any byte-swapping
+//!   operations. But our data becomes less portable.
+//! * *Use a packed format*. This doesn't allow for any upgrades, but we avoid
+//!   paying the overhead of serializing field identifiers.
+//! * *Use the [`Slice` allocator]*. This avoids all heap allocations using the
+//!   global allocator. While the global allocator is quite efficient and
+//!   normally shouldn't be avoided, the slice allocator is a fixed-slab
+//!   allocator. The tradeoff here is that we will error in case we run out of
+//!   memory, but we only need to use the allocator if the types being
+//!   serialized (or the format) demands it.
+//! * *Disable error handling*. Code generation will be able to remove
+//!   everything related to error handling, like allocations. To do this we can
+//!   make use of the [default context] without configuring it for tracing. If
+//!   an error happens, we are only informed of that fact through a zero-sized
+//!   marker type.
+//!
+//! We achieve this through the following methods:
+//!
+//! ```
+//! use musli::alloc::{Allocator, Global};
+//! use musli::context::{self, ErrorMarker as Error};
+//! use musli::options::{self, Float, Integer, Width, Options};
+//! use musli::storage::Encoding;
+//! use musli::{Decode, Encode};
+//! use musli::alloc::Slice;
+//!
+//! enum Packed {}
+//!
+//! const OPTIONS: Options = options::new().fixed().native_byte_order().build();
+//! const ENCODING: Encoding<OPTIONS, Packed> = Encoding::new().with_options().with_mode();
+//!
+//! #[inline]
+//! pub fn encode<'buf, T, A>(buf: &'buf mut [u8], value: &T, alloc: A) -> Result<&'buf [u8], Error>
+//! where
+//!     T: Encode<Packed>,
+//!     A: Allocator,
+//! {
+//!     let cx = context::new_in(alloc);
+//!     let w = ENCODING.to_slice_with(&cx, &mut buf[..], value)?;
+//!     Ok(&buf[..w])
+//! }
+//!
+//! #[inline]
+//! pub fn decode<'buf, T, A>(buf: &'buf [u8], alloc: A) -> Result<T, Error>
+//! where
+//!     T: Decode<'buf, Packed, A>,
+//!     A: Allocator,
+//! {
+//!     let cx = context::new_in(alloc);
+//!     ENCODING.from_slice_with(&cx, buf)
+//! }
+//! ```
+//!
+//! We also need some cooperation from the types being serialized since they
+//! need to use the `Packed` mode we defined just above:
+//!
+//! ```
+//! use musli::{Encode, Decode};
+//! # enum Packed {}
+//!
+//! #[derive(Encode, Decode)]
+//! #[musli(mode = Packed, packed)]
+//! struct Person {
+//!     name: String,
+//!     age: u32,
+//! }
+//! ```
+//!
+//! Using the framework above also needs a bit of prep, namely the slice
+//! allocator need to be initialized:
+//!
+//! ```
+//! use musli::alloc::{ArrayBuffer, Slice};
+//!
+//! let mut buf = ArrayBuffer::new();
+//! let alloc = Slice::new(&mut buf);
+//! ```
+//!
+//! That's it! You are now using Müsli in the fastest possible mode. Feel free
+//! to use it to "beat" any benchmarks. In fact, the `musli_packed` mode in our
+//! internal [benchmarks] beat pretty much every framework with these methods.
+//!
+//! > My hope is that this should illustrate why you shouldn't blindly trust
+//! > benchmarks. Sometimes code is not fully optimized, but most of the time
+//! > there is a tradeoff. If a benchmark doesn't tell you what tradeoffs are
+//! > being made, don't just naively trust a number.
+//!
+//! <br>
+//!
+//! ## Unsafety
+//!
+//! This is a non-exhaustive list of unsafe use in this crate, and why they are
+//! used:
+//!
+//! * A `mem::transmute` in `Tag::kind`. Which guarantees that converting into
+//!   the `Kind` enum which is `#[repr(u8)]` is as efficient as possible.
+//!
+//! * A largely unsafe `SliceReader` which provides more efficient reading than
+//!   the default `Reader` impl for `&[u8]` does. Since it can perform most of
+//!   the necessary comparisons directly on the pointers.
+//!
+//! * Some unsafety related to UTF-8 handling in `musli::json`, because we check
+//!   UTF-8 validity internally ourselves (like `serde_json`).
+//!
+//! * `FixedBytes<N>`, which is a stack-based container that can operate over
+//!   uninitialized data. Its implementation is largely unsafe. With it
+//!   stack-based serialization can be performed which is useful in no-std
+//!   environments.
+//!
+//! * Some `unsafe` is used for owned `String` decoding in all binary formats to
+//!   support faster string processing through [`simdutf8`]. Disabling the
+//!   `simdutf8` feature (enabled by default) removes the use of this unsafe.
+//!
+//! To ensure this library is correctly implemented with regards to memory
+//! safety, extensive testing and fuzzing is performed using `miri`. See
+//! [`tests`] for more information.
+//!
+//! <br>
+//!
+//! [`Binary`]: <https://docs.rs/musli/latest/musli/mode/enum.Binary.html>
+//! [`bincode`]: <https://docs.rs/bincode>
+//! [`data_model`]: <https://docs.rs/musli/latest/musli/_help/data_model/>
+//! [`decode_any`]: https://docs.rs/musli/latest/musli/trait.Decoder.html#method.decode_any
+//! [`Decode`]: <https://docs.rs/musli/latest/musli/de/trait.Decode.html>
+//! [`Decoder`]: <https://docs.rs/musli/latest/musli/trait.Decoder.html>
+//! [`derives`]: <https://docs.rs/musli/latest/musli/_help/derives/>
+//! [`Encode`]: <https://docs.rs/musli/latest/musli/en/trait.Encode.html>
+//! [`Encoder`]: <https://docs.rs/musli/latest/musli/trait.Encoder.html>
+//! [`musli::descriptive`]: <https://docs.rs/musli/latest/musli/descriptive/>
+//! [`musli::json`]: <https://docs.rs/musli/latest/musli/json/>
+//! [`musli::packed`]: <https://docs.rs/musli/latest/musli/packed/>
+//! [`musli::serde`]: <https://docs.rs/musli/latest/musli/serde/>
+//! [`musli::storage`]: <https://docs.rs/musli/latest/musli/storage/>
+//! [`musli::value`]: <https://docs.rs/musli/latest/musli/value/>
+//! [`musli::wire`]: <https://docs.rs/musli/latest/musli/wire/>
+//! [`protobuf`]: <https://developers.google.com/protocol-buffers>
+//! [`serde`]: <https://serde.rs>
+//! [`simdutf8`]: <https://docs.rs/simdutf8>
+//! [`Slice` allocator]: <https://docs.rs/musli/latest/musli/alloc/struct.Slice.html>
+//! [`tests`]: <https://github.com/udoprog/musli/tree/main/tests>
+//! [`Text`]: <https://docs.rs/musli/latest/musli/mode/enum.Text.html>
+//! [`Visitor::visit_unknown`]: https://docs.rs/musli/latest/musli/de/trait.Visitor.html#method.visit_unknown
+//! [benchmarks]: <https://udoprog.github.io/musli/benchmarks/>
+//! [bit packing]: <https://github.com/udoprog/musli/blob/main/crates/musli/src/descriptive/tag.rs>
+//! [completely uses visitors]: https://docs.rs/serde/latest/serde/trait.Deserializer.html#tymethod.deserialize_u32
+//! [default context]: <https://docs.rs/musli/latest/musli/context/new_in.html>
+//! [detailed tracing]: <https://udoprog.github.io/rust/2023-05-22/abductive-diagnostics-for-musli.html>
+//! [musli-name-type]: <https://docs.rs/musli/latest/musli/_help/derives/#muslinametype--type>
+//! [no-std and no-alloc]: <https://github.com/udoprog/musli/blob/main/no-std/examples/>
+//! [scoped allocations]: <https://docs.rs/musli/latest/musli/trait.Context.html#tymethod.alloc>
+//! [size comparisons]: <https://udoprog.github.io/musli/benchmarks/#size-comparisons>
+//! [zerocopy]: <https://docs.rs/musli-zerocopy>
+
+#![deny(missing_docs)]
+#![allow(clippy::module_inception)]
+#![no_std]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+
+#[cfg(feature = "alloc")]
+extern crate alloc as rust_alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
+pub mod macros;
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(feature = "json")]
+mod dec2flt;
+
+pub mod _help {
+    //! Detailed documentation for Müsli
+    //!
+    //! * [The data model of Müsli][data_model].
+    //! * [Deriving `Encode` and `Decode`][derives].
+
+    #[doc = include_str!("../help/data_model.md")]
+    pub mod data_model {}
+
+    #[doc = include_str!("../help/derives.md")]
+    pub mod derives {}
+}
+
+pub mod de;
+pub mod en;
+
+#[doc(inline)]
+pub use musli_core::hint;
+#[doc(inline)]
+pub use musli_core::mode;
+
+#[doc(inline)]
+pub use musli_core::Context;
+
+#[doc(inline)]
+pub use self::de::{Decode, Decoder};
+
+#[doc(inline)]
+pub use self::en::{Encode, Encoder};
+
+/// This is an attribute macro that must be used when implementing the following traits:
+///
+/// * [`Decoder`]
+/// * [`de::Visitor`][crate::de::Visitor]
+/// * [`de::UnsizedVisitor`][crate::de::UnsizedVisitor]
+/// * [`Encoder`]
+///
+/// It is required to use because these traits might introduce new associated
+/// types in the future, and this is [not yet supported] on a language level in
+/// Rust. So this attribute macro polyfills any missing types automatically.
+///
+/// [not yet supported]: https://rust-lang.github.io/rfcs/2532-associated-type-defaults.html
+///
+/// Note that if the `Cx` or `Mode` associated types are not specified, they
+/// will be defaulted to any type parameters which starts with the uppercase `C`
+/// or `M` respectively if the trait uses them.
+///
+/// # Examples
+///
+/// Implementing [`Decoder`]:
+///
+/// ```
+/// use std::fmt;
+/// use std::marker::PhantomData;
+///
+/// use musli::Context;
+/// use musli::de::Decoder;
+///
+/// struct MyDecoder<C, M> {
+///     cx: C,
+///     _marker: PhantomData<M>,
+/// }
+///
+/// #[musli::trait_defaults]
+/// impl<'de, C, M> Decoder<'de> for MyDecoder<C, M>
+/// where
+///     C: Context,
+///     M: 'static,
+/// {
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "32-bit unsigned integers")
+///     }
+///
+///     #[inline]
+///     fn decode_u32(self) -> Result<u32, Self::Error> {
+///         Ok(42)
+///     }
+/// }
+/// ```
+///
+/// Implementing [`Visitor`]:
+///
+/// ```
+/// use std::fmt;
+///
+/// use musli::Context;
+/// use musli::de::Visitor;
+///
+/// struct MyVisitor;
+///
+/// #[musli::trait_defaults]
+/// impl<'de, C> Visitor<'de, C> for MyVisitor
+/// where
+///     C: Context,
+/// {
+///     type Ok = ();
+///
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "a value that can be decoded into dynamic container")
+///     }
+/// }
+/// ```
+///
+/// Implementing [`UnsizedVisitor`]:
+///
+/// ```
+/// use std::fmt;
+///
+/// use musli::Context;
+/// use musli::de::UnsizedVisitor;
+///
+/// struct MyVisitor;
+///
+/// #[musli::trait_defaults]
+/// impl<'de, C> UnsizedVisitor<'de, C, [u8]> for MyVisitor
+/// where
+///     C: Context,
+/// {
+///     type Ok = ();
+///
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "a reference of bytes")
+///     }
+/// }
+/// ```
+///
+/// Implementing [`Encoder`]:
+///
+/// ```
+/// use std::fmt;
+/// use std::marker::PhantomData;
+///
+/// use musli::Context;
+/// use musli::en::Encoder;
+///
+/// struct MyEncoder<'a, C, M> {
+///     value: &'a mut Option<u32>,
+///     cx: C,
+///     _marker: PhantomData<M>,
+/// }
+///
+/// #[musli::trait_defaults]
+/// impl<C, M> Encoder for MyEncoder<'_, C, M>
+/// where
+///     C: Context,
+///     M: 'static,
+/// {
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "32-bit unsigned integers")
+///     }
+///
+///     #[inline]
+///     fn encode_u32(self, value: u32) -> Result<(), Self::Error> {
+///         *self.value = Some(value);
+///         Ok(())
+///     }
+/// }
+/// ```
+#[doc(inline)]
+pub use musli_core::__macros::musli_trait_defaults as trait_defaults;
+
+#[doc(hidden)]
+pub use musli_core::__priv;
+
+pub mod alloc;
+#[doc(inline)]
+pub use self::alloc::{Allocator, GlobalAllocator};
+
+pub mod descriptive;
+pub mod json;
+pub mod packed;
+pub mod serde;
+pub mod storage;
+pub mod value;
+pub mod wire;
+
+pub mod context;
+
+pub mod compat;
+
+pub mod fixed;
+#[doc(inline)]
+pub use self::fixed::FixedBytes;
+
+pub mod options;
+#[doc(inline)]
+pub use self::options::Options;
+
+pub mod reader;
+#[doc(inline)]
+pub use self::reader::{IntoReader, Reader};
+
+pub mod wrap;
+
+pub mod writer;
+#[doc(inline)]
+pub use self::writer::{IntoWriter, Writer};
+
+pub mod no_std;
+
+mod int;
+mod str;
+
+use crate::alloc::Disabled;
+use crate::mode::Binary;
+
+/// Test if the given type `T` is marked with the `#[musli(packed)]` attribute,
+/// and is bitwise encodeable in the [`Binary`] mode.
+///
+/// See the [help section for `#[musli(packed)]`][help] for more information.
+///
+/// [help]: crate::_help::derives#muslipacked
+///
+/// # Examples
+///
+/// ```
+/// use musli::{is_bitwise_encode, Encode, Decode};
+///
+/// #[derive(Encode, Decode)]
+/// #[musli(packed)]
+/// struct Color {
+///     red: u32,
+///     green: u32,
+///     blue: u32,
+/// }
+///
+/// assert!(is_bitwise_encode::<Color>());
+/// ```
+#[inline]
+pub const fn is_bitwise_encode<T>() -> bool
+where
+    T: Encode<Binary>,
+{
+    T::IS_BITWISE_ENCODE
+}
+
+/// Test if the given type `T` is marked with the `#[musli(packed)]` attribute,
+/// and is bitwise encodeable in the [`Binary`] mode using the [`Disabled`]
+/// allocator.
+///
+/// See the [help section for `#[musli(packed)]`][help] for more information.
+///
+/// [help]: crate::_help::derives#muslipacked
+///
+/// # Examples
+///
+/// ```
+/// use musli::{is_bitwise_decode, Encode, Decode};
+///
+/// #[derive(Encode, Decode)]
+/// #[musli(packed)]
+/// struct Color {
+///     red: u32,
+///     green: u32,
+///     blue: u32,
+/// }
+///
+/// assert!(is_bitwise_decode::<Color>());
+/// ```
+#[inline]
+pub const fn is_bitwise_decode<T>() -> bool
+where
+    T: for<'de> Decode<'de, Binary, Disabled>,
+{
+    T::IS_BITWISE_DECODE
+}
