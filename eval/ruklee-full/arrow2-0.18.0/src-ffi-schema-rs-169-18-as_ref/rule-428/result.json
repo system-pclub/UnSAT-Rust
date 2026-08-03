@@ -1,0 +1,145 @@
+{
+  "schema_version": 2,
+  "updated_at": "2026-07-30T01:23:41.746392+00:00",
+  "crate": "/workspaces/UnSAT-Rust/benchmark/ruklee/arrow2-0.18.0",
+  "injected_crate": "/workspaces/UnSAT-Rust/crates_inj/arrow2-0.18.0",
+  "metadata": "/workspaces/UnSAT-Rust/crates/arrow2-0.18.0.json",
+  "callsite": {
+    "target_index": 33,
+    "id": "src-ffi-schema-rs-169-18-as_ref",
+    "llvm_id": "src-ffi-schema-rs-169-18-as_ref",
+    "path": "src/ffi/schema.rs",
+    "line": 169,
+    "col": 18,
+    "caller": "ffi::schema::<impl ffi::generated::ArrowSchema>::child",
+    "unsafe_callee": "std::ptr::mut_ptr::<impl *mut T>::as_ref",
+    "unsafe_callee_path": "rust/library/core/src/ptr/mut_ptr.rs",
+    "unsafe_callee_line_start": 235
+  },
+  "rule": {
+    "id": "rule-428",
+    "path": "rust/library/core/src/ptr/mut_ptr.rs:235",
+    "name": "const unsafe fn as_ref < 'a >",
+    "rule": "When calling this method, you have to ensure that either the pointer is null or the pointer is convertible to a reference.",
+    "dsl": "(get_field(get_arg(0), \"is_null\") || is_convertible_to_ref(get_arg(0)))"
+  },
+  "result": {
+    "init_status": "violation",
+    "llm_status": "reproduced",
+    "rerun_status": "reported-sat",
+    "rerun_returncode": 0,
+    "rerun_reported_callsite": true,
+    "rerun_dsl_sat": true,
+    "rerun_has_certain_symbol": true,
+    "full_rerun_passed": true
+  },
+  "stages": {
+    "init": {
+      "status": "violation",
+      "returncode": 0,
+      "timed_out": false,
+      "duration_sec": 134.86,
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee-out",
+      "certainty_chain": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee-control-chains.json",
+      "has_certain_symbol": true
+    },
+    "llm": {
+      "status": "reproduced",
+      "artifact_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428",
+      "source_path": "src/ffi/schema.rs",
+      "source_line": 851,
+      "prompt": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/testcase-prompt.txt",
+      "response": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/testcase-response.txt",
+      "context_stats": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/testcase-context-stats.json",
+      "context_policy": "slice",
+      "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/testcase-build.log",
+      "attempts": [
+        {
+          "attempt": 1,
+          "context_mode": "slice",
+          "source_path": "src/ffi/schema.rs",
+          "source_line": 851,
+          "status": "rerun-miss",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/testcase-build-attempt-1.log",
+          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/rerun-ir/arrow2.ll",
+          "rerun": {
+            "status": "callsite-not-reported",
+            "returncode": 0,
+            "timed_out": false,
+            "reported_callsite": false,
+            "dsl_sat": false,
+            "has_certain_symbol": false,
+            "full_rerun_passed": false,
+            "external_calls": [],
+            "observed_callsites": [],
+            "saw_rust_panic": true,
+            "duration_sec": 66.239,
+            "mode": "rerun"
+          },
+          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee-rerun-attempt-1.log",
+          "feedback": "The testcase compiled but did not reproduce the target violation.\nKLEE did not report the exact target callsite `src-ffi-schema-rs-169-18-as_ref`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.\nKLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.\nThe metadata caller `ffi::schema::<impl ffi::generated::ArrowSchema>::child` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test."
+        },
+        {
+          "attempt": 2,
+          "context_mode": "slice",
+          "source_path": "src/ffi/schema.rs",
+          "source_line": 851,
+          "status": "reproduced",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/testcase-build-attempt-2.log",
+          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/rerun-ir/arrow2.ll",
+          "rerun": {
+            "status": "reported-sat",
+            "returncode": 0,
+            "timed_out": false,
+            "reported_callsite": true,
+            "dsl_sat": true,
+            "has_certain_symbol": true,
+            "full_rerun_passed": true,
+            "external_calls": [],
+            "observed_callsites": [
+              {
+                "site": "src-ffi-schema-rs-169-18",
+                "target": "src-ffi-schema-rs-169-18-as_ref"
+              },
+              {
+                "site": "src-ffi-schema-rs-169-18-as_ref",
+                "target": "src-ffi-schema-rs-169-18-as_ref"
+              }
+            ],
+            "saw_rust_panic": false,
+            "duration_sec": 71.718,
+            "mode": "rerun"
+          },
+          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee-rerun-attempt-2.log"
+        }
+      ],
+      "rerun_sym": null
+    },
+    "rerun": {
+      "status": "reported-sat",
+      "returncode": 0,
+      "timed_out": false,
+      "reported_callsite": true,
+      "dsl_sat": true,
+      "has_certain_symbol": true,
+      "full_rerun_passed": true,
+      "external_calls": [],
+      "observed_callsites": [
+        {
+          "site": "src-ffi-schema-rs-169-18",
+          "target": "src-ffi-schema-rs-169-18-as_ref"
+        },
+        {
+          "site": "src-ffi-schema-rs-169-18-as_ref",
+          "target": "src-ffi-schema-rs-169-18-as_ref"
+        }
+      ],
+      "saw_rust_panic": false,
+      "duration_sec": 71.718,
+      "mode": "rerun",
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee-rerun.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/arrow2-0.18.0/full-matrix-logs/src-ffi-schema-rs-169-18-as_ref/rule-428/klee-rerun"
+    }
+  }
+}

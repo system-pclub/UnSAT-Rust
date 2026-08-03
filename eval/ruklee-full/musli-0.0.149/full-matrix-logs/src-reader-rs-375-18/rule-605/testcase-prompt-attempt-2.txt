@@ -1,0 +1,3396 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 122745985695744; get_arg(1) = 1; target counterexample query was unsat.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-reader-rs-375-18-rule-605-c2605fa373`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_reader_rs_375_18_rule_605_c2605fa373`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-reader-rs-375-18-rule-605-c2605fa373")]`.
+- Define `pub extern "C" fn __unsat_poc_src_reader_rs_375_18_rule_605_c2605fa373()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-reader-rs-375-18-rule-605-c2605fa373")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_reader_rs_375_18_rule_605_c2605fa373() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN5musli6reader11SliceReader8as_slice17h184f1ef7348ad4c2E.arg0.range.end"
+  },
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN5musli6reader11SliceReader8as_slice17h184f1ef7348ad4c2E.arg0.range.start"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "reader::SliceReader",
+    "path": "src/reader.rs",
+    "line_start": 324,
+    "body_end": 324,
+    "is_public": true
+  },
+  "caller": {
+    "name": "reader::SliceReader::<'de>::as_slice",
+    "path": "src/reader.rs",
+    "line_start": 354,
+    "line_end": 374,
+    "body_end": 376,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "&'de [u8]"
+  },
+  "callee": {
+    "name": "core::slice::from_raw_parts",
+    "path": "rust/library/core/src/slice/raw.rs",
+    "line_start": 6,
+    "line_end": 123,
+    "body_end": 123,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&'a [T]"
+  },
+  "callsite": {
+    "line": 375,
+    "col": 18,
+    "path": "src/reader.rs",
+    "id": "src-reader-rs-375-18"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "function",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `reader::SliceReader` for `receiver` using constructor(s): `reader::SliceReader::<'de>::new` -> call target caller `reader::SliceReader::<'de>::as_slice`
+2. construct `reader::SliceReader` for `receiver` using constructor(s): `reader::SliceReader::<'de>::new` -> call safe `SliceReader` -> call target caller `reader::SliceReader::<'de>::as_slice`
+3. construct `reader::SliceReader` for `receiver` using constructor(s): `reader::SliceReader::<'de>::new` -> call target caller `reader::SliceReader::<'de>::as_slice` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `reader::SliceReader::<'de>::as_slice`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use core::fmt;
+use core::marker;
+use core::mem::MaybeUninit;
+use core::ops::Range;
+use core::ptr;
+use core::slice;
+use crate::Context;
+use crate::de::UnsizedVisitor;
+use super::{Limit, Reader};
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/reader.rs:375
+```rust
+367:     ///     assert_eq!(reader.as_slice(), &[1, 2, 3, 4]);
+368:     ///     reader.skip(cx, 2)?;
+369:     ///     assert_eq!(reader.as_slice(), &[3, 4]);
+370:     ///     Ok(())
+371:     /// }
+372:     /// ```
+373:     #[inline]
+374:     pub fn as_slice(&self) -> &'de [u8] {
+375:         unsafe { slice::from_raw_parts(self.range.start, self.remaining()) }
+376:     }
+377: 
+378:     /// Get remaining bytes in the reader.
+379:     ///
+380:     /// # Examples
+381:     ///
+382:     /// ```
+383:     /// use musli::Context;
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/reader.rs:374-375
+```rust
+374:     pub fn as_slice(&self) -> &'de [u8] {
+375:         unsafe { slice::from_raw_parts(self.range.start, self.remaining()) }
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/alloc/slice.rs:573-576
+```rust
+573:     fn remaining(&self) -> usize {
+574:         // SAFETY: It is guaranteed that free_end >= free_start inside of the provided region.
+575:         unsafe { self.free.end.byte_offset_from(self.free.start) as usize }
+576:     }
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.219/src/de/impls.rs:2434-2573
+```rust
+2434: //     struct Range<Idx> {
+2435: //         start: Idx,
+2436: //         end: Idx,
+2437: //     }
+2438: impl<'de, Idx> Deserialize<'de> for Range<Idx>
+2439: where
+2440:     Idx: Deserialize<'de>,
+2441: {
+2442:     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2443:     where
+2444:         D: Deserializer<'de>,
+2445:     {
+2446:         let (start, end) = tri!(deserializer.deserialize_struct(
+2447:             "Range",
+2448:             range::FIELDS,
+2449:             range::RangeVisitor {
+2450:                 expecting: "struct Range",
+2451:                 phantom: PhantomData,
+2452:             },
+2453:         ));
+2454:         Ok(start..end)
+2455:     }
+2456: }
+2457: 
+2458: impl<'de, Idx> Deserialize<'de> for RangeInclusive<Idx>
+2459: where
+2460:     Idx: Deserialize<'de>,
+2461: {
+2462:     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2463:     where
+2464:         D: Deserializer<'de>,
+2465:     {
+2466:         let (start, end) = tri!(deserializer.deserialize_struct(
+2467:             "RangeInclusive",
+2468:             range::FIELDS,
+2469:             range::RangeVisitor {
+2470:                 expecting: "struct RangeInclusive",
+2471:                 phantom: PhantomData,
+2472:             },
+2473:         ));
+2474:         Ok(RangeInclusive::new(start, end))
+2475:     }
+2476: }
+2477: 
+2478: mod range {
+2479:     use crate::lib::*;
+2480: 
+2481:     use crate::de::{Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor};
+2482: 
+2483:     pub const FIELDS: &[&str] = &["start", "end"];
+2484: 
+2485:     // If this were outside of the serde crate, it would just use:
+2486:     //
+2487:     //    #[derive(Deserialize)]
+2488:     //    #[serde(field_identifier, rename_all = "lowercase")]
+2489:     enum Field {
+2490:         Start,
+2491:         End,
+2492:     }
+2493: 
+2494:     impl<'de> Deserialize<'de> for Field {
+2495:         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2496:         where
+2497:             D: Deserializer<'de>,
+2498:         {
+2499:             struct FieldVisitor;
+2500: 
+2501:             impl<'de> Visitor<'de> for FieldVisitor {
+2502:                 type Value = Field;
+2503: 
+2504:                 fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+2505:                     formatter.write_str("`start` or `end`")
+2506:                 }
+2507: 
+2508:                 fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+2509:                 where
+2510:                     E: Error,
+2511:                 {
+2512:                     match value {
+2513:                         "start" => Ok(Field::Start),
+2514:                         "end" => Ok(Field::End),
+2515:                         _ => Err(Error::unknown_field(value, FIELDS)),
+2516:                     }
+2517:                 }
+2518: 
+2519:                 fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+2520:                 where
+2521:                     E: Error,
+2522:                 {
+2523:                     match value {
+2524:                         b"start" => Ok(Field::Start),
+2525:                         b"end" => Ok(Field::End),
+2526:                         _ => {
+2527:                             let value = crate::__private::from_utf8_lossy(value);
+2528:                             Err(Error::unknown_field(&*value, FIELDS))
+2529:                         }
+2530:                     }
+2531:                 }
+2532:             }
+2533: 
+2534:             deserializer.deserialize_identifier(FieldVisitor)
+2535:         }
+2536:     }
+2537: 
+2538:     pub struct RangeVisitor<Idx> {
+2539:         pub expecting: &'static str,
+2540:         pub phantom: PhantomData<Idx>,
+2541:     }
+2542: 
+2543:     impl<'de, Idx> Visitor<'de> for RangeVisitor<Idx>
+2544:     where
+2545:         Idx: Deserialize<'de>,
+2546:     {
+2547:         type Value = (Idx, Idx);
+2548: 
+2549:         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+2550:             formatter.write_str(self.expecting)
+2551:         }
+2552: 
+2553:         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+2554:         where
+2555:             A: SeqAccess<'de>,
+2556:         {
+2557:             let start: Idx = match tri!(seq.next_element()) {
+2558:                 Some(value) => value,
+2559:                 None => {
+2560:                     return Err(Error::invalid_length(0, &self));
+2561:                 }
+2562:             };
+2563:             let end: Idx = match tri!(seq.next_element()) {
+2564:                 Some(value) => value,
+2565:                 None => {
+2566:                     return Err(Error::invalid_length(1, &self));
+2567:                 }
+2568:             };
+2569:             Ok((start, end))
+2570:         }
+2571: 
+2572:         fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+2573:         where
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/musli-core-0.1.2/src/alloc/string.rs:832-865
+```rust
+832:         struct Visitor;
+833: 
+834:         #[crate::trait_defaults(crate)]
+835:         impl<C> UnsizedVisitor<'_, C, str> for Visitor
+836:         where
+837:             C: Context,
+838:         {
+839:             type Ok = String<Self::Allocator>;
+840: 
+841:             #[inline]
+842:             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+843:                 write!(f, "string")
+844:             }
+845: 
+846:             #[inline]
+847:             fn visit_owned(
+848:                 self,
+849:                 _: C,
+850:                 value: String<Self::Allocator>,
+851:             ) -> Result<Self::Ok, C::Error> {
+852:                 Ok(value)
+853:             }
+854: 
+855:             #[inline]
+856:             fn visit_ref(self, cx: C, string: &str) -> Result<Self::Ok, C::Error> {
+857:                 let mut s = String::new_in(cx.alloc());
+858:                 s.push_str(string).map_err(cx.map())?;
+859:                 Ok(s)
+860:             }
+861:         }
+862: 
+863:         decoder.decode_string(Visitor)
+864:     }
+865: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/musli-core-0.1.2/src/context.rs:49-188
+```rust
+ 49:     type Allocator: Allocator;
+ 50: 
+ 51:     /// Clear the state of the context, allowing it to be re-used.
+ 52:     fn clear(self);
+ 53: 
+ 54:     /// Advance the context by `n` bytes of input.
+ 55:     ///
+ 56:     /// This is typically used to move the mark forward as produced by
+ 57:     /// [Context::mark].
+ 58:     fn advance(self, n: usize);
+ 59: 
+ 60:     /// Return a mark which acts as a checkpoint at the current encoding state.
+ 61:     ///
+ 62:     /// The context is in a privileged state in that it sees everything, so a
+ 63:     /// mark can be quite useful for determining the context of an error.
+ 64:     ///
+ 65:     /// This typically indicates a byte offset, and is used by
+ 66:     /// [`message_at`][Context::message_at] to report a spanned error.
+ 67:     fn mark(self) -> Self::Mark;
+ 68: 
+ 69:     /// Restore the state of the context to the specified mark.
+ 70:     fn restore(self, mark: &Self::Mark);
+ 71: 
+ 72:     /// Access the underlying allocator.
+ 73:     fn alloc(self) -> Self::Allocator;
+ 74: 
+ 75:     /// Generate a map function which maps an error using the `custom` function.
+ 76:     #[inline]
+ 77:     fn map<E>(self) -> impl FnOnce(E) -> Self::Error
+ 78:     where
+ 79:         E: 'static + Send + Sync + Error,
+ 80:     {
+ 81:         move |error| self.custom(error)
+ 82:     }
+ 83: 
+ 84:     /// Report a custom error, which is not encapsulated by the error type
+ 85:     /// expected by the context. This is essentially a type-erased way of
+ 86:     /// reporting error-like things out from the context.
+ 87:     fn custom<E>(self, error: E) -> Self::Error
+ 88:     where
+ 89:         E: 'static + Send + Sync + Error;
+ 90: 
+ 91:     /// Report a message as an error.
+ 92:     ///
+ 93:     /// This is made available to format custom error messages in `no_std`
+ 94:     /// environments. The error message is to be collected by formatting `T`.
+ 95:     fn message<M>(self, message: M) -> Self::Error
+ 96:     where
+ 97:         M: fmt::Display;
+ 98: 
+ 99:     /// Report an error based on a mark.
+100:     ///
+101:     /// A mark is generated using [Context::mark] and indicates a prior state.
+102:     #[inline]
+103:     fn message_at<M>(self, mark: &Self::Mark, message: M) -> Self::Error
+104:     where
+105:         M: fmt::Display,
+106:     {
+107:         _ = mark;
+108:         self.message(message)
+109:     }
+110: 
+111:     /// Report an error based on a mark.
+112:     ///
+113:     /// A mark is generated using [Context::mark] and indicates a prior state.
+114:     #[inline]
+115:     fn custom_at<E>(self, mark: &Self::Mark, message: E) -> Self::Error
+116:     where
+117:         E: 'static + Send + Sync + Error,
+118:     {
+119:         _ = mark;
+120:         self.custom(message)
+121:     }
+122: 
+123:     /// Indicate that we've entered a struct with the given `name`.
+124:     ///
+125:     /// The `name` variable corresponds to the identifiers of the struct.
+126:     ///
+127:     /// This will be matched with a corresponding call to [`leave_struct`].
+128:     ///
+129:     /// [`leave_struct`]: Context::leave_struct
+130:     #[inline]
+131:     fn enter_struct(self, type_name: &'static str) {
+132:         _ = type_name;
+133:     }
+134: 
+135:     /// Trace that we've left the last struct that was entered.
+136:     #[inline]
+137:     fn leave_struct(self) {}
+138: 
+139:     /// Indicate that we've entered an enum with the given `name`.
+140:     ///
+141:     /// The `name` variable corresponds to the identifiers of the enum.
+142:     ///
+143:     /// This will be matched with a corresponding call to [`leave_enum`].
+144:     ///
+145:     /// [`leave_enum`]: Context::leave_enum
+146:     #[inline]
+147:     fn enter_enum(self, type_name: &'static str) {
+148:         _ = type_name;
+149:     }
+150: 
+151:     /// Trace that we've left the last enum that was entered.
+152:     #[inline]
+153:     fn leave_enum(self) {}
+154: 
+155:     /// Trace that we've entered the given named field.
+156:     ///
+157:     /// A named field is part of a regular struct, where the literal field name
+158:     /// is the `name` argument below, and the musli tag being used for the field
+159:     /// is the second argument.
+160:     ///
+161:     /// This will be matched with a corresponding call to [`leave_field`].
+162:     ///
+163:     /// Here `name` is `"field"` and `tag` is `"string"`.
+164:     ///
+165:     /// ```
+166:     /// use musli::{Decode, Encode};
+167:     ///
+168:     /// #[derive(Decode, Encode)]
+169:     /// #[musli(name_all = "name")]
+170:     /// struct Struct {
+171:     ///     #[musli(name = "string")]
+172:     ///     field: String,
+173:     /// }
+174:     /// ```
+175:     ///
+176:     /// [`leave_field`]: Context::leave_field
+177:     #[inline]
+178:     fn enter_named_field<F>(self, type_name: &'static str, field: F)
+179:     where
+180:         F: fmt::Display,
+181:     {
+182:         _ = type_name;
+183:         _ = field;
+184:     }
+185: 
+186:     /// Trace that we've entered the given unnamed field.
+187:     ///
+188:     /// An unnamed field is part of a tuple struct, where the field index is the
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.219/src/de/ignored_any.rs:46-185
+```rust
+ 46: ///     type Value = T;
+ 47: ///
+ 48: ///     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+ 49: ///         write!(
+ 50: ///             formatter,
+ 51: ///             "a sequence in which we care about element {}",
+ 52: ///             self.n
+ 53: ///         )
+ 54: ///     }
+ 55: ///
+ 56: ///     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+ 57: ///     where
+ 58: ///         A: SeqAccess<'de>,
+ 59: ///     {
+ 60: ///         // Skip over the first `n` elements.
+ 61: ///         for i in 0..self.n {
+ 62: ///             // It is an error if the sequence ends before we get to element `n`.
+ 63: ///             if seq.next_element::<IgnoredAny>()?.is_none() {
+ 64: ///                 return Err(de::Error::invalid_length(i, &self));
+ 65: ///             }
+ 66: ///         }
+ 67: ///
+ 68: ///         // Deserialize the one we care about.
+ 69: ///         let nth = match seq.next_element()? {
+ 70: ///             Some(nth) => nth,
+ 71: ///             None => {
+ 72: ///                 return Err(de::Error::invalid_length(self.n, &self));
+ 73: ///             }
+ 74: ///         };
+ 75: ///
+ 76: ///         // Skip over any remaining elements in the sequence after `n`.
+ 77: ///         while let Some(IgnoredAny) = seq.next_element()? {
+ 78: ///             // ignore
+ 79: ///         }
+ 80: ///
+ 81: ///         Ok(nth)
+ 82: ///     }
+ 83: /// }
+ 84: ///
+ 85: /// impl<'de, T> DeserializeSeed<'de> for NthElement<T>
+ 86: /// where
+ 87: ///     T: Deserialize<'de>,
+ 88: /// {
+ 89: ///     type Value = T;
+ 90: ///
+ 91: ///     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+ 92: ///     where
+ 93: ///         D: Deserializer<'de>,
+ 94: ///     {
+ 95: ///         deserializer.deserialize_seq(self)
+ 96: ///     }
+ 97: /// }
+ 98: ///
+ 99: /// # fn example<'de, D>(deserializer: D) -> Result<(), D::Error>
+100: /// # where
+101: /// #     D: Deserializer<'de>,
+102: /// # {
+103: /// // Deserialize only the sequence element at index 3 from this deserializer.
+104: /// // The element at index 3 is required to be a string. Elements before and
+105: /// // after index 3 are allowed to be of any type.
+106: /// let s: String = NthElement::new(3).deserialize(deserializer)?;
+107: /// #     Ok(())
+108: /// # }
+109: /// ```
+110: #[derive(Copy, Clone, Debug, Default, PartialEq)]
+111: pub struct IgnoredAny;
+112: 
+113: impl<'de> Visitor<'de> for IgnoredAny {
+114:     type Value = IgnoredAny;
+115: 
+116:     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+117:         formatter.write_str("anything at all")
+118:     }
+119: 
+120:     #[inline]
+121:     fn visit_bool<E>(self, x: bool) -> Result<Self::Value, E> {
+122:         let _ = x;
+123:         Ok(IgnoredAny)
+124:     }
+125: 
+126:     #[inline]
+127:     fn visit_i64<E>(self, x: i64) -> Result<Self::Value, E> {
+128:         let _ = x;
+129:         Ok(IgnoredAny)
+130:     }
+131: 
+132:     #[inline]
+133:     fn visit_i128<E>(self, x: i128) -> Result<Self::Value, E> {
+134:         let _ = x;
+135:         Ok(IgnoredAny)
+136:     }
+137: 
+138:     #[inline]
+139:     fn visit_u64<E>(self, x: u64) -> Result<Self::Value, E> {
+140:         let _ = x;
+141:         Ok(IgnoredAny)
+142:     }
+143: 
+144:     #[inline]
+145:     fn visit_u128<E>(self, x: u128) -> Result<Self::Value, E> {
+146:         let _ = x;
+147:         Ok(IgnoredAny)
+148:     }
+149: 
+150:     #[inline]
+151:     fn visit_f64<E>(self, x: f64) -> Result<Self::Value, E> {
+152:         let _ = x;
+153:         Ok(IgnoredAny)
+154:     }
+155: 
+156:     #[inline]
+157:     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+158:     where
+159:         E: Error,
+160:     {
+161:         let _ = s;
+162:         Ok(IgnoredAny)
+163:     }
+164: 
+165:     #[inline]
+166:     fn visit_none<E>(self) -> Result<Self::Value, E> {
+167:         Ok(IgnoredAny)
+168:     }
+169: 
+170:     #[inline]
+171:     fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+172:     where
+173:         D: Deserializer<'de>,
+174:     {
+175:         IgnoredAny::deserialize(deserializer)
+176:     }
+177: 
+178:     #[inline]
+179:     fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+180:     where
+181:         D: Deserializer<'de>,
+182:     {
+183:         IgnoredAny::deserialize(deserializer)
+184:     }
+185: 
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/musli-core-0.1.2/src/de/skip.rs:4-23
+```rust
+ 4: pub enum Skip {
+ 5:     /// Indicates that skipping was not supported.
+ 6:     Unsupported,
+ 7:     /// Indicates that skipping was successfully performed.
+ 8:     Skipped,
+ 9: }
+10: 
+11: impl Skip {
+12:     /// Indicates if a skip was not supported.
+13:     #[inline(always)]
+14:     pub fn is_unsupported(self) -> bool {
+15:         self == Skip::Unsupported
+16:     }
+17: 
+18:     /// Indicates if a skip was performed.
+19:     #[inline(always)]
+20:     pub fn is_skipped(self) -> bool {
+21:         self == Skip::Skipped
+22:     }
+23: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.219/src/private/ser.rs:46-185
+```rust
+ 46: enum Unsupported {
+ 47:     Boolean,
+ 48:     Integer,
+ 49:     Float,
+ 50:     Char,
+ 51:     String,
+ 52:     ByteArray,
+ 53:     Optional,
+ 54:     Sequence,
+ 55:     Tuple,
+ 56:     TupleStruct,
+ 57:     #[cfg(not(any(feature = "std", feature = "alloc")))]
+ 58:     Enum,
+ 59: }
+ 60: 
+ 61: impl Display for Unsupported {
+ 62:     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+ 63:         match *self {
+ 64:             Unsupported::Boolean => formatter.write_str("a boolean"),
+ 65:             Unsupported::Integer => formatter.write_str("an integer"),
+ 66:             Unsupported::Float => formatter.write_str("a float"),
+ 67:             Unsupported::Char => formatter.write_str("a char"),
+ 68:             Unsupported::String => formatter.write_str("a string"),
+ 69:             Unsupported::ByteArray => formatter.write_str("a byte array"),
+ 70:             Unsupported::Optional => formatter.write_str("an optional"),
+ 71:             Unsupported::Sequence => formatter.write_str("a sequence"),
+ 72:             Unsupported::Tuple => formatter.write_str("a tuple"),
+ 73:             Unsupported::TupleStruct => formatter.write_str("a tuple struct"),
+ 74:             #[cfg(not(any(feature = "std", feature = "alloc")))]
+ 75:             Unsupported::Enum => formatter.write_str("an enum"),
+ 76:         }
+ 77:     }
+ 78: }
+ 79: 
+ 80: impl<S> TaggedSerializer<S>
+ 81: where
+ 82:     S: Serializer,
+ 83: {
+ 84:     fn bad_type(self, what: Unsupported) -> S::Error {
+ 85:         ser::Error::custom(format_args!(
+ 86:             "cannot serialize tagged newtype variant {}::{} containing {}",
+ 87:             self.type_ident, self.variant_ident, what
+ 88:         ))
+ 89:     }
+ 90: }
+ 91: 
+ 92: impl<S> Serializer for TaggedSerializer<S>
+ 93: where
+ 94:     S: Serializer,
+ 95: {
+ 96:     type Ok = S::Ok;
+ 97:     type Error = S::Error;
+ 98: 
+ 99:     type SerializeSeq = Impossible<S::Ok, S::Error>;
+100:     type SerializeTuple = Impossible<S::Ok, S::Error>;
+101:     type SerializeTupleStruct = Impossible<S::Ok, S::Error>;
+102:     type SerializeMap = S::SerializeMap;
+103:     type SerializeStruct = S::SerializeStruct;
+104: 
+105:     #[cfg(not(any(feature = "std", feature = "alloc")))]
+106:     type SerializeTupleVariant = Impossible<S::Ok, S::Error>;
+107:     #[cfg(any(feature = "std", feature = "alloc"))]
+108:     type SerializeTupleVariant = SerializeTupleVariantAsMapValue<S::SerializeMap>;
+109: 
+110:     #[cfg(not(any(feature = "std", feature = "alloc")))]
+111:     type SerializeStructVariant = Impossible<S::Ok, S::Error>;
+112:     #[cfg(any(feature = "std", feature = "alloc"))]
+113:     type SerializeStructVariant = SerializeStructVariantAsMapValue<S::SerializeMap>;
+114: 
+115:     fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
+116:         Err(self.bad_type(Unsupported::Boolean))
+117:     }
+118: 
+119:     fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
+120:         Err(self.bad_type(Unsupported::Integer))
+121:     }
+122: 
+123:     fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
+124:         Err(self.bad_type(Unsupported::Integer))
+125:     }
+126: 
+127:     fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
+128:         Err(self.bad_type(Unsupported::Integer))
+129:     }
+130: 
+131:     fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
+132:         Err(self.bad_type(Unsupported::Integer))
+133:     }
+134: 
+135:     fn serialize_u8(self, _: u8) -> Result<Self::Ok, Self::Error> {
+136:         Err(self.bad_type(Unsupported::Integer))
+137:     }
+138: 
+139:     fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
+140:         Err(self.bad_type(Unsupported::Integer))
+141:     }
+142: 
+143:     fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
+144:         Err(self.bad_type(Unsupported::Integer))
+145:     }
+146: 
+147:     fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
+148:         Err(self.bad_type(Unsupported::Integer))
+149:     }
+150: 
+151:     fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
+152:         Err(self.bad_type(Unsupported::Float))
+153:     }
+154: 
+155:     fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
+156:         Err(self.bad_type(Unsupported::Float))
+157:     }
+158: 
+159:     fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+160:         Err(self.bad_type(Unsupported::Char))
+161:     }
+162: 
+163:     fn serialize_str(self, _: &str) -> Result<Self::Ok, Self::Error> {
+164:         Err(self.bad_type(Unsupported::String))
+165:     }
+166: 
+167:     fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
+168:         Err(self.bad_type(Unsupported::ByteArray))
+169:     }
+170: 
+171:     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+172:         Err(self.bad_type(Unsupported::Optional))
+173:     }
+174: 
+175:     fn serialize_some<T>(self, _: &T) -> Result<Self::Ok, Self::Error>
+176:     where
+177:         T: ?Sized + Serialize,
+178:     {
+179:         Err(self.bad_type(Unsupported::Optional))
+180:     }
+181: 
+182:     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+183:         let mut map = tri!(self.delegate.serialize_map(Some(1)));
+184:         tri!(map.serialize_entry(self.tag, self.variant_name));
+185:         map.end()
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/de/impls.rs:2462-2475
+```rust
+2462:     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2463:     where
+2464:         D: Deserializer<'de>,
+2465:     {
+2466:         let (start, end) = tri!(deserializer.deserialize_struct(
+2467:             "RangeInclusive",
+2468:             range::FIELDS,
+2469:             range::RangeVisitor {
+2470:                 expecting: "struct RangeInclusive",
+2471:                 phantom: PhantomData,
+2472:             },
+2473:         ));
+2474:         Ok(RangeInclusive::new(start, end))
+2475:     }
+```
+
+src/de/impls.rs:797-810
+```rust
+797: 
+798:     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+799:     where
+800:         A: SeqAccess<'de>,
+801:     {
+802:         let capacity = size_hint::cautious::<u8>(seq.size_hint());
+803:         let mut values = Vec::<u8>::with_capacity(capacity);
+804: 
+805:         while let Some(value) = tri!(seq.next_element()) {
+806:             values.push(value);
+807:         }
+808: 
+809:         CString::new(values).map_err(Error::custom)
+810:     }
+```
+
+src/private/de.rs:1599-1617
+```rust
+1599: 
+1600:         fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
+1601:         where
+1602:             V: de::Visitor<'de>,
+1603:         {
+1604:             match self.value {
+1605:                 Some(Content::Seq(v)) => {
+1606:                     de::Deserializer::deserialize_any(SeqDeserializer::new(v.into_iter()), visitor)
+1607:                 }
+1608:                 Some(other) => Err(de::Error::invalid_type(
+1609:                     other.unexpected(),
+1610:                     &"tuple variant",
+1611:                 )),
+1612:                 None => Err(de::Error::invalid_type(
+1613:                     de::Unexpected::UnitVariant,
+1614:                     &"tuple variant",
+1615:                 )),
+1616:             }
+1617:         }
+```
+
+src/private/de.rs:1618-1643
+```rust
+1618: 
+1619:         fn struct_variant<V>(
+1620:             self,
+1621:             _fields: &'static [&'static str],
+1622:             visitor: V,
+1623:         ) -> Result<V::Value, Self::Error>
+1624:         where
+1625:             V: de::Visitor<'de>,
+1626:         {
+1627:             match self.value {
+1628:                 Some(Content::Map(v)) => {
+1629:                     de::Deserializer::deserialize_any(MapDeserializer::new(v.into_iter()), visitor)
+1630:                 }
+1631:                 Some(Content::Seq(v)) => {
+1632:                     de::Deserializer::deserialize_any(SeqDeserializer::new(v.into_iter()), visitor)
+1633:                 }
+1634:                 Some(other) => Err(de::Error::invalid_type(
+1635:                     other.unexpected(),
+1636:                     &"struct variant",
+1637:                 )),
+1638:                 None => Err(de::Error::invalid_type(
+1639:                     de::Unexpected::UnitVariant,
+1640:                     &"struct variant",
+1641:                 )),
+1642:             }
+1643:         }
+```
+
+src/private/ser.rs:1272-1280
+```rust
+1272: 
+1273:     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
+1274:     where
+1275:         T: ?Sized + Serialize,
+1276:     {
+1277:         let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+1278:         self.fields.push(value);
+1279:         Ok(())
+1280:     }
+```
+
+src/private/ser.rs:1318-1326
+```rust
+1318: 
+1319:     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
+1320:     where
+1321:         T: ?Sized + Serialize,
+1322:     {
+1323:         let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+1324:         self.fields.push((key, value));
+1325:         Ok(())
+1326:     }
+```
+
+src/private/ser.rs:364-372
+```rust
+364: 
+365:         fn serialize_field<T>(&mut self, value: &T) -> Result<(), M::Error>
+366:         where
+367:             T: ?Sized + Serialize,
+368:         {
+369:             let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+370:             self.fields.push(value);
+371:             Ok(())
+372:         }
+```
+
+src/private/ser.rs:404-412
+```rust
+404: 
+405:         fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), M::Error>
+406:         where
+407:             T: ?Sized + Serialize,
+408:         {
+409:             let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+410:             self.fields.push((key, value));
+411:             Ok(())
+412:         }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-reader-rs-375-18
+
+Rule id: rule-605
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-reader-rs-375-18`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-reader-rs-375-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-reader-rs-375-18` and reproduce the target counterexample there.
+The metadata caller `reader::SliceReader::<'de>::as_slice` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 122745985695744; get_arg(1) = 1; target counterexample query was unsat.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/alloc/slice.rs">
+```rust
+use core::cell::UnsafeCell;
+use core::marker::PhantomData;
+use core::mem::{MaybeUninit, align_of, forget, replace, size_of};
+use core::num::NonZeroU16;
+use core::ops::{Deref, DerefMut};
+use core::ptr;
+use super::{Alloc, AllocError, Allocator, SliceBuffer};
+const MAX_BYTES: usize = i32::MAX as usize;
+/// A no-std compatible slice-based allocator that can be used with the `musli`
+/// crate.
+///
+/// It is geared towards handling few allocations, but they can be arbitrarily
+/// large. It is optimized to work best when allocations are short lived and
+/// "merged back" into one previously allocated region through
+/// `Buffer::extend`.
+///
+/// It's also optimized to write to one allocation "at a time". So once an
+/// allocation has been grown once, it will be put in a region where it is
+/// unlikely to need to be moved again, usually the last region which has access
+/// to the remainder of the provided buffer.
+///
+/// For the moment, this allocator only supports 65535 unique allocations, which
+/// is fine for use with the `musli` crate, but might be a limitation for other
+/// use-cases.
+///
+/// ## Examples
+///
+/// ```
+/// use musli::alloc::{ArrayBuffer, Slice, Vec};
+///
+/// let mut buf = ArrayBuffer::new();
+/// let alloc = Slice::new(&mut buf);
+///
+/// let mut a = Vec::new_in(&alloc);
+/// let mut b = Vec::new_in(&alloc);
+///
+/// b.extend_from_slice(b"He11o")?;
+/// a.extend_from_slice(b.as_slice())?;
+///
+/// assert_eq!(a.as_slice(), b"He11o");
+/// assert_eq!(a.len(), 5);
+///
+/// a.extend_from_slice(b" W0rld")?;
+///
+/// assert_eq!(a.as_slice(), b"He11o W0rld");
+/// assert_eq!(a.len(), 11);
+///
+/// let mut c = Vec::new_in(&alloc);
+/// c.extend_from_slice(b"!")?;
+/// a.extend_from_slice(c.as_slice())?;
+///
+/// assert_eq!(a.as_slice(), b"He11o W0rld!");
+/// assert_eq!(a.len(), 12);
+/// # Ok::<_, musli::alloc::AllocError>(())
+/// ```
+///
+/// ## Design
+///
+/// The allocator takes a buffer of contiguous memory. This is dynamically
+/// diviced into two parts:
+///
+/// * One part which grows upwards from the base, constituting the memory being
+///   allocated.
+/// * Its metadata growing downward from the end of the buffer, containing
+///   headers for all allocated region.
+///
+/// By designing the allocator so that the memory allocated and its metadata is
+/// separate, neighbouring regions can efficiently be merged as they are written
+/// or freed.
+///
+/// Each allocation is sparse, meaning it does not try to over-allocate memory.
+/// This ensures that subsequent regions with initialized memory can be merged
+/// efficiently, but degrades performance for many small writes performed across
+/// multiple allocations concurrently.
+///
+/// Below is an illustration of this, where `a` and `b` are two allocations
+/// where we write one byte at a time to each. Here `x` below indicates an
+/// occupied `gap` in memory regions.
+///
+/// ```text
+/// a
+/// ab
+/// # a moved to end
+/// xbaa
+/// # b moved to 0
+/// bbaa
+/// # aa not moved
+/// bbaaa
+/// # bb moved to end
+/// xxaaabbb
+/// # aaa moved to 0
+/// aaaaxbbb
+/// # bbb not moved
+/// aaaaxbbbb
+/// # aaaa not moved
+/// aaaaabbbb
+/// # bbbbb not moved
+/// aaaaabbbbb
+/// # aaaaa moved to end
+/// xxxxxbbbbbaaaaaa
+/// # bbbbb moved to 0
+/// bbbbbbxxxxaaaaaa
+/// ```
+pub struct Slice<'a> {
+    internal: UnsafeCell<Internal>,
+    _marker: PhantomData<&'a mut [MaybeUninit<u8>]>,
+}
+impl<'a> Slice<'a> {
+    /// Construct a new slice allocator around a [`SliceBuffer`].
+    ///
+    /// See [type-level documentation][Slice] for more information.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use musli::alloc::{ArrayBuffer, Slice, Vec};
+    ///
+    /// let mut buf = ArrayBuffer::new();
+    /// let alloc = Slice::new(&mut buf);
+    /// let mut vec = Vec::new_in(&alloc);
+    /// vec.push(42u32).unwrap();
+    /// assert_eq!(vec.as_slice(), &[42]);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// This panics if called with a buffer larger than `2^31` bytes.
+    #[inline(never)]
+    pub fn new<B>(buffer: &'a mut B) -> Self
+    where
+        B: ?Sized + SliceBuffer,
+    {
+        /* body omitted: interface retained */
+    }
+}
+unsafe impl<'a> Allocator for &'a Slice<'_> {
+    #[inline]
+    fn __do_not_implement() {
+        /* body omitted: interface retained */
+    }
+    const IS_GLOBAL: bool = false;
+    type Alloc<T> = SliceAlloc<'a, T>;
+    #[inline]
+    fn alloc<T>(self, value: T) -> Result<Self::Alloc<T>, AllocError> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn alloc_empty<T>(self) -> Self::Alloc<T> {
+        /* body omitted: interface retained */
+    }
+}
+/// A slice allocated buffer.
+///
+/// See [`Slice`].
+pub struct SliceAlloc<'a, T> {
+    region: Option<HeaderId>,
+    internal: Option<&'a UnsafeCell<Internal>>,
+    cap: usize,
+    _marker: PhantomData<T>,
+}
+impl<T> SliceAlloc<'_, T> {
+    const ZST: Self = Self {
+        region: None,
+        internal: None,
+        cap: usize::MAX,
+        _marker: PhantomData,
+    };
+}
+impl<T> SliceAlloc<'_, T> {
+    #[inline]
+    fn free(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Alloc<T> for SliceAlloc<'_, T> {
+    #[inline]
+    fn as_ptr(&self) -> *const T {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn as_mut_ptr(&mut self) -> *mut T {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn resize(&mut self, len: usize, additional: usize) -> Result<(), AllocError> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn try_merge<B>(
+        &mut self,
+        this_len: usize,
+        buf: B,
+        other_len: usize,
+    ) -> Result<(), B>
+    where
+        B: Alloc<T>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Drop for SliceAlloc<'_, T> {
+    #[inline]
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+struct Region {
+    id: HeaderId,
+    ptr: *mut Header,
+}
+impl Deref for Region {
+    type Target = Header;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl DerefMut for Region {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+/// The identifier of a region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(PartialOrd, Ord, Hash))]
+#[repr(transparent)]
+struct HeaderId(NonZeroU16);
+impl HeaderId {
+    /// Create a new region identifier.
+    ///
+    /// # Safety
+    ///
+    /// The given value must be non-zero.
+    #[inline]
+    fn new(value: isize) -> Option<Self> {
+        /* body omitted: interface retained */
+    }
+    /// Get the value of the region identifier.
+    #[inline]
+    fn get(self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Range {
+    start: *mut MaybeUninit<u8>,
+    end: *mut MaybeUninit<u8>,
+}
+impl Range {
+    fn new(range: core::ops::Range<*mut MaybeUninit<u8>>) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn head(self) -> Range {
+        /* body omitted: interface retained */
+    }
+}
+struct Internal {
+    free_head: Option<HeaderId>,
+    tail: Option<HeaderId>,
+    occupied: Option<HeaderId>,
+    full: Range,
+    free: Range,
+}
+impl Internal {
+    #[inline]
+    fn remaining(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Get the header pointer corresponding to the given id.
+    #[inline]
+    fn header(&self, at: HeaderId) -> &Header {
+        /* body omitted: interface retained */
+    }
+    /// Get the mutable header pointer corresponding to the given id.
+    #[inline]
+    fn header_mut(&mut self, at: HeaderId) -> *mut Header {
+        /* body omitted: interface retained */
+    }
+    /// Get the mutable region corresponding to the given id.
+    #[inline]
+    fn region(&mut self, id: HeaderId) -> Region {
+        /* body omitted: interface retained */
+    }
+    unsafe fn unlink(&mut self, header: &Header) {
+        /* body omitted: interface retained */
+    }
+    unsafe fn replace_back(&mut self, region: &mut Region) {
+        /* body omitted: interface retained */
+    }
+    unsafe fn push_back(&mut self, region: &mut Region) {
+        /* body omitted: interface retained */
+    }
+    /// Free a region.
+    unsafe fn free_region(&mut self, region: Region) -> Header {
+        /* body omitted: interface retained */
+    }
+    /// Allocate a new header.
+    ///
+    /// # Safety
+    ///
+    /// The caller msut ensure that there is enough space for the region and
+    /// that the end pointer has been aligned to the requirements of `Header`.
+    unsafe fn alloc_header(&mut self, end: *mut MaybeUninit<u8>) -> Option<Region> {
+        /* body omitted: interface retained */
+    }
+    /// Allocate a region.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `this` is exclusively available.
+    unsafe fn alloc(&mut self, requested: usize, align: usize) -> Option<Region> {
+        /* body omitted: interface retained */
+    }
+    /// Align the free region by the specified alignment.
+    ///
+    /// This might require either expanding the tail region, or introducing an
+    /// occupied region which matches the number of bytes needed to fulfill the
+    /// specified alignment.
+    unsafe fn align(&mut self, align: usize) -> Option<()> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn free(&mut self, region: HeaderId) {
+        /* body omitted: interface retained */
+    }
+    /// Free the tail starting at the `current` region.
+    unsafe fn free_tail(&mut self, current: Region) {
+        /* body omitted: interface retained */
+    }
+    unsafe fn reserve(
+        &mut self,
+        additional: usize,
+        align: usize,
+    ) -> Option<*mut MaybeUninit<u8>> {
+        /* body omitted: interface retained */
+    }
+    unsafe fn realloc(
+        &mut self,
+        from: HeaderId,
+        len: usize,
+        requested: usize,
+        align: usize,
+    ) -> Option<Region> {
+        /* body omitted: interface retained */
+    }
+}
+/// The header of a region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Header {
+    range: Range,
+    prev: Option<HeaderId>,
+    next: Option<HeaderId>,
+}
+impl Header {
+    #[inline]
+    fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Test if region is aligned to `align`.
+    #[inline]
+    fn is_aligned(&self, align: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/alloc/slice_buffer.rs">
+```rust
+use core::mem::MaybeUninit;
+use core::slice::from_raw_parts_mut;
+
+use super::ArrayBuffer;
+
+mod sealed {
+    use core::mem::MaybeUninit;
+
+    use super::super::ArrayBuffer;
+
+    pub trait Sealed {}
+    impl Sealed for [MaybeUninit<u8>] {}
+    impl Sealed for [MaybeUninit<u16>] {}
+    impl Sealed for [MaybeUninit<u32>] {}
+    impl Sealed for [MaybeUninit<u64>] {}
+    impl Sealed for [MaybeUninit<u128>] {}
+    impl<const N: usize> Sealed for [MaybeUninit<u8>; N] {}
+    impl<const N: usize> Sealed for [MaybeUninit<u16>; N] {}
+    impl<const N: usize> Sealed for [MaybeUninit<u32>; N] {}
+    impl<const N: usize> Sealed for [MaybeUninit<u64>; N] {}
+    impl<const N: usize> Sealed for [MaybeUninit<u128>; N] {}
+    impl Sealed for [u8] {}
+    impl Sealed for [u16] {}
+    impl Sealed for [u32] {}
+    impl Sealed for [u64] {}
+    impl Sealed for [u128] {}
+    impl<const N: usize> Sealed for [u8; N] {}
+    impl<const N: usize> Sealed for [u16; N] {}
+    impl<const N: usize> Sealed for [u32; N] {}
+    impl<const N: usize> Sealed for [u64; N] {}
+    impl<const N: usize> Sealed for [u128; N] {}
+    impl<const N: usize> Sealed for ArrayBuffer<N> {}
+}
+
+/// The trait over anything that can be treated as a buffer by the [`Slice`]
+/// allocator.
+///
+/// [`Slice`]: super::Slice
+pub trait SliceBuffer: self::sealed::Sealed {
+    #[doc(hidden)]
+    fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>];
+}
+
+/// The [`SliceBuffer`] implementation for `[u8]`.
+///
+/// # Examples
+///
+/// ```
+/// use musli::alloc::Slice;
+///
+/// let mut bytes = [0u8; 128];
+/// let alloc = Slice::new(&mut bytes[..]);
+/// ```
+impl SliceBuffer for [u8] {
+    #[inline]
+    fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The [`SliceBuffer`] implementation for `[u8; N]`.
+///
+/// # Examples
+///
+/// ```
+/// use musli::alloc::Slice;
+///
+/// let mut bytes = [0u8; 128];
+/// let alloc = Slice::new(&mut bytes);
+/// ```
+impl<const N: usize> SliceBuffer for [u8; N] {
+    #[inline]
+    fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The [`SliceBuffer`] implementation for `[MaybeUninit<u8>]`.
+///
+/// # Examples
+///
+/// ```
+/// use core::mem::MaybeUninit;
+///
+/// use musli::alloc::Slice;
+///
+/// let mut bytes: [MaybeUninit<u8>; 128] = [const { MaybeUninit::uninit() }; 128];
+/// let alloc = Slice::new(&mut bytes[..]);
+/// ```
+impl SliceBuffer for [MaybeUninit<u8>] {
+    #[inline]
+    fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The [`SliceBuffer`] implementation for `[MaybeUninit<u8>; N]`.
+///
+/// # Examples
+///
+/// ```
+/// use core::mem::MaybeUninit;
+///
+/// # use musli::alloc::SliceBuffer as _;
+/// use musli::alloc::Slice;
+///
+/// let mut bytes: [MaybeUninit<u8>; 128] = [const { MaybeUninit::uninit() }; 128];
+/// # assert_eq!(bytes.as_uninit_bytes().len(), 128);
+/// let alloc = Slice::new(&mut bytes);
+/// ```
+impl<const N: usize> SliceBuffer for [MaybeUninit<u8>; N] {
+    #[inline]
+    fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The [`SliceBuffer`] implementation for `ArrayBuffer<N>`.
+///
+/// # Examples
+///
+/// ```
+/// use core::mem::MaybeUninit;
+///
+/// use musli::alloc::{ArrayBuffer, Slice};
+///
+/// let mut buffer = ArrayBuffer::new();
+/// let alloc = Slice::new(&mut buffer);
+/// ```
+impl<const N: usize> SliceBuffer for ArrayBuffer<N> {
+    #[inline]
+    fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+        /* body omitted: interface retained */
+    }
+}
+
+macro_rules! primitive {
+    ($($ty:ty, $len:expr),* $(,)?) => {
+        $(
+            #[doc = concat!(" The [`SliceBuffer`] implementation for `[", stringify!($ty), "]`.")]
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use musli::alloc::Slice;
+            /// # use musli::alloc::SliceBuffer as _;
+            ///
+            #[doc = concat!(" let mut bytes = [0", stringify!($ty), "; 128];")]
+            #[doc = concat!(" # assert_eq!(bytes.as_uninit_bytes().len(), ", stringify!($len), ");")]
+            /// let alloc = Slice::new(&mut bytes[..]);
+            /// ```
+            impl SliceBuffer for [$ty] {
+                #[inline]
+                fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+                    /* body omitted: interface retained */
+                }
+            }
+
+            #[doc = concat!(" The [`SliceBuffer`] implementation for `[MaybeUninit<", stringify!($ty), ">]`.")]
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use core::mem::MaybeUninit;
+            ///
+            /// use musli::alloc::Slice;
+            /// # use musli::alloc::SliceBuffer as _;
+            ///
+            #[doc = concat!(" let mut bytes: [MaybeUninit<", stringify!($ty), ">; 128] = [const { MaybeUninit::uninit() }; 128];")]
+            #[doc = concat!(" # assert_eq!(bytes.as_uninit_bytes().len(), ", stringify!($len), ");")]
+            /// let alloc = Slice::new(&mut bytes[..]);
+            /// ```
+            impl SliceBuffer for [MaybeUninit<$ty>] {
+                #[inline]
+                fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+                    /* body omitted: interface retained */
+                }
+            }
+
+            #[doc = concat!(" The [`SliceBuffer`] implementation for `[", stringify!($ty), "]`.")]
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use core::mem::MaybeUninit;
+            ///
+            /// use musli::alloc::Slice;
+            /// # use musli::alloc::SliceBuffer as _;
+            ///
+            #[doc = concat!(" let mut bytes = [0", stringify!($ty), "; 128];")]
+            #[doc = concat!(" # assert_eq!(bytes.as_uninit_bytes().len(), ", stringify!($len), ");")]
+            /// let alloc = Slice::new(&mut bytes);
+            /// ```
+            impl<const N: usize> SliceBuffer for [$ty; N] {
+                #[inline]
+                fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+                    /* body omitted: interface retained */
+                }
+            }
+
+            #[doc = concat!(" The [`SliceBuffer`] implementation for `[MaybeUninit<", stringify!($ty), ">; N]`.")]
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use musli::alloc::Slice;
+            /// # use musli::alloc::SliceBuffer as _;
+            ///
+            #[doc = concat!(" let mut bytes = [0", stringify!($ty), "; 128];")]
+            #[doc = concat!(" # assert_eq!(bytes.as_uninit_bytes().len(), ", stringify!($len), ");")]
+            /// let alloc = Slice::new(&mut bytes);
+            /// ```
+            impl<const N: usize> SliceBuffer for [MaybeUninit<$ty>; N] {
+                #[inline]
+                fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>] {
+                    /* body omitted: interface retained */
+                }
+            }
+        )*
+    }
+}
+
+primitive! {
+    u16, 128 * 2,
+    u32, 128 * 4,
+    u64, 128 * 8,
+    u128, 128 * 16,
+}
+```
+</file>
+
+<file path="src/dec2flt/decimal.rs">
+```rust
+//! Representation of a float as the significant digits and exponent.
+
+use crate::dec2flt::float::RawFloat;
+use crate::dec2flt::fpu::set_precision;
+
+const INT_POW10: [u64; 16] = [
+    1,
+    10,
+    100,
+    1000,
+    10000,
+    100000,
+    1000000,
+    10000000,
+    100000000,
+    1000000000,
+    10000000000,
+    100000000000,
+    1000000000000,
+    10000000000000,
+    100000000000000,
+    1000000000000000,
+];
+
+/// A floating point number with up to 64 bits of mantissa and an `i64` exponent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Decimal {
+    pub exponent: i64,
+    pub mantissa: u64,
+    pub negative: bool,
+    pub many_digits: bool,
+}
+
+impl Decimal {
+    /// Detect if the float can be accurately reconstructed from native floats.
+    #[inline]
+    fn can_use_fast_path<F: RawFloat>(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Try turning the decimal into an exact float representation, using machine-sized integers
+    /// and floats.
+    ///
+    /// This is extracted into a separate function so that it can be attempted before constructing
+    /// a Decimal. This only works if both the mantissa and the exponent
+    /// can be exactly represented as a machine float, since IEE-754 guarantees
+    /// no rounding will occur.
+    ///
+    /// There is an exception: disguised fast-path cases, where we can shift
+    /// powers-of-10 from the exponent to the significant digits.
+    pub fn try_fast_path<F: RawFloat>(&self) -> Option<F> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/descriptive/error.rs">
+```rust
+crate::macros::implement_error! {
+    /// Error raised during wire encoding.
+    pub struct Error;
+}
+```
+</file>
+
+<file path="src/json/error.rs">
+```rust
+use core::fmt;
+
+crate::macros::implement_error! {
+    /// Error raised during JSON encoding.
+    pub struct Error;
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub(crate) enum ErrorMessage {
+    ParseFloat,
+}
+
+impl fmt::Display for ErrorMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub(crate) enum IntegerError {
+    IntegerOverflow,
+    Decimal,
+    InvalidNumeric,
+}
+
+impl fmt::Display for IntegerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! [<img alt="github" src="https://img.shields.io/badge/github-udoprog/musli-8da0cb?style=for-the-badge&logo=github" height="20">](https://github.com/udoprog/musli)
+//! [<img alt="crates.io" src="https://img.shields.io/crates/v/musli.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/musli)
+//! [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-musli-66c2a5?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" height="20">](https://docs.rs/musli)
+//!
+//! Excellent performance, no compromises[^1]!
+//!
+//! Müsli is a flexible, fast, and generic binary serialization framework for
+//! Rust, in the same vein as [`serde`].
+//!
+//! It provides a set of [formats](#formats), each with its own well-documented
+//! set of features and tradeoffs. Every byte-oriented serialization method
+//! including escaped formats like [`musli::json`] has full `#[no_std]` support
+//! with or without `alloc`. And a particularly neat component providing
+//! low-level refreshingly simple [zero-copy serialization][zerocopy].
+//!
+//! [^1]: As in Müsli should be able to do everything you need and more.
+//!
+//! <br>
+//!
+//! ## Overview
+//!
+//! * See [`derives`] to learn how to implement [`Encode`] and [`Decode`].
+//! * See [`data_model`] to learn about the abstract data model of Müsli.
+//! * See [benchmarks] and [size comparisons] to learn about the performance of
+//!   this framework.
+//! * See [`tests`] to learn how this library is tested.
+//! * See [`musli::serde`] for seamless compatibility with [`serde`]. You might
+//!   also be interested to learn how [Müsli is different][different].
+//!
+//! [different]: #müsli-is-different-from-serde
+//!
+//! <br>
+//!
+//! ## Usage
+//!
+//! Add the following to your `Cargo.toml` using the [format](#formats) you want
+//! to use:
+//!
+//! ```toml
+//! [dependencies]
+//! musli = { version = "0.0.149", features = ["storage"] }
+//! ```
+//!
+//! <br>
+//!
+//! ## Design
+//!
+//! The heavy lifting is done by the [`Encode`] and [`Decode`] derives which are
+//! documented in the [`derives`] module.
+//!
+//! Müsli operates based on the schema represented by the types which implement
+//! these traits.
+//!
+//! ```
+//! use musli::{Encode, Decode};
+//!
+//! #[derive(Encode, Decode)]
+//! struct Person {
+//!     /* .. fields .. */
+//! }
+//! ```
+//!
+//! > **Note** by default a field is identified by its *numerical index* which
+//! > would change if they are re-ordered. Renaming fields and setting a default
+//! > naming policy can be done by configuring the [`derives`].
+//!
+//! The binary serialization formats provided aim to efficiently and accurately
+//! encode every type and data structure available in Rust. Each format comes
+//! with [well-documented tradeoffs](#formats) and aims to be fully memory safe
+//! to use.
+//!
+//! Internally we use the terms "encoding", "encode", and "decode" because it's
+//! distinct from [`serde`]'s use of "serialization", "serialize", and
+//! "deserialize" allowing for the clearer interoperability between the two
+//! libraries. Encoding and decoding also has more of a "binary serialization"
+//! vibe, which more closely reflects the focus of this framework.
+//!
+//! Müsli is designed on similar principles as [`serde`]. Relying on Rust's
+//! powerful trait system to generate code which can largely be optimized away.
+//! The end result should be very similar to handwritten, highly optimized code.
+//!
+//! As an example of this, these two functions both produce the same assembly
+//! (built with `--release`):
+//!
+//! ```
+//! # use musli::{Decode, Encode};
+//! # use musli::mode::Binary;
+//! # use musli::options::{self, Options, Integer, ByteOrder};
+//! # use musli::storage::Encoding;
+//! # type Result<T, E = musli::storage::Error> = core::result::Result<T, E>;
+//! const OPTIONS: Options = options::new().fixed().native_byte_order().build();
+//! const ENCODING: Encoding<OPTIONS> = Encoding::new().with_options();
+//!
+//! #[derive(Encode, Decode)]
+//! #[musli(packed)]
+//! pub struct Storage {
+//!     left: u32,
+//!     right: u32,
+//! }
+//!
+//! fn with_musli(storage: &Storage) -> Result<[u8; 8]> {
+//!     let mut array = [0; 8];
+//!     ENCODING.encode(&mut array[..], storage)?;
+//!     Ok(array)
+//! }
+//!
+//! fn without_musli(storage: &Storage) -> Result<[u8; 8]> {
+//!     let mut array = [0; 8];
+//!     array[..4].copy_from_slice(&storage.left.to_ne_bytes());
+//!     array[4..].copy_from_slice(&storage.right.to_ne_bytes());
+//!     Ok(array)
+//! }
+//! ```
+//!
+//! <br>
+//!
+//! ## Müsli is different from [`serde`]
+//!
+//! **Müsli's data model does not speak Rust**. There are no
+//! `serialize_struct_variant` methods which provides metadata about the type
+//! being serialized. The [`Encoder`] and [`Decoder`] traits are agnostic on
+//! this. Compatibility with Rust types is entirely handled using the [`Encode`]
+//! and [`Decode`] derives in combination with [modes](#Modes).
+//!
+//! **We use GATs** to provide easier to use abstractions. GATs were not
+//! available when serde was designed.
+//!
+//! **Everything is a [`Decoder`] or [`Encoder`]**. Field names are therefore
+//! not limited to be strings or indexes, but can be named to [arbitrary
+//! types][musli-name-type] if needed.
+//!
+//! **Visitor are only used when needed**. `serde` [completely uses visitors]
+//! when deserializing and the corresponding method is treated as a "hint" to
+//! the underlying format. The deserializer is then free to call any method on
+//! the visitor depending on what the underlying format actually contains. In
+//! Müsli, we swap this around. If the caller wants to decode an arbitrary type
+//! it calls [`decode_any`]. The format can then either signal the appropriate
+//! underlying type or call [`Visitor::visit_unknown`] telling the implementer
+//! that it does not have access to type information.
+//!
+//! **We've invented [*moded encoding*](#Modes)** allowing the same Rust types
+//! to be encoded in many different ways with much greater control over how
+//! things encoded. By default we include the [`Binary`] and [`Text`] modes
+//! providing sensible defaults for binary and text-based formats.
+//!
+//! **Müsli fully supports [no-std and no-alloc]** from the ground up without
+//! compromising on features using safe and efficient [scoped allocations].
+//!
+//! **We support [detailed tracing]** when decoding for much improved
+//! diagnostics of *where* something went wrong.
+//!
+//! <br>
+//!
+//! ## Formats
+//!
+//! Formats are currently distinguished by supporting various degrees of
+//! *upgrade stability*. A fully upgrade stable encoding format must tolerate
+//! that one model can add fields that an older version of the model should be
+//! capable of ignoring.
+//!
+//! Partial upgrade stability can still be useful as is the case of the
+//! [`musli::storage`] format below, because reading from storage only requires
+//! decoding to be upgrade stable. So if correctly managed with
+//! `#[musli(default)]` this will never result in any readers seeing unknown
+//! fields.
+//!
+//! The available formats and their capabilities are:
+//!
+//! | | `reorder` | `missing` | `unknown` | `self` |
+//! |-|-|-|-|-|
+//! | [`musli::packed`] (with `#[musli(packed)]`) | ✗ | ✗ | ✗ | ✗ |
+//! | [`musli::storage`]                          | ✔ | ✔ | ✗ | ✗ |
+//! | [`musli::wire`]                             | ✔ | ✔ | ✔ | ✗ |
+//! | [`musli::descriptive`]                      | ✔ | ✔ | ✔ | ✔ |
+//! | [`musli::json`] [^json]                     | ✔ | ✔ | ✔ | ✔ |
+//!
+//! `reorder` determines whether fields must occur in exactly the order in which
+//! they are specified in their type. Reordering fields in such a type would
+//! cause unknown but safe behavior of some kind. This is only suitable for
+//! communication where the data models of each client are strictly
+//! synchronized.
+//!
+//! `missing` determines if reading can handle missing fields through something
+//! like `Option<T>`. This is suitable for on-disk storage, because it means
+//! that new optional fields can be added as the schema evolves.
+//!
+//! `unknown` determines if the format can skip over unknown fields. This is
+//! suitable for network communication. At this point you've reached [*upgrade
+//! stability*](#upgrade-stability). Some level of introspection is possible
+//! here, because the serialized format must contain enough information about
+//! fields to know what to skip which usually allows for reasoning about basic
+//! types.
+//!
+//! `self` determines if the format is self-descriptive. Allowing the structure
+//! of the data to be fully reconstructed from its serialized state. These
+//! formats do not require models to decode and can be converted to and from
+//! dynamic containers such as [`musli::value`] for introspection. Such formats
+//! also allows for type-coercions to be performed, so that a signed number can
+//! be correctly read as an unsigned number if it fits in the destination type.
+//!
+//! For every feature you drop, the format becomes more compact and efficient.
+//! [`musli::storage`] using `#[musli(packed)]` for example is roughly as compact
+//! as [`bincode`] while [`musli::wire`] is comparable in size to something like
+//! [`protobuf`]. All formats are primarily byte-oriented, but some might
+//! perform [bit packing] if the benefits are obvious.
+//!
+//! [^json]: This is strictly not a binary serialization, but it was implemented
+//! as a litmus test to ensure that Müsli has the necessary framework features
+//! to support it. Luckily, the implementation is also quite good!
+//!
+//! <br>
+//!
+//! ## Upgrade stability
+//!
+//! The following is an example of *full upgrade stability* using
+//! [`musli::wire`]. `Version1` can be decoded from an instance of `Version2`
+//! because it understands how to skip fields which are part of `Version2`.
+//! We're also explicitly adding `#[musli(name = ..)]` to the fields to ensure
+//! that they don't change in case they are re-ordered.
+//!
+//! ```
+//! use musli::{Encode, Decode};
+//!
+//! #[derive(Debug, PartialEq, Encode, Decode)]
+//! struct Version1 {
+//!     #[musli(Binary, name = 0)]
+//!     name: String,
+//! }
+//!
+//! #[derive(Debug, PartialEq, Encode, Decode)]
+//! struct Version2 {
+//!     #[musli(Binary, name = 0)]
+//!     name: String,
+//!     #[musli(Binary, name = 1)]
+//!     #[musli(default)]
+//!     age: Option<u32>,
+//! }
+//!
+//! let version2 = musli::wire::to_vec(&Version2 {
+//!     name: String::from("Aristotle"),
+//!     age: Some(61),
+//! })?;
+//!
+//! let version1: Version1 = musli::wire::decode(version2.as_slice())?;
+//! # Ok::<_, musli::wire::Error>(())
+//! ```
+//!
+//! The following is an example of *partial upgrade stability* using
+//! [`musli::storage`] on the same data models. Note how `Version2` can be
+//! decoded from `Version1` but *not* the other way around making it suitable
+//! for on-disk storage where the schema can evolve from older to newer
+//! versions.
+//!
+//! ```
+//! # use musli::{Encode, Decode};
+//! # #[derive(Debug, PartialEq, Encode, Decode)]
+//! # struct Version1 { name: String }
+//! # #[derive(Debug, PartialEq, Encode, Decode)]
+//! # struct Version2 { name: String, #[musli(default)] age: Option<u32> }
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
+//! let version2 = musli::storage::to_vec(&Version2 {
+//!     name: String::from("Aristotle"),
+//!     age: Some(61),
+//! })?;
+//!
+//! assert!(musli::storage::decode::<_, Version1>(version2.as_slice()).is_err());
+//!
+//! let version1 = musli::storage::to_vec(&Version1 {
+//!     name: String::from("Aristotle"),
+//! })?;
+//!
+//! let version2: Version2 = musli::storage::decode(version1.as_slice())?;
+//! # Ok(()) }
+//! ```
+//!
+//! <br>
+//!
+//! ## Modes
+//!
+//! In Müsli in contrast to [`serde`] the same model can be serialized in
+//! different ways. Instead of requiring the use of distinct models we support
+//! implementing different *modes* for a single model.
+//!
+//! A mode is a type parameter, which allows for different attributes to apply
+//! depending on which mode an encoder is configured to use. A mode can apply to
+//! *any* musli attributes giving you a lot of flexibility.
+//!
+//! If a mode is not specified, an implementation will apply to all modes (`M`),
+//! if at least one mode is specified it will be implemented for all modes which
+//! are present in a model and [`Binary`] and [`Text`]. This way, an encoding
+//! which uses [`Binary`] or [`Text`] which are the default modes should always
+//! work.
+//!
+//! For more information on how to configure modes, see [`derives`].
+//!
+//! Below is a simple example of how we can use two modes to provide two
+//! completely different formats using a single struct:
+//!
+//! ```
+//! use musli::{Decode, Encode};
+//! use musli::json::Encoding;
+//!
+//! enum Alt {}
+//!
+//! #[derive(Decode, Encode)]
+//! #[musli(Text, name_all = "name")]
+//! #[musli(mode = Alt, packed)]
+//! struct Word<'a> {
+//!     text: &'a str,
+//!     teineigo: bool,
+//! }
+//!
+//! const TEXT: Encoding = Encoding::new();
+//! const ALT: Encoding<Alt> = Encoding::new().with_mode();
+//!
+//! let word = Word {
+//!     text: "あります",
+//!     teineigo: true,
+//! };
+//!
+//! let out = TEXT.to_string(&word)?;
+//! assert_eq!(out, r#"{"text":"あります","teineigo":true}"#);
+//!
+//! let out = ALT.to_string(&word)?;
+//! assert_eq!(out, r#"["あります",true]"#);
+//! # Ok::<_, musli::json::Error>(())
+//! ```
+//!
+//! <br>
+//!
+//! ## Going very fast
+//!
+//! With the previous sections it should be apparent that speed is primarily a
+//! game of tradeoffs. If we make every tradeoff in favor of speed Müsli is
+//! designed to be the fastest framework out there.
+//!
+//! The tradeoffs we will be showcasing to achieve speed here are:
+//!
+//! * *Pre-allocate serialization space*. This avoids all allocations during
+//!   serialization. The tradeoff is that if the data we are serializing
+//!   contains dynamically sized information which goes beyond the pre-allocated
+//!   space, we will error.
+//! * *Use fixed-sized integers and floats*. We use more space, but the cost of
+//!   serializing numerical fields essentially boils down to copying them.
+//! * *Use a native byte order*. With this we avoid any byte-swapping
+//!   operations. But our data becomes less portable.
+//! * *Use a packed format*. This doesn't allow for any upgrades, but we avoid
+//!   paying the overhead of serializing field identifiers.
+//! * *Use the [`Slice` allocator]*. This avoids all heap allocations using the
+//!   global allocator. While the global allocator is quite efficient and
+//!   normally shouldn't be avoided, the slice allocator is a fixed-slab
+//!   allocator. The tradeoff here is that we will error in case we run out of
+//!   memory, but we only need to use the allocator if the types being
+//!   serialized (or the format) demands it.
+//! * *Disable error handling*. Code generation will be able to remove
+//!   everything related to error handling, like allocations. To do this we can
+//!   make use of the [default context] without configuring it for tracing. If
+//!   an error happens, we are only informed of that fact through a zero-sized
+//!   marker type.
+//!
+//! We achieve this through the following methods:
+//!
+//! ```
+//! use musli::alloc::{Allocator, Global};
+//! use musli::context::{self, ErrorMarker as Error};
+//! use musli::options::{self, Float, Integer, Width, Options};
+//! use musli::storage::Encoding;
+//! use musli::{Decode, Encode};
+//! use musli::alloc::Slice;
+//!
+//! enum Packed {}
+//!
+//! const OPTIONS: Options = options::new().fixed().native_byte_order().build();
+//! const ENCODING: Encoding<OPTIONS, Packed> = Encoding::new().with_options().with_mode();
+//!
+//! #[inline]
+//! pub fn encode<'buf, T, A>(buf: &'buf mut [u8], value: &T, alloc: A) -> Result<&'buf [u8], Error>
+//! where
+//!     T: Encode<Packed>,
+//!     A: Allocator,
+//! {
+//!     let cx = context::new_in(alloc);
+//!     let w = ENCODING.to_slice_with(&cx, &mut buf[..], value)?;
+//!     Ok(&buf[..w])
+//! }
+//!
+//! #[inline]
+//! pub fn decode<'buf, T, A>(buf: &'buf [u8], alloc: A) -> Result<T, Error>
+//! where
+//!     T: Decode<'buf, Packed, A>,
+//!     A: Allocator,
+//! {
+//!     let cx = context::new_in(alloc);
+//!     ENCODING.from_slice_with(&cx, buf)
+//! }
+//! ```
+//!
+//! We also need some cooperation from the types being serialized since they
+//! need to use the `Packed` mode we defined just above:
+//!
+//! ```
+//! use musli::{Encode, Decode};
+//! # enum Packed {}
+//!
+//! #[derive(Encode, Decode)]
+//! #[musli(mode = Packed, packed)]
+//! struct Person {
+//!     name: String,
+//!     age: u32,
+//! }
+//! ```
+//!
+//! Using the framework above also needs a bit of prep, namely the slice
+//! allocator need to be initialized:
+//!
+//! ```
+//! use musli::alloc::{ArrayBuffer, Slice};
+//!
+//! let mut buf = ArrayBuffer::new();
+//! let alloc = Slice::new(&mut buf);
+//! ```
+//!
+//! That's it! You are now using Müsli in the fastest possible mode. Feel free
+//! to use it to "beat" any benchmarks. In fact, the `musli_packed` mode in our
+//! internal [benchmarks] beat pretty much every framework with these methods.
+//!
+//! > My hope is that this should illustrate why you shouldn't blindly trust
+//! > benchmarks. Sometimes code is not fully optimized, but most of the time
+//! > there is a tradeoff. If a benchmark doesn't tell you what tradeoffs are
+//! > being made, don't just naively trust a number.
+//!
+//! <br>
+//!
+//! ## Unsafety
+//!
+//! This is a non-exhaustive list of unsafe use in this crate, and why they are
+//! used:
+//!
+//! * A `mem::transmute` in `Tag::kind`. Which guarantees that converting into
+//!   the `Kind` enum which is `#[repr(u8)]` is as efficient as possible.
+//!
+//! * A largely unsafe `SliceReader` which provides more efficient reading than
+//!   the default `Reader` impl for `&[u8]` does. Since it can perform most of
+//!   the necessary comparisons directly on the pointers.
+//!
+//! * Some unsafety related to UTF-8 handling in `musli::json`, because we check
+//!   UTF-8 validity internally ourselves (like `serde_json`).
+//!
+//! * `FixedBytes<N>`, which is a stack-based container that can operate over
+//!   uninitialized data. Its implementation is largely unsafe. With it
+//!   stack-based serialization can be performed which is useful in no-std
+//!   environments.
+//!
+//! * Some `unsafe` is used for owned `String` decoding in all binary formats to
+//!   support faster string processing through [`simdutf8`]. Disabling the
+//!   `simdutf8` feature (enabled by default) removes the use of this unsafe.
+//!
+//! To ensure this library is correctly implemented with regards to memory
+//! safety, extensive testing and fuzzing is performed using `miri`. See
+//! [`tests`] for more information.
+//!
+//! <br>
+//!
+//! [`Binary`]: <https://docs.rs/musli/latest/musli/mode/enum.Binary.html>
+//! [`bincode`]: <https://docs.rs/bincode>
+//! [`data_model`]: <https://docs.rs/musli/latest/musli/_help/data_model/>
+//! [`decode_any`]: https://docs.rs/musli/latest/musli/trait.Decoder.html#method.decode_any
+//! [`Decode`]: <https://docs.rs/musli/latest/musli/de/trait.Decode.html>
+//! [`Decoder`]: <https://docs.rs/musli/latest/musli/trait.Decoder.html>
+//! [`derives`]: <https://docs.rs/musli/latest/musli/_help/derives/>
+//! [`Encode`]: <https://docs.rs/musli/latest/musli/en/trait.Encode.html>
+//! [`Encoder`]: <https://docs.rs/musli/latest/musli/trait.Encoder.html>
+//! [`musli::descriptive`]: <https://docs.rs/musli/latest/musli/descriptive/>
+//! [`musli::json`]: <https://docs.rs/musli/latest/musli/json/>
+//! [`musli::packed`]: <https://docs.rs/musli/latest/musli/packed/>
+//! [`musli::serde`]: <https://docs.rs/musli/latest/musli/serde/>
+//! [`musli::storage`]: <https://docs.rs/musli/latest/musli/storage/>
+//! [`musli::value`]: <https://docs.rs/musli/latest/musli/value/>
+//! [`musli::wire`]: <https://docs.rs/musli/latest/musli/wire/>
+//! [`protobuf`]: <https://developers.google.com/protocol-buffers>
+//! [`serde`]: <https://serde.rs>
+//! [`simdutf8`]: <https://docs.rs/simdutf8>
+//! [`Slice` allocator]: <https://docs.rs/musli/latest/musli/alloc/struct.Slice.html>
+//! [`tests`]: <https://github.com/udoprog/musli/tree/main/tests>
+//! [`Text`]: <https://docs.rs/musli/latest/musli/mode/enum.Text.html>
+//! [`Visitor::visit_unknown`]: https://docs.rs/musli/latest/musli/de/trait.Visitor.html#method.visit_unknown
+//! [benchmarks]: <https://udoprog.github.io/musli/benchmarks/>
+//! [bit packing]: <https://github.com/udoprog/musli/blob/main/crates/musli/src/descriptive/tag.rs>
+//! [completely uses visitors]: https://docs.rs/serde/latest/serde/trait.Deserializer.html#tymethod.deserialize_u32
+//! [default context]: <https://docs.rs/musli/latest/musli/context/new_in.html>
+//! [detailed tracing]: <https://udoprog.github.io/rust/2023-05-22/abductive-diagnostics-for-musli.html>
+//! [musli-name-type]: <https://docs.rs/musli/latest/musli/_help/derives/#muslinametype--type>
+//! [no-std and no-alloc]: <https://github.com/udoprog/musli/blob/main/no-std/examples/>
+//! [scoped allocations]: <https://docs.rs/musli/latest/musli/trait.Context.html#tymethod.alloc>
+//! [size comparisons]: <https://udoprog.github.io/musli/benchmarks/#size-comparisons>
+//! [zerocopy]: <https://docs.rs/musli-zerocopy>
+
+#![deny(missing_docs)]
+#![allow(clippy::module_inception)]
+#![no_std]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+
+#[cfg(feature = "alloc")]
+extern crate alloc as rust_alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
+pub mod macros;
+
+
+#[cfg(feature = "json")]
+mod dec2flt;
+
+pub mod _help {
+    //! Detailed documentation for Müsli
+    //!
+    //! * [The data model of Müsli][data_model].
+    //! * [Deriving `Encode` and `Decode`][derives].
+
+    #[doc = include_str!("../help/data_model.md")]
+    pub mod data_model {}
+
+    #[doc = include_str!("../help/derives.md")]
+    pub mod derives {}
+}
+
+pub mod de;
+pub mod en;
+
+#[doc(inline)]
+pub use musli_core::hint;
+#[doc(inline)]
+pub use musli_core::mode;
+
+#[doc(inline)]
+pub use musli_core::Context;
+
+#[doc(inline)]
+pub use self::de::{Decode, Decoder};
+
+#[doc(inline)]
+pub use self::en::{Encode, Encoder};
+
+/// This is an attribute macro that must be used when implementing the following traits:
+///
+/// * [`Decoder`]
+/// * [`de::Visitor`][crate::de::Visitor]
+/// * [`de::UnsizedVisitor`][crate::de::UnsizedVisitor]
+/// * [`Encoder`]
+///
+/// It is required to use because these traits might introduce new associated
+/// types in the future, and this is [not yet supported] on a language level in
+/// Rust. So this attribute macro polyfills any missing types automatically.
+///
+/// [not yet supported]: https://rust-lang.github.io/rfcs/2532-associated-type-defaults.html
+///
+/// Note that if the `Cx` or `Mode` associated types are not specified, they
+/// will be defaulted to any type parameters which starts with the uppercase `C`
+/// or `M` respectively if the trait uses them.
+///
+/// # Examples
+///
+/// Implementing [`Decoder`]:
+///
+/// ```
+/// use std::fmt;
+/// use std::marker::PhantomData;
+///
+/// use musli::Context;
+/// use musli::de::Decoder;
+///
+/// struct MyDecoder<C, M> {
+///     cx: C,
+///     _marker: PhantomData<M>,
+/// }
+///
+/// #[musli::trait_defaults]
+/// impl<'de, C, M> Decoder<'de> for MyDecoder<C, M>
+/// where
+///     C: Context,
+///     M: 'static,
+/// {
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "32-bit unsigned integers")
+///     }
+///
+///     #[inline]
+///     fn decode_u32(self) -> Result<u32, Self::Error> {
+///         Ok(42)
+///     }
+/// }
+/// ```
+///
+/// Implementing [`Visitor`]:
+///
+/// ```
+/// use std::fmt;
+///
+/// use musli::Context;
+/// use musli::de::Visitor;
+///
+/// struct MyVisitor;
+///
+/// #[musli::trait_defaults]
+/// impl<'de, C> Visitor<'de, C> for MyVisitor
+/// where
+///     C: Context,
+/// {
+///     type Ok = ();
+///
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "a value that can be decoded into dynamic container")
+///     }
+/// }
+/// ```
+///
+/// Implementing [`UnsizedVisitor`]:
+///
+/// ```
+/// use std::fmt;
+///
+/// use musli::Context;
+/// use musli::de::UnsizedVisitor;
+///
+/// struct MyVisitor;
+///
+/// #[musli::trait_defaults]
+/// impl<'de, C> UnsizedVisitor<'de, C, [u8]> for MyVisitor
+/// where
+///     C: Context,
+/// {
+///     type Ok = ();
+///
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "a reference of bytes")
+///     }
+/// }
+/// ```
+///
+/// Implementing [`Encoder`]:
+///
+/// ```
+/// use std::fmt;
+/// use std::marker::PhantomData;
+///
+/// use musli::Context;
+/// use musli::en::Encoder;
+///
+/// struct MyEncoder<'a, C, M> {
+///     value: &'a mut Option<u32>,
+///     cx: C,
+///     _marker: PhantomData<M>,
+/// }
+///
+/// #[musli::trait_defaults]
+/// impl<C, M> Encoder for MyEncoder<'_, C, M>
+/// where
+///     C: Context,
+///     M: 'static,
+/// {
+///     #[inline]
+///     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "32-bit unsigned integers")
+///     }
+///
+///     #[inline]
+///     fn encode_u32(self, value: u32) -> Result<(), Self::Error> {
+///         *self.value = Some(value);
+///         Ok(())
+///     }
+/// }
+/// ```
+#[doc(inline)]
+pub use musli_core::__macros::musli_trait_defaults as trait_defaults;
+
+#[doc(hidden)]
+pub use musli_core::__priv;
+
+pub mod alloc;
+#[doc(inline)]
+pub use self::alloc::{Allocator, GlobalAllocator};
+
+pub mod descriptive;
+pub mod json;
+pub mod packed;
+pub mod serde;
+pub mod storage;
+pub mod value;
+pub mod wire;
+
+pub mod context;
+
+pub mod compat;
+
+pub mod fixed;
+#[doc(inline)]
+pub use self::fixed::FixedBytes;
+
+pub mod options;
+#[doc(inline)]
+pub use self::options::Options;
+
+pub mod reader;
+#[doc(inline)]
+pub use self::reader::{IntoReader, Reader};
+
+pub mod wrap;
+
+pub mod writer;
+#[doc(inline)]
+pub use self::writer::{IntoWriter, Writer};
+
+pub mod no_std;
+
+mod int;
+mod str;
+
+use crate::alloc::Disabled;
+use crate::mode::Binary;
+
+/// Test if the given type `T` is marked with the `#[musli(packed)]` attribute,
+/// and is bitwise encodeable in the [`Binary`] mode.
+///
+/// See the [help section for `#[musli(packed)]`][help] for more information.
+///
+/// [help]: crate::_help::derives#muslipacked
+///
+/// # Examples
+///
+/// ```
+/// use musli::{is_bitwise_encode, Encode, Decode};
+///
+/// #[derive(Encode, Decode)]
+/// #[musli(packed)]
+/// struct Color {
+///     red: u32,
+///     green: u32,
+///     blue: u32,
+/// }
+///
+/// assert!(is_bitwise_encode::<Color>());
+/// ```
+#[inline]
+pub const fn is_bitwise_encode<T>() -> bool
+where
+    T: Encode<Binary>,
+{
+    /* body omitted: interface retained */
+}
+
+/// Test if the given type `T` is marked with the `#[musli(packed)]` attribute,
+/// and is bitwise encodeable in the [`Binary`] mode using the [`Disabled`]
+/// allocator.
+///
+/// See the [help section for `#[musli(packed)]`][help] for more information.
+///
+/// [help]: crate::_help::derives#muslipacked
+///
+/// # Examples
+///
+/// ```
+/// use musli::{is_bitwise_decode, Encode, Decode};
+///
+/// #[derive(Encode, Decode)]
+/// #[musli(packed)]
+/// struct Color {
+///     red: u32,
+///     green: u32,
+///     blue: u32,
+/// }
+///
+/// assert!(is_bitwise_decode::<Color>());
+/// ```
+#[inline]
+pub const fn is_bitwise_decode<T>() -> bool
+where
+    T: for<'de> Decode<'de, Binary, Disabled>,
+{
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/packed/error.rs">
+```rust
+crate::macros::implement_error! {
+    /// Error raised during storage encoding.
+    pub struct Error;
+}
+```
+</file>
+
+<file path="src/reader.rs">
+```rust
+//! Trait governing how to read bytes.
+use core::fmt;
+use core::marker;
+use core::mem::MaybeUninit;
+use core::ops::Range;
+use core::ptr;
+use core::slice;
+use crate::Context;
+use crate::de::UnsizedVisitor;
+mod sealed {
+    use super::{Limit, Reader};
+    pub trait Sealed {}
+    impl Sealed for &[u8] {}
+    impl Sealed for super::SliceReader<'_> {}
+    impl<'de, R> Sealed for Limit<R>
+    where
+        R: Reader<'de>,
+    {}
+    impl<'de, R> Sealed for &mut R
+    where
+        R: ?Sized + Reader<'de>,
+    {}
+}
+/// Coerce a type into a [`Reader`].
+pub trait IntoReader<'de>: self::sealed::Sealed {
+    /// The reader type.
+    type Reader: Reader<'de>;
+    /// Convert the type into a reader.
+    fn into_reader(self) -> Self::Reader;
+}
+/// Trait governing how a source of bytes is read.
+///
+/// This requires the reader to be able to hand out contiguous references to the
+/// byte source through [`Reader::read_bytes`].
+pub trait Reader<'de>: self::sealed::Sealed {
+    /// Type borrowed from self.
+    ///
+    /// Why oh why would we want to do this over having a simple `&'this mut T`?
+    ///
+    /// We want to avoid recursive types, which will blow up the compiler. And
+    /// the above is a typical example of when that can go wrong. This ensures
+    /// that each call to `borrow_mut` dereferences the [`Reader`] at each step
+    /// to avoid constructing a large muted type, like `&mut &mut &mut
+    /// SliceReader<'de>`.
+    type Mut<'this>: Reader<'de> where Self: 'this;
+    /// Type that can be cloned from the reader.
+    type TryClone: Reader<'de>;
+    /// Borrow the current reader.
+    fn borrow_mut(&mut self) -> Self::Mut<'_>;
+    /// Try to clone the reader.
+    fn try_clone(&self) -> Option<Self::TryClone>;
+    /// Test if the reader is at end of input.
+    fn is_eof(&mut self) -> bool;
+    /// Skip over the given number of bytes.
+    fn skip<C>(&mut self, cx: C, n: usize) -> Result<(), C::Error>
+    where
+        C: Context;
+    /// Peek the next value.
+    fn peek(&mut self) -> Option<u8>;
+    /// Read a slice into the given buffer.
+    #[inline]
+    fn read<C>(&mut self, cx: C, buf: &mut [u8]) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }    }
+    /// Read a slice out of the current reader.
+    fn read_bytes<C, V>(
+        &mut self,
+        cx: C,
+        n: usize,
+        visitor: V,
+    ) -> Result<V::Ok, V::Error>
+    where
+        C: Context,
+        V: UnsizedVisitor<'de, C, [u8], Error = C::Error, Allocator = C::Allocator>;
+    /// Read into the given buffer which might not have been initialized.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the buffer points to valid memory of length
+    /// `len`.
+    unsafe fn read_bytes_uninit<C>(
+        &mut self,
+        cx: C,
+        ptr: *mut u8,
+        len: usize,
+    ) -> Result<(), C::Error>
+    where
+        C: Context;
+    /// Read a single byte.
+    #[inline]
+    fn read_byte<C>(&mut self, cx: C) -> Result<u8, C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    /// Read an array out of the current reader.
+    #[inline]
+    fn read_array<C, const N: usize>(&mut self, cx: C) -> Result<[u8; N], C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }position within the reader.
+    #[inline]
+    fn limit(self, limit: usize) -> Limit<Self>
+    where
+        Self: Sized,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de> IntoReader<'de> for &'de [u8] {
+    type Reader = &'de [u8];
+    #[inline]
+    fn into_reader(self) -> Self::Reader {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de> Reader<'de> for &'de [u8] {
+    type Mut<'this> = &'this mut &'de [u8] where Self: 'this;
+    type TryClone = &'de [u8];
+    #[inline]
+    fn borrow_mut(&mut self) -> Self::Mut<'_> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn try_clone(&self) -> Option<Self::TryClone> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn is_eof(&mut self) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn skip<C>(&mut self, cx: C, n: usize) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read<C>(&mut self, cx: C, buf: &mut [u8]) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_bytes<C, V>(
+        &mut self,
+        cx: C,
+        n: usize,
+        visitor: V,
+    ) -> Result<V::Ok, V::Error>
+    where
+        C: Context,
+        V: UnsizedVisitor<'de, C, [u8], Error = C::Error, Allocator = C::Allocator>,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn read_bytes_uninit<C>(
+        &mut self,
+        cx: C,
+        ptr: *mut u8,
+        n: usize,
+    ) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_byte<C>(&mut self, cx: C) -> Result<u8, C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_array<C, const N: usize>(&mut self, cx: C) -> Result<[u8; N], C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn peek(&mut self) -> Option<u8> {
+        /* body omitted: interface retained */
+    }
+}
+/// An efficient [`Reader`] wrapper around a slice.
+pub struct SliceReader<'de> {
+    range: Range<*const u8>,
+    _marker: marker::PhantomData<&'de [u8]>,
+}
+unsafe impl Send for SliceReader<'_> {}
+unsafe impl Sync for SliceReader<'_> {}
+impl<'de> SliceReader<'de> {
+    /// Construct a new instance around the specified slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use musli::reader::SliceReader;
+    ///
+    /// let data = &[1, 2, 3, 4];
+    /// let reader = SliceReader::new(data);
+    /// assert_eq!(reader.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    #[inline]
+    pub fn new(slice: &'de [u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Get the remaining contents of the reader as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use musli::Context;
+    /// use musli::reader::{Reader, SliceReader};
+    ///
+    /// fn process<C>(cx: C) -> Result<(), C::Error>
+    /// where
+    ///     C: Context
+    /// {
+    ///     let mut reader = SliceReader::new(&[1, 2, 3, 4]);
+    ///     assert_eq!(reader.as_slice(), &[1, 2, 3, 4]);
+    ///     reader.skip(cx, 2)?;
+    ///     assert_eq!(reader.as_slice(), &[3, 4]);
+    ///     Ok(())
+    /// }
+    /// ```
+    #[inline(never)]
+    pub fn as_slice(&self) -> &'de [u8] {
+        unsafe {
+            let __klee_arg0 = self.range.start;
+            let __klee_arg1 = self.remaining();
+            klee_ext_bind::callsite!("src-reader-rs-375-18");
+            let mut __klee_ret_src_reader_rs_375_18_from_raw_parts = slice::from_raw_parts(
+                __klee_arg0,
+                __klee_arg1,
+            );
+            __klee_ret_src_reader_rs_375_18_from_raw_parts
+        }
+    }
+    /// Get remaining bytes in the reader.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use musli::Context;
+    /// use musli::reader::{Reader, SliceReader};
+    ///
+    /// fn process<C>(cx: C) -> Result<(), C::Error>
+    /// where
+    ///     C: Context
+    /// {
+    ///     let mut reader = SliceReader::new(&[1, 2, 3, 4]);
+    ///     assert_eq!(reader.remaining(), 4);
+    ///     reader.skip(cx, 2);
+    ///     assert_eq!(reader.remaining(), 2);
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn remaining(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de> Reader<'de> for SliceReader<'de> {
+    type Mut<'this> = &'this mut Self where Self: 'this;
+    type TryClone = Self;
+    #[inline]
+    fn borrow_mut(&mut self) -> Self::Mut<'_> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn try_clone(&self) -> Option<Self::TryClone> {
+        Some(Self {
+            range: self.range.clone(),
+            _marker: marker::PhantomData,
+        })
+    }
+    #[inline]
+    fn is_eof(&mut self) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn skip<C>(&mut self, cx: C, n: usize) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_bytes<C, V>(
+        &mut self,
+        cx: C,
+        n: usize,
+        visitor: V,
+    ) -> Result<V::Ok, V::Error>
+    where
+        C: Context,
+        V: UnsizedVisitor<'de, C, [u8], Error = C::Error, Allocator = C::Allocator>,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn read_bytes_uninit<C>(
+        &mut self,
+        cx: C,
+        ptr: *mut u8,
+        n: usize,
+    ) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn peek(&mut self) -> Option<u8> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read<C>(&mut self, cx: C, buf: &mut [u8]) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+}
+#[inline]
+fn bounds_check_add<C>(
+    cx: C,
+    range: &Range<*const u8>,
+    len: usize,
+) -> Result<*const u8, C::Error>
+where
+    C: Context,
+{
+    /* body omitted: interface retained */
+}
+/// Limit the number of bytes that can be read out of a reader to the specified limit.
+///
+/// This type wraps another reader and ensures that no more than a specified number
+/// of bytes can be read from it. This is useful for implementing bounded reads
+/// in serialization contexts.
+///
+/// Constructed through [Reader::limit].
+///
+/// # Examples
+///
+/// ```
+/// use musli::Context;
+/// use musli::reader::{Reader, SliceReader};
+///
+/// let cx = musli::context::new();
+/// let data = &[1, 2, 3, 4, 5];
+/// let mut reader = SliceReader::new(data);
+/// let mut limited = reader.limit(3);
+///
+/// // Can read from the limited reader
+/// let byte = limited.read_byte(&cx)?;
+/// assert_eq!(byte, 1);
+/// assert_eq!(limited.remaining(), 2);
+///
+/// // Read two more bytes
+/// limited.read_byte(&cx)?;
+/// limited.read_byte(&cx)?;
+/// assert_eq!(limited.remaining(), 0);
+/// # Ok::<_, musli::context::ErrorMarker>(())
+/// ```
+pub struct Limit<R> {
+    remaining: usize,
+    reader: R,
+}
+impl<R> Limit<R> {
+    /// Get the remaining data in the limited reader.
+    ///
+    /// Returns the number of bytes that can still be read from this limited reader
+    /// before the limit is reached.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use musli::reader::{Reader, SliceReader};
+    ///
+    /// let data = &[1, 2, 3, 4, 5];
+    /// let mut reader = SliceReader::new(data);
+    /// let limited = reader.limit(3);
+    ///
+    /// assert_eq!(limited.remaining(), 3);
+    /// ```
+    #[inline]
+    pub fn remaining(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de, R> Limit<R>
+where
+    R: Reader<'de>,
+{
+    #[inline]
+    fn bounds_check<C>(&mut self, cx: C, n: usize) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de, R> Reader<'de> for Limit<R>
+where
+    R: Reader<'de>,
+{
+    type Mut<'this> = &'this mut Self where Self: 'this;
+    type TryClone = Limit<R::TryClone>;
+    #[inline]
+    fn borrow_mut(&mut self) -> Self::Mut<'_> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn try_clone(&self) -> Option<Self::TryClone> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn is_eof(&mut self) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn skip<C>(&mut self, cx: C, n: usize) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_bytes<C, V>(
+        &mut self,
+        cx: C,
+        n: usize,
+        visitor: V,
+    ) -> Result<V::Ok, V::Error>
+    where
+        C: Context,
+        V: UnsizedVisitor<'de, C, [u8], Error = C::Error, Allocator = C::Allocator>,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn read_bytes_uninit<C>(
+        &mut self,
+        cx: C,
+        ptr: *mut u8,
+        n: usize,
+    ) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn peek(&mut self) -> Option<u8> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read<C>(&mut self, cx: C, buf: &mut [u8]) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_byte<C>(&mut self, cx: C) -> Result<u8, C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_array<C, const N: usize>(&mut self, cx: C) -> Result<[u8; N], C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a, 'de, R> IntoReader<'de> for &'a mut R
+where
+    R: ?Sized + Reader<'de>,
+{
+    type Reader = &'a mut R;
+    #[inline]
+    fn into_reader(self) -> Self::Reader {
+        /* body omitted: interface retained */
+    }
+}
+impl<'de, R> Reader<'de> for &mut R
+where
+    R: ?Sized + Reader<'de>,
+{
+    type Mut<'this> = &'this mut R where Self: 'this;
+    type TryClone = R::TryClone;
+    #[inline]
+    fn borrow_mut(&mut self) -> Self::Mut<'_> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn try_clone(&self) -> Option<Self::TryClone> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn is_eof(&mut self) -> bool {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn skip<C>(&mut self, cx: C, n: usize) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_bytes<C, V>(
+        &mut self,
+        cx: C,
+        n: usize,
+        visitor: V,
+    ) -> Result<V::Ok, V::Error>
+    where
+        C: Context,
+        V: UnsizedVisitor<'de, C, [u8], Error = C::Error, Allocator = C::Allocator>,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    unsafe fn read_bytes_uninit<C>(
+        &mut self,
+        cx: C,
+        ptr: *mut u8,
+        n: usize,
+    ) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn peek(&mut self) -> Option<u8> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read<C>(&mut self, cx: C, buf: &mut [u8]) -> Result<(), C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_byte<C>(&mut self, cx: C) -> Result<u8, C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn read_array<C, const N: usize>(&mut self, cx: C) -> Result<[u8; N], C::Error>
+    where
+        C: Context,
+    {
+        /* body omitted: interface retained */
+    }
+}
+/// Underflow when trying to read from a slice.
+#[derive(Debug)]
+pub(crate) struct SliceUnderflow {
+    n: usize,
+    remaining: usize,
+}
+impl SliceUnderflow {
+    #[inline]
+    pub(crate) fn new(n: usize, remaining: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl fmt::Display for SliceUnderflow {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl core::error::Error for SliceUnderflow {}
+```
+</file>
+
+<file path="src/storage/error.rs">
+```rust
+crate::macros::implement_error! {
+    /// Error raised during storage encoding.
+    pub struct Error;
+}
+```
+</file>
+
+<file path="src/value/error.rs">
+```rust
+use core::fmt;
+
+use super::type_hint::{NumberHint, TypeHint};
+
+crate::macros::implement_error! {
+    /// Error raised during wire encoding.
+    pub struct Error;
+}
+
+/// Errors specifically produced by value decoding.
+#[derive(Debug)]
+#[non_exhaustive]
+#[allow(missing_docs)]
+pub(crate) enum ErrorMessage {
+    ArrayOutOfBounds,
+    ExpectedPackValue,
+    ExpectedEmpty(TypeHint),
+    ExpectedBool(TypeHint),
+    ExpectedChar(TypeHint),
+    ExpectedNumber(NumberHint, TypeHint),
+    ExpectedMapValue,
+    ExpectedBytes(TypeHint),
+    ExpectedString(TypeHint),
+    ExpectedStringAsNumber,
+    ExpectedSequence(TypeHint),
+    ExpectedPack(TypeHint),
+    ExpectedMap(TypeHint),
+    ExpectedVariant(TypeHint),
+}
+
+impl fmt::Display for ErrorMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/value/type_hint.rs">
+```rust
+use core::fmt;
+
+use crate::de::SizeHint;
+
+/// A type hint.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub(crate) enum TypeHint {
+    /// A unit type or an empty value.
+    Empty,
+    /// A boolean type.
+    Bool,
+    /// A character type.
+    Char,
+    /// The type as a number.
+    Number(NumberHint),
+    /// A byte array.
+    Bytes(SizeHint),
+    /// A string with the given length.
+    String(SizeHint),
+    /// A sequence with a length hint.
+    Sequence(SizeHint),
+    /// A map with a length hint.
+    Map(SizeHint),
+    /// A variant.
+    Variant,
+    /// An optional value.
+    Option,
+}
+
+impl fmt::Display for TypeHint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A number hint.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub(crate) enum NumberHint {
+    /// An unsigned 8-bit integer.
+    U8,
+    /// An unsigned 16-bit integer.
+    U16,
+    /// An unsigned 32-bit integer.
+    U32,
+    /// An unsigned 64-bit integer.
+    U64,
+    /// An unsigned 128-bit integer.
+    U128,
+    /// A signed 8-bit integer.
+    I8,
+    /// A signed 16-bit integer.
+    I16,
+    /// A signed 32-bit integer.
+    I32,
+    /// A signed 64-bit integer.
+    I64,
+    /// A signed 128-bit integer.
+    I128,
+    /// A [usize]-typed value.
+    Usize,
+    /// A [isize]-typed value.
+    Isize,
+    /// A 32-bit float.
+    F32,
+    /// A 64-bit float.
+    F64,
+}
+
+impl fmt::Display for NumberHint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/wire/error.rs">
+```rust
+crate::macros::implement_error! {
+    /// Error raised during wire encoding.
+    pub struct Error;
+}
+```
+</file>
+</rust context>

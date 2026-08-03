@@ -1,0 +1,3713 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-cryptoutil-rs-37-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-78ee07e3c0`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_cryptoutil_rs_37_9_ruklee_intrinsics_copy_nonoverlapping_dst_valid_78ee07e3c0`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-cryptoutil-rs-37-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-78ee07e3c0")]`.
+- Define `pub extern "C" fn __unsat_poc_src_cryptoutil_rs_37_9_ruklee_intrinsics_copy_nonoverlapping_dst_valid_78ee07e3c0()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-cryptoutil-rs-37-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-78ee07e3c0")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_cryptoutil_rs_37_9_ruklee_intrinsics_copy_nonoverlapping_dst_valid_78ee07e3c0() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "cryptoutil::write_u64_le",
+    "path": "src/cryptoutil.rs",
+    "line_start": 30,
+    "line_end": 32,
+    "body_end": 39,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::intrinsics::copy_nonoverlapping",
+    "path": "rust/library/core/src/intrinsics/mod.rs",
+    "line_start": 3724,
+    "line_end": 3731,
+    "body_end": 3731,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "()"
+  },
+  "callsite": {
+    "line": 37,
+    "col": 9,
+    "path": "src/cryptoutil.rs",
+    "id": "src-cryptoutil-rs-37-9"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "function",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `cryptoutil::write_u64_le` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `cryptoutil::write_u64_le`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std;
+use std::{io, mem};
+use std::ptr;
+use buffer::{ReadBuffer, WriteBuffer, BufferResult};
+use buffer::BufferResult::{BufferUnderflow, BufferOverflow};
+use symmetriccipher::{SynchronousStreamCipher, SymmetricCipherError};
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/cryptoutil.rs:37
+```rust
+29: 
+30: /// Write a u64 into a vector, which must be 8 bytes long. The value is written in little-endian
+31: /// format.
+32: pub fn write_u64_le(dst: &mut[u8], mut input: u64) {
+33:     assert!(dst.len() == 8);
+34:     input = input.to_le();
+35:     unsafe {
+36:         let tmp = &input as *const _ as *const u8;
+37:         ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);
+38:     }
+39: }
+40: 
+41: /// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.
+42: pub fn write_u64v_le(dst: &mut[u8], input: &[u64]) {
+43:     assert!(dst.len() == 8 * input.len());
+44:     unsafe {
+45:         let mut x: *mut u8 = dst.get_unchecked_mut(0);
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/cryptoutil.rs:32-37
+```rust
+32: pub fn write_u64_le(dst: &mut[u8], mut input: u64) {
+33:     assert!(dst.len() == 8);
+34:     input = input.to_le();
+35:     unsafe {
+36:         let tmp = &input as *const _ as *const u8;
+37:         ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-cryptoutil-rs-37-9
+
+Rule id: ruklee-intrinsics-copy-nonoverlapping-dst-valid
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+                   ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:357:78
+    |
+357 |             let mut __klee_ret_src_cryptoutil_rs_148_32_uninitialized = mem::uninitialized();
+    |                                                                              ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:391:74
+    |
+391 |         let mut __klee_ret_src_cryptoutil_rs_161_28_uninitialized = mem::uninitialized();
+    |                                                                          ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:416:74
+    |
+416 |         let mut __klee_ret_src_cryptoutil_rs_171_28_uninitialized = mem::uninitialized();
+    |                                                                          ^^^^^^^^^^^^^
+
+warning: trait objects without an explicit `dyn` are deprecated
+  --> src/symmetriccipher.rs:51:38
+   |
+51 | impl SynchronousStreamCipher for Box<SynchronousStreamCipher + 'static> {
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this is accepted in the current edition (Rust 2015) but is a hard error in Rust 2021!
+   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2021/warnings-promoted-to-error.html>
+   = note: `#[warn(bare_trait_objects)]` on by default
+help: if this is a dyn-compatible trait, use `dyn`
+   |
+51 | impl SynchronousStreamCipher for Box<dyn SynchronousStreamCipher + 'static> {
+   |                                      +++
+
+warning: trait objects without an explicit `dyn` are deprecated
+  --> src/symmetriccipher.rs:58:24
+   |
+58 | impl Encryptor for Box<SynchronousStreamCipher + 'static> {
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this is accepted in the current edition (Rust 2015) but is a hard error in Rust 2021!
+   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2021/warnings-promoted-to-error.html>
+help: if this is a dyn-compatible trait, use `dyn`
+   |
+58 | impl Encryptor for Box<dyn SynchronousStreamCipher + 'static> {
+   |                        +++
+
+warning: trait objects without an explicit `dyn` are deprecated
+  --> src/symmetriccipher.rs:65:24
+   |
+65 | impl Decryptor for Box<SynchronousStreamCipher + 'static> {
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this is accepted in the current edition (Rust 2015) but is a hard error in Rust 2021!
+   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2021/warnings-promoted-to-error.html>
+help: if this is a dyn-compatible trait, use `dyn`
+   |
+65 | impl Decryptor for Box<dyn SynchronousStreamCipher + 'static> {
+   |                        +++
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `cryptoutil`
+   --> src/cryptoutil.rs:782:5
+    |
+782 |     cryptoutil::write_u64_le(&mut dst[..], 0x1122334455667788u64);
+    |     ^^^^^^^^^^ use of unresolved module or unlinked crate `cryptoutil`
+    |
+    = help: if you wanted to use a crate named `cryptoutil`, use `cargo add cryptoutil` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `shaman` (lib) generated 17 warnings
+error: could not compile `shaman` (lib) due to 1 previous error; 17 warnings emitted
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-cryptoutil-rs-37-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-78ee07e3c0', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+warning: no edition set: defaulting to the 2015 edition while the latest is 2024
+   Compiling shaman v0.1.0 (/workspaces/UnSAT-Rust/crates_inj/shaman-0.1.0)
+warning: unnecessary parentheses around `for` iterator expression
+  --> src/cryptoutil.rs:72:18
+   |
+72 |         for _ in (0..input.len()) {
+   |                  ^              ^
+   |
+   = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+   |
+72 -         for _ in (0..input.len()) {
+72 +         for _ in 0..input.len() {
+   |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> src/cryptoutil.rs:208:18
+    |
+208 |         for _ in (0..dst.len()) {
+    |                  ^            ^
+    |
+help: remove these parentheses
+    |
+208 -         for _ in (0..dst.len()) {
+208 +         for _ in 0..dst.len() {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> src/cryptoutil.rs:257:18
+    |
+257 |         for _ in (0..dst.len()) {
+    |                  ^            ^
+    |
+help: remove these parentheses
+    |
+257 -         for _ in (0..dst.len()) {
+257 +         for _ in 0..dst.len() {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> src/cryptoutil.rs:306:18
+    |
+306 |         for _ in (0..dst.len()) {
+    |                  ^            ^
+    |
+help: remove these parentheses
+    |
+306 -         for _ in (0..dst.len()) {
+306 +         for _ in 0..dst.len() {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> src/cryptoutil.rs:355:18
+    |
+355 |         for _ in (0..dst.len()) {
+    |                  ^            ^
+    |
+help: remove these parentheses
+    |
+355 -         for _ in (0..dst.len()) {
+355 +         for _ in 0..dst.len() {
+    |
+
+warning: unnecessary parentheses around `for` iterator expression
+   --> src/cryptoutil.rs:443:14
+    |
+443 |     for i in (0isize..plaintext.len() as isize) {
+    |              ^                                ^
+    |
+help: remove these parentheses
+    |
+443 -     for i in (0isize..plaintext.len() as isize) {
+443 +     for i in 0isize..plaintext.len() as isize {
+    |
+
+warning: unexpected `cfg` condition value: `with-bench`
+   --> src/sha1.rs:534:17
+    |
+534 | #[cfg(all(test, feature = "with-bench"))]
+    |                 ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `unsat-poc-src-cryptoutil-rs-26-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-2efff3dcda` and `unsat-poc-src-cryptoutil-rs-37-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-78ee07e3c0`
+    = help: consider adding `with-bench` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `with-bench`
+    --> src/sha2.rs:1403:17
+     |
+1403 | #[cfg(all(test, feature = "with-bench"))]
+     |                 ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `unsat-poc-src-cryptoutil-rs-26-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-2efff3dcda` and `unsat-poc-src-cryptoutil-rs-37-9-ruklee-intrinsics-copy-nonoverlapping-dst-valid-78ee07e3c0`
+     = help: consider adding `with-bench` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:210:78
+    |
+210 |             let mut __klee_ret_src_cryptoutil_rs_100_32_uninitialized = mem::uninitialized();
+    |                                                                              ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:259:78
+    |
+259 |             let mut __klee_ret_src_cryptoutil_rs_116_32_uninitialized = mem::uninitialized();
+    |                                                                              ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:308:78
+    |
+308 |             let mut __klee_ret_src_cryptoutil_rs_132_32_uninitialized = mem::uninitialized();
+    |                                                                              ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:357:78
+    |
+357 |             let mut __klee_ret_src_cryptoutil_rs_148_32_uninitialized = mem::uninitialized();
+    |                                                                              ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:391:74
+    |
+391 |         let mut __klee_ret_src_cryptoutil_rs_161_28_uninitialized = mem::uninitialized();
+    |                                                                          ^^^^^^^^^^^^^
+
+warning: use of deprecated function `std::mem::uninitialized`: use `mem::MaybeUninit` instead
+   --> src/cryptoutil.rs:416:74
+    |
+416 |         let mut __klee_ret_src_cryptoutil_rs_171_28_uninitialized = mem::uninitialized();
+    |                                                                          ^^^^^^^^^^^^^
+
+warning: trait objects without an explicit `dyn` are deprecated
+  --> src/symmetriccipher.rs:51:38
+   |
+51 | impl SynchronousStreamCipher for Box<SynchronousStreamCipher + 'static> {
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this is accepted in the current edition (Rust 2015) but is a hard error in Rust 2021!
+   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2021/warnings-promoted-to-error.html>
+   = note: `#[warn(bare_trait_objects)]` on by default
+help: if this is a dyn-compatible trait, use `dyn`
+   |
+51 | impl SynchronousStreamCipher for Box<dyn SynchronousStreamCipher + 'static> {
+   |                                      +++
+
+warning: trait objects without an explicit `dyn` are deprecated
+  --> src/symmetriccipher.rs:58:24
+   |
+58 | impl Encryptor for Box<SynchronousStreamCipher + 'static> {
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this is accepted in the current edition (Rust 2015) but is a hard error in Rust 2021!
+   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2021/warnings-promoted-to-error.html>
+help: if this is a dyn-compatible trait, use `dyn`
+   |
+58 | impl Encryptor for Box<dyn SynchronousStreamCipher + 'static> {
+   |                        +++
+
+warning: trait objects without an explicit `dyn` are deprecated
+  --> src/symmetriccipher.rs:65:24
+   |
+65 | impl Decryptor for Box<SynchronousStreamCipher + 'static> {
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this is accepted in the current edition (Rust 2015) but is a hard error in Rust 2021!
+   = note: for more information, see <https://doc.rust-lang.org/nightly/edition-guide/rust-2021/warnings-promoted-to-error.html>
+help: if this is a dyn-compatible trait, use `dyn`
+   |
+65 | impl Decryptor for Box<dyn SynchronousStreamCipher + 'static> {
+   |                        +++
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `cryptoutil`
+   --> src/cryptoutil.rs:782:5
+    |
+782 |     cryptoutil::write_u64_le(&mut dst[..], 0x1122334455667788u64);
+    |     ^^^^^^^^^^ use of unresolved module or unlinked crate `cryptoutil`
+    |
+    = help: if you wanted to use a crate named `cryptoutil`, use `cargo add cryptoutil` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `shaman` (lib) generated 17 warnings
+error: could not compile `shaman` (lib) due to 1 previous error; 17 warnings emitted
+
+
+</previous attempt feedback>
+
+
+<rust context>
+
+<file path="src/buffer.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use std::cmp;
+
+use cryptoutil;
+
+#[derive(Clone,Copy)]
+pub enum BufferResult {
+    BufferUnderflow,
+    BufferOverflow
+}
+
+pub trait ReadBuffer {
+    fn is_empty(&self) -> bool;
+    fn is_full(&self) -> bool;
+    fn remaining(&self) -> usize;
+    fn capacity(&self) -> usize;
+    fn position(&self) -> usize { self.capacity() - self.remaining() }
+
+    fn rewind(&mut self, distance: usize);
+    fn truncate(&mut self, amount: usize);
+    fn reset(&mut self);
+
+    fn peek_next(&self, count: usize) -> &[u8];
+    fn peek_remaining(&self) -> &[u8] {
+        self.peek_next(self.remaining())
+    }
+
+    fn take_next(&mut self, count: usize) -> &[u8];
+    fn take_remaining(&mut self) -> &[u8] {
+        let rem = self.remaining();
+        self.take_next(rem)
+    }
+
+    fn push_to<W: WriteBuffer>(&mut self, output: &mut W) {
+        let count = cmp::min(output.remaining(), self.remaining());
+        cryptoutil::copy_memory(self.take_next(count), output.take_next(count));
+    }
+}
+
+pub trait WriteBuffer {
+    fn is_empty(&self) -> bool;
+    fn is_full(&self) -> bool;
+    fn remaining(&self) -> usize;
+    fn capacity(&self) -> usize;
+    fn position(&self) -> usize { self.capacity() - self.remaining() }
+
+    fn rewind(&mut self, distance: usize);
+    fn reset(&mut self);
+
+    // FIXME - Shouldn't need mut self
+    fn peek_read_buffer(&mut self) -> RefReadBuffer;
+
+    fn take_next(&mut self, count: usize) -> &mut [u8];
+    fn take_remaining(&mut self) -> &mut [u8] {
+        let rem = self.remaining();
+        self.take_next(rem)
+    }
+    fn take_read_buffer(&mut self) -> RefReadBuffer;
+}
+
+pub struct RefReadBuffer<'a> {
+    buff: &'a [u8],
+    pos: usize
+}
+
+impl <'a> RefReadBuffer<'a> {
+    pub fn new(buff: &[u8]) -> RefReadBuffer {
+        RefReadBuffer {
+            buff: buff,
+            pos: 0
+        }
+    }
+}
+
+impl <'a> ReadBuffer for RefReadBuffer<'a> {
+    fn is_empty(&self) -> bool { self.pos == self.buff.len() }
+    fn is_full(&self) -> bool { self.pos == 0 }
+    fn remaining(&self) -> usize { self.buff.len() - self.pos }
+    fn capacity(&self) -> usize { self.buff.len() }
+
+    fn rewind(&mut self, distance: usize) { self.pos -= distance; }
+    fn truncate(&mut self, amount: usize) {
+        self.buff = &self.buff[..self.buff.len() - amount];
+    }
+    fn reset(&mut self) { self.pos = 0; }
+
+    fn peek_next(&self, count: usize) -> &[u8] { &self.buff[self.pos..count] }
+
+    fn take_next(&mut self, count: usize) -> &[u8] {
+        let r = &self.buff[self.pos..self.pos + count];
+        self.pos += count;
+        r
+    }
+}
+
+pub struct OwnedReadBuffer {
+    buff: Vec<u8>,
+    len: usize,
+    pos: usize
+}
+
+impl OwnedReadBuffer {
+    pub fn new(buff: Vec<u8>) -> OwnedReadBuffer {
+        let len = buff.len();
+        OwnedReadBuffer {
+            buff: buff,
+            len: len,
+            pos: 0
+        }
+    }
+    pub fn new_with_len<'a>(buff: Vec<u8>, len: usize) -> OwnedReadBuffer {
+        OwnedReadBuffer {
+            buff: buff,
+            len: len,
+            pos: 0
+        }
+    }
+    pub fn into_write_buffer(self) -> OwnedWriteBuffer {
+        OwnedWriteBuffer::new(self.buff)
+    }
+    pub fn borrow_write_buffer(&mut self) -> BorrowedWriteBuffer {
+        self.pos = 0;
+        self.len = 0;
+        BorrowedWriteBuffer::new(self)
+    }
+}
+
+impl ReadBuffer for OwnedReadBuffer {
+    fn is_empty(&self) -> bool { self.pos == self.len }
+    fn is_full(&self) -> bool { self.pos == 0 }
+    fn remaining(&self) -> usize { self.len - self.pos }
+    fn capacity(&self) -> usize { self.len }
+
+    fn rewind(&mut self, distance: usize) { self.pos -= distance; }
+    fn truncate(&mut self, amount: usize) { self.len -= amount; }
+    fn reset(&mut self) { self.pos = 0; }
+
+    fn peek_next(&self, count: usize) -> &[u8] { &self.buff[self.pos..count] }
+
+    fn take_next(&mut self, count: usize) -> &[u8] {
+        let r = &self.buff[self.pos..self.pos + count];
+        self.pos += count;
+        r
+    }
+}
+
+pub struct RefWriteBuffer<'a> {
+    buff: &'a mut [u8],
+    len: usize,
+    pos: usize
+}
+
+impl <'a> RefWriteBuffer<'a> {
+    pub fn new(buff: &mut [u8]) -> RefWriteBuffer {
+        let len = buff.len();
+        RefWriteBuffer {
+            buff: buff,
+            len: len,
+            pos: 0
+        }
+    }
+}
+
+impl <'a> WriteBuffer for RefWriteBuffer<'a> {
+    fn is_empty(&self) -> bool { self.pos == 0 }
+    fn is_full(&self) -> bool { self.pos == self.len }
+    fn remaining(&self) -> usize { self.len - self.pos }
+    fn capacity(&self) -> usize { self.len }
+
+    fn rewind(&mut self, distance: usize) { self.pos -= distance; }
+    fn reset(&mut self) { self.pos = 0; }
+
+    fn peek_read_buffer(&mut self) -> RefReadBuffer {
+        RefReadBuffer::new(&mut self.buff[..self.pos])
+    }
+
+    fn take_next(&mut self, count: usize) -> &mut [u8] {
+        let r = &mut self.buff[self.pos..self.pos + count];
+        self.pos += count;
+        r
+    }
+    fn take_read_buffer(&mut self) -> RefReadBuffer {
+        let r = RefReadBuffer::new(&mut self.buff[..self.pos]);
+        self.pos = 0;
+        r
+    }
+}
+
+pub struct BorrowedWriteBuffer<'a> {
+    parent: &'a mut OwnedReadBuffer,
+    pos: usize,
+    len: usize
+}
+
+impl <'a> BorrowedWriteBuffer<'a> {
+    fn new(parent: &mut OwnedReadBuffer) -> BorrowedWriteBuffer {
+        let buff_len = parent.buff.len();
+        BorrowedWriteBuffer {
+            parent: parent,
+            pos: 0,
+            len: buff_len
+        }
+    }
+}
+
+impl <'a> WriteBuffer for BorrowedWriteBuffer<'a> {
+    fn is_empty(&self) -> bool { self.pos == 0 }
+    fn is_full(&self) -> bool { self.pos == self.len }
+    fn remaining(&self) -> usize { self.len - self.pos }
+    fn capacity(&self) -> usize { self.len }
+
+    fn rewind(&mut self, distance: usize) {
+        self.pos -= distance;
+        self.parent.len -= distance;
+    }
+    fn reset(&mut self) {
+        self.pos = 0;
+        self.parent.len = 0;
+    }
+
+    fn peek_read_buffer(&mut self) -> RefReadBuffer {
+        RefReadBuffer::new(&self.parent.buff[..self.pos])
+    }
+
+    fn take_next<>(&mut self, count: usize) -> &mut [u8] {
+        let r = &mut self.parent.buff[self.pos..self.pos + count];
+        self.pos += count;
+        self.parent.len += count;
+        r
+    }
+    fn take_read_buffer(&mut self) -> RefReadBuffer {
+        let r = RefReadBuffer::new(&self.parent.buff[..self.pos]);
+        self.pos = 0;
+        self.parent.len = 0;
+        r
+    }
+}
+
+pub struct OwnedWriteBuffer {
+    buff: Vec<u8>,
+    len: usize,
+    pos: usize
+}
+
+impl OwnedWriteBuffer {
+    pub fn new(buff: Vec<u8>) -> OwnedWriteBuffer {
+        let len = buff.len();
+        OwnedWriteBuffer {
+            buff: buff,
+            len: len,
+            pos: 0
+        }
+    }
+    pub fn into_read_buffer(self) -> OwnedReadBuffer {
+        let pos = self.pos;
+        OwnedReadBuffer::new_with_len(self.buff, pos)
+    }
+}
+
+impl WriteBuffer for OwnedWriteBuffer {
+    fn is_empty(&self) -> bool { self.pos == 0 }
+    fn is_full(&self) -> bool { self.pos == self.len }
+    fn remaining(&self) -> usize { self.len - self.pos }
+    fn capacity(&self) -> usize { self.len }
+
+    fn rewind(&mut self, distance: usize) { self.pos -= distance; }
+    fn reset(&mut self) { self.pos = 0; }
+
+    fn peek_read_buffer<'a>(&'a mut self) -> RefReadBuffer<'a> {
+        RefReadBuffer::new(&self.buff[..self.pos])
+    }
+
+    fn take_next<'a>(&'a mut self, count: usize) -> &'a mut [u8] {
+        let r = &mut self.buff[self.pos..self.pos + count];
+        self.pos += count;
+        r
+    }
+    fn take_read_buffer<'a>(&'a mut self) -> RefReadBuffer<'a> {
+        let r = RefReadBuffer::new(&self.buff[..self.pos]);
+        self.pos = 0;
+        r
+    }
+}
+
+```
+</file>
+
+<file path="src/cryptoutil.rs">
+```rust
+use std;
+use std::{io, mem};
+use std::ptr;
+use buffer::{ReadBuffer, WriteBuffer, BufferResult};
+use buffer::BufferResult::{BufferUnderflow, BufferOverflow};
+use symmetriccipher::{SynchronousStreamCipher, SymmetricCipherError};
+/// Write a u64 into a vector, which must be 8 bytes long. The value is written in big-endian
+/// format.
+#[inline(never)]
+pub fn write_u64_be(dst: &mut [u8], mut input: u64) {
+    assert!(dst.len() == 8);
+    input = input.to_be();
+    unsafe {
+        let tmp = &input as *const _ as *const u8;
+        let __klee_arg0 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg0);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-26-39");
+        let mut __klee_ret_src_cryptoutil_rs_26_39_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg0);
+        let __klee_arg1 = 8;
+        klee_ext_bind::callsite!("src-cryptoutil-rs-26-9");
+        let mut __klee_ret_src_cryptoutil_rs_26_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            tmp,
+            __klee_ret_src_cryptoutil_rs_26_39_get_unchecked_mut,
+            __klee_arg1,
+        );
+    }
+}
+/// Write a u64 into a vector, which must be 8 bytes long. The value is written in little-endian
+/// format.
+#[inline(never)]
+pub fn write_u64_le(dst: &mut [u8], mut input: u64) {
+    assert!(dst.len() == 8);
+    input = input.to_le();
+    unsafe {
+        let tmp = &input as *const _ as *const u8;
+        let __klee_arg2 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg2);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-37-39");
+        let mut __klee_ret_src_cryptoutil_rs_37_39_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg2);
+        let __klee_arg3 = 8;
+        klee_ext_bind::callsite!("src-cryptoutil-rs-37-9");
+        let mut __klee_ret_src_cryptoutil_rs_37_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            tmp,
+            __klee_ret_src_cryptoutil_rs_37_39_get_unchecked_mut,
+            __klee_arg3,
+        );
+    }
+}
+/// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.
+#[inline(never)]
+pub fn write_u64v_le(dst: &mut [u8], input: &[u64]) {
+    assert!(dst.len() == 8 * input.len());
+    unsafe {
+        let __klee_arg4 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg4);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-45-30");
+        let mut __klee_ret_src_cryptoutil_rs_45_30_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg4);
+        let mut x: *mut u8 = __klee_ret_src_cryptoutil_rs_45_30_get_unchecked_mut;
+        let __klee_arg5 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg5);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-46-33");
+        let mut __klee_ret_src_cryptoutil_rs_46_33_get_unchecked = input
+            .get_unchecked(__klee_arg5);
+        let mut y: *const u64 = __klee_ret_src_cryptoutil_rs_46_33_get_unchecked;
+        for _ in (0..input.len()) {
+            let tmp = (*klee_ext_bind::raw_pointer_deref!("src-cryptoutil-rs-48-23", y))
+                .to_le();
+            let __klee_arg6 = &tmp as *const _ as *const u8;
+            let __klee_arg7 = 8;
+            klee_ext_bind::callsite!("src-cryptoutil-rs-49-13");
+            let mut __klee_ret_src_cryptoutil_rs_49_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                __klee_arg6,
+                x,
+                __klee_arg7,
+            );
+            let __klee_arg8 = 8;
+            klee_ext_bind::bind_arg_ptr_value(0, x);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg8);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-50-17");
+            let mut __klee_ret_src_cryptoutil_rs_50_17_offset = x.offset(__klee_arg8);
+            x = __klee_ret_src_cryptoutil_rs_50_17_offset;
+            let __klee_arg9 = 1;
+            klee_ext_bind::bind_arg_ptr_value(0, y);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg9);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-51-17");
+            let mut __klee_ret_src_cryptoutil_rs_51_17_offset = y.offset(__klee_arg9);
+            y = __klee_ret_src_cryptoutil_rs_51_17_offset;
+        }
+    }
+}
+/// Write a u32 into a vector, which must be 4 bytes long. The value is written in big-endian
+/// format.
+#[inline(never)]
+pub fn write_u32_be(dst: &mut [u8], mut input: u32) {
+    assert!(dst.len() == 4);
+    input = input.to_be();
+    unsafe {
+        let tmp = &input as *const _ as *const u8;
+        let __klee_arg10 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg10);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-63-39");
+        let mut __klee_ret_src_cryptoutil_rs_63_39_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg10);
+        let __klee_arg11 = 4;
+        klee_ext_bind::callsite!("src-cryptoutil-rs-63-9");
+        let mut __klee_ret_src_cryptoutil_rs_63_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            tmp,
+            __klee_ret_src_cryptoutil_rs_63_39_get_unchecked_mut,
+            __klee_arg11,
+        );
+    }
+}
+/// Write a u32 into a vector, which must be 4 bytes long. The value is written in little-endian
+/// format.
+#[inline(never)]
+pub fn write_u32_le(dst: &mut [u8], mut input: u32) {
+    assert!(dst.len() == 4);
+    input = input.to_le();
+    unsafe {
+        let tmp = &input as *const _ as *const u8;
+        let __klee_arg12 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg12);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-74-39");
+        let mut __klee_ret_src_cryptoutil_rs_74_39_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg12);
+        let __klee_arg13 = 4;
+        klee_ext_bind::callsite!("src-cryptoutil-rs-74-9");
+        let mut __klee_ret_src_cryptoutil_rs_74_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            tmp,
+            __klee_ret_src_cryptoutil_rs_74_39_get_unchecked_mut,
+            __klee_arg13,
+        );
+    }
+}
+/// Write a vector of u32s into a vector of bytes. The values are written in little-endian format.
+#[inline(never)]
+pub fn write_u32v_le(dst: &mut [u8], input: &[u32]) {
+    assert!(dst.len() == 4 * input.len());
+    unsafe {
+        let __klee_arg14 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg14);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-82-30");
+        let mut __klee_ret_src_cryptoutil_rs_82_30_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg14);
+        let mut x: *mut u8 = __klee_ret_src_cryptoutil_rs_82_30_get_unchecked_mut;
+        let __klee_arg15 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg15);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-83-33");
+        let mut __klee_ret_src_cryptoutil_rs_83_33_get_unchecked = input
+            .get_unchecked(__klee_arg15);
+        let mut y: *const u32 = __klee_ret_src_cryptoutil_rs_83_33_get_unchecked;
+        for _ in 0..input.len() {
+            let tmp = (*klee_ext_bind::raw_pointer_deref!("src-cryptoutil-rs-85-23", y))
+                .to_le();
+            let __klee_arg16 = &tmp as *const _ as *const u8;
+            let __klee_arg17 = 4;
+            klee_ext_bind::callsite!("src-cryptoutil-rs-86-13");
+            let mut __klee_ret_src_cryptoutil_rs_86_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                __klee_arg16,
+                x,
+                __klee_arg17,
+            );
+            let __klee_arg18 = 4;
+            klee_ext_bind::bind_arg_ptr_value(0, x);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg18);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-87-17");
+            let mut __klee_ret_src_cryptoutil_rs_87_17_offset = x.offset(__klee_arg18);
+            x = __klee_ret_src_cryptoutil_rs_87_17_offset;
+            let __klee_arg19 = 1;
+            klee_ext_bind::bind_arg_ptr_value(0, y);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg19);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-88-17");
+            let mut __klee_ret_src_cryptoutil_rs_88_17_offset = y.offset(__klee_arg19);
+            y = __klee_ret_src_cryptoutil_rs_88_17_offset;
+        }
+    }
+}
+/// Read a vector of bytes into a vector of u64s. The values are read in big-endian format.
+#[inline(never)]
+pub fn read_u64v_be(dst: &mut [u64], input: &[u8]) {
+    assert!(dst.len() * 8 == input.len());
+    unsafe {
+        let __klee_arg20 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg20);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-97-31");
+        let mut __klee_ret_src_cryptoutil_rs_97_31_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg20);
+        let mut x: *mut u64 = __klee_ret_src_cryptoutil_rs_97_31_get_unchecked_mut;
+        let __klee_arg21 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg21);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-98-32");
+        let mut __klee_ret_src_cryptoutil_rs_98_32_get_unchecked = input
+            .get_unchecked(__klee_arg21);
+        let mut y: *const u8 = __klee_ret_src_cryptoutil_rs_98_32_get_unchecked;
+        for _ in (0..dst.len()) {
+            klee_ext_bind::callsite!("src-cryptoutil-rs-100-32");
+            let mut __klee_ret_src_cryptoutil_rs_100_32_uninitialized = mem::uninitialized();
+            let mut tmp: u64 = __klee_ret_src_cryptoutil_rs_100_32_uninitialized;
+            let __klee_arg22 = &mut tmp as *mut _ as *mut u8;
+            let __klee_arg23 = 8;
+            klee_ext_bind::callsite!("src-cryptoutil-rs-101-13");
+            let mut __klee_ret_src_cryptoutil_rs_101_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                y,
+                __klee_arg22,
+                __klee_arg23,
+            );
+            *klee_ext_bind::raw_pointer_deref!("src-cryptoutil-rs-102-13", x) = u64::from_be(
+                tmp,
+            );
+            let __klee_arg25 = 1;
+            klee_ext_bind::bind_arg_ptr_value(0, x);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg25);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-103-17");
+            let mut __klee_ret_src_cryptoutil_rs_103_17_offset = x.offset(__klee_arg25);
+            x = __klee_ret_src_cryptoutil_rs_103_17_offset;
+            let __klee_arg24 = 8;
+            klee_ext_bind::bind_arg_ptr_value(0, y);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg24);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-104-17");
+            let mut __klee_ret_src_cryptoutil_rs_104_17_offset = y.offset(__klee_arg24);
+            y = __klee_ret_src_cryptoutil_rs_104_17_offset;
+        }
+    }
+}
+/// Read a vector of bytes into a vector of u64s. The values are read in little-endian format.
+#[inline(never)]
+pub fn read_u64v_le(dst: &mut [u64], input: &[u8]) {
+    assert!(dst.len() * 8 == input.len());
+    unsafe {
+        let __klee_arg26 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg26);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-113-31");
+        let mut __klee_ret_src_cryptoutil_rs_113_31_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg26);
+        let mut x: *mut u64 = __klee_ret_src_cryptoutil_rs_113_31_get_unchecked_mut;
+        let __klee_arg27 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg27);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-114-32");
+        let mut __klee_ret_src_cryptoutil_rs_114_32_get_unchecked = input
+            .get_unchecked(__klee_arg27);
+        let mut y: *const u8 = __klee_ret_src_cryptoutil_rs_114_32_get_unchecked;
+        for _ in (0..dst.len()) {
+            klee_ext_bind::callsite!("src-cryptoutil-rs-116-32");
+            let mut __klee_ret_src_cryptoutil_rs_116_32_uninitialized = mem::uninitialized();
+            let mut tmp: u64 = __klee_ret_src_cryptoutil_rs_116_32_uninitialized;
+            let __klee_arg28 = &mut tmp as *mut _ as *mut u8;
+            let __klee_arg29 = 8;
+            klee_ext_bind::callsite!("src-cryptoutil-rs-117-13");
+            let mut __klee_ret_src_cryptoutil_rs_117_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                y,
+                __klee_arg28,
+                __klee_arg29,
+            );
+            *klee_ext_bind::raw_pointer_deref!("src-cryptoutil-rs-118-13", x) = u64::from_le(
+                tmp,
+            );
+            let __klee_arg31 = 1;
+            klee_ext_bind::bind_arg_ptr_value(0, x);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg31);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-119-17");
+            let mut __klee_ret_src_cryptoutil_rs_119_17_offset = x.offset(__klee_arg31);
+            x = __klee_ret_src_cryptoutil_rs_119_17_offset;
+            let __klee_arg30 = 8;
+            klee_ext_bind::bind_arg_ptr_value(0, y);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg30);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-120-17");
+            let mut __klee_ret_src_cryptoutil_rs_120_17_offset = y.offset(__klee_arg30);
+            y = __klee_ret_src_cryptoutil_rs_120_17_offset;
+        }
+    }
+}
+/// Read a vector of bytes into a vector of u32s. The values are read in big-endian format.
+#[inline(never)]
+pub fn read_u32v_be(dst: &mut [u32], input: &[u8]) {
+    assert!(dst.len() * 4 == input.len());
+    unsafe {
+        let __klee_arg32 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg32);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-129-31");
+        let mut __klee_ret_src_cryptoutil_rs_129_31_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg32);
+        let mut x: *mut u32 = __klee_ret_src_cryptoutil_rs_129_31_get_unchecked_mut;
+        let __klee_arg33 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg33);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-130-32");
+        let mut __klee_ret_src_cryptoutil_rs_130_32_get_unchecked = input
+            .get_unchecked(__klee_arg33);
+        let mut y: *const u8 = __klee_ret_src_cryptoutil_rs_130_32_get_unchecked;
+        for _ in (0..dst.len()) {
+            klee_ext_bind::callsite!("src-cryptoutil-rs-132-32");
+            let mut __klee_ret_src_cryptoutil_rs_132_32_uninitialized = mem::uninitialized();
+            let mut tmp: u32 = __klee_ret_src_cryptoutil_rs_132_32_uninitialized;
+            let __klee_arg34 = &mut tmp as *mut _ as *mut u8;
+            let __klee_arg35 = 4;
+            klee_ext_bind::callsite!("src-cryptoutil-rs-133-13");
+            let mut __klee_ret_src_cryptoutil_rs_133_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                y,
+                __klee_arg34,
+                __klee_arg35,
+            );
+            *klee_ext_bind::raw_pointer_deref!("src-cryptoutil-rs-134-13", x) = u32::from_be(
+                tmp,
+            );
+            let __klee_arg37 = 1;
+            klee_ext_bind::bind_arg_ptr_value(0, x);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg37);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-135-17");
+            let mut __klee_ret_src_cryptoutil_rs_135_17_offset = x.offset(__klee_arg37);
+            x = __klee_ret_src_cryptoutil_rs_135_17_offset;
+            let __klee_arg36 = 4;
+            klee_ext_bind::bind_arg_ptr_value(0, y);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg36);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-136-17");
+            let mut __klee_ret_src_cryptoutil_rs_136_17_offset = y.offset(__klee_arg36);
+            y = __klee_ret_src_cryptoutil_rs_136_17_offset;
+        }
+    }
+}
+/// Read a vector of bytes into a vector of u32s. The values are read in little-endian format.
+#[inline(never)]
+pub fn read_u32v_le(dst: &mut [u32], input: &[u8]) {
+    assert!(dst.len() * 4 == input.len());
+    unsafe {
+        let __klee_arg38 = 0;
+        klee_ext_bind::bind_arg_u64(1, (dst).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg38);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-145-31");
+        let mut __klee_ret_src_cryptoutil_rs_145_31_get_unchecked_mut = dst
+            .get_unchecked_mut(__klee_arg38);
+        let mut x: *mut u32 = __klee_ret_src_cryptoutil_rs_145_31_get_unchecked_mut;
+        let __klee_arg39 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg39);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-146-32");
+        let mut __klee_ret_src_cryptoutil_rs_146_32_get_unchecked = input
+            .get_unchecked(__klee_arg39);
+        let mut y: *const u8 = __klee_ret_src_cryptoutil_rs_146_32_get_unchecked;
+        for _ in (0..dst.len()) {
+            klee_ext_bind::callsite!("src-cryptoutil-rs-148-32");
+            let mut __klee_ret_src_cryptoutil_rs_148_32_uninitialized = mem::uninitialized();
+            let mut tmp: u32 = __klee_ret_src_cryptoutil_rs_148_32_uninitialized;
+            let __klee_arg40 = &mut tmp as *mut _ as *mut u8;
+            let __klee_arg41 = 4;
+            klee_ext_bind::callsite!("src-cryptoutil-rs-149-13");
+            let mut __klee_ret_src_cryptoutil_rs_149_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
+                y,
+                __klee_arg40,
+                __klee_arg41,
+            );
+            *klee_ext_bind::raw_pointer_deref!("src-cryptoutil-rs-150-13", x) = u32::from_le(
+                tmp,
+            );
+            let __klee_arg43 = 1;
+            klee_ext_bind::bind_arg_ptr_value(0, x);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg43);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-151-17");
+            let mut __klee_ret_src_cryptoutil_rs_151_17_offset = x.offset(__klee_arg43);
+            x = __klee_ret_src_cryptoutil_rs_151_17_offset;
+            let __klee_arg42 = 4;
+            klee_ext_bind::bind_arg_ptr_value(0, y);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg42);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-152-17");
+            let mut __klee_ret_src_cryptoutil_rs_152_17_offset = y.offset(__klee_arg42);
+            y = __klee_ret_src_cryptoutil_rs_152_17_offset;
+        }
+    }
+}
+/// Read the value of a vector of bytes as a u32 value in little-endian format.
+#[inline(never)]
+pub fn read_u32_le(input: &[u8]) -> u32 {
+    assert!(input.len() == 4);
+    unsafe {
+        klee_ext_bind::callsite!("src-cryptoutil-rs-161-28");
+        let mut __klee_ret_src_cryptoutil_rs_161_28_uninitialized = mem::uninitialized();
+        let mut tmp: u32 = __klee_ret_src_cryptoutil_rs_161_28_uninitialized;
+        let __klee_arg44 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg44);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-162-34");
+        let mut __klee_ret_src_cryptoutil_rs_162_34_get_unchecked = input
+            .get_unchecked(__klee_arg44);
+        let __klee_arg45 = &mut tmp as *mut _ as *mut u8;
+        let __klee_arg46 = 4;
+        klee_ext_bind::callsite!("src-cryptoutil-rs-162-9");
+        let mut __klee_ret_src_cryptoutil_rs_162_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            __klee_ret_src_cryptoutil_rs_162_34_get_unchecked,
+            __klee_arg45,
+            __klee_arg46,
+        );
+        u32::from_le(tmp)
+    }
+}
+/// Read the value of a vector of bytes as a u32 value in big-endian format.
+#[inline(never)]
+pub fn read_u32_be(input: &[u8]) -> u32 {
+    assert!(input.len() == 4);
+    unsafe {
+        klee_ext_bind::callsite!("src-cryptoutil-rs-171-28");
+        let mut __klee_ret_src_cryptoutil_rs_171_28_uninitialized = mem::uninitialized();
+        let mut tmp: u32 = __klee_ret_src_cryptoutil_rs_171_28_uninitialized;
+        let __klee_arg47 = 0;
+        klee_ext_bind::bind_arg_u64(1, (input).len() as u64);
+        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg47);
+        klee_ext_bind::callsite!("src-cryptoutil-rs-172-34");
+        let mut __klee_ret_src_cryptoutil_rs_172_34_get_unchecked = input
+            .get_unchecked(__klee_arg47);
+        let __klee_arg48 = &mut tmp as *mut _ as *mut u8;
+        let __klee_arg49 = 4;
+        klee_ext_bind::callsite!("src-cryptoutil-rs-172-9");
+        let mut __klee_ret_src_cryptoutil_rs_172_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            __klee_ret_src_cryptoutil_rs_172_34_get_unchecked,
+            __klee_arg48,
+            __klee_arg49,
+        );
+        u32::from_be(tmp)
+    }
+}
+/// XOR plaintext and keystream, storing the result in dst.
+#[inline(never)]
+pub fn xor_keystream(dst: &mut [u8], plaintext: &[u8], keystream: &[u8]) {
+    assert!(dst.len() == plaintext.len());
+    assert!(plaintext.len() <= keystream.len());
+    let p = plaintext.as_ptr();
+    let k = keystream.as_ptr();
+    let d = dst.as_mut_ptr();
+    for i in (0isize..plaintext.len() as isize) {
+        unsafe {
+            klee_ext_bind::bind_arg_ptr_value(0, d);
+            klee_ext_bind::bind_arg_u64_value(1, &i);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-187-33");
+            let mut __klee_ret_src_cryptoutil_rs_187_33_offset = {
+                klee_ext_bind::callsite!("src-cryptoutil-rs-187-17");
+                d.offset(i)
+            };
+            klee_ext_bind::bind_arg_ptr_value(0, p);
+            klee_ext_bind::bind_arg_u64_value(1, &i);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-187-18");
+            let mut __klee_ret_src_cryptoutil_rs_187_18_offset = {
+                klee_ext_bind::callsite!("src-cryptoutil-rs-187-32");
+                p.offset(i)
+            };
+            klee_ext_bind::bind_arg_ptr_value(0, k);
+            klee_ext_bind::bind_arg_u64_value(1, &i);
+            klee_ext_bind::callsite!("src-cryptoutil-rs-187-48");
+            let mut __klee_ret_src_cryptoutil_rs_187_48_offset = {
+                klee_ext_bind::callsite!("src-cryptoutil-rs-187-47");
+                k.offset(i)
+            };
+            *__klee_ret_src_cryptoutil_rs_187_33_offset = *__klee_ret_src_cryptoutil_rs_187_18_offset
+                ^ *__klee_ret_src_cryptoutil_rs_187_48_offset;
+        };
+    }
+}
+/// Copy bytes from src to dest
+#[inline(never)]
+pub fn copy_memory(src: &[u8], dst: &mut [u8]) {
+    assert!(dst.len() >= src.len());
+    unsafe {
+        let srcp = src.as_ptr();
+        let dstp = dst.as_mut_ptr();
+        let __klee_arg50 = src.len();
+        klee_ext_bind::callsite!("src-cryptoutil-rs-198-9");
+        let mut __klee_ret_src_cryptoutil_rs_198_9_copy_nonoverlapping = ptr::copy_nonoverlapping(
+            srcp,
+            dstp,
+            __klee_arg50,
+        );
+    }
+}
+/// Zero all bytes in dst
+#[inline(never)]
+pub fn zero(dst: &mut [u8]) {
+    unsafe {
+        let __klee_arg51 = dst.as_mut_ptr();
+        let __klee_arg52 = 0;
+        let __klee_arg53 = dst.len();
+        klee_ext_bind::callsite!("src-cryptoutil-rs-206-9");
+        let mut __klee_ret_src_cryptoutil_rs_206_9_write_bytes = ptr::write_bytes(
+            __klee_arg51,
+            __klee_arg52,
+            __klee_arg53,
+        );
+    }
+}
+/// An extension trait to implement a few useful serialization
+/// methods on types that implement Write
+pub trait WriteExt {
+    fn write_u8(&mut self, val: u8) -> io::Result<()>;
+    fn write_u32_le(&mut self, val: u32) -> io::Result<()>;
+    fn write_u32_be(&mut self, val: u32) -> io::Result<()>;
+    fn write_u64_le(&mut self, val: u64) -> io::Result<()>;
+    fn write_u64_be(&mut self, val: u64) -> io::Result<()>;
+}
+impl<T> WriteExt for T
+where
+    T: io::Write,
+{
+    fn write_u8(&mut self, val: u8) -> io::Result<()> {
+        let buff = [val];
+        self.write_all(&buff)
+    }
+    fn write_u32_le(&mut self, val: u32) -> io::Result<()> {
+        let mut buff = [0u8; 4];
+        write_u32_le(&mut buff, val);
+        self.write_all(&buff)
+    }
+    fn write_u32_be(&mut self, val: u32) -> io::Result<()> {
+        let mut buff = [0u8; 4];
+        write_u32_be(&mut buff, val);
+        self.write_all(&buff)
+    }
+    fn write_u64_le(&mut self, val: u64) -> io::Result<()> {
+        let mut buff = [0u8; 8];
+        write_u64_le(&mut buff, val);
+        self.write_all(&buff)
+    }
+    fn write_u64_be(&mut self, val: u64) -> io::Result<()> {
+        let mut buff = [0u8; 8];
+        write_u64_be(&mut buff, val);
+        self.write_all(&buff)
+    }
+}
+/// symm_enc_or_dec() implements the necessary functionality to turn a SynchronousStreamCipher into
+/// an Encryptor or Decryptor
+pub fn symm_enc_or_dec<S: SynchronousStreamCipher, R: ReadBuffer, W: WriteBuffer>(
+    c: &mut S,
+    input: &mut R,
+    output: &mut W,
+) -> Result<BufferResult, SymmetricCipherError> {
+    let count = std::cmp::min(input.remaining(), output.remaining());
+    c.process(input.take_next(count), output.take_next(count));
+    if input.is_empty() { Ok(BufferUnderflow) } else { Ok(BufferOverflow) }
+}
+/// Convert the value in bytes to the number of bits, a tuple where the 1st item is the
+/// high-order value and the 2nd item is the low order value.
+fn to_bits(x: u64) -> (u64, u64) {
+    (x >> 61, x << 3)
+}
+/// Adds the specified number of bytes to the bit count. panic!() if this would cause numeric
+/// overflow.
+pub fn add_bytes_to_bits(bits: u64, bytes: u64) -> u64 {
+    let (new_high_bits, new_low_bits) = to_bits(bytes);
+    if new_high_bits > 0 {
+        panic!("Numeric overflow occured.")
+    }
+    bits.checked_add(new_low_bits).expect("Numeric overflow occured.")
+}
+/// Adds the specified number of bytes to the bit count, which is a tuple where the first element is
+/// the high order value. panic!() if this would cause numeric overflow.
+pub fn add_bytes_to_bits_tuple(bits: (u64, u64), bytes: u64) -> (u64, u64) {
+    let (new_high_bits, new_low_bits) = to_bits(bytes);
+    let (hi, low) = bits;
+    match low.checked_add(new_low_bits) {
+        Some(x) => {
+            if new_high_bits == 0 {
+                return (hi, x);
+            } else {
+                match hi.checked_add(new_high_bits) {
+                    Some(y) => return (y, x),
+                    None => panic!("Numeric overflow occured."),
+                }
+            }
+        }
+        None => {
+            let z = match new_high_bits.checked_add(1) {
+                Some(w) => w,
+                None => panic!("Numeric overflow occured."),
+            };
+            match hi.checked_add(z) {
+                Some(y) => return (y, low.wrapping_add(new_low_bits)),
+                None => panic!("Numeric overflow occured."),
+            }
+        }
+    }
+}
+/// A FixedBuffer, likes its name implies, is a fixed size buffer. When the buffer becomes full, it
+/// must be processed. The input() method takes care of processing and then clearing the buffer
+/// automatically. However, other methods do not and require the caller to process the buffer. Any
+/// method that modifies the buffer directory or provides the caller with bytes that can be modifies
+/// results in those bytes being marked as used by the buffer.
+pub trait FixedBuffer {
+    /// Input a vector of bytes. If the buffer becomes full, process it with the provided
+    /// function and then clear the buffer.
+    fn input<F: FnMut(&[u8])>(&mut self, input: &[u8], func: F);
+    /// Reset the buffer.
+    fn reset(&mut self);
+    /// Zero the buffer up until the specified index. The buffer position currently must not be
+    /// greater than that index.
+    fn zero_until(&mut self, idx: usize);
+    /// Get a slice of the buffer of the specified size. There must be at least that many bytes
+    /// remaining in the buffer.
+    fn next<'s>(&'s mut self, len: usize) -> &'s mut [u8];
+    /// Get the current buffer. The buffer must already be full. This clears the buffer as well.
+    fn full_buffer<'s>(&'s mut self) -> &'s [u8];
+    /// Get the current buffer.
+    fn current_buffer<'s>(&'s mut self) -> &'s [u8];
+    /// Get the current position of the buffer.
+    fn position(&self) -> usize;
+    /// Get the number of bytes remaining in the buffer until it is full.
+    fn remaining(&self) -> usize;
+    /// Get the size of the buffer
+    fn size(&self) -> usize;
+}
+macro_rules! impl_fixed_buffer {
+    ($name:ident, $size:expr) => {
+        impl FixedBuffer for $name { fn input < F : FnMut(& [u8]) > (& mut self, input :
+        & [u8], mut func : F) { let mut i = 0; let size = $size; if self.buffer_idx != 0
+        { let buffer_remaining = size - self.buffer_idx; if input.len() >=
+        buffer_remaining { copy_memory(& input[..buffer_remaining], & mut self
+        .buffer[self.buffer_idx..size]); self.buffer_idx = 0; func(& self.buffer); i +=
+        buffer_remaining; } else { copy_memory(input, & mut self.buffer[self.buffer_idx
+        ..self.buffer_idx + input.len()]); self.buffer_idx += input.len(); return; } }
+        while input.len() - i >= size { func(& input[i..i + size]); i += size; } let
+        input_remaining = input.len() - i; copy_memory(& input[i..], & mut self.buffer[0
+        ..input_remaining]); self.buffer_idx += input_remaining; } fn reset(& mut self) {
+        self.buffer_idx = 0; } fn zero_until(& mut self, idx : usize) { assert!(idx >=
+        self.buffer_idx); zero(& mut self.buffer[self.buffer_idx..idx]); self.buffer_idx
+        = idx; } fn next <'s > (&'s mut self, len : usize) -> &'s mut [u8] { self
+        .buffer_idx += len; & mut self.buffer[self.buffer_idx - len..self.buffer_idx] }
+        fn full_buffer <'s > (&'s mut self) -> &'s[u8] { assert!(self.buffer_idx ==
+        $size); self.buffer_idx = 0; & self.buffer[..$size] } fn current_buffer <'s >
+        (&'s mut self) -> &'s[u8] { let tmp = self.buffer_idx; self.buffer_idx = 0; &
+        self.buffer[..tmp] } fn position(& self) -> usize { self.buffer_idx } fn
+        remaining(& self) -> usize { $size - self.buffer_idx } fn size(& self) -> usize {
+        $size } }
+    };
+}
+/// A fixed size buffer of 64 bytes useful for cryptographic operations.
+#[derive(Copy)]
+pub struct FixedBuffer64 {
+    buffer: [u8; 64],
+    buffer_idx: usize,
+}
+impl Clone for FixedBuffer64 {
+    fn clone(&self) -> FixedBuffer64 {
+        *self
+    }
+}
+impl FixedBuffer64 {
+    /// Create a new buffer
+    pub fn new() -> FixedBuffer64 {
+        FixedBuffer64 {
+            buffer: [0u8; 64],
+            buffer_idx: 0,
+        }
+    }
+}
+impl_fixed_buffer!(FixedBuffer64, 64);
+/// A fixed size buffer of 128 bytes useful for cryptographic operations.
+pub struct FixedBuffer128 {
+    buffer: [u8; 128],
+    buffer_idx: usize,
+}
+impl FixedBuffer128 {
+    /// Create a new buffer
+    pub fn new() -> FixedBuffer128 {
+        FixedBuffer128 {
+            buffer: [0u8; 128],
+            buffer_idx: 0,
+        }
+    }
+}
+impl_fixed_buffer!(FixedBuffer128, 128);
+/// The StandardPadding trait adds a method useful for various hash algorithms to a FixedBuffer
+/// struct.
+pub trait StandardPadding {
+    /// Add standard padding to the buffer. The buffer must not be full when this method is called
+    /// and is guaranteed to have exactly rem remaining bytes when it returns. If there are not at
+    /// least rem bytes available, the buffer will be zero padded, processed, cleared, and then
+    /// filled with zeros again until only rem bytes are remaining.
+    fn standard_padding<F: FnMut(&[u8])>(&mut self, rem: usize, func: F);
+}
+impl<T: FixedBuffer> StandardPadding for T {
+    fn standard_padding<F: FnMut(&[u8])>(&mut self, rem: usize, mut func: F) {
+        let size = self.size();
+        self.next(1)[0] = 128;
+        if self.remaining() < rem {
+            self.zero_until(size);
+            func(self.full_buffer());
+        }
+        self.zero_until(size - rem);
+    }
+}
+
+```
+</file>
+
+<file path="src/digest.rs">
+```rust
+// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
+// http://rust-lang.org/COPYRIGHT.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use std::iter::repeat;
+
+/**
+ * The Digest trait specifies an interface common to digest functions, such as SHA-1 and the SHA-2
+ * family of digest functions.
+ */
+pub trait Digest {
+    /**
+     * Provide message data.
+     *
+     * # Arguments
+     *
+     * * input - A vector of message data
+     */
+    fn input(&mut self, input: &[u8]);
+
+    /**
+     * Retrieve the digest result. This method may be called multiple times.
+     *
+     * # Arguments
+     *
+     * * out - the vector to hold the result. Must be large enough to contain output_bits().
+     */
+    fn result(&mut self, out: &mut [u8]);
+
+    /**
+     * Reset the digest. This method must be called after result() and before supplying more
+     * data.
+     */
+    fn reset(&mut self);
+
+    /**
+     * Get the output size in bits.
+     */
+    fn output_bits(&self) -> usize;
+
+    /**
+     * Get the output size in bytes.
+     */
+    fn output_bytes(&self) -> usize {
+        (self.output_bits() + 7) / 8
+    }
+
+    /**
+     * Get the block size in bytes.
+     */
+    fn block_size(&self) -> usize;
+
+    /**
+     * Convenience function that feeds a string into a digest.
+     *
+     * # Arguments
+     *
+     * * `input` The string to feed into the digest
+     */
+    fn input_str(&mut self, input: &str) {
+        self.input(input.as_bytes());
+    }
+
+    /**
+     * Convenience function that retrieves the result of a digest as a
+     * String in hexadecimal format.
+     */
+    fn result_str(&mut self) -> String {
+        use serialize::hex::ToHex;
+
+        let mut buf: Vec<u8> = repeat(0).take((self.output_bits()+7)/8).collect();
+        self.result(&mut buf);
+        buf[..].to_hex()
+    }
+}
+
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+extern crate rand;
+extern crate rustc_serialize as serialize;
+
+pub mod buffer;
+pub mod cryptoutil;
+pub mod digest;
+pub mod sha1;
+pub mod sha2;
+mod simd;
+mod step_by;
+mod symmetriccipher;
+```
+</file>
+
+<file path="src/sha1.rs">
+```rust
+// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
+// http://rust-lang.org/COPYRIGHT.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+/*!
+An implementation of the SHA-1 cryptographic hash algorithm.
+
+To use this module, first create a `Sha1` object using the `Sha1` constructor,
+then feed it an input message using the `input` or `input_str` methods,
+which may be called any number of times; they will buffer the input until
+there is enough to call the block algorithm.
+
+After the entire input has been fed to the hash read the result using
+the `result` or `result_str` methods. The first will return bytes, and
+the second will return a `String` object of the same bytes represented
+in hexadecimal form.
+
+The `Sha1` object may be reused to create multiple hashes by calling
+the `reset()` method. These traits are implemented by all hash digest
+algorithms that implement the `Digest` trait. An example of use is:
+
+```rust
+use self::shaman::digest::Digest;
+use self::shaman::sha1::Sha1;
+
+// create a Sha1 object
+let mut hasher = Sha1::new();
+
+// write input message
+hasher.input_str("hello world");
+
+// read hash digest
+let hex = hasher.result_str();
+
+assert_eq!(hex, "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed");
+```
+
+# Mathematics
+
+The mathematics of the SHA-1 algorithm are quite interesting. In its
+definition, The SHA-1 algorithm uses:
+
+* 1 binary operation on bit-arrays:
+  * "exclusive or" (XOR)
+* 2 binary operations on integers:
+  * "addition" (ADD)
+  * "rotate left" (ROL)
+* 3 ternary operations on bit-arrays:
+  * "choose" (CH)
+  * "parity" (PAR)
+  * "majority" (MAJ)
+
+Some of these functions are commonly found in all hash digest
+algorithms, but some, like "parity" is only found in SHA-1.
+ */
+
+use digest::Digest;
+use cryptoutil::{write_u32_be, read_u32v_be, add_bytes_to_bits, FixedBuffer, FixedBuffer64, StandardPadding};
+use simd::u32x4;
+
+const STATE_LEN: usize = 5;
+const BLOCK_LEN: usize = 16;
+
+const K0: u32 = 0x5A827999u32;
+const K1: u32 = 0x6ED9EBA1u32;
+const K2: u32 = 0x8F1BBCDCu32;
+const K3: u32 = 0xCA62C1D6u32;
+
+/// Not an intrinsic, but gets the first element of a vector.
+#[inline]
+pub fn sha1_first(w0: u32x4) -> u32 {
+    w0.0
+}
+
+/// Not an intrinsic, but adds a word to the first element of a vector.
+#[inline]
+pub fn sha1_first_add(e: u32, w0: u32x4) -> u32x4 {
+    let u32x4(a, b, c, d) = w0;
+    u32x4(e.wrapping_add(a), b, c, d)
+}
+
+/// Emulates `llvm.x86.sha1msg1` intrinsic.
+fn sha1msg1(a: u32x4, b: u32x4) -> u32x4 {
+    let u32x4(_, _, w2, w3) = a;
+    let u32x4(w4, w5, _, _) = b;
+    a ^ u32x4(w2, w3, w4, w5)
+}
+
+/// Emulates `llvm.x86.sha1msg2` intrinsic.
+fn sha1msg2(a: u32x4, b: u32x4) -> u32x4 {
+    let u32x4(x0, x1, x2, x3) = a;
+    let u32x4(_, w13, w14, w15) = b;
+
+    let w16 = (x0 ^ w13).rotate_left(1);
+    let w17 = (x1 ^ w14).rotate_left(1);
+    let w18 = (x2 ^ w15).rotate_left(1);
+    let w19 = (x3 ^ w16).rotate_left(1);
+
+    u32x4(w16, w17, w18, w19)
+}
+
+/// Performs 4 rounds of the message schedule update.
+pub fn sha1_schedule_x4(v0: u32x4, v1: u32x4, v2: u32x4, v3: u32x4) -> u32x4 {
+    sha1msg2(sha1msg1(v0, v1) ^ v2, v3)
+}
+
+/// Emulates `llvm.x86.sha1nexte` intrinsic.
+#[inline]
+pub fn sha1_first_half(abcd: u32x4, msg: u32x4) -> u32x4 {
+    sha1_first_add(sha1_first(abcd).rotate_left(30), msg)
+}
+
+/// Emulates `llvm.x86.sha1rnds4` intrinsic.
+/// Performs 4 rounds of the message block digest.
+pub fn sha1_digest_round_x4(abcd: u32x4, work: u32x4, i: i8) -> u32x4 {
+    const K0V: u32x4 = u32x4(K0, K0, K0, K0);
+    const K1V: u32x4 = u32x4(K1, K1, K1, K1);
+    const K2V: u32x4 = u32x4(K2, K2, K2, K2);
+    const K3V: u32x4 = u32x4(K3, K3, K3, K3);
+
+    match i {
+        0 => sha1rnds4c(abcd, work + K0V),
+        1 => sha1rnds4p(abcd, work + K1V),
+        2 => sha1rnds4m(abcd, work + K2V),
+        3 => sha1rnds4p(abcd, work + K3V),
+        _ => panic!("unknown icosaround index")
+    }
+}
+
+/// Not an intrinsic, but helps emulate `llvm.x86.sha1rnds4` intrinsic.
+fn sha1rnds4c(abcd: u32x4, msg: u32x4) -> u32x4 {
+    let u32x4(mut a, mut b, mut c, mut d) = abcd;
+    let u32x4(t, u, v, w) = msg;
+    let mut e = 0u32;
+
+    macro_rules! bool3ary_202 {
+        ($a:expr, $b:expr, $c:expr) => (($c ^ ($a & ($b ^ $c))))
+    } // Choose, MD5F, SHA1C
+
+    e = e.wrapping_add(a.rotate_left(5)).wrapping_add(bool3ary_202!(b, c, d)).wrapping_add(t);
+    b = b.rotate_left(30);
+
+    d = d.wrapping_add(e.rotate_left(5)).wrapping_add(bool3ary_202!(a, b, c)).wrapping_add(u);
+    a = a.rotate_left(30);
+
+    c = c.wrapping_add(d.rotate_left(5)).wrapping_add(bool3ary_202!(e, a, b)).wrapping_add(v);
+    e = e.rotate_left(30);
+
+    b = b.wrapping_add(c.rotate_left(5)).wrapping_add(bool3ary_202!(d, e, a)).wrapping_add(w);
+    d = d.rotate_left(30);
+
+    u32x4(b, c, d, e)
+}
+
+/// Not an intrinsic, but helps emulate `llvm.x86.sha1rnds4` intrinsic.
+fn sha1rnds4p(abcd: u32x4, msg: u32x4) -> u32x4 {
+    let u32x4(mut a, mut b, mut c, mut d) = abcd;
+    let u32x4(t, u, v, w) = msg;
+    let mut e = 0u32;
+
+    macro_rules! bool3ary_150 {
+        ($a:expr, $b:expr, $c:expr) => (($a ^ $b ^ $c))
+    } // Parity, XOR, MD5H, SHA1P
+
+    e = e.wrapping_add(a.rotate_left(5)).wrapping_add(bool3ary_150!(b, c, d)).wrapping_add(t);
+    b = b.rotate_left(30);
+
+    d = d.wrapping_add(e.rotate_left(5)).wrapping_add(bool3ary_150!(a, b, c)).wrapping_add(u);
+    a = a.rotate_left(30);
+
+    c = c.wrapping_add(d.rotate_left(5)).wrapping_add(bool3ary_150!(e, a, b)).wrapping_add(v);
+    e = e.rotate_left(30);
+
+    b = b.wrapping_add(c.rotate_left(5)).wrapping_add(bool3ary_150!(d, e, a)).wrapping_add(w);
+    d = d.rotate_left(30);
+
+    u32x4(b, c, d, e)
+}
+
+/// Not an intrinsic, but helps emulate `llvm.x86.sha1rnds4` intrinsic.
+fn sha1rnds4m(abcd: u32x4, msg: u32x4) -> u32x4 {
+    let u32x4(mut a, mut b, mut c, mut d) = abcd;
+    let u32x4(t, u, v, w) = msg;
+    let mut e = 0u32;
+
+    macro_rules! bool3ary_232 {
+        ($a:expr, $b:expr, $c:expr) => (($a & $b) ^ ($a & $c) ^ ($b & $c))
+    } // Majority, SHA1M
+
+    e = e.wrapping_add(a.rotate_left(5)).wrapping_add(bool3ary_232!(b, c, d)).wrapping_add(t);
+    b = b.rotate_left(30);
+
+    d = d.wrapping_add(e.rotate_left(5)).wrapping_add(bool3ary_232!(a, b, c)).wrapping_add(u);
+    a = a.rotate_left(30);
+
+    c = c.wrapping_add(d.rotate_left(5)).wrapping_add(bool3ary_232!(e, a, b)).wrapping_add(v);
+    e = e.rotate_left(30);
+
+    b = b.wrapping_add(c.rotate_left(5)).wrapping_add(bool3ary_232!(d, e, a)).wrapping_add(w);
+    d = d.rotate_left(30);
+
+    u32x4(b, c, d, e)
+}
+
+/// Process a block with the SHA-1 algorithm.
+pub fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
+
+    macro_rules! schedule {
+        ($v0:expr, $v1:expr, $v2:expr, $v3:expr) => (
+            sha1msg2(sha1msg1($v0, $v1) ^ $v2, $v3)
+        )
+    }
+
+    macro_rules! rounds4 {
+        ($h0:ident, $h1:ident, $wk:expr, $i:expr) => (
+            sha1_digest_round_x4($h0, sha1_first_half($h1, $wk), $i)
+        )
+    }
+
+    // Rounds 0..20
+    let mut h0 = u32x4(state[0],
+                       state[1],
+                       state[2],
+                       state[3]);
+    let mut w0 = u32x4(block[0],
+                       block[1],
+                       block[2],
+                       block[3]);
+    let mut h1 = sha1_digest_round_x4(h0, sha1_first_add(state[4], w0), 0);
+    let mut w1 = u32x4(block[4],
+                       block[5],
+                       block[6],
+                       block[7]);
+    h0 = rounds4!(h1, h0, w1, 0);
+    let mut w2 = u32x4(block[8],
+                       block[9],
+                       block[10],
+                       block[11]);
+    h1 = rounds4!(h0, h1, w2, 0);
+    let mut w3 = u32x4(block[12],
+                       block[13],
+                       block[14],
+                       block[15]);
+    h0 = rounds4!(h1, h0, w3, 0);
+    let mut w4 = schedule!(w0, w1, w2, w3);
+    h1 = rounds4!(h0, h1, w4, 0);
+
+    // Rounds 20..40
+    w0 = schedule!(w1, w2, w3, w4);
+    h0 = rounds4!(h1, h0, w0, 1);
+    w1 = schedule!(w2, w3, w4, w0);
+    h1 = rounds4!(h0, h1, w1, 1);
+    w2 = schedule!(w3, w4, w0, w1);
+    h0 = rounds4!(h1, h0, w2, 1);
+    w3 = schedule!(w4, w0, w1, w2);
+    h1 = rounds4!(h0, h1, w3, 1);
+    w4 = schedule!(w0, w1, w2, w3);
+    h0 = rounds4!(h1, h0, w4, 1);
+
+    // Rounds 40..60
+    w0 = schedule!(w1, w2, w3, w4);
+    h1 = rounds4!(h0, h1, w0, 2);
+    w1 = schedule!(w2, w3, w4, w0);
+    h0 = rounds4!(h1, h0, w1, 2);
+    w2 = schedule!(w3, w4, w0, w1);
+    h1 = rounds4!(h0, h1, w2, 2);
+    w3 = schedule!(w4, w0, w1, w2);
+    h0 = rounds4!(h1, h0, w3, 2);
+    w4 = schedule!(w0, w1, w2, w3);
+    h1 = rounds4!(h0, h1, w4, 2);
+
+    // Rounds 60..80
+    w0 = schedule!(w1, w2, w3, w4);
+    h0 = rounds4!(h1, h0, w0, 3);
+    w1 = schedule!(w2, w3, w4, w0);
+    h1 = rounds4!(h0, h1, w1, 3);
+    w2 = schedule!(w3, w4, w0, w1);
+    h0 = rounds4!(h1, h0, w2, 3);
+    w3 = schedule!(w4, w0, w1, w2);
+    h1 = rounds4!(h0, h1, w3, 3);
+    w4 = schedule!(w0, w1, w2, w3);
+    h0 = rounds4!(h1, h0, w4, 3);
+
+    let e = sha1_first(h1).rotate_left(30);
+    let u32x4(a, b, c, d) = h0;
+
+    state[0] = state[0].wrapping_add(a);
+    state[1] = state[1].wrapping_add(b);
+    state[2] = state[2].wrapping_add(c);
+    state[3] = state[3].wrapping_add(d);
+    state[4] = state[4].wrapping_add(e);
+}
+
+/// Process a block with the SHA-1 algorithm. (See more...)
+///
+/// SHA-1 is a cryptographic hash function, and as such, it operates
+/// on an arbitrary number of bytes. This function operates on a fixed
+/// number of bytes. If you call this function with anything other than
+/// 64 bytes, then it will panic! This function takes two arguments:
+///
+/// * `state` is reference to an **array** of 5 words.
+/// * `block` is reference to a **slice** of 64 bytes.
+///
+/// If you want the function that performs a message digest on an arbitrary
+/// number of bytes, then see also the `Sha1` struct above.
+///
+/// # Implementation
+///
+/// First, some background. Both ARM and Intel are releasing documentation
+/// that they plan to include instruction set extensions for SHA1 and SHA256
+/// sometime in the near future. Second, LLVM won't lower these intrinsics yet,
+/// so these functions were written emulate these instructions. Finally,
+/// the block function implemented with these emulated intrinsics turned out
+/// to be quite fast! What follows is a discussion of this CPU-level view
+/// of the SHA-1 algorithm and how it relates to the mathematical definition.
+///
+/// The SHA instruction set extensions can be divided up into two categories:
+///
+/// * message work schedule update calculation ("schedule" v., "work" n.)
+/// * message block 80-round digest calculation ("digest" v., "block" n.)
+///
+/// The schedule-related functions can be used to easily perform 4 rounds
+/// of the message work schedule update calculation, as shown below:
+///
+/// ```ignore
+/// macro_rules! schedule_x4 {
+///     ($v0:expr, $v1:expr, $v2:expr, $v3:expr) => (
+///         sha1msg2(sha1msg1($v0, $v1) ^ $v2, $v3)
+///     )
+/// }
+///
+/// macro_rules! round_x4 {
+///     ($h0:ident, $h1:ident, $wk:expr, $i:expr) => (
+///         sha1rnds4($h0, sha1_first_half($h1, $wk), $i)
+///     )
+/// }
+/// ```
+///
+/// and also shown above is how the digest-related functions can be used to
+/// perform 4 rounds of the message block digest calculation.
+///
+pub fn sha1_digest_block(state: &mut [u32; 5], block: &[u8/*; 64*/]) {
+    assert_eq!(block.len(), BLOCK_LEN*4);
+    let mut block2 = [0u32; BLOCK_LEN];
+    read_u32v_be(&mut block2[..], block);
+    sha1_digest_block_u32(state, &block2);
+}
+
+fn add_input(st: &mut Sha1, msg: &[u8]) {
+    assert!((!st.computed));
+    // Assumes that msg.len() can be converted to u64 without overflow
+    st.length_bits = add_bytes_to_bits(st.length_bits, msg.len() as u64);
+    let st_h = &mut st.h;
+    st.buffer.input(msg, |d: &[u8]| { sha1_digest_block(st_h, d); });
+}
+
+fn mk_result(st: &mut Sha1, rs: &mut [u8]) {
+    if !st.computed {
+        let st_h = &mut st.h;
+        st.buffer.standard_padding(8, |d: &[u8]| { sha1_digest_block(&mut *st_h, d) });
+        write_u32_be(st.buffer.next(4), (st.length_bits >> 32) as u32 );
+        write_u32_be(st.buffer.next(4), st.length_bits as u32);
+        sha1_digest_block(st_h, st.buffer.full_buffer());
+
+        st.computed = true;
+    }
+
+    write_u32_be(&mut rs[0..4], st.h[0]);
+    write_u32_be(&mut rs[4..8], st.h[1]);
+    write_u32_be(&mut rs[8..12], st.h[2]);
+    write_u32_be(&mut rs[12..16], st.h[3]);
+    write_u32_be(&mut rs[16..20], st.h[4]);
+}
+
+/// Structure representing the state of a Sha1 computation
+#[derive(Clone, Copy)]
+pub struct Sha1 {
+    h: [u32; STATE_LEN],
+    length_bits: u64,
+    buffer: FixedBuffer64,
+    computed: bool,
+}
+
+impl Sha1 {
+    /// Construct a `sha` object
+    pub fn new() -> Sha1 {
+        let mut st = Sha1 {
+            h: [0u32; STATE_LEN],
+            length_bits: 0u64,
+            buffer: FixedBuffer64::new(),
+            computed: false,
+        };
+        st.reset();
+        st
+    }
+}
+
+impl Digest for Sha1 {
+    fn reset(&mut self) {
+        self.length_bits = 0;
+        self.h[0] = 0x67452301u32;
+        self.h[1] = 0xEFCDAB89u32;
+        self.h[2] = 0x98BADCFEu32;
+        self.h[3] = 0x10325476u32;
+        self.h[4] = 0xC3D2E1F0u32;
+        self.buffer.reset();
+        self.computed = false;
+    }
+    fn input(&mut self, msg: &[u8]) { add_input(self, msg); }
+    fn result(&mut self, out: &mut [u8]) { mk_result(self, out) }
+    fn output_bits(&self) -> usize { 160 }
+    fn block_size(&self) -> usize { 64 }
+}
+
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use test::Bencher;
+    use digest::Digest;
+    use sha1::{STATE_LEN, BLOCK_LEN};
+    use sha1::{Sha1, sha1_digest_block_u32};
+
+    #[bench]
+    pub fn sha1_block(bh: & mut Bencher) {
+        let mut state = [0u32; STATE_LEN];
+        let words = [1u32; BLOCK_LEN];
+        bh.iter( || {
+            sha1_digest_block_u32(&mut state, &words);
+        });
+        bh.bytes = 64u64;
+    }
+
+    #[bench]
+    pub fn sha1_10(bh: & mut Bencher) {
+        let mut sh = Sha1::new();
+        let bytes = [1u8; 10];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha1_1k(bh: & mut Bencher) {
+        let mut sh = Sha1::new();
+        let bytes = [1u8; 1024];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha1_64k(bh: & mut Bencher) {
+        let mut sh = Sha1::new();
+        let bytes = [1u8; 65536];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+}
+
+```
+</file>
+
+<file path="src/sha2.rs">
+```rust
+// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
+// http://rust-lang.org/COPYRIGHT.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+/*!
+An implementation of the SHA-2 cryptographic hash algorithms.
+
+There are 6 standard algorithms specified in the SHA-2 standard:
+
+ * `Sha224`, which is the 32-bit `Sha256` algorithm with the result truncated to 224 bits.
+ * `Sha256`, which is the 32-bit `Sha256` algorithm.
+ * `Sha384`, which is the 64-bit `Sha512` algorithm with the result truncated to 384 bits.
+ * `Sha512`, which is the 64-bit `Sha512` algorithm.
+ * `Sha512Trunc224`, which is the 64-bit `Sha512` algorithm with the result truncated to 224 bits.
+ * `Sha512Trunc256`, which is the 64-bit `Sha512` algorithm with the result truncated to 256 bits.
+
+Algorithmically, there are only 2 core algorithms: `Sha256` and `Sha512`.
+All other algorithms are just applications of these with different initial hash
+values, and truncated to different digest bit lengths.
+
+# Usage
+
+An example of using `Sha256` is:
+
+```rust
+use self::shaman::digest::Digest;
+use self::shaman::sha2::Sha256;
+
+// create a Sha256 object
+let mut hasher = Sha256::new();
+
+// write input message
+hasher.input_str("hello world");
+
+// read hash digest
+let hex = hasher.result_str();
+
+assert_eq!(hex,
+           concat!("b94d27b9934d3e08a52e52d7da7dabfa",
+                   "c484efe37a5380ee9088f7ace2efcde9"));
+```
+
+An example of using `Sha512` is:
+
+```rust
+use self::shaman::digest::Digest;
+use self::shaman::sha2::Sha512;
+
+// create a Sha512 object
+let mut hasher = Sha512::new();
+
+// write input message
+hasher.input_str("hello world");
+
+// read hash digest
+let hex = hasher.result_str();
+
+assert_eq!(hex,
+           concat!("309ecc489c12d6eb4cc40f50c902f2b4",
+                   "d0ed77ee511a7c7a9bcd3ca86d4cd86f",
+                   "989dd35bc5ff499670da34255b45b0cf",
+                   "d830e81f605dcf7dc5542e93ae9cd76f"));
+```
+
+ */
+
+use digest::Digest;
+use cryptoutil::{write_u32_be, read_u32v_be,
+                 write_u64_be, read_u64v_be,
+                 add_bytes_to_bits, add_bytes_to_bits_tuple,
+                 FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding};
+
+use simd::{u32x4, u64x2};
+
+const STATE_LEN: usize = 8;
+const BLOCK_LEN: usize = 16;
+
+/// Not an intrinsic, but works like an unaligned load.
+#[inline]
+fn sha256load(v2: u32x4, v3: u32x4) -> u32x4 {
+    u32x4(v3.3, v2.0, v2.1, v2.2)
+}
+
+/// Not an intrinsic, but useful for swapping vectors.
+#[inline]
+fn sha256swap(v0: u32x4) -> u32x4 {
+    u32x4(v0.2, v0.3, v0.0, v0.1)
+}
+
+/// Emulates `llvm.x86.sha256msg1` intrinsic.
+//#[inline]
+fn sha256msg1(v0: u32x4, v1: u32x4) -> u32x4 {
+
+    // sigma 0 on vectors
+    #[inline]
+    fn sigma0x4(x: u32x4) -> u32x4 {
+        ((x >> u32x4( 7,  7,  7,  7)) | (x << u32x4(25, 25, 25, 25))) ^
+        ((x >> u32x4(18, 18, 18, 18)) | (x << u32x4(14, 14, 14, 14))) ^
+         (x >> u32x4( 3,  3,  3,  3))
+    }
+
+    v0 + sigma0x4(sha256load(v0, v1))
+}
+
+/// Emulates `llvm.x86.sha256msg2` intrinsic.
+//#[inline]
+fn sha256msg2(v4: u32x4, v3: u32x4) -> u32x4 {
+
+    macro_rules! sigma1 {
+        ($a:expr) => (($a.rotate_right(17) ^ $a.rotate_right(19) ^ ($a >> 10)))
+    }
+
+    let u32x4(x3, x2, x1, x0) = v4;
+    let u32x4(w15, w14, _, _) = v3;
+
+    let w16 = x0.wrapping_add(sigma1!(w14));
+    let w17 = x1.wrapping_add(sigma1!(w15));
+    let w18 = x2.wrapping_add(sigma1!(w16));
+    let w19 = x3.wrapping_add(sigma1!(w17));
+
+    u32x4(w19, w18, w17, w16)
+}
+
+/// Performs 4 rounds of the SHA-256 message schedule update.
+pub fn sha256_schedule_x4(v0: u32x4, v1: u32x4, v2: u32x4, v3: u32x4) -> u32x4 {
+    sha256msg2(sha256msg1(v0, v1) + sha256load(v2, v3), v3)
+}
+
+/// Emulates `llvm.x86.sha256rnds2` intrinsic.
+//#[inline]
+pub fn sha256_digest_round_x2(cdgh: u32x4, abef: u32x4, wk: u32x4) -> u32x4 {
+
+    macro_rules! big_sigma0 {
+        ($a:expr) => (($a.rotate_right(2) ^ $a.rotate_right(13) ^ $a.rotate_right(22)))
+    }
+    macro_rules! big_sigma1 {
+        ($a:expr) => (($a.rotate_right(6) ^ $a.rotate_right(11) ^ $a.rotate_right(25)))
+    }
+    macro_rules! bool3ary_202 {
+        ($a:expr, $b:expr, $c:expr) => (($c ^ ($a & ($b ^ $c))))
+    } // Choose, MD5F, SHA1C
+    macro_rules! bool3ary_232 {
+        ($a:expr, $b:expr, $c:expr) => (($a & $b) ^ ($a & $c) ^ ($b & $c))
+    } // Majority, SHA1M
+
+    let u32x4(_, _, wk1, wk0) = wk;
+    let u32x4(a0, b0, e0, f0) = abef;
+    let u32x4(c0, d0, g0, h0) = cdgh;
+
+    // a round
+    let x0 = big_sigma1!(e0).wrapping_add(bool3ary_202!(e0, f0, g0)).wrapping_add(wk0).wrapping_add(h0);
+    let y0 = big_sigma0!(a0).wrapping_add(bool3ary_232!(a0, b0, c0));
+    let (a1, b1, c1, d1, e1, f1, g1, h1) = (
+        x0.wrapping_add(y0), a0, b0, c0,
+        x0.wrapping_add(d0), e0, f0, g0);
+
+    // a round
+    let x1 = big_sigma1!(e1).wrapping_add(bool3ary_202!(e1, f1, g1)).wrapping_add(wk1).wrapping_add(h1);
+    let y1 = big_sigma0!(a1).wrapping_add(bool3ary_232!(a1, b1, c1));
+    let (a2, b2, _, _, e2, f2, _, _) = (
+        x1.wrapping_add(y1), a1, b1, c1,
+        x1.wrapping_add(d1), e1, f1, g1);
+
+    u32x4(a2, b2, e2, f2)
+}
+
+/// Process a block with the SHA-256 algorithm.
+pub fn sha256_digest_block_u32(state: &mut [u32; 8], block: &[u32; 16]) {
+    let k = &K32X4;
+
+    macro_rules! schedule {
+        ($v0:expr, $v1:expr, $v2:expr, $v3:expr) => (
+            sha256msg2(sha256msg1($v0, $v1) + sha256load($v2, $v3), $v3)
+        )
+    }
+
+    macro_rules! rounds4 {
+        ($abef:ident, $cdgh:ident, $rest:expr) => {
+            {
+                $cdgh = sha256_digest_round_x2($cdgh, $abef, $rest);
+                $abef = sha256_digest_round_x2($abef, $cdgh, sha256swap($rest));
+            }
+        }
+    }
+
+    let mut abef = u32x4(state[0],
+                         state[1],
+                         state[4],
+                         state[5]);
+    let mut cdgh = u32x4(state[2],
+                         state[3],
+                         state[6],
+                         state[7]);
+
+    // Rounds 0..64
+    let mut w0 = u32x4(block[3],
+                       block[2],
+                       block[1],
+                       block[0]);
+    rounds4!(abef, cdgh, k[0] + w0);
+    let mut w1 = u32x4(block[7],
+                       block[6],
+                       block[5],
+                       block[4]);
+    rounds4!(abef, cdgh, k[1] + w1);
+    let mut w2 = u32x4(block[11],
+                       block[10],
+                       block[9],
+                       block[8]);
+    rounds4!(abef, cdgh, k[2] + w2);
+    let mut w3 = u32x4(block[15],
+                       block[14],
+                       block[13],
+                       block[12]);
+    rounds4!(abef, cdgh, k[3] + w3);
+    let mut w4 = schedule!(w0, w1, w2, w3);
+    rounds4!(abef, cdgh, k[4] + w4);
+    w0 = schedule!(w1, w2, w3, w4);
+    rounds4!(abef, cdgh, k[5] + w0);
+    w1 = schedule!(w2, w3, w4, w0);
+    rounds4!(abef, cdgh, k[6] + w1);
+    w2 = schedule!(w3, w4, w0, w1);
+    rounds4!(abef, cdgh, k[7] + w2);
+    w3 = schedule!(w4, w0, w1, w2);
+    rounds4!(abef, cdgh, k[8] + w3);
+    w4 = schedule!(w0, w1, w2, w3);
+    rounds4!(abef, cdgh, k[9] + w4);
+    w0 = schedule!(w1, w2, w3, w4);
+    rounds4!(abef, cdgh, k[10] + w0);
+    w1 = schedule!(w2, w3, w4, w0);
+    rounds4!(abef, cdgh, k[11] + w1);
+    w2 = schedule!(w3, w4, w0, w1);
+    rounds4!(abef, cdgh, k[12] + w2);
+    w3 = schedule!(w4, w0, w1, w2);
+    rounds4!(abef, cdgh, k[13] + w3);
+    w4 = schedule!(w0, w1, w2, w3);
+    rounds4!(abef, cdgh, k[14] + w4);
+    w0 = schedule!(w1, w2, w3, w4);
+    rounds4!(abef, cdgh, k[15] + w0);
+
+    let u32x4(a, b, e, f) = abef;
+    let u32x4(c, d, g, h) = cdgh;
+
+    state[0] = state[0].wrapping_add(a);
+    state[1] = state[1].wrapping_add(b);
+    state[2] = state[2].wrapping_add(c);
+    state[3] = state[3].wrapping_add(d);
+    state[4] = state[4].wrapping_add(e);
+    state[5] = state[5].wrapping_add(f);
+    state[6] = state[6].wrapping_add(g);
+    state[7] = state[7].wrapping_add(h);
+}
+
+/// Process a block with the SHA-256 algorithm. (See more...)
+///
+/// Internally, this uses functions which resemble the new Intel SHA instruction sets,
+/// and so it's data locality properties may improve performance. However, to benefit
+/// the most from this implementation, replace these functions with x86 intrinsics to
+/// get a possible speed boost.
+///
+/// # Implementation
+///
+/// The `Sha256` algorithm is implemented with functions that resemble the new
+/// Intel SHA instruction set extensions. These intructions fall into two categories:
+/// message schedule calculation, and the message block 64-round digest calculation.
+/// The schedule-related instructions allow 4 rounds to be calculated as:
+///
+/// ```ignore
+/// use std::simd::u32x4;
+/// use self::shaman::sha2::{
+///     sha256msg1,
+///     sha256msg2,
+///     sha256load
+/// };
+///
+/// fn schedule4_data(work: &mut [u32x4], w: &[u32]) {
+///
+///     // this is to illustrate the data order
+///     work[0] = u32x4(w[3], w[2], w[1], w[0]);
+///     work[1] = u32x4(w[7], w[6], w[5], w[4]);
+///     work[2] = u32x4(w[11], w[10], w[9], w[8]);
+///     work[3] = u32x4(w[15], w[14], w[13], w[12]);
+/// }
+///
+/// fn schedule4_work(work: &mut [u32x4], t: usize) {
+///
+///     // this is the core expression
+///     work[t] = sha256msg2(sha256msg1(work[t - 4], work[t - 3]) +
+///                          sha256load(work[t - 2], work[t - 1]),
+///                          work[t - 1])
+/// }
+/// ```
+///
+/// instead of 4 rounds of:
+///
+/// ```ignore
+/// fn schedule_work(w: &mut [u32], t: usize) {
+///     w[t] = sigma1!(w[t - 2]) + w[t - 7] + sigma0!(w[t - 15]) + w[t - 16];
+/// }
+/// ```
+///
+/// and the digest-related instructions allow 4 rounds to be calculated as:
+///
+/// ```ignore
+/// use std::simd::u32x4;
+/// use self::shaman::sha2::{K32X4,
+///     sha256rnds2,
+///     sha256swap
+/// };
+///
+/// fn rounds4(state: &mut [u32; 8], work: &mut [u32x4], t: usize) {
+///     let [a, b, c, d, e, f, g, h]: [u32; 8] = *state;
+///
+///     // this is to illustrate the data order
+///     let mut abef = u32x4(a, b, e, f);
+///     let mut cdgh = u32x4(c, d, g, h);
+///     let temp = K32X4[t] + work[t];
+///
+///     // this is the core expression
+///     cdgh = sha256rnds2(cdgh, abef, temp);
+///     abef = sha256rnds2(abef, cdgh, sha256swap(temp));
+///
+///     *state = [abef.0, abef.1, cdgh.0, cdgh.1,
+///               abef.2, abef.3, cdgh.2, cdgh.3];
+/// }
+/// ```
+///
+/// instead of 4 rounds of:
+///
+/// ```ignore
+/// fn round(state: &mut [u32; 8], w: &mut [u32], t: usize) {
+///     let [a, b, c, mut d, e, f, g, mut h]: [u32; 8] = *state;
+///
+///     h += big_sigma1!(e) +   choose!(e, f, g) + K32[t] + w[t]; d += h;
+///     h += big_sigma0!(a) + majority!(a, b, c);
+///
+///     *state = [h, a, b, c, d, e, f, g];
+/// }
+/// ```
+///
+/// **NOTE**: It is important to note, however, that these instructions are not implemented
+/// by any CPU (at the time of this writing), and so they are emulated in this library
+/// until the instructions become more common, and gain support in LLVM (and GCC, etc.).
+///
+pub fn sha256_digest_block(state: &mut [u32; 8], block: &[u8/*; 64*/]) {
+    assert_eq!(block.len(), BLOCK_LEN*4);
+    let mut block2 = [0u32; BLOCK_LEN];
+    read_u32v_be(&mut block2[..], block);
+    sha256_digest_block_u32(state, &block2);
+}
+
+/// Not an intrinsic, but works like an unaligned load.
+#[inline]
+fn sha512load(v0: u64x2, v1: u64x2) -> u64x2 {
+    u64x2(v1.1, v0.0)
+}
+
+/// Performs 2 rounds of the SHA-512 message schedule update.
+pub fn sha512_schedule_x2(v0: u64x2, v1: u64x2, v4to5: u64x2, v7: u64x2) -> u64x2 {
+
+    // sigma 0
+    fn sigma0(x: u64) -> u64 {
+        ((x << 63) | (x >> 1)) ^ ((x << 56) | (x >> 8)) ^ (x >> 7)
+    }
+
+    // sigma 1
+    fn sigma1(x: u64) -> u64 {
+        ((x << 45) | (x >> 19)) ^ ((x << 3) | (x >> 61)) ^ (x >> 6)
+    }
+
+    let u64x2(w1, w0) 	= v0;
+    let u64x2(_, w2) 	= v1;
+    let u64x2(w10, w9) 	= v4to5;
+    let u64x2(w15, w14) = v7;
+
+    let w16 = sigma1(w14).wrapping_add(w9).wrapping_add(sigma0(w1)).wrapping_add(w0);
+    let w17 = sigma1(w15).wrapping_add(w10).wrapping_add(sigma0(w2)).wrapping_add(w1);
+
+    u64x2(w17, w16)
+}
+
+/// Performs one round of the SHA-512 message block digest.
+pub fn sha512_digest_round(ae: u64x2, bf: u64x2, cg: u64x2, dh: u64x2, wk0: u64) -> u64x2 {
+
+    macro_rules! big_sigma0 {
+        ($a:expr) => (($a.rotate_right(28) ^ $a.rotate_right(34) ^ $a.rotate_right(39)))
+    }
+    macro_rules! big_sigma1 {
+        ($a:expr) => (($a.rotate_right(14) ^ $a.rotate_right(18) ^ $a.rotate_right(41)))
+    }
+    macro_rules! bool3ary_202 {
+        ($a:expr, $b:expr, $c:expr) => (($c ^ ($a & ($b ^ $c))))
+    } // Choose, MD5F, SHA1C
+    macro_rules! bool3ary_232 {
+        ($a:expr, $b:expr, $c:expr) => (($a & $b) ^ ($a & $c) ^ ($b & $c))
+    } // Majority, SHA1M
+
+    let u64x2(a0, e0) = ae;
+    let u64x2(b0, f0) = bf;
+    let u64x2(c0, g0) = cg;
+    let u64x2(d0, h0) = dh;
+
+    // a round
+    let x0 = big_sigma1!(e0).wrapping_add(bool3ary_202!(e0, f0, g0)).wrapping_add(wk0).wrapping_add(h0);
+    let y0 = big_sigma0!(a0).wrapping_add(bool3ary_232!(a0, b0, c0));
+    let (a1, _, _, _, e1, _, _, _) = (
+        x0.wrapping_add(y0), a0, b0, c0,
+        x0.wrapping_add(d0), e0, f0, g0);
+
+    u64x2(a1, e1)
+}
+
+/// Process a block with the SHA-512 algorithm.
+pub fn sha512_digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
+    let k = &K64X2;
+
+    macro_rules! schedule {
+        ($v0:expr, $v1:expr, $v4:expr, $v5:expr, $v7:expr) => (
+             sha512_schedule_x2($v0, $v1, sha512load($v4, $v5), $v7)
+        )
+    }
+
+    macro_rules! rounds4 {
+        ($ae:ident, $bf:ident, $cg:ident, $dh:ident, $wk0:expr, $wk1:expr) => {
+            {
+                let u64x2(u, t) = $wk0;
+                let u64x2(w, v) = $wk1;
+
+                $dh = sha512_digest_round($ae, $bf, $cg, $dh, t);
+                $cg = sha512_digest_round($dh, $ae, $bf, $cg, u);
+                $bf = sha512_digest_round($cg, $dh, $ae, $bf, v);
+                $ae = sha512_digest_round($bf, $cg, $dh, $ae, w);
+            }
+        }
+    }
+
+    let mut ae = u64x2(state[0],
+                       state[4]);
+    let mut bf = u64x2(state[1],
+                       state[5]);
+    let mut cg = u64x2(state[2],
+                       state[6]);
+    let mut dh = u64x2(state[3],
+                       state[7]);
+
+    // Rounds 0..20
+    let (mut w1, mut w0) = (u64x2(block[3],
+                                  block[2]),
+                            u64x2(block[1],
+                                  block[0]));
+    rounds4!(ae, bf, cg, dh, k[0] + w0, k[1] + w1);
+    let (mut w3, mut w2) = (u64x2(block[7],
+                                  block[6]),
+                            u64x2(block[5],
+                                  block[4]));
+    rounds4!(ae, bf, cg, dh, k[2] + w2, k[3] + w3);
+    let (mut w5, mut w4) = (u64x2(block[11],
+                                  block[10]),
+                            u64x2(block[9],
+                                  block[8]));
+    rounds4!(ae, bf, cg, dh, k[4] + w4, k[5] + w5);
+    let (mut w7, mut w6) = (u64x2(block[15],
+                                  block[14]),
+                            u64x2(block[13],
+                                  block[12]));
+    rounds4!(ae, bf, cg, dh, k[6] + w6, k[7] + w7);
+    let mut w8 = schedule!(w0, w1, w4, w5, w7);
+    let mut w9 = schedule!(w1, w2, w5, w6, w8);
+    rounds4!(ae, bf, cg, dh, k[8] + w8, k[9] + w9);
+
+    // Rounds 20..40
+    w0 = schedule!(w2, w3, w6, w7, w9);
+    w1 = schedule!(w3, w4, w7, w8, w0);
+    rounds4!(ae, bf, cg, dh, k[10] + w0, k[11] + w1);
+    w2 = schedule!(w4, w5, w8, w9, w1);
+    w3 = schedule!(w5, w6, w9, w0, w2);
+    rounds4!(ae, bf, cg, dh, k[12] + w2, k[13] + w3);
+    w4 = schedule!(w6, w7, w0, w1, w3);
+    w5 = schedule!(w7, w8, w1, w2, w4);
+    rounds4!(ae, bf, cg, dh, k[14] + w4, k[15] + w5);
+    w6 = schedule!(w8, w9, w2, w3, w5);
+    w7 = schedule!(w9, w0, w3, w4, w6);
+    rounds4!(ae, bf, cg, dh, k[16] + w6, k[17] + w7);
+    w8 = schedule!(w0, w1, w4, w5, w7);
+    w9 = schedule!(w1, w2, w5, w6, w8);
+    rounds4!(ae, bf, cg, dh, k[18] + w8, k[19] + w9);
+
+    // Rounds 40..60
+    w0 = schedule!(w2, w3, w6, w7, w9);
+    w1 = schedule!(w3, w4, w7, w8, w0);
+    rounds4!(ae, bf, cg, dh, k[20] + w0, k[21] + w1);
+    w2 = schedule!(w4, w5, w8, w9, w1);
+    w3 = schedule!(w5, w6, w9, w0, w2);
+    rounds4!(ae, bf, cg, dh, k[22] + w2, k[23] + w3);
+    w4 = schedule!(w6, w7, w0, w1, w3);
+    w5 = schedule!(w7, w8, w1, w2, w4);
+    rounds4!(ae, bf, cg, dh, k[24] + w4, k[25] + w5);
+    w6 = schedule!(w8, w9, w2, w3, w5);
+    w7 = schedule!(w9, w0, w3, w4, w6);
+    rounds4!(ae, bf, cg, dh, k[26] + w6, k[27] + w7);
+    w8 = schedule!(w0, w1, w4, w5, w7);
+    w9 = schedule!(w1, w2, w5, w6, w8);
+    rounds4!(ae, bf, cg, dh, k[28] + w8, k[29] + w9);
+
+    // Rounds 60..80
+    w0 = schedule!(w2, w3, w6, w7, w9);
+    w1 = schedule!(w3, w4, w7, w8, w0);
+    rounds4!(ae, bf, cg, dh, k[30] + w0, k[31] + w1);
+    w2 = schedule!(w4, w5, w8, w9, w1);
+    w3 = schedule!(w5, w6, w9, w0, w2);
+    rounds4!(ae, bf, cg, dh, k[32] + w2, k[33] + w3);
+    w4 = schedule!(w6, w7, w0, w1, w3);
+    w5 = schedule!(w7, w8, w1, w2, w4);
+    rounds4!(ae, bf, cg, dh, k[34] + w4, k[35] + w5);
+    w6 = schedule!(w8, w9, w2, w3, w5);
+    w7 = schedule!(w9, w0, w3, w4, w6);
+    rounds4!(ae, bf, cg, dh, k[36] + w6, k[37] + w7);
+    w8 = schedule!(w0, w1, w4, w5, w7);
+    w9 = schedule!(w1, w2, w5, w6, w8);
+    rounds4!(ae, bf, cg, dh, k[38] + w8, k[39] + w9);
+
+    let u64x2(a, e) = ae;
+    let u64x2(b, f) = bf;
+    let u64x2(c, g) = cg;
+    let u64x2(d, h) = dh;
+
+    state[0] = state[0].wrapping_add(a);
+    state[1] = state[1].wrapping_add(b);
+    state[2] = state[2].wrapping_add(c);
+    state[3] = state[3].wrapping_add(d);
+    state[4] = state[4].wrapping_add(e);
+    state[5] = state[5].wrapping_add(f);
+    state[6] = state[6].wrapping_add(g);
+    state[7] = state[7].wrapping_add(h);
+}
+
+/// Process a block with the SHA-512 algorithm. (See more...)
+///
+/// Internally, this uses functions that resemble the new Intel SHA
+/// instruction set extensions, but since no architecture seems to
+/// have any designs, these may not be the final designs if and/or when
+/// there are instruction set extensions with SHA-512. So to summarize:
+/// SHA-1 and SHA-256 are being implemented in hardware soon (at the time
+/// of this writing), but it doesn't look like SHA-512 will be hardware
+/// accelerated any time soon.
+///
+/// # Implementation
+///
+/// These functions fall into two categories:
+/// message schedule calculation, and the message block 64-round digest calculation.
+/// The schedule-related functions allow 4 rounds to be calculated as:
+///
+/// ```ignore
+/// use std::simd::u64x2;
+/// use self::shaman::sha2::{
+///     sha512msg,
+///     sha512load
+/// };
+///
+/// fn schedule4_data(work: &mut [u64x2], w: &[u64]) {
+///
+///     // this is to illustrate the data order
+///     work[0] = u64x2(w[1], w[0]);
+///     work[1] = u64x2(w[3], w[2]);
+///     work[2] = u64x2(w[5], w[4]);
+///     work[3] = u64x2(w[7], w[6]);
+///     work[4] = u64x2(w[9], w[8]);
+///     work[5] = u64x2(w[11], w[10]);
+///     work[6] = u64x2(w[13], w[12]);
+///     work[7] = u64x2(w[15], w[14]);
+/// }
+///
+/// fn schedule4_work(work: &mut [u64x2], t: usize) {
+///
+///     // this is the core expression
+///     work[t] = sha512msg(work[t - 8],
+///                         work[t - 7],
+///                         sha512load(work[t - 4], work[t - 3]),
+///                         work[t - 1]);
+/// }
+/// ```
+///
+/// instead of 4 rounds of:
+///
+/// ```ignore
+/// fn schedule_work(w: &mut [u64], t: usize) {
+///     w[t] = sigma1!(w[t - 2]) + w[t - 7] + sigma0!(w[t - 15]) + w[t - 16];
+/// }
+/// ```
+///
+/// and the digest-related functions allow 4 rounds to be calculated as:
+///
+/// ```ignore
+/// use std::simd::u64x2;
+/// use self::shaman::sha2::{K64X2, sha512rnd};
+///
+/// fn rounds4(state: &mut [u64; 8], work: &mut [u64x2], t: usize) {
+///     let [a, b, c, d, e, f, g, h]: [u64; 8] = *state;
+///
+///     // this is to illustrate the data order
+///     let mut ae = u64x2(a, e);
+///     let mut bf = u64x2(b, f);
+///     let mut cg = u64x2(c, g);
+///     let mut dh = u64x2(d, h);
+///     let u64x2(w1, w0) = K64X2[2*t]     + work[2*t];
+///     let u64x2(w3, w2) = K64X2[2*t + 1] + work[2*t + 1];
+///
+///     // this is the core expression
+///     dh = sha512rnd(ae, bf, cg, dh, w0);
+///     cg = sha512rnd(dh, ae, bf, cg, w1);
+///     bf = sha512rnd(cg, dh, ae, bf, w2);
+///     ae = sha512rnd(bf, cg, dh, ae, w3);
+///
+///     *state = [ae.0, bf.0, cg.0, dh.0,
+///               ae.1, bf.1, cg.1, dh.1];
+/// }
+/// ```
+///
+/// instead of 4 rounds of:
+///
+/// ```ignore
+/// fn round(state: &mut [u64; 8], w: &mut [u64], t: usize) {
+///     let [a, b, c, mut d, e, f, g, mut h]: [u64; 8] = *state;
+///
+///     h += big_sigma1!(e) +   choose!(e, f, g) + K64[t] + w[t]; d += h;
+///     h += big_sigma0!(a) + majority!(a, b, c);
+///
+///     *state = [h, a, b, c, d, e, f, g];
+/// }
+/// ```
+///
+pub fn sha512_digest_block(state: &mut [u64; 8], block: &[u8/*; 128*/]) {
+    assert_eq!(block.len(), BLOCK_LEN*8);
+    let mut block2 = [0u64; BLOCK_LEN];
+    read_u64v_be(&mut block2[..], block);
+    sha512_digest_block_u64(state, &block2);
+}
+
+// A structure that represents that state of a digest computation for the SHA-2 512 family
+// of digest functions
+struct Engine512State {
+    h: [u64; 8]
+}
+
+impl Engine512State {
+    fn new(h: &[u64; 8]) -> Engine512State {
+        Engine512State {
+            h: *h
+        }
+    }
+
+    fn reset(&mut self, h: &[u64; STATE_LEN]) {
+        self.h = *h;
+    }
+
+    pub fn process_block(&mut self, data: &[u8]) {
+        sha512_digest_block(&mut self.h, data);
+    }
+}
+
+/// Constants necessary for SHA-512 family of digests.
+pub const K64: [u64; 80] = [
+    0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
+    0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
+    0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
+    0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235, 0xc19bf174cf692694,
+    0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65,
+    0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
+    0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4,
+    0xc6e00bf33da88fc2, 0xd5a79147930aa725, 0x06ca6351e003826f, 0x142929670a0e6e70,
+    0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
+    0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
+    0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30,
+    0xd192e819d6ef5218, 0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
+    0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8,
+    0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3,
+    0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
+    0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b,
+    0xca273eceea26619c, 0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178,
+    0x06f067aa72176fba, 0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
+    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c,
+    0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
+];
+
+/// Constants necessary for SHA-512 family of digests.
+pub const K64X2: [u64x2; 40] = [
+    u64x2(K64[1], K64[0]), u64x2(K64[3], K64[2]), u64x2(K64[5], K64[4]), u64x2(K64[7], K64[6]),
+    u64x2(K64[9], K64[8]), u64x2(K64[11], K64[10]), u64x2(K64[13], K64[12]), u64x2(K64[15], K64[14]),
+    u64x2(K64[17], K64[16]), u64x2(K64[19], K64[18]), u64x2(K64[21], K64[20]), u64x2(K64[23], K64[22]),
+    u64x2(K64[25], K64[24]), u64x2(K64[27], K64[26]), u64x2(K64[29], K64[28]), u64x2(K64[31], K64[30]),
+    u64x2(K64[33], K64[32]), u64x2(K64[35], K64[34]), u64x2(K64[37], K64[36]), u64x2(K64[39], K64[38]),
+    u64x2(K64[41], K64[40]), u64x2(K64[43], K64[42]), u64x2(K64[45], K64[44]), u64x2(K64[47], K64[46]),
+    u64x2(K64[49], K64[48]), u64x2(K64[51], K64[50]), u64x2(K64[53], K64[52]), u64x2(K64[55], K64[54]),
+    u64x2(K64[57], K64[56]), u64x2(K64[59], K64[58]), u64x2(K64[61], K64[60]), u64x2(K64[63], K64[62]),
+    u64x2(K64[65], K64[64]), u64x2(K64[67], K64[66]), u64x2(K64[69], K64[68]), u64x2(K64[71], K64[70]),
+    u64x2(K64[73], K64[72]), u64x2(K64[75], K64[74]), u64x2(K64[77], K64[76]), u64x2(K64[79], K64[78])
+];
+
+// A structure that keeps track of the state of the Sha-512 operation and contains the logic
+// necessary to perform the final calculations.
+struct Engine512 {
+    length_bits: (u64, u64),
+    buffer: FixedBuffer128,
+    state: Engine512State,
+    finished: bool,
+}
+
+impl Engine512 {
+    fn new(h: &[u64; STATE_LEN]) -> Engine512 {
+        Engine512 {
+            length_bits: (0, 0),
+            buffer: FixedBuffer128::new(),
+            state: Engine512State::new(h),
+            finished: false
+        }
+    }
+
+    fn reset(&mut self, h: &[u64; STATE_LEN]) {
+        self.length_bits = (0, 0);
+        self.buffer.reset();
+        self.state.reset(h);
+        self.finished = false;
+    }
+
+    fn input(&mut self, input: &[u8]) {
+        assert!(!self.finished);
+        // Assumes that input.len() can be converted to u64 without overflow
+        self.length_bits = add_bytes_to_bits_tuple(self.length_bits, input.len() as u64);
+        let self_state = &mut self.state;
+        self.buffer.input(input, |input: &[u8]| { self_state.process_block(input) });
+    }
+
+    fn finish(&mut self) {
+        if self.finished {
+            return;
+        }
+
+        let self_state = &mut self.state;
+        self.buffer.standard_padding(16, |input: &[u8]| { self_state.process_block(input) });
+        match self.length_bits {
+            (hi, low) => {
+                write_u64_be(self.buffer.next(8), hi);
+                write_u64_be(self.buffer.next(8), low);
+            }
+        }
+        self_state.process_block(self.buffer.full_buffer());
+
+        self.finished = true;
+    }
+}
+
+
+/// The SHA-512 hash algorithm with the SHA-512 initial hash value.
+pub struct Sha512 {
+    engine: Engine512
+}
+
+impl Sha512 {
+    /**
+     * Construct an new instance of a SHA-512 digest.
+     */
+    pub fn new() -> Sha512 {
+        Sha512 {
+            engine: Engine512::new(&H512)
+        }
+    }
+}
+
+impl Digest for Sha512 {
+    fn input(&mut self, d: &[u8]) {
+        self.engine.input(d);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        self.engine.finish();
+
+        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
+        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
+        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
+        write_u64_be(&mut out[24..32], self.engine.state.h[3]);
+        write_u64_be(&mut out[32..40], self.engine.state.h[4]);
+        write_u64_be(&mut out[40..48], self.engine.state.h[5]);
+        write_u64_be(&mut out[48..56], self.engine.state.h[6]);
+        write_u64_be(&mut out[56..64], self.engine.state.h[7]);
+    }
+
+    fn reset(&mut self) {
+        self.engine.reset(&H512);
+    }
+
+    fn output_bits(&self) -> usize { 512 }
+
+    fn block_size(&self) -> usize { 128 }
+}
+
+static H512: [u64; STATE_LEN] = [
+    0x6a09e667f3bcc908,
+    0xbb67ae8584caa73b,
+    0x3c6ef372fe94f82b,
+    0xa54ff53a5f1d36f1,
+    0x510e527fade682d1,
+    0x9b05688c2b3e6c1f,
+    0x1f83d9abfb41bd6b,
+    0x5be0cd19137e2179
+];
+
+
+/// The SHA-512 hash algorithm with the SHA-384 initial hash value. The result is truncated to 384 bits.
+pub struct Sha384 {
+    engine: Engine512
+}
+
+impl Sha384 {
+    /**
+     * Construct an new instance of a SHA-384 digest.
+     */
+    pub fn new() -> Sha384 {
+        Sha384 {
+            engine: Engine512::new(&H384)
+        }
+    }
+}
+
+impl Digest for Sha384 {
+    fn input(&mut self, d: &[u8]) {
+        self.engine.input(d);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        self.engine.finish();
+
+        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
+        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
+        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
+        write_u64_be(&mut out[24..32], self.engine.state.h[3]);
+        write_u64_be(&mut out[32..40], self.engine.state.h[4]);
+        write_u64_be(&mut out[40..48], self.engine.state.h[5]);
+    }
+
+    fn reset(&mut self) {
+        self.engine.reset(&H384);
+    }
+
+    fn output_bits(&self) -> usize { 384 }
+
+    fn block_size(&self) -> usize { 128 }
+}
+
+static H384: [u64; STATE_LEN] = [
+    0xcbbb9d5dc1059ed8,
+    0x629a292a367cd507,
+    0x9159015a3070dd17,
+    0x152fecd8f70e5939,
+    0x67332667ffc00b31,
+    0x8eb44a8768581511,
+    0xdb0c2e0d64f98fa7,
+    0x47b5481dbefa4fa4
+];
+
+
+/// The SHA-512 hash algorithm with the SHA-512/256 initial hash value. The result is truncated to 256 bits.
+pub struct Sha512Trunc256 {
+    engine: Engine512
+}
+
+impl Sha512Trunc256 {
+    /**
+     * Construct an new instance of a SHA-512/256 digest.
+     */
+    pub fn new() -> Sha512Trunc256 {
+        Sha512Trunc256 {
+            engine: Engine512::new(&H512_TRUNC_256)
+        }
+    }
+}
+
+impl Digest for Sha512Trunc256 {
+    fn input(&mut self, d: &[u8]) {
+        self.engine.input(d);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        self.engine.finish();
+
+        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
+        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
+        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
+        write_u64_be(&mut out[24..32], self.engine.state.h[3]);
+    }
+
+    fn reset(&mut self) {
+        self.engine.reset(&H512_TRUNC_256);
+    }
+
+    fn output_bits(&self) -> usize { 256 }
+
+    fn block_size(&self) -> usize { 128 }
+}
+
+static H512_TRUNC_256: [u64; STATE_LEN] = [
+    0x22312194fc2bf72c,
+    0x9f555fa3c84c64c2,
+    0x2393b86b6f53b151,
+    0x963877195940eabd,
+    0x96283ee2a88effe3,
+    0xbe5e1e2553863992,
+    0x2b0199fc2c85b8aa,
+    0x0eb72ddc81c52ca2
+];
+
+
+/// The SHA-512 hash algorithm with the SHA-512/224 initial hash value. The result is truncated to 224 bits.
+pub struct Sha512Trunc224 {
+    engine: Engine512
+}
+
+impl Sha512Trunc224 {
+    /**
+     * Construct an new instance of a SHA-512/224 digest.
+     */
+    pub fn new() -> Sha512Trunc224 {
+        Sha512Trunc224 {
+            engine: Engine512::new(&H512_TRUNC_224)
+        }
+    }
+}
+
+impl Digest for Sha512Trunc224 {
+    fn input(&mut self, d: &[u8]) {
+        self.engine.input(d);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        self.engine.finish();
+
+        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
+        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
+        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
+        write_u32_be(&mut out[24..28], (self.engine.state.h[3] >> 32) as u32);
+    }
+
+    fn reset(&mut self) {
+        self.engine.reset(&H512_TRUNC_224);
+    }
+
+    fn output_bits(&self) -> usize { 224 }
+
+    fn block_size(&self) -> usize { 128 }
+}
+
+static H512_TRUNC_224: [u64; STATE_LEN] = [
+    0x8c3d37c819544da2,
+    0x73e1996689dcd4d6,
+    0x1dfab7ae32ff9c82,
+    0x679dd514582f9fcf,
+    0x0f6d2b697bd44da8,
+    0x77e36f7304c48942,
+    0x3f9d85a86a1d36c8,
+    0x1112e6ad91d692a1,
+];
+
+
+// A structure that represents that state of a digest computation for the SHA-2 512 family of digest
+// functions
+#[derive(Clone, Copy)]
+struct Engine256State {
+    h: [u32; 8],
+}
+
+impl Engine256State {
+    fn new(h: &[u32; STATE_LEN]) -> Engine256State {
+        Engine256State {
+            h: *h
+        }
+    }
+
+    fn reset(&mut self, h: &[u32; STATE_LEN]) {
+        self.h = *h;
+    }
+
+    pub fn process_block(&mut self, data: &[u8]) {
+        sha256_digest_block(&mut self.h, data);
+    }
+}
+
+/// Constants necessary for SHA-256 family of digests.
+pub const K32: [u32; 64] = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+    0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+    0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+    0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+];
+
+/// Constants necessary for SHA-256 family of digests.
+pub const K32X4: [u32x4; 16] = [
+    u32x4(K32[3], K32[2], K32[1], K32[0]),
+    u32x4(K32[7], K32[6], K32[5], K32[4]),
+    u32x4(K32[11], K32[10], K32[9], K32[8]),
+    u32x4(K32[15], K32[14], K32[13], K32[12]),
+    u32x4(K32[19], K32[18], K32[17], K32[16]),
+    u32x4(K32[23], K32[22], K32[21], K32[20]),
+    u32x4(K32[27], K32[26], K32[25], K32[24]),
+    u32x4(K32[31], K32[30], K32[29], K32[28]),
+    u32x4(K32[35], K32[34], K32[33], K32[32]),
+    u32x4(K32[39], K32[38], K32[37], K32[36]),
+    u32x4(K32[43], K32[42], K32[41], K32[40]),
+    u32x4(K32[47], K32[46], K32[45], K32[44]),
+    u32x4(K32[51], K32[50], K32[49], K32[48]),
+    u32x4(K32[55], K32[54], K32[53], K32[52]),
+    u32x4(K32[59], K32[58], K32[57], K32[56]),
+    u32x4(K32[63], K32[62], K32[61], K32[60]),
+];
+
+// A structure that keeps track of the state of the Sha-256 operation and contains the logic
+// necessary to perform the final calculations.
+#[derive(Clone, Copy)]
+struct Engine256 {
+    length_bits: u64,
+    buffer: FixedBuffer64,
+    state: Engine256State,
+    finished: bool,
+}
+
+impl Engine256 {
+    fn new(h: &[u32; STATE_LEN]) -> Engine256 {
+        Engine256 {
+            length_bits: 0,
+            buffer: FixedBuffer64::new(),
+            state: Engine256State::new(h),
+            finished: false
+        }
+    }
+
+    fn reset(&mut self, h: &[u32; STATE_LEN]) {
+        self.length_bits = 0;
+        self.buffer.reset();
+        self.state.reset(h);
+        self.finished = false;
+    }
+
+    fn input(&mut self, input: &[u8]) {
+        assert!(!self.finished);
+        // Assumes that input.len() can be converted to u64 without overflow
+        self.length_bits = add_bytes_to_bits(self.length_bits, input.len() as u64);
+        let self_state = &mut self.state;
+        self.buffer.input(input, |input: &[u8]| { self_state.process_block(input) });
+    }
+
+    fn finish(&mut self) {
+        if self.finished {
+            return;
+        }
+
+        let self_state = &mut self.state;
+        self.buffer.standard_padding(8, |input: &[u8]| { self_state.process_block(input) });
+        write_u32_be(self.buffer.next(4), (self.length_bits >> 32) as u32 );
+        write_u32_be(self.buffer.next(4), self.length_bits as u32);
+        self_state.process_block(self.buffer.full_buffer());
+
+        self.finished = true;
+    }
+}
+
+
+/// The SHA-256 hash algorithm with the SHA-256 initial hash value.
+#[derive(Clone, Copy)]
+pub struct Sha256 {
+    engine: Engine256
+}
+
+impl Sha256 {
+    /**
+     * Construct an new instance of a SHA-256 digest.
+     */
+    pub fn new() -> Sha256 {
+        Sha256 {
+            engine: Engine256::new(&H256)
+        }
+    }
+}
+
+impl Digest for Sha256 {
+    fn input(&mut self, d: &[u8]) {
+        self.engine.input(d);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        self.engine.finish();
+
+        write_u32_be(&mut out[0..4], self.engine.state.h[0]);
+        write_u32_be(&mut out[4..8], self.engine.state.h[1]);
+        write_u32_be(&mut out[8..12], self.engine.state.h[2]);
+        write_u32_be(&mut out[12..16], self.engine.state.h[3]);
+        write_u32_be(&mut out[16..20], self.engine.state.h[4]);
+        write_u32_be(&mut out[20..24], self.engine.state.h[5]);
+        write_u32_be(&mut out[24..28], self.engine.state.h[6]);
+        write_u32_be(&mut out[28..32], self.engine.state.h[7]);
+    }
+
+    fn reset(&mut self) {
+        self.engine.reset(&H256);
+    }
+
+    fn output_bits(&self) -> usize { 256 }
+
+    fn block_size(&self) -> usize { 64 }
+}
+
+static H256: [u32; STATE_LEN] = [
+    0x6a09e667,
+    0xbb67ae85,
+    0x3c6ef372,
+    0xa54ff53a,
+    0x510e527f,
+    0x9b05688c,
+    0x1f83d9ab,
+    0x5be0cd19
+];
+
+
+/// The SHA-256 hash algorithm with the SHA-224 initial hash value. The result is truncated to 224 bits.
+#[derive(Clone, Copy)]
+pub struct Sha224 {
+    engine: Engine256
+}
+
+impl Sha224 {
+    /**
+     * Construct an new instance of a SHA-224 digest.
+     */
+    pub fn new() -> Sha224 {
+        Sha224 {
+            engine: Engine256::new(&H224)
+        }
+    }
+}
+
+impl Digest for Sha224 {
+    fn input(&mut self, d: &[u8]) {
+        self.engine.input(d);
+    }
+
+    fn result(&mut self, out: &mut [u8]) {
+        self.engine.finish();
+        write_u32_be(&mut out[0..4], self.engine.state.h[0]);
+        write_u32_be(&mut out[4..8], self.engine.state.h[1]);
+        write_u32_be(&mut out[8..12], self.engine.state.h[2]);
+        write_u32_be(&mut out[12..16], self.engine.state.h[3]);
+        write_u32_be(&mut out[16..20], self.engine.state.h[4]);
+        write_u32_be(&mut out[20..24], self.engine.state.h[5]);
+        write_u32_be(&mut out[24..28], self.engine.state.h[6]);
+    }
+
+    fn reset(&mut self) {
+        self.engine.reset(&H224);
+    }
+
+    fn output_bits(&self) -> usize { 224 }
+
+    fn block_size(&self) -> usize { 64 }
+}
+
+static H224: [u32; STATE_LEN] = [
+    0xc1059ed8,
+    0x367cd507,
+    0x3070dd17,
+    0xf70e5939,
+    0xffc00b31,
+    0x68581511,
+    0x64f98fa7,
+    0xbefa4fa4
+];
+
+
+
+
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use test::Bencher;
+    use digest::Digest;
+    use sha2::{STATE_LEN, BLOCK_LEN};
+    use sha2::{Sha256, Sha512, sha256_digest_block_u32, sha512_digest_block_u64};
+
+    #[bench]
+    pub fn sha256_block(bh: & mut Bencher) {
+        let mut state = [0u32; STATE_LEN];
+        let words = [1u32; BLOCK_LEN];
+        bh.iter( || {
+            sha256_digest_block_u32(&mut state, &words);
+        });
+        bh.bytes = 64u64;
+    }
+
+    #[bench]
+    pub fn sha512_block(bh: & mut Bencher) {
+        let mut state = [0u64; STATE_LEN];
+        let words = [1u64; BLOCK_LEN];
+        bh.iter( || {
+            sha512_digest_block_u64(&mut state, &words);
+        });
+        bh.bytes = 128u64;
+    }
+
+    #[bench]
+    pub fn sha256_10(bh: & mut Bencher) {
+        let mut sh = Sha256::new();
+        let bytes = [1u8; 10];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha256_1k(bh: & mut Bencher) {
+        let mut sh = Sha256::new();
+        let bytes = [1u8; 1024];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha256_64k(bh: & mut Bencher) {
+        let mut sh = Sha256::new();
+        let bytes = [1u8; 65536];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha512_10(bh: & mut Bencher) {
+        let mut sh = Sha512::new();
+        let bytes = [1u8; 10];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha512_1k(bh: & mut Bencher) {
+        let mut sh = Sha512::new();
+        let bytes = [1u8; 1024];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha512_64k(bh: & mut Bencher) {
+        let mut sh = Sha512::new();
+        let bytes = [1u8; 65536];
+        bh.iter( || {
+            sh.input(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+}
+
+```
+</file>
+
+<file path="src/simd.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+pub use self::fake::*;
+
+pub trait SimdExt {
+    fn simd_eq(self, rhs: Self) -> Self;
+}
+
+impl SimdExt for fake::u32x4 {
+    fn simd_eq(self, rhs: Self) -> Self {
+        if self == rhs {
+            fake::u32x4(0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff)
+        } else {
+            fake::u32x4(0, 0, 0, 0)
+        }
+    }
+}
+
+mod fake {
+    use std::ops::{Add, BitAnd, BitOr, BitXor, Shl, Shr, Sub};
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[allow(non_camel_case_types)]
+    pub struct u32x4(pub u32, pub u32, pub u32, pub u32);
+
+    impl Add for u32x4 {
+        type Output = u32x4;
+
+        fn add(self, rhs: u32x4) -> u32x4 {
+            u32x4(
+                self.0.wrapping_add(rhs.0),
+                self.1.wrapping_add(rhs.1),
+                self.2.wrapping_add(rhs.2),
+                self.3.wrapping_add(rhs.3))
+        }
+    }
+
+    impl Sub for u32x4 {
+        type Output = u32x4;
+
+        fn sub(self, rhs: u32x4) -> u32x4 {
+            u32x4(
+                self.0.wrapping_sub(rhs.0),
+                self.1.wrapping_sub(rhs.1),
+                self.2.wrapping_sub(rhs.2),
+                self.3.wrapping_sub(rhs.3))
+        }
+    }
+
+    impl BitAnd for u32x4 {
+        type Output = u32x4;
+
+        fn bitand(self, rhs: u32x4) -> u32x4 {
+            u32x4(self.0 & rhs.0, self.1 & rhs.1, self.2 & rhs.2, self.3 & rhs.3)
+        }
+    }
+
+    impl BitOr for u32x4 {
+        type Output = u32x4;
+
+        fn bitor(self, rhs: u32x4) -> u32x4 {
+            u32x4(self.0 | rhs.0, self.1 | rhs.1, self.2 | rhs.2, self.3 | rhs.3)
+        }
+    }
+
+    impl BitXor for u32x4 {
+        type Output = u32x4;
+
+        fn bitxor(self, rhs: u32x4) -> u32x4 {
+            u32x4(self.0 ^ rhs.0, self.1 ^ rhs.1, self.2 ^ rhs.2, self.3 ^ rhs.3)
+        }
+    }
+
+    impl Shl<usize> for u32x4 {
+        type Output = u32x4;
+
+        fn shl(self, amt: usize) -> u32x4 {
+            u32x4(self.0 << amt, self.1 << amt, self.2 << amt, self.3 << amt)
+        }
+    }
+
+    impl Shl<u32x4> for u32x4 {
+        type Output = u32x4;
+
+        fn shl(self, rhs: u32x4) -> u32x4 {
+            u32x4(self.0 << rhs.0, self.1 << rhs.1, self.2 << rhs.2, self.3 << rhs.3)
+        }
+    }
+
+    impl Shr<usize> for u32x4 {
+        type Output = u32x4;
+
+        fn shr(self, amt: usize) -> u32x4 {
+            u32x4(self.0 >> amt, self.1 >> amt, self.2 >> amt, self.3 >> amt)
+        }
+    }
+
+    impl Shr<u32x4> for u32x4 {
+        type Output = u32x4;
+
+        fn shr(self, rhs: u32x4) -> u32x4 {
+            u32x4(self.0 >> rhs.0, self.1 >> rhs.1, self.2 >> rhs.2, self.3 >> rhs.3)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    #[allow(non_camel_case_types)]
+    pub struct u64x2(pub u64, pub u64);
+
+    impl Add for u64x2 {
+        type Output = u64x2;
+
+        fn add(self, rhs: u64x2) -> u64x2 {
+            u64x2(self.0.wrapping_add(rhs.0), self.1.wrapping_add(rhs.1))
+        }
+    }
+}
+
+```
+</file>
+
+<file path="src/step_by.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+/// This module just implements a simple verison of step_by() since
+/// the function from the standard library is currently unstable.
+/// This should be removed once that function becomes stable.
+
+use std::ops::{Add, Range};
+
+#[derive(Clone)]
+pub struct StepUp<T> {
+    next: T,
+    end: T,
+    ammount: T
+}
+
+impl <T> Iterator for StepUp<T> where
+        T: Add<T, Output = T> + PartialOrd + Copy {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<T> {
+        if self.next < self.end {
+            let n = self.next;
+            self.next = self.next + self.ammount;
+            Some(n)
+        } else {
+            None
+        }
+    }
+}
+
+pub trait RangeExt<T> {
+    fn step_up(self, ammount: T) -> StepUp<T>;
+}
+
+impl <T> RangeExt<T> for Range<T> where
+        T: Add<T, Output = T> + PartialOrd + Copy {
+    fn step_up(self, ammount: T) -> StepUp<T> {
+        StepUp {
+            next: self.start,
+            end: self.end,
+            ammount: ammount
+        }
+    }
+}
+
+
+```
+</file>
+
+<file path="src/symmetriccipher.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
+use cryptoutil::symm_enc_or_dec;
+
+pub trait BlockEncryptor {
+    fn block_size(&self) -> usize;
+    fn encrypt_block(&self, input: &[u8], output: &mut [u8]);
+}
+
+pub trait BlockEncryptorX8 {
+    fn block_size(&self) -> usize;
+    fn encrypt_block_x8(&self, input: &[u8], output: &mut [u8]);
+}
+
+pub trait BlockDecryptor {
+    fn block_size(&self) -> usize;
+    fn decrypt_block(&self, input: &[u8], output: &mut [u8]);
+}
+
+pub trait BlockDecryptorX8 {
+    fn block_size(&self) -> usize;
+    fn decrypt_block_x8(&self, input: &[u8], output: &mut [u8]);
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SymmetricCipherError {
+    InvalidLength,
+    InvalidPadding
+}
+
+pub trait Encryptor {
+    fn encrypt(&mut self, input: &mut RefReadBuffer, output: &mut RefWriteBuffer, eof: bool)
+        -> Result<BufferResult, SymmetricCipherError>;
+}
+
+pub trait Decryptor {
+    fn decrypt(&mut self, input: &mut RefReadBuffer, output: &mut RefWriteBuffer, eof: bool)
+        -> Result<BufferResult, SymmetricCipherError>;
+}
+
+pub trait SynchronousStreamCipher {
+    fn process(&mut self, input: &[u8], output: &mut [u8]);
+}
+
+// TODO - Its a bit unclear to me why this is necessary
+impl SynchronousStreamCipher for Box<SynchronousStreamCipher + 'static> {
+    fn process(&mut self, input: &[u8], output: &mut [u8]) {
+        let me = &mut **self;
+        me.process(input, output);
+    }
+}
+
+impl Encryptor for Box<SynchronousStreamCipher + 'static> {
+    fn encrypt(&mut self, input: &mut RefReadBuffer, output: &mut RefWriteBuffer, _: bool)
+            -> Result<BufferResult, SymmetricCipherError> {
+        symm_enc_or_dec(self, input, output)
+    }
+}
+
+impl Decryptor for Box<SynchronousStreamCipher + 'static> {
+    fn decrypt(&mut self, input: &mut RefReadBuffer, output: &mut RefWriteBuffer, _: bool)
+            -> Result<BufferResult, SymmetricCipherError> {
+        symm_enc_or_dec(self, input, output)
+    }
+}
+
+```
+</file>
+</rust context>

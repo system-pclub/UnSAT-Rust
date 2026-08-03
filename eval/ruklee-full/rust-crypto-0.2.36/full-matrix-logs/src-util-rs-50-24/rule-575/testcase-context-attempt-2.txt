@@ -1,0 +1,126 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+#![cfg_attr(feature = "with-bench", feature(test))]
+
+extern crate rand;
+extern crate rustc_serialize as serialize;
+extern crate time;
+extern crate libc;
+
+#[cfg(all(test, feature = "with-bench"))]
+extern crate test;
+
+pub mod aead;
+pub mod aes;
+pub mod aes_gcm;
+pub mod aessafe;
+pub mod bcrypt;
+pub mod bcrypt_pbkdf;
+pub mod blake2b;
+pub mod blake2s;
+pub mod blockmodes;
+pub mod blowfish;
+pub mod buffer;
+pub mod chacha20;
+pub mod chacha20poly1305;
+mod cryptoutil;
+pub mod curve25519;
+pub mod digest;
+pub mod ed25519;
+pub mod fortuna;
+pub mod ghash;
+pub mod hc128;
+pub mod hmac;
+pub mod hkdf;
+pub mod mac;
+pub mod md5;
+pub mod pbkdf2;
+pub mod poly1305;
+pub mod rc4;
+pub mod ripemd160;
+pub mod salsa20;
+pub mod scrypt;
+pub mod sha1;
+pub mod sha2;
+pub mod sha3;
+mod simd;
+pub mod sosemanuk;
+mod step_by;
+pub mod symmetriccipher;
+pub mod util;
+pub mod whirlpool;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod aesni;
+```
+</file>
+
+<file path="src/util.rs">
+```rust
+use libc;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+extern {
+    pub fn rust_crypto_util_supports_aesni() -> u32;
+}
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub fn supports_aesni() -> bool {
+    /* body omitted: interface retained */
+}
+extern {
+    pub fn rust_crypto_util_fixed_time_eq_asm(
+        lhsp: *const u8,
+        rhsp: *const u8,
+        count: libc::size_t,
+    ) -> u32;
+    pub fn rust_crypto_util_secure_memset(
+        dst: *mut u8,
+        val: libc::uint8_t,
+        count: libc::size_t,
+    );
+}
+pub fn secure_memset(dst: &mut [u8], val: u8) {
+    /* body omitted: interface retained */
+}
+/// Compare two vectors using a fixed number of operations. If the two vectors are not of equal
+/// length, the function returns false immediately.
+#[inline(never)]
+pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {
+    if lhs.len() != rhs.len() {
+        false
+    } else {
+        let count = lhs.len() as libc::size_t;
+        unsafe {
+            let __klee_arg0 = 0;
+            klee_ext_bind::bind_arg_u64(1, (lhs).len() as u64);
+            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg0);
+            klee_ext_bind::callsite!("src-util-rs-50-24");
+            let mut __klee_ret_src_util_rs_50_24_get_unchecked = lhs
+                .get_unchecked(__klee_arg0);
+            let lhsp = __klee_ret_src_util_rs_50_24_get_unchecked;
+            let __klee_arg1 = 0;
+            klee_ext_bind::bind_arg_u64(1, (rhs).len() as u64);
+            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg1);
+            klee_ext_bind::callsite!("src-util-rs-51-24");
+            let mut __klee_ret_src_util_rs_51_24_get_unchecked = rhs
+                .get_unchecked(__klee_arg1);
+            let rhsp = __klee_ret_src_util_rs_51_24_get_unchecked;
+            rust_crypto_util_fixed_time_eq_asm(lhsp, rhsp, count) == 0
+        }
+    }
+}
+```
+</file>
+</rust context>

@@ -2,25 +2,14 @@
 #[cfg(feature = "unsat-poc-src-binary-reader-rs-103-30-rule-604-044be5aa9e")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_binary_reader_rs_103_30_rule_604_044be5aa9e() {
-    use std::io::{self, Read};
+    use std::io::Cursor;
 
-    struct OneByteReader {
-        done: bool,
-    }
+    let data: &[u8] = &[0x43, 0x44, 0x45, 0x46];
+    let reader = Cursor::new(data);
 
-    impl Read for OneByteReader {
-        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-            if self.done || out.is_empty() {
-                return Ok(0);
-            }
-            out[0] = 0x43;
-            self.done = true;
-            Ok(1)
-        }
-    }
-
-    let reader = OneByteReader { done: false };
-    let mut tr = crate::binary::TokenReader::new(reader);
+    let mut tr = crate::binary::TokenReader::builder()
+        .buffer_len(8)
+        .build(reader);
 
     let _ = tr.read_bytes(1);
 }

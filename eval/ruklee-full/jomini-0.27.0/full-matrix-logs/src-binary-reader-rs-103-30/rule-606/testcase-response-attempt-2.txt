@@ -2,16 +2,30 @@
 #[cfg(feature = "unsat-poc-src-binary-reader-rs-103-30-rule-606-2c620ecd6a")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_binary_reader_rs_103_30_rule_606_2c620ecd6a() {
-    use std::io::Cursor;
+    use crate::binary::TokenReader;
+    use std::io::{self, Read};
 
-    let data = vec![0x41u8, 0x42, 0x43, 0x44];
-    let mut reader = crate::binary::TokenReader::new(Cursor::new(data));
+    struct ShortRead {
+        data: &'static [u8],
+        pos: usize,
+    }
 
-    let got = reader.read_bytes(1).unwrap();
-    assert_eq!(got, b"A");
+    impl Read for ShortRead {
+        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+            if self.pos >= self.data.len() {
+                return Ok(0);
+            }
+            let n = core::cmp::min(out.len(), self.data.len() - self.pos);
+            out[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
 
-    let mut reader2 = crate::binary::TokenReader::new(Cursor::new(vec![0x55u8]));
-    let got2 = reader2.read_bytes(1).unwrap();
-    assert_eq!(got2, b"U");
+    let input: &'static [u8] = &[0x2d, 0x28, 0x01, 0x00, 0x03, 0x00];
+    let reader = ShortRead { data: input, pos: 0 };
+    let mut tr = TokenReader::new(reader);
+
+    let _ = tr.read_bytes(1);
 }
 ```

@@ -172,7 +172,27 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:binary::reader::TokenReader::<R>::new",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "TokenReader"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "buf",
+        "function": "binary::reader::TokenReader::<R>::new",
+        "kind": "mutator",
+        "root_type": "binary::reader::TokenReader"
+      }
+    ],
+    "symbol": "_ZN6jomini6binary6reader20TokenReader$LT$R$GT$10read_bytes17hc3c3d1cf3b6b7bacE.arg1.buf.start"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +244,9 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `binary::reader::TokenReader` for `receiver` using constructor(s): `binary::reader::TokenReader::<R>::new` -> call target caller `binary::reader::TokenReader::<R>::read_bytes` directly
+1. construct or obtain a `TokenReader` value -> call safe `binary::reader::TokenReader::<R>::new` to affect `buf` -> call target caller `binary::reader::TokenReader::<R>::read_bytes`
+2. call safe `new` -> call target caller `binary::reader::TokenReader::<R>::read_bytes`
+3. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `binary::reader::TokenReader::<R>::read_bytes` directly
 </candidate safe-call plans>
 
 
@@ -1561,7 +1583,7 @@ compiler/tool feedback. Do not repeat the same mistake.
 
 The testcase compiled but did not reproduce the target violation.
 KLEE did not report the exact target callsite `src-binary-reader-rs-103-30`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.
-KLEE reached these callsite markers before missing the target (last markers first-order): `src-buffer-rs-57-18` -> `src-buffer-rs-57-18` -> `src-buffer-rs-67-18` -> `src-buffer-rs-100-29` -> `src-buffer-rs-106-37` -> `src-buffer-rs-57-18` -> `src-buffer-rs-57-18` -> `src-buffer-rs-67-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-binary-reader-rs-103-30` and reproduce the target counterexample there.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-buffer-rs-57-18` -> `src-buffer-rs-57-18` -> `src-buffer-rs-67-18` -> `src-buffer-rs-100-29` -> `src-buffer-rs-106-37` -> `src-buffer-rs-67-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-binary-reader-rs-103-30` and reproduce the target counterexample there.
 The metadata caller `binary::reader::TokenReader::<R>::read_bytes` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 

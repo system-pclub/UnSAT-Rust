@@ -1,0 +1,5639 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-ffi-schema-rs-169-18-rule-449-6588ca478d`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_ffi_schema_rs_169_18_rule_449_6588ca478d`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-ffi-schema-rs-169-18-rule-449-6588ca478d")]`.
+- Define `pub extern "C" fn __unsat_poc_src_ffi_schema_rs_169_18_rule_449_6588ca478d()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-ffi-schema-rs-169-18-rule-449-6588ca478d")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_ffi_schema_rs_169_18_rule_449_6588ca478d() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "ffi::generated::ArrowSchema",
+    "path": "src/ffi/generated.rs",
+    "line_start": 6,
+    "body_end": 6,
+    "is_public": true
+  },
+  "caller": {
+    "name": "ffi::schema::<impl ffi::generated::ArrowSchema>::child",
+    "path": "src/ffi/schema.rs",
+    "line_start": 167,
+    "line_end": 167,
+    "body_end": 170,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "&'static ffi::generated::ArrowSchema"
+  },
+  "callee": {
+    "name": "std::ptr::mut_ptr::<impl *mut T>::add",
+    "path": "rust/library/core/src/ptr/mut_ptr.rs",
+    "line_start": 971,
+    "line_end": 1022,
+    "body_end": 1022,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*mut T"
+  },
+  "callsite": {
+    "line": 169,
+    "col": 18,
+    "path": "src/ffi/schema.rs",
+    "id": "src-ffi-schema-rs-169-18"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "*mut ffi::generated::ArrowSchema",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `ffi::generated::ArrowSchema` for `receiver` using constructor(s): `ffi::schema::<impl ffi::generated::ArrowSchema>::empty` -> call target caller `ffi::schema::<impl ffi::generated::ArrowSchema>::child` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `ffi::schema::<impl ffi::generated::ArrowSchema>::child`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::{collections::BTreeMap, convert::TryInto, ffi::CStr, ffi::CString, ptr};
+use super::ArrowSchema;
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/ffi/schema.rs:169
+```rust
+161:             return "";
+162:         }
+163:         // safe because the lifetime of `self.name` equals `self`
+164:         unsafe { CStr::from_ptr(self.name) }.to_str().unwrap()
+165:     }
+166: 
+167:     pub(crate) fn child(&self, index: usize) -> &'static Self {
+168:         assert!(index < self.n_children as usize);
+169:         unsafe { self.children.add(index).as_ref().unwrap().as_ref().unwrap() }
+170:     }
+171: 
+172:     pub(crate) fn dictionary(&self) -> Option<&'static Self> {
+173:         if self.dictionary.is_null() {
+174:             return None;
+175:         };
+176:         Some(unsafe { self.dictionary.as_ref().unwrap() })
+177:     }
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/ffi/schema.rs:167-169
+```rust
+167:     pub(crate) fn child(&self, index: usize) -> &'static Self {
+168:         assert!(index < self.n_children as usize);
+169:         unsafe { self.children.add(index).as_ref().unwrap().as_ref().unwrap() }
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/compute/aggregate/simd/mod.rs:22-28
+```rust
+22:             fn add(self, rhs: Self) -> Self::Output {
+23:                 let mut result = Self::default();
+24:                 for i in 0..$lanes {
+25:                     result[i] = <$type>::$add(self[i], rhs[i]);
+26:                 }
+27:                 result
+28:             }
+```
+
+src/array/mod.rs:701-703
+```rust
+701:     fn as_ref(&self) -> &(dyn Array + 'a) {
+702:         self
+703:     }
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ahash-0.8.12/src/hash_map.rs:323-462
+```rust
+323:     type Output = V;
+324: 
+325:     /// Returns a reference to the value corresponding to the supplied key.
+326:     ///
+327:     /// # Panics
+328:     ///
+329:     /// Panics if the key is not present in the `HashMap`.
+330:     #[inline]
+331:     fn index(&self, key: &Q) -> &V {
+332:         self.0.index(key)
+333:     }
+334: }
+335: 
+336: impl<K, V, S> Debug for AHashMap<K, V, S>
+337: where
+338:     K: Debug,
+339:     V: Debug,
+340:     S: BuildHasher,
+341: {
+342:     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+343:         self.0.fmt(fmt)
+344:     }
+345: }
+346: 
+347: impl<K, V> FromIterator<(K, V)> for AHashMap<K, V, RandomState>
+348: where
+349:     K: Eq + Hash,
+350: {
+351:     /// This creates a hashmap from the provided iterator using [RandomState::new].
+352:     /// See the documentation in [RandomSource] for notes about key strength.
+353:     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+354:         let mut inner = HashMap::with_hasher(RandomState::new());
+355:         inner.extend(iter);
+356:         AHashMap(inner)
+357:     }
+358: }
+359: 
+360: impl<'a, K, V, S> IntoIterator for &'a AHashMap<K, V, S> {
+361:     type Item = (&'a K, &'a V);
+362:     type IntoIter = hash_map::Iter<'a, K, V>;
+363:     fn into_iter(self) -> Self::IntoIter {
+364:         (&self.0).iter()
+365:     }
+366: }
+367: 
+368: impl<'a, K, V, S> IntoIterator for &'a mut AHashMap<K, V, S> {
+369:     type Item = (&'a K, &'a mut V);
+370:     type IntoIter = hash_map::IterMut<'a, K, V>;
+371:     fn into_iter(self) -> Self::IntoIter {
+372:         (&mut self.0).iter_mut()
+373:     }
+374: }
+375: 
+376: impl<K, V, S> IntoIterator for AHashMap<K, V, S> {
+377:     type Item = (K, V);
+378:     type IntoIter = hash_map::IntoIter<K, V>;
+379:     fn into_iter(self) -> Self::IntoIter {
+380:         self.0.into_iter()
+381:     }
+382: }
+383: 
+384: impl<K, V, S> Extend<(K, V)> for AHashMap<K, V, S>
+385: where
+386:     K: Eq + Hash,
+387:     S: BuildHasher,
+388: {
+389:     #[inline]
+390:     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+391:         self.0.extend(iter)
+392:     }
+393: }
+394: 
+395: impl<'a, K, V, S> Extend<(&'a K, &'a V)> for AHashMap<K, V, S>
+396: where
+397:     K: Eq + Hash + Copy + 'a,
+398:     V: Copy + 'a,
+399:     S: BuildHasher,
+400: {
+401:     #[inline]
+402:     fn extend<T: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: T) {
+403:         self.0.extend(iter)
+404:     }
+405: }
+406: 
+407: /// NOTE: For safety this trait impl is only available if either of the flags `runtime-rng` (on by default) or
+408: /// `compile-time-rng` are enabled. This is to prevent weakly keyed maps from being accidentally created. Instead one of
+409: /// constructors for [RandomState] must be used.
+410: #[cfg(any(feature = "compile-time-rng", feature = "runtime-rng", feature = "no-rng"))]
+411: impl<K, V> Default for AHashMap<K, V, RandomState> {
+412:     #[inline]
+413:     fn default() -> AHashMap<K, V, RandomState> {
+414:         AHashMap(HashMap::default())
+415:     }
+416: }
+417: 
+418: #[cfg(feature = "serde")]
+419: impl<K, V> Serialize for AHashMap<K, V>
+420: where
+421:     K: Serialize + Eq + Hash,
+422:     V: Serialize,
+423: {
+424:     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+425:         self.deref().serialize(serializer)
+426:     }
+427: }
+428: 
+429: #[cfg(feature = "serde")]
+430: impl<'de, K, V> Deserialize<'de> for AHashMap<K, V>
+431: where
+432:     K: Deserialize<'de> + Eq + Hash,
+433:     V: Deserialize<'de>,
+434: {
+435:     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+436:         let hash_map = HashMap::deserialize(deserializer);
+437:         hash_map.map(|hash_map| Self(hash_map))
+438:     }
+439: 
+440:     fn deserialize_in_place<D: Deserializer<'de>>(deserializer: D, place: &mut Self) -> Result<(), D::Error> {
+441:         use serde::de::{MapAccess, Visitor};
+442: 
+443:         struct MapInPlaceVisitor<'a, K: 'a, V: 'a>(&'a mut AHashMap<K, V>);
+444: 
+445:         impl<'a, 'de, K, V> Visitor<'de> for MapInPlaceVisitor<'a, K, V>
+446:         where
+447:             K: Deserialize<'de> + Eq + Hash,
+448:             V: Deserialize<'de>,
+449:         {
+450:             type Value = ();
+451: 
+452:             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+453:                 formatter.write_str("a map")
+454:             }
+455: 
+456:             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+457:             where
+458:                 A: MapAccess<'de>,
+459:             {
+460:                 self.0.clear();
+461:                 self.0.reserve(map.size_hint().unwrap_or(0).min(4096));
+462: 
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ahash-0.8.12/src/lib.rs:132-271
+```rust
+132:         pub type HashMap<K, V> = std::collections::HashMap<K, V, crate::RandomState>;
+133: 
+134:         /// Type alias for [HashSet]<K, ahash::RandomState>
+135:         pub type HashSet<K> = std::collections::HashSet<K, crate::RandomState>;
+136:     }
+137: }
+138: 
+139: #[cfg(test)]
+140: mod hash_quality_test;
+141: 
+142: mod operations;
+143: pub mod random_state;
+144: mod specialize;
+145: 
+146: pub use crate::random_state::RandomState;
+147: 
+148: use core::hash::BuildHasher;
+149: 
+150: #[cfg(feature = "std")]
+151: /// A convenience trait that can be used together with the type aliases defined to
+152: /// get access to the `new()` and `with_capacity()` methods for the HashMap type alias.
+153: pub trait HashMapExt {
+154:     /// Constructs a new HashMap
+155:     fn new() -> Self;
+156:     /// Constructs a new HashMap with a given initial capacity
+157:     fn with_capacity(capacity: usize) -> Self;
+158: }
+159: 
+160: #[cfg(feature = "std")]
+161: /// A convenience trait that can be used together with the type aliases defined to
+162: /// get access to the `new()` and `with_capacity()` methods for the HashSet type aliases.
+163: pub trait HashSetExt {
+164:     /// Constructs a new HashSet
+165:     fn new() -> Self;
+166:     /// Constructs a new HashSet with a given initial capacity
+167:     fn with_capacity(capacity: usize) -> Self;
+168: }
+169: 
+170: #[cfg(feature = "std")]
+171: impl<K, V, S> HashMapExt for std::collections::HashMap<K, V, S>
+172: where
+173:     S: BuildHasher + Default,
+174: {
+175:     fn new() -> Self {
+176:         std::collections::HashMap::with_hasher(S::default())
+177:     }
+178: 
+179:     fn with_capacity(capacity: usize) -> Self {
+180:         std::collections::HashMap::with_capacity_and_hasher(capacity, S::default())
+181:     }
+182: }
+183: 
+184: #[cfg(feature = "std")]
+185: impl<K, S> HashSetExt for std::collections::HashSet<K, S>
+186: where
+187:     S: BuildHasher + Default,
+188: {
+189:     fn new() -> Self {
+190:         std::collections::HashSet::with_hasher(S::default())
+191:     }
+192: 
+193:     fn with_capacity(capacity: usize) -> Self {
+194:         std::collections::HashSet::with_capacity_and_hasher(capacity, S::default())
+195:     }
+196: }
+197: 
+198: /// Provides a default [Hasher] with fixed keys.
+199: /// This is typically used in conjunction with [BuildHasherDefault] to create
+200: /// [AHasher]s in order to hash the keys of the map.
+201: ///
+202: /// Generally it is preferable to use [RandomState] instead, so that different
+203: /// hashmaps will have different keys. However if fixed keys are desirable this
+204: /// may be used instead.
+205: ///
+206: /// # Example
+207: /// ```
+208: /// use std::hash::BuildHasherDefault;
+209: /// use ahash::{AHasher, RandomState};
+210: /// use std::collections::HashMap;
+211: ///
+212: /// let mut map: HashMap<i32, i32, BuildHasherDefault<AHasher>> = HashMap::default();
+213: /// map.insert(12, 34);
+214: /// ```
+215: ///
+216: /// [BuildHasherDefault]: std::hash::BuildHasherDefault
+217: /// [Hasher]: std::hash::Hasher
+218: /// [HashMap]: std::collections::HashMap
+219: impl Default for AHasher {
+220:     /// Constructs a new [AHasher] with fixed keys.
+221:     /// If `std` is enabled these will be generated upon first invocation.
+222:     /// Otherwise if the `compile-time-rng`feature is enabled these will be generated at compile time.
+223:     /// If neither of these features are available, hardcoded constants will be used.
+224:     ///
+225:     /// Because the values are fixed, different hashers will all hash elements the same way.
+226:     /// This could make hash values predictable, if DOS attacks are a concern. If this behaviour is
+227:     /// not required, it may be preferable to use [RandomState] instead.
+228:     ///
+229:     /// # Examples
+230:     ///
+231:     /// ```
+232:     /// use ahash::AHasher;
+233:     /// use std::hash::Hasher;
+234:     ///
+235:     /// let mut hasher_1 = AHasher::default();
+236:     /// let mut hasher_2 = AHasher::default();
+237:     ///
+238:     /// hasher_1.write_u32(1234);
+239:     /// hasher_2.write_u32(1234);
+240:     ///
+241:     /// assert_eq!(hasher_1.finish(), hasher_2.finish());
+242:     /// ```
+243:     #[inline]
+244:     fn default() -> AHasher {
+245:         RandomState::with_fixed_keys().build_hasher()
+246:     }
+247: }
+248: 
+249: // #[inline(never)]
+250: // #[doc(hidden)]
+251: // pub fn hash_test(input: &[u8]) -> u64 {
+252: //     let a = RandomState::with_seeds(11, 22, 33, 44);
+253: //     <[u8]>::get_hash(input, &a)
+254: // }
+255: 
+256: #[cfg(feature = "std")]
+257: #[cfg(test)]
+258: mod test {
+259:     use crate::convert::Convert;
+260:     use crate::specialize::CallHasher;
+261:     use crate::*;
+262:     use core::hash::Hash;
+263:     use core::hash::Hasher;
+264:     use std::collections::HashMap;
+265: 
+266:     #[test]
+267:     fn test_ahash_alias_map_construction() {
+268:         let mut map = super::HashMap::with_capacity(1234);
+269:         map.insert(1, "test");
+270:     }
+271: 
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde_json-1.0.150/src/value/index.rs:144-258
+```rust
+144: struct Type<'a>(&'a Value);
+145: 
+146: impl<'a> Display for Type<'a> {
+147:     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+148:         match *self.0 {
+149:             Value::Null => formatter.write_str("null"),
+150:             Value::Bool(_) => formatter.write_str("boolean"),
+151:             Value::Number(_) => formatter.write_str("number"),
+152:             Value::String(_) => formatter.write_str("string"),
+153:             Value::Array(_) => formatter.write_str("array"),
+154:             Value::Object(_) => formatter.write_str("object"),
+155:         }
+156:     }
+157: }
+158: 
+159: // The usual semantics of Index is to panic on invalid indexing.
+160: //
+161: // That said, the usual semantics are for things like Vec and BTreeMap which
+162: // have different use cases than Value. If you are working with a Vec, you know
+163: // that you are working with a Vec and you can get the len of the Vec and make
+164: // sure your indices are within bounds. The Value use cases are more
+165: // loosey-goosey. You got some JSON from an endpoint and you want to pull values
+166: // out of it. Outside of this Index impl, you already have the option of using
+167: // value.as_array() and working with the Vec directly, or matching on
+168: // Value::Array and getting the Vec directly. The Index impl means you can skip
+169: // that and index directly into the thing using a concise syntax. You don't have
+170: // to check the type, you don't have to check the len, it is all about what you
+171: // expect the Value to look like.
+172: //
+173: // Basically the use cases that would be well served by panicking here are
+174: // better served by using one of the other approaches: get and get_mut,
+175: // as_array, or match. The value of this impl is that it adds a way of working
+176: // with Value that is not well served by the existing approaches: concise and
+177: // careless and sometimes that is exactly what you want.
+178: impl<I> ops::Index<I> for Value
+179: where
+180:     I: Index,
+181: {
+182:     type Output = Value;
+183: 
+184:     /// Index into a `serde_json::Value` using the syntax `value[0]` or
+185:     /// `value["k"]`.
+186:     ///
+187:     /// Returns `Value::Null` if the type of `self` does not match the type of
+188:     /// the index, for example if the index is a string and `self` is an array
+189:     /// or a number. Also returns `Value::Null` if the given key does not exist
+190:     /// in the map or the given index is not within the bounds of the array.
+191:     ///
+192:     /// For retrieving deeply nested values, you should have a look at the
+193:     /// `Value::pointer` method.
+194:     ///
+195:     /// # Examples
+196:     ///
+197:     /// ```
+198:     /// # use serde_json::json;
+199:     /// #
+200:     /// let data = json!({
+201:     ///     "x": {
+202:     ///         "y": ["z", "zz"]
+203:     ///     }
+204:     /// });
+205:     ///
+206:     /// assert_eq!(data["x"]["y"], json!(["z", "zz"]));
+207:     /// assert_eq!(data["x"]["y"][0], json!("z"));
+208:     ///
+209:     /// assert_eq!(data["a"], json!(null)); // returns null for undefined values
+210:     /// assert_eq!(data["a"]["b"], json!(null)); // does not panic
+211:     /// ```
+212:     fn index(&self, index: I) -> &Value {
+213:         static NULL: Value = Value::Null;
+214:         index.index_into(self).unwrap_or(&NULL)
+215:     }
+216: }
+217: 
+218: impl<I> ops::IndexMut<I> for Value
+219: where
+220:     I: Index,
+221: {
+222:     /// Write into a `serde_json::Value` using the syntax `value[0] = ...` or
+223:     /// `value["k"] = ...`.
+224:     ///
+225:     /// If the index is a number, the value must be an array of length bigger
+226:     /// than the index. Indexing into a value that is not an array or an array
+227:     /// that is too small will panic.
+228:     ///
+229:     /// If the index is a string, the value must be an object or null which is
+230:     /// treated like an empty object. If the key is not already present in the
+231:     /// object, it will be inserted with a value of null. Indexing into a value
+232:     /// that is neither an object nor null will panic.
+233:     ///
+234:     /// # Examples
+235:     ///
+236:     /// ```
+237:     /// # use serde_json::json;
+238:     /// #
+239:     /// let mut data = json!({ "x": 0 });
+240:     ///
+241:     /// // replace an existing key
+242:     /// data["x"] = json!(1);
+243:     ///
+244:     /// // insert a new key
+245:     /// data["y"] = json!([false, false, false]);
+246:     ///
+247:     /// // replace an array value
+248:     /// data["y"][0] = json!(true);
+249:     ///
+250:     /// // inserted a deeply nested key
+251:     /// data["a"]["b"]["c"]["d"] = json!(true);
+252:     ///
+253:     /// println!("{}", data);
+254:     /// ```
+255:     fn index_mut(&mut self, index: I) -> &mut Value {
+256:         index.index_or_insert(self)
+257:     }
+258: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/csv-1.4.0/src/reader.rs:1007-1146
+```rust
+1007:     /// enum Number {
+1008:     ///     Integer(i64),
+1009:     ///     Float(f64),
+1010:     /// }
+1011:     ///
+1012:     /// # fn main() { example().unwrap(); }
+1013:     /// fn example() -> Result<(), Box<dyn Error>> {
+1014:     ///     let data = "\
+1015:     /// label,value
+1016:     /// celsius,22.2222
+1017:     /// fahrenheit,72
+1018:     /// ";
+1019:     ///     let mut rdr = csv::Reader::from_reader(data.as_bytes());
+1020:     ///     let mut iter = rdr.deserialize();
+1021:     ///
+1022:     ///     // Read the first record.
+1023:     ///     if let Some(result) = iter.next() {
+1024:     ///         let record: Row = result?;
+1025:     ///         assert_eq!(record, Row {
+1026:     ///             label: Label::Celsius,
+1027:     ///             value: Number::Float(22.2222),
+1028:     ///         });
+1029:     ///     } else {
+1030:     ///         return Err(From::from(
+1031:     ///             "expected at least two records but got none"));
+1032:     ///     }
+1033:     ///
+1034:     ///     // Read the second record.
+1035:     ///     if let Some(result) = iter.next() {
+1036:     ///         let record: Row = result?;
+1037:     ///         assert_eq!(record, Row {
+1038:     ///             label: Label::Fahrenheit,
+1039:     ///             value: Number::Integer(72),
+1040:     ///         });
+1041:     ///         Ok(())
+1042:     ///     } else {
+1043:     ///         Err(From::from(
+1044:     ///             "expected at least two records but got only one"))
+1045:     ///     }
+1046:     /// }
+1047:     /// ```
+1048:     pub fn deserialize<D>(&mut self) -> DeserializeRecordsIter<'_, R, D>
+1049:     where
+1050:         D: DeserializeOwned,
+1051:     {
+1052:         DeserializeRecordsIter::new(self)
+1053:     }
+1054: 
+1055:     /// Returns an owned iterator over deserialized records.
+1056:     ///
+1057:     /// Each item yielded by this iterator is a `Result<D, Error>`.
+1058:     /// Therefore, in order to access the record, callers must handle the
+1059:     /// possibility of error (typically with `try!` or `?`).
+1060:     ///
+1061:     /// This is mostly useful when you want to return a CSV iterator or store
+1062:     /// it somewhere.
+1063:     ///
+1064:     /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
+1065:     /// default), then this does not include the first record. Additionally,
+1066:     /// if `has_headers` is enabled, then deserializing into a struct will
+1067:     /// automatically align the values in each row to the fields of a struct
+1068:     /// based on the header row.
+1069:     ///
+1070:     /// For more detailed deserialization rules, see the documentation on the
+1071:     /// `deserialize` method.
+1072:     ///
+1073:     /// # Example
+1074:     ///
+1075:     /// ```
+1076:     /// use std::error::Error;
+1077:     ///
+1078:     /// #[derive(Debug, serde::Deserialize, Eq, PartialEq)]
+1079:     /// struct Row {
+1080:     ///     city: String,
+1081:     ///     country: String,
+1082:     ///     #[serde(rename = "popcount")]
+1083:     ///     population: u64,
+1084:     /// }
+1085:     ///
+1086:     /// # fn main() { example().unwrap(); }
+1087:     /// fn example() -> Result<(), Box<dyn Error>> {
+1088:     ///     let data = "\
+1089:     /// city,country,popcount
+1090:     /// Boston,United States,4628910
+1091:     /// ";
+1092:     ///     let rdr = csv::Reader::from_reader(data.as_bytes());
+1093:     ///     let mut iter = rdr.into_deserialize();
+1094:     ///
+1095:     ///     if let Some(result) = iter.next() {
+1096:     ///         let record: Row = result?;
+1097:     ///         assert_eq!(record, Row {
+1098:     ///             city: "Boston".to_string(),
+1099:     ///             country: "United States".to_string(),
+1100:     ///             population: 4628910,
+1101:     ///         });
+1102:     ///         Ok(())
+1103:     ///     } else {
+1104:     ///         Err(From::from("expected at least one record but got none"))
+1105:     ///     }
+1106:     /// }
+1107:     /// ```
+1108:     pub fn into_deserialize<D>(self) -> DeserializeRecordsIntoIter<R, D>
+1109:     where
+1110:         D: DeserializeOwned,
+1111:     {
+1112:         DeserializeRecordsIntoIter::new(self)
+1113:     }
+1114: 
+1115:     /// Returns a borrowed iterator over all records as strings.
+1116:     ///
+1117:     /// Each item yielded by this iterator is a `Result<StringRecord, Error>`.
+1118:     /// Therefore, in order to access the record, callers must handle the
+1119:     /// possibility of error (typically with `try!` or `?`).
+1120:     ///
+1121:     /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
+1122:     /// default), then this does not include the first record.
+1123:     ///
+1124:     /// # Example
+1125:     ///
+1126:     /// ```
+1127:     /// use std::error::Error;
+1128:     /// use csv::Reader;
+1129:     ///
+1130:     /// # fn main() { example().unwrap(); }
+1131:     /// fn example() -> Result<(), Box<dyn Error>> {
+1132:     ///     let data = "\
+1133:     /// city,country,pop
+1134:     /// Boston,United States,4628910
+1135:     /// ";
+1136:     ///     let mut rdr = Reader::from_reader(data.as_bytes());
+1137:     ///     let mut iter = rdr.records();
+1138:     ///
+1139:     ///     if let Some(result) = iter.next() {
+1140:     ///         let record = result?;
+1141:     ///         assert_eq!(record, vec!["Boston", "United States", "4628910"]);
+1142:     ///         Ok(())
+1143:     ///     } else {
+1144:     ///         Err(From::from("expected at least one record but got none"))
+1145:     ///     }
+1146:     /// }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytemuck-1.25.0/src/derive.rs:6-19
+```rust
+ 6:   type Integer;
+ 7: }
+ 8: 
+ 9: macro_rules! enum_tag_integer_impls {
+10:   ($($ty:ty),*) => {
+11:     $(
+12:       impl EnumTagIntegerBytes for [u8; core::mem::size_of::<$ty>()] {
+13:         type Integer = $ty;
+14:       }
+15:     )*
+16:   };
+17: }
+18: 
+19: enum_tag_integer_impls!(u8, u16, u32, u64, u128);
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/csv-1.4.0/src/byte_record.rs:172-311
+```rust
+172:     /// struct Row<'a> {
+173:     ///     city: &'a str,
+174:     ///     country: &'a str,
+175:     ///     population: u64,
+176:     /// }
+177:     ///
+178:     /// # fn main() { example().unwrap() }
+179:     /// fn example() -> Result<(), Box<dyn Error>> {
+180:     ///     let record = ByteRecord::from(vec![
+181:     ///         "Boston", "United States", "4628910",
+182:     ///     ]);
+183:     ///
+184:     ///     let row: Row = record.deserialize(None)?;
+185:     ///     assert_eq!(row.city, "Boston");
+186:     ///     assert_eq!(row.country, "United States");
+187:     ///     assert_eq!(row.population, 4628910);
+188:     ///     Ok(())
+189:     /// }
+190:     /// ```
+191:     ///
+192:     /// # Example: with headers
+193:     ///
+194:     /// This example is like the previous one, but shows how to deserialize
+195:     /// into a struct based on the struct's field names. For this to work,
+196:     /// you must provide a header row.
+197:     ///
+198:     /// This example also shows that you can deserialize into owned data
+199:     /// types (e.g., `String`) instead of borrowed data types (e.g., `&str`).
+200:     ///
+201:     /// ```
+202:     /// use std::error::Error;
+203:     ///
+204:     /// use csv::ByteRecord;
+205:     /// use serde::Deserialize;
+206:     ///
+207:     /// #[derive(Deserialize)]
+208:     /// struct Row {
+209:     ///     city: String,
+210:     ///     country: String,
+211:     ///     population: u64,
+212:     /// }
+213:     ///
+214:     /// # fn main() { example().unwrap() }
+215:     /// fn example() -> Result<(), Box<dyn Error>> {
+216:     ///     // Notice that the fields are not in the same order
+217:     ///     // as the fields in the struct!
+218:     ///     let header = ByteRecord::from(vec![
+219:     ///         "country", "city", "population",
+220:     ///     ]);
+221:     ///     let record = ByteRecord::from(vec![
+222:     ///         "United States", "Boston", "4628910",
+223:     ///     ]);
+224:     ///
+225:     ///     let row: Row = record.deserialize(Some(&header))?;
+226:     ///     assert_eq!(row.city, "Boston");
+227:     ///     assert_eq!(row.country, "United States");
+228:     ///     assert_eq!(row.population, 4628910);
+229:     ///     Ok(())
+230:     /// }
+231:     /// ```
+232:     pub fn deserialize<'de, D: Deserialize<'de>>(
+233:         &'de self,
+234:         headers: Option<&'de ByteRecord>,
+235:     ) -> Result<D> {
+236:         deserialize_byte_record(self, headers)
+237:     }
+238: 
+239:     /// Returns an iterator over all fields in this record.
+240:     ///
+241:     /// # Example
+242:     ///
+243:     /// This example shows how to iterate over each field in a `ByteRecord`.
+244:     ///
+245:     /// ```
+246:     /// use csv::ByteRecord;
+247:     ///
+248:     /// let record = ByteRecord::from(vec!["a", "b", "c"]);
+249:     /// for field in record.iter() {
+250:     ///     assert!(field == b"a" || field == b"b" || field == b"c");
+251:     /// }
+252:     /// ```
+253:     #[inline]
+254:     pub fn iter(&self) -> ByteRecordIter<'_> {
+255:         self.into_iter()
+256:     }
+257: 
+258:     /// Return the field at index `i`.
+259:     ///
+260:     /// If no field at index `i` exists, then this returns `None`.
+261:     ///
+262:     /// # Example
+263:     ///
+264:     /// ```
+265:     /// use csv::ByteRecord;
+266:     ///
+267:     /// let record = ByteRecord::from(vec!["a", "b", "c"]);
+268:     /// assert_eq!(record.get(1), Some(&b"b"[..]));
+269:     /// assert_eq!(record.get(3), None);
+270:     /// ```
+271:     #[inline]
+272:     pub fn get(&self, i: usize) -> Option<&[u8]> {
+273:         self.0.bounds.get(i).map(|range| &self.0.fields[range])
+274:     }
+275: 
+276:     /// Returns true if and only if this record is empty.
+277:     ///
+278:     /// # Example
+279:     ///
+280:     /// ```
+281:     /// use csv::ByteRecord;
+282:     ///
+283:     /// assert!(ByteRecord::new().is_empty());
+284:     /// ```
+285:     #[inline]
+286:     pub fn is_empty(&self) -> bool {
+287:         self.len() == 0
+288:     }
+289: 
+290:     /// Returns the number of fields in this record.
+291:     ///
+292:     /// # Example
+293:     ///
+294:     /// ```
+295:     /// use csv::ByteRecord;
+296:     ///
+297:     /// let record = ByteRecord::from(vec!["a", "b", "c"]);
+298:     /// assert_eq!(record.len(), 3);
+299:     /// ```
+300:     #[inline]
+301:     pub fn len(&self) -> usize {
+302:         self.0.bounds.len()
+303:     }
+304: 
+305:     /// Truncate this record to `n` fields.
+306:     ///
+307:     /// If `n` is greater than the number of fields in this record, then this
+308:     /// has no effect.
+309:     ///
+310:     /// # Example
+311:     ///
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/csv-1.4.0/src/deserializer.rs:1059-1198
+```rust
+1059:         enum Label {
+1060:             Foo,
+1061:             Bar,
+1062:             Baz,
+1063:         }
+1064: 
+1065:         let got: Row = de_headers(&["label", "x"], &["bar", "5"]).unwrap();
+1066:         assert_eq!(got, Row { label: Label::Bar, x: 5.0 });
+1067:     }
+1068: 
+1069:     #[test]
+1070:     fn enum_untagged() {
+1071:         #[derive(Deserialize, Debug, PartialEq)]
+1072:         struct Row {
+1073:             x: Boolish,
+1074:             y: Boolish,
+1075:             z: Boolish,
+1076:         }
+1077: 
+1078:         #[derive(Deserialize, Debug, PartialEq)]
+1079:         #[serde(rename_all = "snake_case")]
+1080:         #[serde(untagged)]
+1081:         enum Boolish {
+1082:             Bool(bool),
+1083:             Number(i64),
+1084:             String(String),
+1085:         }
+1086: 
+1087:         let got: Row =
+1088:             de_headers(&["x", "y", "z"], &["true", "null", "1"]).unwrap();
+1089:         assert_eq!(
+1090:             got,
+1091:             Row {
+1092:                 x: Boolish::Bool(true),
+1093:                 y: Boolish::String("null".into()),
+1094:                 z: Boolish::Number(1),
+1095:             }
+1096:         );
+1097:     }
+1098: 
+1099:     #[test]
+1100:     fn option_empty_field() {
+1101:         #[derive(Deserialize, Debug, PartialEq)]
+1102:         struct Foo {
+1103:             a: Option<i32>,
+1104:             b: String,
+1105:             c: Option<i32>,
+1106:         }
+1107: 
+1108:         let got: Foo =
+1109:             de_headers(&["a", "b", "c"], &["", "foo", "5"]).unwrap();
+1110:         assert_eq!(got, Foo { a: None, b: "foo".into(), c: Some(5) });
+1111:     }
+1112: 
+1113:     #[test]
+1114:     fn option_invalid_field() {
+1115:         #[derive(Deserialize, Debug, PartialEq)]
+1116:         struct Foo {
+1117:             #[serde(deserialize_with = "crate::invalid_option")]
+1118:             a: Option<i32>,
+1119:             #[serde(deserialize_with = "crate::invalid_option")]
+1120:             b: Option<i32>,
+1121:             #[serde(deserialize_with = "crate::invalid_option")]
+1122:             c: Option<i32>,
+1123:         }
+1124: 
+1125:         let got: Foo =
+1126:             de_headers(&["a", "b", "c"], &["xyz", "", "5"]).unwrap();
+1127:         assert_eq!(got, Foo { a: None, b: None, c: Some(5) });
+1128:     }
+1129: 
+1130:     #[test]
+1131:     fn borrowed() {
+1132:         #[derive(Deserialize, Debug, PartialEq)]
+1133:         struct Foo<'a, 'c> {
+1134:             a: &'a str,
+1135:             b: i32,
+1136:             c: &'c str,
+1137:         }
+1138: 
+1139:         let headers = StringRecord::from(vec!["a", "b", "c"]);
+1140:         let record = StringRecord::from(vec!["foo", "5", "bar"]);
+1141:         let got: Foo =
+1142:             deserialize_string_record(&record, Some(&headers)).unwrap();
+1143:         assert_eq!(got, Foo { a: "foo", b: 5, c: "bar" });
+1144:     }
+1145: 
+1146:     #[test]
+1147:     fn borrowed_map() {
+1148:         use std::collections::HashMap;
+1149: 
+1150:         let headers = StringRecord::from(vec!["a", "b", "c"]);
+1151:         let record = StringRecord::from(vec!["aardvark", "bee", "cat"]);
+1152:         let got: HashMap<&str, &str> =
+1153:             deserialize_string_record(&record, Some(&headers)).unwrap();
+1154: 
+1155:         let expected: HashMap<&str, &str> =
+1156:             headers.iter().zip(&record).collect();
+1157:         assert_eq!(got, expected);
+1158:     }
+1159: 
+1160:     #[test]
+1161:     fn borrowed_map_bytes() {
+1162:         use std::collections::HashMap;
+1163: 
+1164:         let headers = ByteRecord::from(vec![b"a", b"\xFF", b"c"]);
+1165:         let record = ByteRecord::from(vec!["aardvark", "bee", "cat"]);
+1166:         let got: HashMap<&[u8], &[u8]> =
+1167:             deserialize_byte_record(&record, Some(&headers)).unwrap();
+1168: 
+1169:         let expected: HashMap<&[u8], &[u8]> =
+1170:             headers.iter().zip(&record).collect();
+1171:         assert_eq!(got, expected);
+1172:     }
+1173: 
+1174:     #[test]
+1175:     fn flatten() {
+1176:         #[derive(Deserialize, Debug, PartialEq)]
+1177:         struct Input {
+1178:             x: f64,
+1179:             y: f64,
+1180:         }
+1181: 
+1182:         #[derive(Deserialize, Debug, PartialEq)]
+1183:         struct Properties {
+1184:             prop1: f64,
+1185:             prop2: f64,
+1186:         }
+1187: 
+1188:         #[derive(Deserialize, Debug, PartialEq)]
+1189:         struct Row {
+1190:             #[serde(flatten)]
+1191:             input: Input,
+1192:             #[serde(flatten)]
+1193:             properties: Properties,
+1194:         }
+1195: 
+1196:         let header = StringRecord::from(vec!["x", "y", "prop1", "prop2"]);
+1197:         let record = StringRecord::from(vec!["1", "2", "3", "4"]);
+1198:         let got: Row = record.deserialize(Some(&header)).unwrap();
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytemuck-1.25.0/src/contiguous.rs:25-164
+```rust
+ 25: /// enum Foo {
+ 26: ///   A = 0,
+ 27: ///   B = 1,
+ 28: ///   C = 2,
+ 29: ///   D = 3,
+ 30: ///   E = 4,
+ 31: /// }
+ 32: /// unsafe impl Contiguous for Foo {
+ 33: ///   type Int = u8;
+ 34: ///   const MIN_VALUE: u8 = Foo::A as u8;
+ 35: ///   const MAX_VALUE: u8 = Foo::E as u8;
+ 36: /// }
+ 37: /// assert_eq!(Foo::from_integer(3).unwrap(), Foo::D);
+ 38: /// assert_eq!(Foo::from_integer(8), None);
+ 39: /// assert_eq!(Foo::C.into_integer(), 2);
+ 40: /// ```
+ 41: /// # Safety
+ 42: ///
+ 43: /// This is an unsafe trait, and incorrectly implementing it is undefined
+ 44: /// behavior.
+ 45: ///
+ 46: /// Informally, by implementing it, you're asserting that `C` is identical to
+ 47: /// the integral type `C::Int`, and that every `C` falls between `C::MIN_VALUE`
+ 48: /// and `C::MAX_VALUE` exactly once, without any gaps.
+ 49: ///
+ 50: /// Precisely, the guarantees you must uphold when implementing `Contiguous` for
+ 51: /// some type `C` are:
+ 52: ///
+ 53: /// 1. The size of `C` and `C::Int` must be the same, and neither may be a ZST.
+ 54: ///    (Note: alignment is explicitly allowed to differ)
+ 55: ///
+ 56: /// 2. `C::Int` must be a primitive integer, and not a wrapper type. In the
+ 57: ///    future, this may be lifted to include cases where the behavior is
+ 58: ///    identical for a relevant set of traits (Ord, arithmetic, ...).
+ 59: ///
+ 60: /// 3. All `C::Int`s which are in the *inclusive* range between `C::MIN_VALUE`
+ 61: ///    and `C::MAX_VALUE` are bitwise identical to unique valid instances of
+ 62: ///    `C`.
+ 63: ///
+ 64: /// 4. There exist no instances of `C` such that their bitpatterns, when
+ 65: ///    interpreted as instances of `C::Int`, fall outside of the `MAX_VALUE` /
+ 66: ///    `MIN_VALUE` range -- It is legal for unsafe code to assume that if it
+ 67: ///    gets a `C` that implements `Contiguous`, it is in the appropriate range.
+ 68: ///
+ 69: /// 5. Finally, you promise not to provide overridden implementations of
+ 70: ///    `Contiguous::from_integer` and `Contiguous::into_integer`.
+ 71: ///
+ 72: /// For clarity, the following rules could be derived from the above, but are
+ 73: /// listed explicitly:
+ 74: ///
+ 75: /// - `C::MAX_VALUE` must be greater or equal to `C::MIN_VALUE` (therefore, `C`
+ 76: ///   must be an inhabited type).
+ 77: ///
+ 78: /// - There exist no two values between `MIN_VALUE` and `MAX_VALUE` such that
+ 79: ///   when interpreted as a `C` they are considered identical (by, say, match).
+ 80: pub unsafe trait Contiguous: Copy + 'static {
+ 81:   /// The primitive integer type with an identical representation to this
+ 82:   /// type.
+ 83:   ///
+ 84:   /// Contiguous is broadly intended for use with fieldless enums, and for
+ 85:   /// these the correct integer type is easy: The enum should have a
+ 86:   /// `#[repr(Int)]` or `#[repr(C)]` attribute, (if it does not, it is
+ 87:   /// *unsound* to implement `Contiguous`!).
+ 88:   ///
+ 89:   /// - For `#[repr(Int)]`, use the listed `Int`. e.g. `#[repr(u8)]` should use
+ 90:   ///   `type Int = u8`.
+ 91:   ///
+ 92:   /// - For `#[repr(C)]`, use whichever type the C compiler will use to
+ 93:   ///   represent the given enum. This is usually `c_int` (from `std::os::raw`
+ 94:   ///   or `libc`), but it's up to you to make the determination as the
+ 95:   ///   implementer of the unsafe trait.
+ 96:   ///
+ 97:   /// For precise rules, see the list under "Safety" above.
+ 98:   type Int: Copy + Ord;
+ 99: 
+100:   /// The upper *inclusive* bound for valid instances of this type.
+101:   const MAX_VALUE: Self::Int;
+102: 
+103:   /// The lower *inclusive* bound for valid instances of this type.
+104:   const MIN_VALUE: Self::Int;
+105: 
+106:   /// If `value` is within the range for valid instances of this type,
+107:   /// returns `Some(converted_value)`, otherwise, returns `None`.
+108:   ///
+109:   /// This is a trait method so that you can write `value.into_integer()` in
+110:   /// your code. It is a contract of this trait that if you implement
+111:   /// `Contiguous` on your type you **must not** override this method.
+112:   ///
+113:   /// # Panics
+114:   ///
+115:   /// We will not panic for any correct implementation of `Contiguous`, but
+116:   /// *may* panic if we detect an incorrect one.
+117:   ///
+118:   /// This is undefined behavior regardless, so it could have been the nasal
+119:   /// demons at that point anyway ;).
+120:   #[inline]
+121:   #[cfg_attr(feature = "track_caller", track_caller)]
+122:   fn from_integer(value: Self::Int) -> Option<Self> {
+123:     // Guard against an illegal implementation of Contiguous. Annoyingly we
+124:     // can't rely on `transmute` to do this for us (see below), but
+125:     // whatever, this gets compiled into nothing in release.
+126:     assert!(size_of::<Self>() == size_of::<Self::Int>());
+127:     if Self::MIN_VALUE <= value && value <= Self::MAX_VALUE {
+128:       // SAFETY: We've checked their bounds (and their size, even though
+129:       // they've sworn under the Oath Of Unsafe Rust that that already
+130:       // matched) so this is allowed by `Contiguous`'s unsafe contract.
+131:       //
+132:       // So, the `transmute!`. ideally we'd use transmute here, which
+133:       // is more obviously safe. Sadly, we can't, as these types still
+134:       // have unspecified sizes.
+135:       Some(unsafe { transmute!(value) })
+136:     } else {
+137:       None
+138:     }
+139:   }
+140: 
+141:   /// Perform the conversion from `C` into the underlying integral type. This
+142:   /// mostly exists otherwise generic code would need unsafe for the `value as
+143:   /// integer`
+144:   ///
+145:   /// This is a trait method so that you can write `value.into_integer()` in
+146:   /// your code. It is a contract of this trait that if you implement
+147:   /// `Contiguous` on your type you **must not** override this method.
+148:   ///
+149:   /// # Panics
+150:   ///
+151:   /// We will not panic for any correct implementation of `Contiguous`, but
+152:   /// *may* panic if we detect an incorrect one.
+153:   ///
+154:   /// This is undefined behavior regardless, so it could have been the nasal
+155:   /// demons at that point anyway ;).
+156:   #[inline]
+157:   #[cfg_attr(feature = "track_caller", track_caller)]
+158:   fn into_integer(self) -> Self::Int {
+159:     // Guard against an illegal implementation of Contiguous. Annoyingly we
+160:     // can't rely on `transmute` to do the size check for us (see
+161:     // `from_integer's comment`), but whatever, this gets compiled into
+162:     // nothing in release. Note that we don't check the result of cast
+163:     assert!(size_of::<Self>() == size_of::<Self::Int>());
+164: 
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/lib.rs:27-88
+```rust
+27: 
+28: let mut map: HashMap<i32, i32, RandomState> = HashMap::default();
+29: map.insert(12, 34);
+30: ```
+31: 
+32: ### Randomness
+33: 
+34: The above requires a source of randomness to generate keys for the hashmap. By default this obtained from the OS.
+35: It is also possible to have randomness supplied via the `compile-time-rng` flag, or manually.
+36: 
+37: ### If randomness is not available
+38: 
+39: [AHasher::default()] can be used to hash using fixed keys. This works with
+40: [BuildHasherDefault](std::hash::BuildHasherDefault). For example:
+41: 
+42: ```
+43: use std::hash::BuildHasherDefault;
+44: use std::collections::HashMap;
+45: use ahash::AHasher;
+46: 
+47: let mut m: HashMap<_, _, BuildHasherDefault<AHasher>> = HashMap::default();
+48:  # m.insert(12, 34);
+49: ```
+50: It is also possible to instantiate [RandomState] directly:
+51: 
+52: ```
+53: use ahash::HashMap;
+54: use ahash::RandomState;
+55: 
+56: let mut m = HashMap::with_hasher(RandomState::with_seed(42));
+57:  # m.insert(1, 2);
+58: ```
+59: Or for uses besides a hashhmap:
+60: ```
+61: use std::hash::BuildHasher;
+62: use ahash::RandomState;
+63: 
+64: let hash_builder = RandomState::with_seed(42);
+65: let hash = hash_builder.hash_one("Some Data");
+66: ```
+67: There are several constructors for [RandomState] with different ways to supply seeds.
+68: 
+69: # Convenience wrappers
+70: 
+71: For convenience, both new-type wrappers and type aliases are provided.
+72: 
+73: The new type wrappers are called called `AHashMap` and `AHashSet`.
+74: ```
+75: use ahash::AHashMap;
+76: 
+77: let mut map: AHashMap<i32, i32> = AHashMap::new();
+78: map.insert(12, 34);
+79: ```
+80: This avoids the need to type "RandomState". (For convenience `From`, `Into`, and `Deref` are provided).
+81: 
+82: # Aliases
+83: 
+84: For even less typing and better interop with existing libraries (such as rayon) which require a `std::collection::HashMap` ,
+85: the type aliases [HashMap], [HashSet] are provided.
+86: 
+87: ```
+88: use ahash::{HashMap, HashMapExt};
+```
+
+src/lib.rs:46-88
+```rust
+46: 
+47: let mut m: HashMap<_, _, BuildHasherDefault<AHasher>> = HashMap::default();
+48:  # m.insert(12, 34);
+49: ```
+50: It is also possible to instantiate [RandomState] directly:
+51: 
+52: ```
+53: use ahash::HashMap;
+54: use ahash::RandomState;
+55: 
+56: let mut m = HashMap::with_hasher(RandomState::with_seed(42));
+57:  # m.insert(1, 2);
+58: ```
+59: Or for uses besides a hashhmap:
+60: ```
+61: use std::hash::BuildHasher;
+62: use ahash::RandomState;
+63: 
+64: let hash_builder = RandomState::with_seed(42);
+65: let hash = hash_builder.hash_one("Some Data");
+66: ```
+67: There are several constructors for [RandomState] with different ways to supply seeds.
+68: 
+69: # Convenience wrappers
+70: 
+71: For convenience, both new-type wrappers and type aliases are provided.
+72: 
+73: The new type wrappers are called called `AHashMap` and `AHashSet`.
+74: ```
+75: use ahash::AHashMap;
+76: 
+77: let mut map: AHashMap<i32, i32> = AHashMap::new();
+78: map.insert(12, 34);
+79: ```
+80: This avoids the need to type "RandomState". (For convenience `From`, `Into`, and `Deref` are provided).
+81: 
+82: # Aliases
+83: 
+84: For even less typing and better interop with existing libraries (such as rayon) which require a `std::collection::HashMap` ,
+85: the type aliases [HashMap], [HashSet] are provided.
+86: 
+87: ```
+88: use ahash::{HashMap, HashMapExt};
+```
+
+src/hash_quality_test.rs:339-365
+```rust
+339: 
+340: fn test_sparse<T: Hasher>(hasher: impl Fn() -> T) {
+341:     use smallvec::SmallVec;
+342: 
+343:     let mut buf = [0u8; 256];
+344:     let mut hashes = HashMap::new();
+345:     for idx_1 in 0..255_u8 {
+346:         for idx_2 in idx_1 + 1..=255_u8 {
+347:             for value_1 in [1, 2, 4, 8, 16, 32, 64, 128] {
+348:                 for value_2 in [
+349:                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 16, 17, 18, 20, 24, 31, 32, 33, 48, 64, 96, 127, 128, 129,
+350:                     192, 254, 255,
+351:                 ] {
+352:                     buf[idx_1 as usize] = value_1;
+353:                     buf[idx_2 as usize] = value_2;
+354:                     let hash_value = hash_with(&buf, &mut hasher());
+355:                     let keys = hashes.entry(hash_value).or_insert(SmallVec::<[[u8; 4]; 1]>::new());
+356:                     keys.push([idx_1, value_1, idx_2, value_2]);
+357:                     buf[idx_1 as usize] = 0;
+358:                     buf[idx_2 as usize] = 0;
+359:                 }
+360:             }
+361:         }
+362:     }
+363:     hashes.retain(|_key, value| value.len() != 1);
+364:     assert_eq!(0, hashes.len(), "Collision with: {:?}", hashes);
+365: }
+```
+
+src/lib.rs:76-88
+```rust
+76: 
+77: let mut map: AHashMap<i32, i32> = AHashMap::new();
+78: map.insert(12, 34);
+79: ```
+80: This avoids the need to type "RandomState". (For convenience `From`, `Into`, and `Deref` are provided).
+81: 
+82: # Aliases
+83: 
+84: For even less typing and better interop with existing libraries (such as rayon) which require a `std::collection::HashMap` ,
+85: the type aliases [HashMap], [HashSet] are provided.
+86: 
+87: ```
+88: use ahash::{HashMap, HashMapExt};
+```
+
+src/ffi/schema.rs:543-622
+```rust
+543: 
+544:     #[test]
+545:     fn test_all() {
+546:         let mut dts = vec![
+547:             DataType::Null,
+548:             DataType::Boolean,
+549:             DataType::UInt8,
+550:             DataType::UInt16,
+551:             DataType::UInt32,
+552:             DataType::UInt64,
+553:             DataType::Int8,
+554:             DataType::Int16,
+555:             DataType::Int32,
+556:             DataType::Int64,
+557:             DataType::Float32,
+558:             DataType::Float64,
+559:             DataType::Date32,
+560:             DataType::Date64,
+561:             DataType::Time32(TimeUnit::Second),
+562:             DataType::Time32(TimeUnit::Millisecond),
+563:             DataType::Time64(TimeUnit::Microsecond),
+564:             DataType::Time64(TimeUnit::Nanosecond),
+565:             DataType::Decimal(5, 5),
+566:             DataType::Utf8,
+567:             DataType::LargeUtf8,
+568:             DataType::Binary,
+569:             DataType::LargeBinary,
+570:             DataType::FixedSizeBinary(2),
+571:             DataType::List(Box::new(Field::new("example", DataType::Boolean, false))),
+572:             DataType::FixedSizeList(Box::new(Field::new("example", DataType::Boolean, false)), 2),
+573:             DataType::LargeList(Box::new(Field::new("example", DataType::Boolean, false))),
+574:             DataType::Struct(vec![
+575:                 Field::new("a", DataType::Int64, true),
+576:                 Field::new(
+577:                     "b",
+578:                     DataType::List(Box::new(Field::new("item", DataType::Int32, true))),
+579:                     true,
+580:                 ),
+581:             ]),
+582:             DataType::Map(Box::new(Field::new("a", DataType::Int64, true)), true),
+583:             DataType::Union(
+584:                 vec![
+585:                     Field::new("a", DataType::Int64, true),
+586:                     Field::new(
+587:                         "b",
+588:                         DataType::List(Box::new(Field::new("item", DataType::Int32, true))),
+589:                         true,
+590:                     ),
+591:                 ],
+592:                 Some(vec![1, 2]),
+593:                 UnionMode::Dense,
+594:             ),
+595:             DataType::Union(
+596:                 vec![
+597:                     Field::new("a", DataType::Int64, true),
+598:                     Field::new(
+599:                         "b",
+600:                         DataType::List(Box::new(Field::new("item", DataType::Int32, true))),
+601:                         true,
+602:                     ),
+603:                 ],
+604:                 Some(vec![0, 1]),
+605:                 UnionMode::Sparse,
+606:             ),
+607:         ];
+608:         for time_unit in [
+609:             TimeUnit::Second,
+610:             TimeUnit::Millisecond,
+611:             TimeUnit::Microsecond,
+612:             TimeUnit::Nanosecond,
+613:         ] {
+614:             dts.push(DataType::Timestamp(time_unit, None));
+615:             dts.push(DataType::Timestamp(time_unit, Some("00:00".to_string())));
+616:             dts.push(DataType::Duration(time_unit));
+617:         }
+618:         for interval_type in [
+619:             IntervalUnit::DayTime,
+620:             IntervalUnit::YearMonth,
+621:             //IntervalUnit::MonthDayNano, // not yet defined on the C data interface
+622:         ] {
+```
+
+src/aes_hash.rs:378-387
+```rust
+378: 
+379:     #[cfg(feature = "compile-time-rng")]
+380:     #[test]
+381:     fn test_builder() {
+382:         use std::collections::HashMap;
+383:         use std::hash::BuildHasherDefault;
+384: 
+385:         let mut map = HashMap::<u32, u64, BuildHasherDefault<AHasher>>::default();
+386:         map.insert(1, 3);
+387:     }
+```
+
+src/lib.rs:277-284
+```rust
+277: 
+278:     #[test]
+279:     fn test_default_builder() {
+280:         use core::hash::BuildHasherDefault;
+281: 
+282:         let mut map = HashMap::<u32, u64, BuildHasherDefault<AHasher>>::default();
+283:         map.insert(1, 3);
+284:     }
+```
+
+src/hash_map.rs:353-357
+```rust
+353:     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+354:         let mut inner = HashMap::with_hasher(RandomState::new());
+355:         inner.extend(iter);
+356:         AHashMap(inner)
+357:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-ffi-schema-rs-169-18
+
+Rule id: rule-449
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+generated testcase casts an ordinary element buffer directly to a pointer-to-pointer using `children.as_ptr() as *mut *mut`. For `*mut *mut T` fields, build separate safe row/element backing arrays or Vecs, then build an array/Vec of their pointers and pass that pointer array instead.
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/array/mod.rs">
+```rust
+//! Contains the [`Array`] and [`MutableArray`] trait objects declaring arrays,
+//! as well as concrete arrays (such as [`Utf8Array`] and [`MutableUtf8Array`]).
+//!
+//! Fixed-length containers with optional values
+//! that are layed in memory according to the Arrow specification.
+//! Each array type has its own `struct`. The following are the main array types:
+//! * [`PrimitiveArray`] and [`MutablePrimitiveArray`], an array of values with a fixed length such as integers, floats, etc.
+//! * [`BooleanArray`] and [`MutableBooleanArray`], an array of boolean values (stored as a bitmap)
+//! * [`Utf8Array`] and [`MutableUtf8Array`], an array of variable length utf8 values
+//! * [`BinaryArray`] and [`MutableBinaryArray`], an array of opaque variable length values
+//! * [`ListArray`] and [`MutableListArray`], an array of arrays (e.g. `[[1, 2], None, [], [None]]`)
+//! * [`StructArray`] and [`MutableStructArray`], an array of arrays identified by a string (e.g. `{"a": [1, 2], "b": [true, false]}`)
+//! All immutable arrays implement the trait object [`Array`] and that can be downcasted
+//! to a concrete struct based on [`PhysicalType`](crate::datatypes::PhysicalType) available from [`Array::data_type`].
+//! All immutable arrays are backed by [`Buffer`](crate::buffer::Buffer) and thus cloning and slicing them is `O(1)`.
+//!
+//! Most arrays contain a [`MutableArray`] counterpart that is neither clonable nor slicable, but
+//! can be operated in-place.
+use std::any::Any;
+use std::sync::Arc;
+
+use crate::error::Result;
+use crate::{
+    bitmap::{Bitmap, MutableBitmap},
+    datatypes::DataType,
+};
+
+pub(self) mod physical_binary;
+
+/// A trait representing an immutable Arrow array. Arrow arrays are trait objects
+/// that are infallibly downcasted to concrete types according to the [`Array::data_type`].
+pub trait Array: Send + Sync + dyn_clone::DynClone + 'static {
+    /// Converts itself to a reference of [`Any`], which enables downcasting to concrete types.
+    fn as_any(&self) -> &dyn Any;
+
+    /// Converts itself to a mutable reference of [`Any`], which enables mutable downcasting to concrete types.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// The length of the [`Array`]. Every array has a length corresponding to the number of
+    /// elements (slots).
+    fn len(&self) -> usize;
+
+    /// whether the array is empty
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// The [`DataType`] of the [`Array`]. In combination with [`Array::as_any`], this can be
+    /// used to downcast trait objects (`dyn Array`) to concrete arrays.
+    fn data_type(&self) -> &DataType;
+
+    /// The validity of the [`Array`]: every array has an optional [`Bitmap`] that, when available
+    /// specifies whether the array slot is valid or not (null).
+    /// When the validity is [`None`], all slots are valid.
+    fn validity(&self) -> Option<&Bitmap>;
+
+    /// The number of null slots on this [`Array`].
+    /// # Implementation
+    /// This is `O(1)` since the number of null elements is pre-computed.
+    #[inline]
+    fn null_count(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether slot `i` is null.
+    /// # Panic
+    /// Panics iff `i >= self.len()`.
+    #[inline]
+    fn is_null(&self, i: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether slot `i` is null.
+    /// # Safety
+    /// The caller must ensure `i < self.len()`
+    #[inline]
+    unsafe fn is_null_unchecked(&self, i: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether slot `i` is valid.
+    /// # Panic
+    /// Panics iff `i >= self.len()`.
+    #[inline]
+    fn is_valid(&self, i: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Slices this [`Array`].
+    /// # Implementation
+    /// This operation is `O(1)` over `len`.
+    /// # Panic
+    /// This function panics iff `offset + length > self.len()`.
+    fn slice(&mut self, offset: usize, length: usize);
+
+    /// Slices the [`Array`].
+    /// # Implementation
+    /// This operation is `O(1)`.
+    /// # Safety
+    /// The caller must ensure that `offset + length <= self.len()`
+    unsafe fn slice_unchecked(&mut self, offset: usize, length: usize);
+
+    /// Returns a slice of this [`Array`].
+    /// # Implementation
+    /// This operation is `O(1)` over `len`.
+    /// # Panic
+    /// This function panics iff `offset + length > self.len()`.
+    #[must_use]
+    fn sliced(&self, offset: usize, length: usize) -> Box<dyn Array> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a slice of this [`Array`].
+    /// # Implementation
+    /// This operation is `O(1)` over `len`, as it amounts to increase two ref counts
+    /// and moving the struct to the heap.
+    /// # Safety
+    /// The caller must ensure that `offset + length <= self.len()`
+    #[must_use]
+    unsafe fn sliced_unchecked(&self, offset: usize, length: usize) -> Box<dyn Array> {
+        /* body omitted: interface retained */
+    }
+
+    /// Clones this [`Array`] with a new new assigned bitmap.
+    /// # Panic
+    /// This function panics iff `validity.len() != self.len()`.
+    fn with_validity(&self, validity: Option<Bitmap>) -> Box<dyn Array>;
+
+    /// Clone a `&dyn Array` to an owned `Box<dyn Array>`.
+    fn to_boxed(&self) -> Box<dyn Array>;
+}
+
+dyn_clone::clone_trait_object!(Array);
+
+/// A trait describing an array with a backing store that can be preallocated to
+/// a given size.
+pub(crate) trait Container {
+    /// Create this array with a given capacity.
+    fn with_capacity(capacity: usize) -> Self
+    where
+        Self: Sized;
+}
+
+/// A trait describing a mutable array; i.e. an array whose values can be changed.
+/// Mutable arrays cannot be cloned but can be mutated in place,
+/// thereby making them useful to perform numeric operations without allocations.
+/// As in [`Array`], concrete arrays (such as [`MutablePrimitiveArray`]) implement how they are mutated.
+pub trait MutableArray: std::fmt::Debug + Send + Sync {
+    /// The [`DataType`] of the array.
+    fn data_type(&self) -> &DataType;
+
+    /// The length of the array.
+    fn len(&self) -> usize;
+
+    /// Whether the array is empty.
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// The optional validity of the array.
+    fn validity(&self) -> Option<&MutableBitmap>;
+
+    /// Convert itself to an (immutable) [`Array`].
+    fn as_box(&mut self) -> Box<dyn Array>;
+
+    /// Convert itself to an (immutable) atomically reference counted [`Array`].
+    // This provided implementation has an extra allocation as it first
+    // boxes `self`, then converts the box into an `Arc`. Implementors may wish
+    // to avoid an allocation by skipping the box completely.
+    fn as_arc(&mut self) -> std::sync::Arc<dyn Array> {
+        /* body omitted: interface retained */
+    }
+
+    /// Convert to `Any`, to enable dynamic casting.
+    fn as_any(&self) -> &dyn Any;
+
+    /// Convert to mutable `Any`, to enable dynamic casting.
+    fn as_mut_any(&mut self) -> &mut dyn Any;
+
+    /// Adds a new null element to the array.
+    fn push_null(&mut self);
+
+    /// Whether `index` is valid / set.
+    /// # Panic
+    /// Panics if `index >= self.len()`.
+    #[inline]
+    fn is_valid(&self, index: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Reserves additional slots to its capacity.
+    fn reserve(&mut self, additional: usize);
+
+    /// Shrink the array to fit its length.
+    fn shrink_to_fit(&mut self);
+}
+
+impl MutableArray for Box<dyn MutableArray> {
+    fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    fn validity(&self) -> Option<&MutableBitmap> {
+        /* body omitted: interface retained */
+    }
+
+    fn as_box(&mut self) -> Box<dyn Array> {
+        /* body omitted: interface retained */
+    }
+
+    fn as_arc(&mut self) -> Arc<dyn Array> {
+        /* body omitted: interface retained */
+    }
+
+    fn data_type(&self) -> &DataType {
+        /* body omitted: interface retained */
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        /* body omitted: interface retained */
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn push_null(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    fn shrink_to_fit(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+}
+
+macro_rules! general_dyn {
+    ($array:expr, $ty:ty, $f:expr) => {{
+        let array = $array.as_any().downcast_ref::<$ty>().unwrap();
+        ($f)(array)
+    }};
+}
+
+macro_rules! fmt_dyn {
+    ($array:expr, $ty:ty, $f:expr) => {{
+        let mut f = |x: &$ty| x.fmt($f);
+        general_dyn!($array, $ty, f)
+    }};
+}
+
+macro_rules! match_integer_type {(
+    $key_type:expr, | $_:tt $T:ident | $($body:tt)*
+) => ({
+    macro_rules! __with_ty__ {( $_ $T:ident ) => ( $($body)* )}
+    use crate::datatypes::IntegerType::*;
+    match $key_type {
+        Int8 => __with_ty__! { i8 },
+        Int16 => __with_ty__! { i16 },
+        Int32 => __with_ty__! { i32 },
+        Int64 => __with_ty__! { i64 },
+        UInt8 => __with_ty__! { u8 },
+        UInt16 => __with_ty__! { u16 },
+        UInt32 => __with_ty__! { u32 },
+        UInt64 => __with_ty__! { u64 },
+    }
+})}
+
+macro_rules! with_match_primitive_type {(
+    $key_type:expr, | $_:tt $T:ident | $($body:tt)*
+) => ({
+    macro_rules! __with_ty__ {( $_ $T:ident ) => ( $($body)* )}
+    use crate::datatypes::PrimitiveType::*;
+    use crate::types::{days_ms, months_days_ns, f16, i256};
+    match $key_type {
+        Int8 => __with_ty__! { i8 },
+        Int16 => __with_ty__! { i16 },
+        Int32 => __with_ty__! { i32 },
+        Int64 => __with_ty__! { i64 },
+        Int128 => __with_ty__! { i128 },
+        Int256 => __with_ty__! { i256 },
+        DaysMs => __with_ty__! { days_ms },
+        MonthDayNano => __with_ty__! { months_days_ns },
+        UInt8 => __with_ty__! { u8 },
+        UInt16 => __with_ty__! { u16 },
+        UInt32 => __with_ty__! { u32 },
+        UInt64 => __with_ty__! { u64 },
+        Float16 => __with_ty__! { f16 },
+        Float32 => __with_ty__! { f32 },
+        Float64 => __with_ty__! { f64 },
+    }
+})}
+
+impl std::fmt::Debug for dyn Array + '_ {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Creates a new [`Array`] with a [`Array::len`] of 0.
+pub fn new_empty_array(data_type: DataType) -> Box<dyn Array> {
+    /* body omitted: interface retained */
+}
+
+/// Creates a new [`Array`] of [`DataType`] `data_type` and `length`.
+/// The array is guaranteed to have [`Array::null_count`] equal to [`Array::len`]
+/// for all types except Union, which does not have a validity.
+pub fn new_null_array(data_type: DataType, length: usize) -> Box<dyn Array> {
+    /* body omitted: interface retained */
+}
+
+/// Trait providing bi-directional conversion between arrow2 [`Array`] and arrow-rs [`ArrayData`]
+///
+/// [`ArrayData`]: arrow_data::ArrayData
+#[cfg(feature = "arrow")]
+pub trait Arrow2Arrow: Array {
+    /// Convert this [`Array`] into [`ArrayData`]
+    fn to_data(&self) -> arrow_data::ArrayData;
+
+    /// Create this [`Array`] from [`ArrayData`]
+    fn from_data(data: &arrow_data::ArrayData) -> Self;
+}
+
+#[cfg(feature = "arrow")]
+macro_rules! to_data_dyn {
+    ($array:expr, $ty:ty) => {{
+        let f = |x: &$ty| x.to_data();
+        general_dyn!($array, $ty, f)
+    }};
+}
+
+#[cfg(feature = "arrow")]
+impl From<Box<dyn Array>> for arrow_array::ArrayRef {
+    fn from(value: Box<dyn Array>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<&dyn Array> for arrow_array::ArrayRef {
+    fn from(value: &dyn Array) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_array::ArrayRef> for Box<dyn Array> {
+    fn from(value: arrow_array::ArrayRef) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<&dyn arrow_array::Array> for Box<dyn Array> {
+    fn from(value: &dyn arrow_array::Array) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Convert an arrow2 [`Array`] to [`arrow_data::ArrayData`]
+#[cfg(feature = "arrow")]
+pub fn to_data(array: &dyn Array) -> arrow_data::ArrayData {
+    /* body omitted: interface retained */
+}
+
+/// Convert an [`arrow_data::ArrayData`] to arrow2 [`Array`]
+#[cfg(feature = "arrow")]
+pub fn from_data(data: &arrow_data::ArrayData) -> Box<dyn Array> {
+    /* body omitted: interface retained */
+}
+
+macro_rules! clone_dyn {
+    ($array:expr, $ty:ty) => {{
+        let f = |x: &$ty| Box::new(x.clone());
+        general_dyn!($array, $ty, f)
+    }};
+}
+
+// macro implementing `sliced` and `sliced_unchecked`
+macro_rules! impl_sliced {
+    () => {
+        /// Returns this array sliced.
+        /// # Implementation
+        /// This function is `O(1)`.
+        /// # Panics
+        /// iff `offset + length > self.len()`.
+        #[inline]
+        #[must_use]
+        pub fn sliced(self, offset: usize, length: usize) -> Self {
+            /* body omitted: interface retained */
+        }
+
+        /// Returns this array sliced.
+        /// # Implementation
+        /// This function is `O(1)`.
+        /// # Safety
+        /// The caller must ensure that `offset + length <= self.len()`.
+        #[inline]
+        #[must_use]
+        pub unsafe fn sliced_unchecked(mut self, offset: usize, length: usize) -> Self {
+            /* body omitted: interface retained */
+        }
+    };
+}
+
+// macro implementing `with_validity` and `set_validity`
+macro_rules! impl_mut_validity {
+    () => {
+        /// Returns this array with a new validity.
+        /// # Panic
+        /// Panics iff `validity.len() != self.len()`.
+        #[must_use]
+        #[inline]
+        pub fn with_validity(mut self, validity: Option<Bitmap>) -> Self {
+            /* body omitted: interface retained */
+        }
+
+        /// Sets the validity of this array.
+        /// # Panics
+        /// This function panics iff `values.len() != self.len()`.
+        #[inline]
+        pub fn set_validity(&mut self, validity: Option<Bitmap>) {
+            /* body omitted: interface retained */
+        }
+    }
+}
+
+// macro implementing `with_validity`, `set_validity` and `apply_validity` for mutable arrays
+macro_rules! impl_mutable_array_mut_validity {
+    () => {
+        /// Returns this array with a new validity.
+        /// # Panic
+        /// Panics iff `validity.len() != self.len()`.
+        #[must_use]
+        #[inline]
+        pub fn with_validity(mut self, validity: Option<MutableBitmap>) -> Self {
+            /* body omitted: interface retained */
+        }
+
+        /// Sets the validity of this array.
+        /// # Panics
+        /// This function panics iff `values.len() != self.len()`.
+        #[inline]
+        pub fn set_validity(&mut self, validity: Option<MutableBitmap>) {
+            /* body omitted: interface retained */
+        }
+
+        /// Applies a function `f` to the validity of this array.
+        ///
+        /// This is an API to leverage clone-on-write
+        /// # Panics
+        /// This function panics if the function `f` modifies the length of the [`Bitmap`].
+        #[inline]
+        pub fn apply_validity<F: FnOnce(MutableBitmap) -> MutableBitmap>(&mut self, f: F) {
+            /* body omitted: interface retained */
+        }
+
+    }
+}
+
+// macro implementing `boxed` and `arced`
+macro_rules! impl_into_array {
+    () => {
+        /// Boxes this array into a [`Box<dyn Array>`].
+        pub fn boxed(self) -> Box<dyn Array> {
+            /* body omitted: interface retained */
+        }
+
+        /// Arcs this array into a [`std::sync::Arc<dyn Array>`].
+        pub fn arced(self) -> std::sync::Arc<dyn Array> {
+            /* body omitted: interface retained */
+        }
+    };
+}
+
+// macro implementing common methods of trait `Array`
+macro_rules! impl_common_array {
+    () => {
+        #[inline]
+        fn as_any(&self) -> &dyn std::any::Any {
+            /* body omitted: interface retained */
+        }
+
+        #[inline]
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            /* body omitted: interface retained */
+        }
+
+        #[inline]
+        fn len(&self) -> usize {
+            /* body omitted: interface retained */
+        }
+
+        #[inline]
+        fn data_type(&self) -> &DataType {
+            /* body omitted: interface retained */
+        }
+
+        #[inline]
+        fn slice(&mut self, offset: usize, length: usize) {
+            /* body omitted: interface retained */
+        }
+
+        #[inline]
+        unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+            /* body omitted: interface retained */
+        }
+
+        #[inline]
+        fn to_boxed(&self) -> Box<dyn Array> {
+            /* body omitted: interface retained */
+        }
+    };
+}
+
+/// Clones a dynamic [`Array`].
+/// # Implementation
+/// This operation is `O(1)` over `len`, as it amounts to increase two ref counts
+/// and moving the concrete struct under a `Box`.
+pub fn clone(array: &dyn Array) -> Box<dyn Array> {
+    /* body omitted: interface retained */
+}
+
+// see https://users.rust-lang.org/t/generic-for-dyn-a-or-box-dyn-a-or-arc-dyn-a/69430/3
+// for details
+impl<'a> AsRef<(dyn Array + 'a)> for dyn Array {
+    fn as_ref(&self) -> &(dyn Array + 'a) {
+        /* body omitted: interface retained */
+    }
+}
+
+mod binary;
+mod boolean;
+mod dictionary;
+mod fixed_size_binary;
+mod fixed_size_list;
+mod list;
+mod map;
+mod null;
+mod primitive;
+mod specification;
+mod struct_;
+mod union;
+mod utf8;
+
+mod equal;
+mod ffi;
+mod fmt;
+#[doc(hidden)]
+pub mod indexable;
+mod iterator;
+
+pub mod growable;
+pub mod ord;
+
+pub(crate) use iterator::ArrayAccessor;
+pub use iterator::ArrayValuesIter;
+
+pub use equal::equal;
+pub use fmt::{get_display, get_value_display};
+
+pub use binary::{BinaryArray, BinaryValueIter, MutableBinaryArray, MutableBinaryValuesArray};
+pub use boolean::{BooleanArray, MutableBooleanArray};
+pub use dictionary::{DictionaryArray, DictionaryKey, MutableDictionaryArray};
+pub use fixed_size_binary::{FixedSizeBinaryArray, MutableFixedSizeBinaryArray};
+pub use fixed_size_list::{FixedSizeListArray, MutableFixedSizeListArray};
+pub use list::{ListArray, ListValuesIter, MutableListArray};
+pub use map::MapArray;
+pub use null::{MutableNullArray, NullArray};
+pub use primitive::*;
+pub use struct_::{MutableStructArray, StructArray};
+pub use union::UnionArray;
+pub use utf8::{MutableUtf8Array, MutableUtf8ValuesArray, Utf8Array, Utf8ValuesIter};
+
+pub(crate) use self::ffi::offset_buffers_children_dictionary;
+pub(crate) use self::ffi::FromFfi;
+pub(crate) use self::ffi::ToFfi;
+
+/// A trait describing the ability of a struct to create itself from a iterator.
+/// This is similar to [`Extend`], but accepted the creation to error.
+pub trait TryExtend<A> {
+    /// Fallible version of [`Extend::extend`].
+    fn try_extend<I: IntoIterator<Item = A>>(&mut self, iter: I) -> Result<()>;
+}
+
+/// A trait describing the ability of a struct to receive new items.
+pub trait TryPush<A> {
+    /// Tries to push a new element.
+    fn try_push(&mut self, item: A) -> Result<()>;
+}
+
+/// A trait describing the ability of a struct to receive new items.
+pub trait PushUnchecked<A> {
+    /// Push a new element that holds the invariants of the struct.
+    /// # Safety
+    /// The items must uphold the invariants of the struct
+    /// Read the specific implementation of the trait to understand what these are.
+    unsafe fn push_unchecked(&mut self, item: A);
+}
+
+/// A trait describing the ability of a struct to extend from a reference of itself.
+/// Specialization of [`TryExtend`].
+pub trait TryExtendFromSelf {
+    /// Tries to extend itself with elements from `other`, failing only on overflow.
+    fn try_extend_from_self(&mut self, other: &Self) -> Result<()>;
+}
+
+/// Trait that [`BinaryArray`] and [`Utf8Array`] implement for the purposes of DRY.
+/// # Safety
+/// The implementer must ensure that
+/// 1. `offsets.len() > 0`
+/// 2. `offsets[i] >= offsets[i-1] for all i`
+/// 3. `offsets[i] < values.len() for all i`
+pub unsafe trait GenericBinaryArray<O: crate::offset::Offset>: Array {
+    /// The values of the array
+    fn values(&self) -> &[u8];
+    /// The offsets of the array
+    fn offsets(&self) -> &[O];
+}
+```
+</file>
+
+<file path="src/bitmap/immutable.rs">
+```rust
+use std::{iter::FromIterator, ops::Deref, sync::Arc};
+
+use either::Either;
+
+use crate::{buffer::Bytes, error::Error, trusted_len::TrustedLen};
+
+use super::{
+    chunk_iter_to_vec,
+    utils::{count_zeros, fmt, get_bit, get_bit_unchecked, BitChunk, BitChunks, BitmapIter},
+    IntoIter, MutableBitmap,
+};
+
+/// An immutable container semantically equivalent to `Arc<Vec<bool>>` but represented as `Arc<Vec<u8>>` where
+/// each boolean is represented as a single bit.
+///
+/// # Examples
+/// ```
+/// use arrow2::bitmap::{Bitmap, MutableBitmap};
+///
+/// let bitmap = Bitmap::from([true, false, true]);
+/// assert_eq!(bitmap.iter().collect::<Vec<_>>(), vec![true, false, true]);
+///
+/// // creation directly from bytes
+/// let bitmap = Bitmap::try_new(vec![0b00001101], 5).unwrap();
+/// // note: the first bit is the left-most of the first byte
+/// assert_eq!(bitmap.iter().collect::<Vec<_>>(), vec![true, false, true, true, false]);
+/// // we can also get the slice:
+/// assert_eq!(bitmap.as_slice(), ([0b00001101u8].as_ref(), 0, 5));
+/// // debug helps :)
+/// assert_eq!(format!("{:?}", bitmap), "[0b___01101]".to_string());
+///
+/// // it supports copy-on-write semantics (to a `MutableBitmap`)
+/// let bitmap: MutableBitmap = bitmap.into_mut().right().unwrap();
+/// assert_eq!(bitmap, MutableBitmap::from([true, false, true, true, false]));
+///
+/// // slicing is 'O(1)' (data is shared)
+/// let bitmap = Bitmap::try_new(vec![0b00001101], 5).unwrap();
+/// let mut sliced = bitmap.clone();
+/// sliced.slice(1, 4);
+/// assert_eq!(sliced.as_slice(), ([0b00001101u8].as_ref(), 1, 4)); // 1 here is the offset:
+/// assert_eq!(format!("{:?}", sliced), "[0b___0110_]".to_string());
+/// // when sliced (or cloned), it is no longer possible to `into_mut`.
+/// let same: Bitmap = sliced.into_mut().left().unwrap();
+/// ```
+#[derive(Clone)]
+pub struct Bitmap {
+    bytes: Arc<Bytes<u8>>,
+    // both are measured in bits. They are used to bound the bitmap to a region of Bytes.
+    offset: usize,
+    length: usize,
+    // this is a cache: it is computed on initialization
+    unset_bits: usize,
+}
+
+impl std::fmt::Debug for Bitmap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Default for Bitmap {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+pub(super) fn check(bytes: &[u8], offset: usize, length: usize) -> Result<(), Error> {
+    /* body omitted: interface retained */
+}
+
+impl Bitmap {
+    /// Initializes an empty [`Bitmap`].
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes a new [`Bitmap`] from vector of bytes and a length.
+    /// # Errors
+    /// This function errors iff `length > bytes.len() * 8`
+    #[inline]
+    pub fn try_new(bytes: Vec<u8>, length: usize) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the length of the [`Bitmap`].
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether [`Bitmap`] is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a new iterator of `bool` over this bitmap
+    pub fn iter(&self) -> BitmapIter {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns an iterator over bits in bit chunks [`BitChunk`].
+    ///
+    /// This iterator is useful to operate over multiple bits via e.g. bitwise.
+    pub fn chunks<T: BitChunk>(&self) -> BitChunks<T> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the byte slice of this [`Bitmap`].
+    ///
+    /// The returned tuple contains:
+    /// * `.1`: The byte slice, truncated to the start of the first bit. So the start of the slice
+    ///       is within the first 8 bits.
+    /// * `.2`: The start offset in bits on a range `0 <= offsets < 8`.
+    /// * `.3`: The length in number of bits.
+    #[inline]
+    pub fn as_slice(&self) -> (&[u8], usize, usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of unset bits on this [`Bitmap`].
+    ///
+    /// Guaranteed to be `<= self.len()`.
+    /// # Implementation
+    /// This function is `O(1)` - the number of unset bits is computed when the bitmap is
+    /// created
+    pub const fn unset_bits(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of unset bits on this [`Bitmap`].
+    #[inline]
+    #[deprecated(since = "0.13.0", note = "use `unset_bits` instead")]
+    pub fn null_count(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Slices `self`, offsetting by `offset` and truncating up to `length` bits.
+    /// # Panic
+    /// Panics iff `offset + length > self.length`, i.e. if the offset and `length`
+    /// exceeds the allocated capacity of `self`.
+    #[inline]
+    pub fn slice(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Slices `self`, offseting by `offset` and truncating up to `length` bits.
+    /// # Safety
+    /// The caller must ensure that `self.offset + offset + length <= self.len()`
+    #[inline]
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Slices `self`, offsetting by `offset` and truncating up to `length` bits.
+    /// # Panic
+    /// Panics iff `offset + length > self.length`, i.e. if the offset and `length`
+    /// exceeds the allocated capacity of `self`.
+    #[inline]
+    #[must_use]
+    pub fn sliced(self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Slices `self`, offseting by `offset` and truncating up to `length` bits.
+    /// # Safety
+    /// The caller must ensure that `self.offset + offset + length <= self.len()`
+    #[inline]
+    #[must_use]
+    pub unsafe fn sliced_unchecked(mut self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the bit at position `i` is set.
+    /// # Panics
+    /// Panics iff `i >= self.len()`.
+    #[inline]
+    pub fn get_bit(&self, i: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Unsafely returns whether the bit at position `i` is set.
+    /// # Safety
+    /// Unsound iff `i >= self.len()`.
+    #[inline]
+    pub unsafe fn get_bit_unchecked(&self, i: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a pointer to the start of this [`Bitmap`] (ignores `offsets`)
+    /// This pointer is allocated iff `self.len() > 0`.
+    pub(crate) fn as_ptr(&self) -> *const u8 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a pointer to the start of this [`Bitmap`] (ignores `offsets`)
+    /// This pointer is allocated iff `self.len() > 0`.
+    pub(crate) fn offset(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Converts this [`Bitmap`] to [`MutableBitmap`], returning itself if the conversion
+    /// is not possible
+    ///
+    /// This operation returns a [`MutableBitmap`] iff:
+    /// * this [`Bitmap`] is not an offsetted slice of another [`Bitmap`]
+    /// * this [`Bitmap`] has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * this [`Bitmap`] was not imported from the c data interface (FFI)
+    pub fn into_mut(mut self) -> Either<Self, MutableBitmap> {
+        /* body omitted: interface retained */
+    }
+
+    /// Converts this [`Bitmap`] into a [`MutableBitmap`], cloning its internal
+    /// buffer if required (clone-on-write).
+    pub fn make_mut(self) -> MutableBitmap {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes an new [`Bitmap`] filled with unset values.
+    #[inline]
+    pub fn new_zeroed(length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Counts the nulls (unset bits) starting from `offset` bits and for `length` bits.
+    #[inline]
+    pub fn null_count_range(&self, offset: usize, length: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`Bitmap`] from a slice and length.
+    /// # Panic
+    /// Panics iff `length <= bytes.len() * 8`
+    #[inline]
+    pub fn from_u8_slice<T: AsRef<[u8]>>(slice: T, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Alias for `Bitmap::try_new().unwrap()`
+    /// This function is `O(1)`
+    /// # Panic
+    /// This function panics iff `length <= bytes.len() * 8`
+    #[inline]
+    pub fn from_u8_vec(vec: Vec<u8>, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the bit at position `i` is set.
+    #[inline]
+    pub fn get(&self, i: usize) -> Option<bool> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns its internal representation
+    #[must_use]
+    pub fn into_inner(self) -> (Arc<Bytes<u8>>, usize, usize, usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a `[Bitmap]` from its internal representation.
+    /// This is the inverted from `[Bitmap::into_inner]`
+    ///
+    /// # Safety
+    /// The invariants of this struct must be upheld
+    pub unsafe fn from_inner(
+        bytes: Arc<Bytes<u8>>,
+        offset: usize,
+        length: usize,
+        unset_bits: usize,
+    ) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a `[Bitmap]` from its internal representation.
+    /// This is the inverted from `[Bitmap::into_inner]`
+    ///
+    /// # Safety
+    /// Callers must ensure all invariants of this struct are upheld.
+    pub unsafe fn from_inner_unchecked(
+        bytes: Arc<Bytes<u8>>,
+        offset: usize,
+        length: usize,
+        unset_bits: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<P: AsRef<[bool]>> From<P> for Bitmap {
+    fn from(slice: P) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl FromIterator<bool> for Bitmap {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = bool>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Bitmap {
+    /// Creates a new [`Bitmap`] from an iterator of booleans.
+    /// # Safety
+    /// The iterator must report an accurate length.
+    #[inline]
+    pub unsafe fn from_trusted_len_iter_unchecked<I: Iterator<Item = bool>>(iterator: I) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`Bitmap`] from an iterator of booleans.
+    #[inline]
+    pub fn from_trusted_len_iter<I: TrustedLen<Item = bool>>(iterator: I) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`Bitmap`] from a fallible iterator of booleans.
+    #[inline]
+    pub fn try_from_trusted_len_iter<E, I: TrustedLen<Item = std::result::Result<bool, E>>>(
+        iterator: I,
+    ) -> std::result::Result<Self, E> {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`Bitmap`] from a fallible iterator of booleans.
+    /// # Safety
+    /// The iterator must report an accurate length.
+    #[inline]
+    pub unsafe fn try_from_trusted_len_iter_unchecked<
+        E,
+        I: Iterator<Item = std::result::Result<bool, E>>,
+    >(
+        iterator: I,
+    ) -> std::result::Result<Self, E> {
+        /* body omitted: interface retained */
+    }
+
+    /// Create a new [`Bitmap`] from an arrow [`NullBuffer`]
+    ///
+    /// [`NullBuffer`]: arrow_buffer::buffer::NullBuffer
+    #[cfg(feature = "arrow")]
+    pub fn from_null_buffer(value: arrow_buffer::buffer::NullBuffer) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> IntoIterator for &'a Bitmap {
+    type Item = bool;
+    type IntoIter = BitmapIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+
+impl IntoIterator for Bitmap {
+    type Item = bool;
+    type IntoIter = IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<Bitmap> for arrow_buffer::buffer::NullBuffer {
+    fn from(value: Bitmap) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/bitmap/mutable.rs">
+```rust
+use std::hint::unreachable_unchecked;
+use std::iter::FromIterator;
+use std::sync::Arc;
+
+use crate::bitmap::utils::{merge_reversed, set_bit_unchecked};
+use crate::error::Error;
+use crate::trusted_len::TrustedLen;
+
+use super::utils::{
+    count_zeros, fmt, get_bit, set, set_bit, BitChunk, BitChunksExactMut, BitmapIter,
+};
+use super::Bitmap;
+
+/// A container of booleans. [`MutableBitmap`] is semantically equivalent
+/// to [`Vec<bool>`].
+///
+/// The two main differences against [`Vec<bool>`] is that each element stored as a single bit,
+/// thereby:
+/// * it uses 8x less memory
+/// * it cannot be represented as `&[bool]` (i.e. no pointer arithmetics).
+///
+/// A [`MutableBitmap`] can be converted to a [`Bitmap`] at `O(1)`.
+/// # Examples
+/// ```
+/// use arrow2::bitmap::MutableBitmap;
+///
+/// let bitmap = MutableBitmap::from([true, false, true]);
+/// assert_eq!(bitmap.iter().collect::<Vec<_>>(), vec![true, false, true]);
+///
+/// // creation directly from bytes
+/// let mut bitmap = MutableBitmap::try_new(vec![0b00001101], 5).unwrap();
+/// // note: the first bit is the left-most of the first byte
+/// assert_eq!(bitmap.iter().collect::<Vec<_>>(), vec![true, false, true, true, false]);
+/// // we can also get the slice:
+/// assert_eq!(bitmap.as_slice(), [0b00001101u8].as_ref());
+/// // debug helps :)
+/// assert_eq!(format!("{:?}", bitmap), "[0b___01101]".to_string());
+///
+/// // It supports mutation in place
+/// bitmap.set(0, false);
+/// assert_eq!(format!("{:?}", bitmap), "[0b___01100]".to_string());
+/// // and `O(1)` random access
+/// assert_eq!(bitmap.get(0), false);
+/// ```
+/// # Implementation
+/// This container is internally a [`Vec<u8>`].
+#[derive(Clone)]
+pub struct MutableBitmap {
+    buffer: Vec<u8>,
+    // invariant: length.saturating_add(7) / 8 == buffer.len();
+    length: usize,
+}
+
+impl std::fmt::Debug for MutableBitmap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl PartialEq for MutableBitmap {
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl MutableBitmap {
+    /// Initializes an empty [`MutableBitmap`].
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes a new [`MutableBitmap`] from a [`Vec<u8>`] and a length.
+    /// # Errors
+    /// This function errors iff `length > bytes.len() * 8`
+    #[inline]
+    pub fn try_new(bytes: Vec<u8>, length: usize) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes a [`MutableBitmap`] from a [`Vec<u8>`] and a length.
+    /// This function is `O(1)`.
+    /// # Panic
+    /// Panics iff the length is larger than the length of the buffer times 8.
+    #[inline]
+    pub fn from_vec(buffer: Vec<u8>, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes a pre-allocated [`MutableBitmap`] with capacity for `capacity` bits.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Pushes a new bit to the [`MutableBitmap`], re-sizing it if necessary.
+    #[inline]
+    pub fn push(&mut self, value: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// Pop the last bit from the [`MutableBitmap`].
+    /// Note if the [`MutableBitmap`] is empty, this method will return None.
+    #[inline]
+    pub fn pop(&mut self) -> Option<bool> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the position `index` is set.
+    /// # Panics
+    /// Panics iff `index >= self.len()`.
+    #[inline]
+    pub fn get(&self, index: usize) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets the position `index` to `value`
+    /// # Panics
+    /// Panics iff `index >= self.len()`.
+    #[inline]
+    pub fn set(&mut self, index: usize, value: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// constructs a new iterator over the bits of [`MutableBitmap`].
+    pub fn iter(&self) -> BitmapIter {
+        /* body omitted: interface retained */
+    }
+
+    /// Empties the [`MutableBitmap`].
+    #[inline]
+    pub fn clear(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    /// Extends [`MutableBitmap`] by `additional` values of constant `value`.
+    /// # Implementation
+    /// This function is an order of magnitude faster than pushing element by element.
+    #[inline]
+    pub fn extend_constant(&mut self, additional: usize, value: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes a zeroed [`MutableBitmap`].
+    #[inline]
+    pub fn from_len_zeroed(length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Initializes a [`MutableBitmap`] with all values set to valid/ true.
+    #[inline]
+    pub fn from_len_set(length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Reserves `additional` bits in the [`MutableBitmap`], potentially re-allocating its buffer.
+    #[inline(always)]
+    pub fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the capacity of [`MutableBitmap`] in number of bits.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Pushes a new bit to the [`MutableBitmap`]
+    /// # Safety
+    /// The caller must ensure that the [`MutableBitmap`] has sufficient capacity.
+    #[inline]
+    pub unsafe fn push_unchecked(&mut self, value: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of unset bits on this [`MutableBitmap`].
+    ///
+    /// Guaranted to be `<= self.len()`.
+    /// # Implementation
+    /// This function is `O(N)`
+    pub fn unset_bits(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of unset bits on this [`MutableBitmap`].
+    #[deprecated(since = "0.13.0", note = "use `unset_bits` instead")]
+    pub fn null_count(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the length of the [`MutableBitmap`].
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether [`MutableBitmap`] is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// # Safety
+    /// The caller must ensure that the [`MutableBitmap`] was properly initialized up to `len`.
+    #[inline]
+    pub(crate) unsafe fn set_len(&mut self, len: usize) {
+        /* body omitted: interface retained */
+    }
+
+    fn extend_set(&mut self, mut additional: usize) {
+        /* body omitted: interface retained */
+    }
+
+    fn extend_unset(&mut self, mut additional: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets the position `index` to `value`
+    /// # Safety
+    /// Caller must ensure that `index < self.len()`
+    #[inline]
+    pub unsafe fn set_unchecked(&mut self, index: usize, value: bool) {
+        /* body omitted: interface retained */
+    }
+
+    /// Shrinks the capacity of the [`MutableBitmap`] to fit its current length.
+    pub fn shrink_to_fit(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns an iterator over mutable slices, [`BitChunksExactMut`]
+    pub(crate) fn bitchunks_exact_mut<T: BitChunk>(&mut self) -> BitChunksExactMut<T> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<MutableBitmap> for Bitmap {
+    #[inline]
+    fn from(buffer: MutableBitmap) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<MutableBitmap> for Option<Bitmap> {
+    #[inline]
+    fn from(buffer: MutableBitmap) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<P: AsRef<[bool]>> From<P> for MutableBitmap {
+    #[inline]
+    fn from(slice: P) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl FromIterator<bool> for MutableBitmap {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = bool>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+// [7, 6, 5, 4, 3, 2, 1, 0], [15, 14, 13, 12, 11, 10, 9, 8]
+// [00000001_00000000_00000000_00000000_...] // u64
+/// # Safety
+/// The iterator must be trustedLen and its len must be least `len`.
+#[inline]
+unsafe fn get_chunk_unchecked(iterator: &mut impl Iterator<Item = bool>) -> u64 {
+    /* body omitted: interface retained */
+}
+
+/// # Safety
+/// The iterator must be trustedLen and its len must be least `len`.
+#[inline]
+unsafe fn get_byte_unchecked(len: usize, iterator: &mut impl Iterator<Item = bool>) -> u8 {
+    /* body omitted: interface retained */
+}
+
+/// Extends the [`Vec<u8>`] from `iterator`
+/// # Safety
+/// The iterator MUST be [`TrustedLen`].
+#[inline]
+unsafe fn extend_aligned_trusted_iter_unchecked(
+    buffer: &mut Vec<u8>,
+    mut iterator: impl Iterator<Item = bool>,
+) -> usize {
+    /* body omitted: interface retained */
+}
+
+impl MutableBitmap {
+    /// Extends `self` from a [`TrustedLen`] iterator.
+    #[inline]
+    pub fn extend_from_trusted_len_iter<I: TrustedLen<Item = bool>>(&mut self, iterator: I) {
+        /* body omitted: interface retained */
+    }
+
+    /// Extends `self` from an iterator of trusted len.
+    /// # Safety
+    /// The caller must guarantee that the iterator has a trusted len.
+    #[inline]
+    pub unsafe fn extend_from_trusted_len_iter_unchecked<I: Iterator<Item = bool>>(
+        &mut self,
+        mut iterator: I,
+    ) {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`MutableBitmap`] from an iterator of booleans.
+    /// # Safety
+    /// The iterator must report an accurate length.
+    #[inline]
+    pub unsafe fn from_trusted_len_iter_unchecked<I>(iterator: I) -> Self
+    where
+        I: Iterator<Item = bool>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`MutableBitmap`] from an iterator of booleans.
+    #[inline]
+    pub fn from_trusted_len_iter<I>(iterator: I) -> Self
+    where
+        I: TrustedLen<Item = bool>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`MutableBitmap`] from an iterator of booleans.
+    pub fn try_from_trusted_len_iter<E, I>(iterator: I) -> std::result::Result<Self, E>
+    where
+        I: TrustedLen<Item = std::result::Result<bool, E>>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`MutableBitmap`] from an falible iterator of booleans.
+    /// # Safety
+    /// The caller must guarantee that the iterator is `TrustedLen`.
+    pub unsafe fn try_from_trusted_len_iter_unchecked<E, I>(
+        mut iterator: I,
+    ) -> std::result::Result<Self, E>
+    where
+        I: Iterator<Item = std::result::Result<bool, E>>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    fn extend_unaligned(&mut self, slice: &[u8], offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    fn extend_aligned(&mut self, slice: &[u8], offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Extends the [`MutableBitmap`] from a slice of bytes with optional offset.
+    /// This is the fastest way to extend a [`MutableBitmap`].
+    /// # Implementation
+    /// When both [`MutableBitmap`]'s length and `offset` are both multiples of 8,
+    /// this function performs a memcopy. Else, it first aligns bit by bit and then performs a memcopy.
+    /// # Safety
+    /// Caller must ensure `offset + length <= slice.len() * 8`
+    #[inline]
+    pub unsafe fn extend_from_slice_unchecked(
+        &mut self,
+        slice: &[u8],
+        offset: usize,
+        length: usize,
+    ) {
+        /* body omitted: interface retained */
+    }
+
+    /// Extends the [`MutableBitmap`] from a slice of bytes with optional offset.
+    /// This is the fastest way to extend a [`MutableBitmap`].
+    /// # Implementation
+    /// When both [`MutableBitmap`]'s length and `offset` are both multiples of 8,
+    /// this function performs a memcopy. Else, it first aligns bit by bit and then performs a memcopy.
+    #[inline]
+    pub fn extend_from_slice(&mut self, slice: &[u8], offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+
+    /// Extends the [`MutableBitmap`] from a [`Bitmap`].
+    #[inline]
+    pub fn extend_from_bitmap(&mut self, bitmap: &Bitmap) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the slice of bytes of this [`MutableBitmap`].
+    /// Note that the last byte may not be fully used.
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Default for MutableBitmap {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> IntoIterator for &'a MutableBitmap {
+    type Item = bool;
+    type IntoIter = BitmapIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/bitmap/utils/chunk_iterator/mod.rs">
+```rust
+use std::convert::TryInto;
+
+mod chunks_exact;
+mod merge;
+
+pub use crate::types::BitChunk;
+pub use chunks_exact::BitChunksExact;
+
+use crate::{trusted_len::TrustedLen, types::BitChunkIter};
+pub(crate) use merge::merge_reversed;
+
+/// Trait representing an exact iterator over bytes in [`BitChunk`].
+pub trait BitChunkIterExact<B: BitChunk>: TrustedLen<Item = B> {
+    /// The remainder of the iterator.
+    fn remainder(&self) -> B;
+
+    /// The number of items in the remainder
+    fn remainder_len(&self) -> usize;
+
+    /// An iterator over individual items of the remainder
+    #[inline]
+    fn remainder_iter(&self) -> BitChunkIter<B> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// This struct is used to efficiently iterate over bit masks by loading bytes on
+/// the stack with alignments of `uX`. This allows efficient iteration over bitmaps.
+#[derive(Debug)]
+pub struct BitChunks<'a, T: BitChunk> {
+    chunk_iterator: std::slice::ChunksExact<'a, u8>,
+    current: T,
+    remainder_bytes: &'a [u8],
+    last_chunk: T,
+    remaining: usize,
+    /// offset inside a byte
+    bit_offset: usize,
+    len: usize,
+    phantom: std::marker::PhantomData<T>,
+}
+
+/// writes `bytes` into `dst`.
+#[inline]
+fn copy_with_merge<T: BitChunk>(dst: &mut T::Bytes, bytes: &[u8], bit_offset: usize) {
+    /* body omitted: interface retained */
+}
+
+impl<'a, T: BitChunk> BitChunks<'a, T> {
+    /// Creates a [`BitChunks`].
+    pub fn new(slice: &'a [u8], offset: usize, len: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn load_next(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the remainder [`BitChunk`].
+    pub fn remainder(&self) -> T {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the remainder bits in [`BitChunks::remainder`].
+    pub fn remainder_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BitChunk> Iterator for BitChunks<'_, T> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<T> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BitChunk> BitChunkIterExact<T> for BitChunks<'_, T> {
+    #[inline]
+    fn remainder(&self) -> T {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn remainder_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BitChunk> ExactSizeIterator for BitChunks<'_, T> {
+    #[inline]
+    fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+unsafe impl<T: BitChunk> TrustedLen for BitChunks<'_, T> {}
+```
+</file>
+
+<file path="src/bitmap/utils/iterator.rs">
+```rust
+use crate::trusted_len::TrustedLen;
+
+use super::get_bit_unchecked;
+
+/// An iterator over bits according to the [LSB](https://en.wikipedia.org/wiki/Bit_numbering#Least_significant_bit),
+/// i.e. the bytes `[4u8, 128u8]` correspond to `[false, false, true, false, ..., true]`.
+#[derive(Debug, Clone)]
+pub struct BitmapIter<'a> {
+    bytes: &'a [u8],
+    index: usize,
+    end: usize,
+}
+
+impl<'a> BitmapIter<'a> {
+    /// Creates a new [`BitmapIter`].
+    pub fn new(slice: &'a [u8], offset: usize, len: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> Iterator for BitmapIter<'a> {
+    type Item = bool;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> DoubleEndedIterator for BitmapIter<'a> {
+    #[inline]
+    fn next_back(&mut self) -> Option<bool> {
+        /* body omitted: interface retained */
+    }
+}
+
+unsafe impl TrustedLen for BitmapIter<'_> {}
+impl ExactSizeIterator for BitmapIter<'_> {}
+```
+</file>
+
+<file path="src/buffer/immutable.rs">
+```rust
+use std::{iter::FromIterator, ops::Deref, sync::Arc, usize};
+use either::Either;
+use super::Bytes;
+use super::IntoIter;
+/// [`Buffer`] is a contiguous memory region that can be shared across
+/// thread boundaries.
+///
+/// The easiest way to think about [`Buffer<T>`] is being equivalent to
+/// a `Arc<Vec<T>>`, with the following differences:
+/// * slicing and cloning is `O(1)`.
+/// * it supports external allocated memory
+///
+/// The easiest way to create one is to use its implementation of `From<Vec<T>>`.
+///
+/// # Examples
+/// ```
+/// use arrow2::buffer::Buffer;
+///
+/// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+/// assert_eq!(buffer.as_ref(), [1, 2, 3].as_ref());
+///
+/// // it supports copy-on-write semantics (i.e. back to a `Vec`)
+/// let vec: Vec<u32> = buffer.into_mut().right().unwrap();
+/// assert_eq!(vec, vec![1, 2, 3]);
+///
+/// // cloning and slicing is `O(1)` (data is shared)
+/// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+/// let mut sliced = buffer.clone();
+/// sliced.slice(1, 1);
+/// assert_eq!(sliced.as_ref(), [2].as_ref());
+/// // but cloning forbids getting mut since `slice` and `buffer` now share data
+/// assert_eq!(buffer.get_mut_slice(), None);
+/// ```
+#[derive(Clone)]
+pub struct Buffer<T> {
+    /// the internal byte buffer.
+    data: Arc<Bytes<T>>,
+    /// The offset into the buffer.
+    offset: usize,
+    length: usize,
+}
+impl<T: PartialEq> PartialEq for Buffer<T> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: std::fmt::Debug> std::fmt::Debug for Buffer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Default for Buffer<T> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Buffer<T> {
+    /// Creates an empty [`Buffer`].
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Auxiliary method to create a new Buffer
+    pub(crate) fn from_bytes(bytes: Bytes<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of bytes in the buffer
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the buffer is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether underlying data is sliced.
+    /// If sliced the [`Buffer`] is backed by
+    /// more data than the length of `Self`.
+    pub fn is_sliced(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline(never)]
+    pub fn as_slice(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    /// # Safety
+    /// `index` must be smaller than `len`
+    #[inline]
+    pub(super) unsafe fn get_unchecked(&self, index: usize) -> &T {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+    /// Doing so allows the same memory region to be shared between buffers.
+    /// # Panics
+    /// Panics iff `offset + length` is larger than `len`.
+    #[inline]
+    pub fn sliced(self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Slices this buffer starting at `offset`.
+    /// # Panics
+    /// Panics iff `offset` is larger than `len`.
+    #[inline]
+    pub fn slice(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+    /// Doing so allows the same memory region to be shared between buffers.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    #[must_use]
+    pub unsafe fn sliced_unchecked(mut self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Slices this buffer starting at `offset`.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a pointer to the start of this buffer.
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const T {
+        /* body omitted: interface retained */
+    }
+    /// Returns the offset of this buffer.
+    #[inline]
+    pub fn offset(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// # Safety
+    /// The caller must ensure that the buffer was properly initialized up to `len`.
+    #[inline]
+    pub unsafe fn set_len(&mut self, len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its underlying [`Vec`], if possible.
+    ///
+    /// This operation returns [`Either::Right`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    #[inline]
+    pub fn into_mut(mut self) -> Either<Self, Vec<T>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its underlying `Vec`, if possible.
+    /// Note that only `[self.offset(), self.offset() + self.len()[` in this vector is visible
+    /// by this buffer.
+    ///
+    /// This operation returns [`Some`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    /// # Safety
+    /// The caller must ensure that the vector in the mutable reference keeps a length of at least `self.offset() + self.len() - 1`.
+    #[inline]
+    pub unsafe fn get_mut(&mut self) -> Option<&mut Vec<T>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its slice, if possible.
+    ///
+    /// This operation returns [`Some`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    #[inline]
+    pub fn get_mut_slice(&mut self) -> Option<&mut [T]> {
+        /* body omitted: interface retained */
+    }
+    /// Get the strong count of underlying `Arc` data buffer.
+    pub fn shared_count_strong(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Get the weak count of underlying `Arc` data buffer.
+    pub fn shared_count_weak(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns its internal representation
+    #[must_use]
+    pub fn into_inner(self) -> (Arc<Bytes<T>>, usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Creates a `[Bitmap]` from its internal representation.
+    /// This is the inverted from `[Bitmap::into_inner]`
+    ///
+    /// # Safety
+    /// Callers must ensure all invariants of this struct are upheld.
+    pub unsafe fn from_inner_unchecked(
+        data: Arc<Bytes<T>>,
+        offset: usize,
+        length: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> From<Vec<T>> for Buffer<T> {
+    #[inline]
+    fn from(p: Vec<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> std::ops::Deref for Buffer<T> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> FromIterator<T> for Buffer<T> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: Copy> IntoIterator for Buffer<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "arrow")]
+impl<T: crate::types::NativeType> From<arrow_buffer::Buffer> for Buffer<T> {
+    fn from(value: arrow_buffer::Buffer) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "arrow")]
+impl<T: crate::types::NativeType> From<Buffer<T>> for arrow_buffer::Buffer {
+    fn from(value: Buffer<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/buffer/mod.rs">
+```rust
+//! Contains [`Buffer`], an immutable container for all Arrow physical types (e.g. i32, f64).
+
+mod immutable;
+mod iterator;
+
+use crate::ffi::InternalArrowArray;
+use std::ops::Deref;
+
+pub(crate) enum BytesAllocator {
+    InternalArrowArray(InternalArrowArray),
+
+    #[cfg(feature = "arrow")]
+    Arrow(arrow_buffer::Buffer),
+}
+pub(crate) type BytesInner<T> = foreign_vec::ForeignVec<BytesAllocator, T>;
+
+/// Bytes representation.
+#[repr(transparent)]
+pub struct Bytes<T>(BytesInner<T>);
+
+impl<T> Bytes<T> {
+    /// Takes ownership of an allocated memory region.
+    /// # Panics
+    /// This function panics if and only if pointer is not null
+    /// # Safety
+    /// This function is safe if and only if `ptr` is valid for `length`
+    /// # Implementation
+    /// This function leaks if and only if `owner` does not deallocate
+    /// the region `[ptr, ptr+length[` when dropped.
+    #[inline]
+    pub(crate) unsafe fn from_foreign(ptr: *const T, length: usize, owner: BytesAllocator) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a `Some` mutable reference of [`Vec<T>`] iff this was initialized
+    /// from a [`Vec<T>`] and `None` otherwise.
+    #[inline]
+    pub(crate) fn get_vec(&mut self) -> Option<&mut Vec<T>> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> Deref for Bytes<T> {
+    type Target = [T];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> From<Vec<T>> for Bytes<T> {
+    #[inline]
+    fn from(data: Vec<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T> From<BytesInner<T>> for Bytes<T> {
+    #[inline]
+    fn from(value: BytesInner<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+pub(crate) fn to_buffer<T: crate::types::NativeType>(
+    value: std::sync::Arc<Bytes<T>>,
+) -> arrow_buffer::Buffer {
+    /* body omitted: interface retained */
+}
+
+#[cfg(feature = "arrow")]
+pub(crate) fn to_bytes<T: crate::types::NativeType>(value: arrow_buffer::Buffer) -> Bytes<T> {
+    /* body omitted: interface retained */
+}
+
+pub(super) use iterator::IntoIter;
+
+pub use immutable::Buffer;
+```
+</file>
+
+<file path="src/datatypes/field.rs">
+```rust
+use super::{DataType, Metadata};
+
+#[cfg(feature = "serde_types")]
+use serde_derive::{Deserialize, Serialize};
+
+/// Represents Arrow's metadata of a "column".
+///
+/// A [`Field`] is the closest representation of the traditional "column": a logical type
+/// ([`DataType`]) with a name and nullability.
+/// A Field has optional [`Metadata`] that can be used to annotate the field with custom metadata.
+///
+/// Almost all IO in this crate uses [`Field`] to represent logical information about the data
+/// to be serialized.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub struct Field {
+    /// Its name
+    pub name: String,
+    /// Its logical [`DataType`]
+    pub data_type: DataType,
+    /// Its nullability
+    pub is_nullable: bool,
+    /// Additional custom (opaque) metadata.
+    pub metadata: Metadata,
+}
+
+impl Field {
+    /// Creates a new [`Field`].
+    pub fn new<T: Into<String>>(name: T, data_type: DataType, is_nullable: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new [`Field`] with metadata.
+    #[inline]
+    pub fn with_metadata(self, metadata: Metadata) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the [`Field`]'s [`DataType`].
+    #[inline]
+    pub fn data_type(&self) -> &DataType {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<Field> for arrow_schema::Field {
+    fn from(value: Field) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_schema::Field> for Field {
+    fn from(value: arrow_schema::Field) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<&arrow_schema::Field> for Field {
+    fn from(value: &arrow_schema::Field) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_schema::FieldRef> for Field {
+    fn from(value: arrow_schema::FieldRef) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<&arrow_schema::FieldRef> for Field {
+    fn from(value: &arrow_schema::FieldRef) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/datatypes/mod.rs">
+```rust
+#![forbid(unsafe_code)]
+//! Contains all metadata, such as [`PhysicalType`], [`DataType`], [`Field`] and [`Schema`].
+
+mod field;
+mod physical_type;
+mod schema;
+
+pub use field::Field;
+pub use physical_type::*;
+pub use schema::Schema;
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+#[cfg(feature = "serde_types")]
+use serde_derive::{Deserialize, Serialize};
+
+/// typedef for [BTreeMap<String, String>] denoting [`Field`]'s and [`Schema`]'s metadata.
+pub type Metadata = BTreeMap<String, String>;
+/// typedef fpr [Option<(String, Option<String>)>] descr
+pub(crate) type Extension = Option<(String, Option<String>)>;
+
+/// The set of supported logical types in this crate.
+///
+/// Each variant uniquely identifies a logical type, which define specific semantics to the data
+/// (e.g. how it should be represented).
+/// Each variant has a corresponding [`PhysicalType`], obtained via [`DataType::to_physical_type`],
+/// which declares the in-memory representation of data.
+/// The [`DataType::Extension`] is special in that it augments a [`DataType`] with metadata to support custom types.
+/// Use `to_logical_type` to desugar such type and return its correspoding logical type.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum DataType {
+    /// Null type
+    Null,
+    /// `true` and `false`.
+    Boolean,
+    /// An [`i8`]
+    Int8,
+    /// An [`i16`]
+    Int16,
+    /// An [`i32`]
+    Int32,
+    /// An [`i64`]
+    Int64,
+    /// An [`u8`]
+    UInt8,
+    /// An [`u16`]
+    UInt16,
+    /// An [`u32`]
+    UInt32,
+    /// An [`u64`]
+    UInt64,
+    /// An 16-bit float
+    Float16,
+    /// A [`f32`]
+    Float32,
+    /// A [`f64`]
+    Float64,
+    /// A [`i64`] representing a timestamp measured in [`TimeUnit`] with an optional timezone.
+    ///
+    /// Time is measured as a Unix epoch, counting the seconds from
+    /// 00:00:00.000 on 1 January 1970, excluding leap seconds,
+    /// as a 64-bit signed integer.
+    ///
+    /// The time zone is a string indicating the name of a time zone, one of:
+    ///
+    /// * As used in the Olson time zone database (the "tz database" or
+    ///   "tzdata"), such as "America/New_York"
+    /// * An absolute time zone offset of the form +XX:XX or -XX:XX, such as +07:30
+    /// When the timezone is not specified, the timestamp is considered to have no timezone
+    /// and is represented _as is_
+    Timestamp(TimeUnit, Option<String>),
+    /// An [`i32`] representing the elapsed time since UNIX epoch (1970-01-01)
+    /// in days.
+    Date32,
+    /// An [`i64`] representing the elapsed time since UNIX epoch (1970-01-01)
+    /// in milliseconds. Values are evenly divisible by 86400000.
+    Date64,
+    /// A 32-bit time representing the elapsed time since midnight in the unit of `TimeUnit`.
+    /// Only [`TimeUnit::Second`] and [`TimeUnit::Millisecond`] are supported on this variant.
+    Time32(TimeUnit),
+    /// A 64-bit time representing the elapsed time since midnight in the unit of `TimeUnit`.
+    /// Only [`TimeUnit::Microsecond`] and [`TimeUnit::Nanosecond`] are supported on this variant.
+    Time64(TimeUnit),
+    /// Measure of elapsed time. This elapsed time is a physical duration (i.e. 1s as defined in S.I.)
+    Duration(TimeUnit),
+    /// A "calendar" interval modeling elapsed time that takes into account calendar shifts.
+    /// For example an interval of 1 day may represent more than 24 hours.
+    Interval(IntervalUnit),
+    /// Opaque binary data of variable length whose offsets are represented as [`i32`].
+    Binary,
+    /// Opaque binary data of fixed size.
+    /// Enum parameter specifies the number of bytes per value.
+    FixedSizeBinary(usize),
+    /// Opaque binary data of variable length whose offsets are represented as [`i64`].
+    LargeBinary,
+    /// A variable-length UTF-8 encoded string whose offsets are represented as [`i32`].
+    Utf8,
+    /// A variable-length UTF-8 encoded string whose offsets are represented as [`i64`].
+    LargeUtf8,
+    /// A list of some logical data type whose offsets are represented as [`i32`].
+    List(Box<Field>),
+    /// A list of some logical data type with a fixed number of elements.
+    FixedSizeList(Box<Field>, usize),
+    /// A list of some logical data type whose offsets are represented as [`i64`].
+    LargeList(Box<Field>),
+    /// A nested [`DataType`] with a given number of [`Field`]s.
+    Struct(Vec<Field>),
+    /// A nested datatype that can represent slots of differing types.
+    /// Third argument represents mode
+    Union(Vec<Field>, Option<Vec<i32>>, UnionMode),
+    /// A nested type that is represented as
+    ///
+    /// List<entries: Struct<key: K, value: V>>
+    ///
+    /// In this layout, the keys and values are each respectively contiguous. We do
+    /// not constrain the key and value types, so the application is responsible
+    /// for ensuring that the keys are hashable and unique. Whether the keys are sorted
+    /// may be set in the metadata for this field.
+    ///
+    /// In a field with Map type, the field has a child Struct field, which then
+    /// has two children: key type and the second the value type. The names of the
+    /// child fields may be respectively "entries", "key", and "value", but this is
+    /// not enforced.
+    ///
+    /// Map
+    /// ```text
+    ///   - child[0] entries: Struct
+    ///     - child[0] key: K
+    ///     - child[1] value: V
+    /// ```
+    /// Neither the "entries" field nor the "key" field may be nullable.
+    ///
+    /// The metadata is structured so that Arrow systems without special handling
+    /// for Map can make Map an alias for List. The "layout" attribute for the Map
+    /// field must have the same contents as a List.
+    Map(Box<Field>, bool),
+    /// A dictionary encoded array (`key_type`, `value_type`), where
+    /// each array element is an index of `key_type` into an
+    /// associated dictionary of `value_type`.
+    ///
+    /// Dictionary arrays are used to store columns of `value_type`
+    /// that contain many repeated values using less memory, but with
+    /// a higher CPU overhead for some operations.
+    ///
+    /// This type mostly used to represent low cardinality string
+    /// arrays or a limited set of primitive types as integers.
+    ///
+    /// The `bool` value indicates the `Dictionary` is sorted if set to `true`.
+    Dictionary(IntegerType, Box<DataType>, bool),
+    /// Decimal value with precision and scale
+    /// precision is the number of digits in the number and
+    /// scale is the number of decimal places.
+    /// The number 999.99 has a precision of 5 and scale of 2.
+    Decimal(usize, usize),
+    /// Decimal backed by 256 bits
+    Decimal256(usize, usize),
+    /// Extension type.
+    Extension(String, Box<DataType>, Option<String>),
+}
+
+#[cfg(feature = "arrow")]
+impl From<DataType> for arrow_schema::DataType {
+    fn from(value: DataType) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_schema::DataType> for DataType {
+    fn from(value: arrow_schema::DataType) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Mode of [`DataType::Union`]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum UnionMode {
+    /// Dense union
+    Dense,
+    /// Sparse union
+    Sparse,
+}
+
+#[cfg(feature = "arrow")]
+impl From<UnionMode> for arrow_schema::UnionMode {
+    fn from(value: UnionMode) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_schema::UnionMode> for UnionMode {
+    fn from(value: arrow_schema::UnionMode) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl UnionMode {
+    /// Constructs a [`UnionMode::Sparse`] if the input bool is true,
+    /// or otherwise constructs a [`UnionMode::Dense`]
+    pub fn sparse(is_sparse: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the mode is sparse
+    pub fn is_sparse(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether the mode is dense
+    pub fn is_dense(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The time units defined in Arrow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum TimeUnit {
+    /// Time in seconds.
+    Second,
+    /// Time in milliseconds.
+    Millisecond,
+    /// Time in microseconds.
+    Microsecond,
+    /// Time in nanoseconds.
+    Nanosecond,
+}
+
+#[cfg(feature = "arrow")]
+impl From<TimeUnit> for arrow_schema::TimeUnit {
+    fn from(value: TimeUnit) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_schema::TimeUnit> for TimeUnit {
+    fn from(value: arrow_schema::TimeUnit) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Interval units defined in Arrow
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum IntervalUnit {
+    /// The number of elapsed whole months.
+    YearMonth,
+    /// The number of elapsed days and milliseconds,
+    /// stored as 2 contiguous `i32`
+    DayTime,
+    /// The number of elapsed months (i32), days (i32) and nanoseconds (i64).
+    MonthDayNano,
+}
+
+#[cfg(feature = "arrow")]
+impl From<IntervalUnit> for arrow_schema::IntervalUnit {
+    fn from(value: IntervalUnit) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<arrow_schema::IntervalUnit> for IntervalUnit {
+    fn from(value: arrow_schema::IntervalUnit) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl DataType {
+    /// the [`PhysicalType`] of this [`DataType`].
+    pub fn to_physical_type(&self) -> PhysicalType {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `&self` for all but [`DataType::Extension`]. For [`DataType::Extension`],
+    /// (recursively) returns the inner [`DataType`].
+    /// Never returns the variant [`DataType::Extension`].
+    pub fn to_logical_type(&self) -> &DataType {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<IntegerType> for DataType {
+    fn from(item: IntegerType) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<PrimitiveType> for DataType {
+    fn from(item: PrimitiveType) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// typedef for [`Arc<Schema>`].
+pub type SchemaRef = Arc<Schema>;
+
+/// support get extension for metadata
+pub fn get_extension(metadata: &Metadata) -> Extension {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/datatypes/physical_type.rs">
+```rust
+pub use crate::types::PrimitiveType;
+
+#[cfg(feature = "serde_types")]
+use serde_derive::{Deserialize, Serialize};
+
+/// The set of physical types: unique in-memory representations of an Arrow array.
+/// A physical type has a one-to-many relationship with a [`crate::datatypes::DataType`] and
+/// a one-to-one mapping to each struct in this crate that implements [`crate::array::Array`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum PhysicalType {
+    /// A Null with no allocation.
+    Null,
+    /// A boolean represented as a single bit.
+    Boolean,
+    /// An array where each slot has a known compile-time size.
+    Primitive(PrimitiveType),
+    /// Opaque binary data of variable length.
+    Binary,
+    /// Opaque binary data of fixed size.
+    FixedSizeBinary,
+    /// Opaque binary data of variable length and 64-bit offsets.
+    LargeBinary,
+    /// A variable-length string in Unicode with UTF-8 encoding.
+    Utf8,
+    /// A variable-length string in Unicode with UFT-8 encoding and 64-bit offsets.
+    LargeUtf8,
+    /// A list of some data type with variable length.
+    List,
+    /// A list of some data type with fixed length.
+    FixedSizeList,
+    /// A list of some data type with variable length and 64-bit offsets.
+    LargeList,
+    /// A nested type that contains an arbitrary number of fields.
+    Struct,
+    /// A nested type that represents slots of differing types.
+    Union,
+    /// A nested type.
+    Map,
+    /// A dictionary encoded array by `IntegerType`.
+    Dictionary(IntegerType),
+}
+
+impl PhysicalType {
+    /// Whether this physical type equals [`PhysicalType::Primitive`] of type `primitive`.
+    pub fn eq_primitive(&self, primitive: PrimitiveType) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// the set of valid indices types of a dictionary-encoded Array.
+/// Each type corresponds to a variant of [`crate::array::DictionaryArray`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum IntegerType {
+    /// A signed 8-bit integer.
+    Int8,
+    /// A signed 16-bit integer.
+    Int16,
+    /// A signed 32-bit integer.
+    Int32,
+    /// A signed 64-bit integer.
+    Int64,
+    /// An unsigned 8-bit integer.
+    UInt8,
+    /// An unsigned 16-bit integer.
+    UInt16,
+    /// An unsigned 32-bit integer.
+    UInt32,
+    /// An unsigned 64-bit integer.
+    UInt64,
+}
+```
+</file>
+
+<file path="src/error.rs">
+```rust
+//! Defines [`Error`], representing all errors returned by this crate.
+use std::fmt::{Debug, Display, Formatter};
+
+/// Enum with all errors in this crate.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Error {
+    /// Returned when functionality is not yet available.
+    NotYetImplemented(String),
+    /// Wrapper for an error triggered by a dependency
+    External(String, Box<dyn std::error::Error + Send + Sync>),
+    /// Wrapper for IO errors
+    Io(std::io::Error),
+    /// When an invalid argument is passed to a function.
+    InvalidArgumentError(String),
+    /// Error during import or export to/from a format
+    ExternalFormat(String),
+    /// Whenever pushing to a container fails because it does not support more entries.
+    /// The solution is usually to use a higher-capacity container-backing type.
+    Overflow,
+    /// Whenever incoming data from the C data interface, IPC or Flight does not fulfil the Arrow specification.
+    OutOfSpec(String),
+}
+
+impl Error {
+    /// Wraps an external error in an `Error`.
+    pub fn from_external_error(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub(crate) fn oos<A: Into<String>>(msg: A) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn nyi<A: Into<String>>(msg: A) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<::std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(error: std::str::Utf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<simdutf8::basic::Utf8Error> for Error {
+    fn from(error: simdutf8::basic::Utf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::collections::TryReserveError> for Error {
+    fn from(_: std::collections::TryReserveError) -> Error {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Typedef for a [`std::result::Result`] of an [`Error`].
+pub type Result<T> = std::result::Result<T, Error>;
+```
+</file>
+
+<file path="src/ffi/array.rs">
+```rust
+//! Contains functionality to load an ArrayData from the C Data Interface
+use std::sync::Arc;
+
+use crate::bitmap::utils::count_zeros;
+use crate::buffer::BytesAllocator;
+use crate::{
+    array::*,
+    bitmap::{utils::bytes_for, Bitmap},
+    buffer::{Buffer, Bytes},
+    datatypes::{DataType, PhysicalType},
+    error::{Error, Result},
+    ffi::schema::get_child,
+    types::NativeType,
+};
+
+use super::ArrowArray;
+
+/// Reads a valid `ffi` interface into a `Box<dyn Array>`
+/// # Errors
+/// If and only if:
+/// * the interface is not valid (e.g. a null pointer)
+pub unsafe fn try_from<A: ArrowArrayRef>(array: A) -> Result<Box<dyn Array>> {
+    /* body omitted: interface retained */
+}
+
+// Sound because the arrow specification does not allow multiple implementations
+// to change this struct
+// This is intrinsically impossible to prove because the implementations agree
+// on this as part of the Arrow specification
+unsafe impl Send for ArrowArray {}
+unsafe impl Sync for ArrowArray {}
+
+impl Drop for ArrowArray {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+
+// callback used to drop [ArrowArray] when it is exported
+unsafe extern "C" fn c_release_array(array: *mut ArrowArray) {
+    /* body omitted: interface retained */
+}
+
+#[allow(dead_code)]
+struct PrivateData {
+    array: Box<dyn Array>,
+    buffers_ptr: Box<[*const std::os::raw::c_void]>,
+    children_ptr: Box<[*mut ArrowArray]>,
+    dictionary_ptr: Option<*mut ArrowArray>,
+}
+
+impl ArrowArray {
+    /// creates a new `ArrowArray` from existing data.
+    /// # Safety
+    /// This method releases `buffers`. Consumers of this struct *must* call `release` before
+    /// releasing this struct, or contents in `buffers` leak.
+    pub(crate) fn new(array: Box<dyn Array>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// creates an empty [`ArrowArray`], which can be used to import data into
+    pub fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// the length of the array
+    pub(crate) fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// the offset of the array
+    pub(crate) fn offset(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// the null count of the array
+    pub(crate) fn null_count(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+/// # Safety
+/// The caller must ensure that the buffer at index `i` is not mutably shared.
+unsafe fn get_buffer_ptr<T: NativeType>(
+    array: &ArrowArray,
+    data_type: &DataType,
+    index: usize,
+) -> Result<*mut T> {
+    /* body omitted: interface retained */
+}
+
+/// returns the buffer `i` of `array` interpreted as a [`Buffer`].
+/// # Safety
+/// This function is safe iff:
+/// * the buffers up to position `index` are valid for the declared length
+/// * the buffers' pointers are not mutably shared for the lifetime of `owner`
+unsafe fn create_buffer<T: NativeType>(
+    array: &ArrowArray,
+    data_type: &DataType,
+    owner: InternalArrowArray,
+    index: usize,
+) -> Result<Buffer<T>> {
+    /* body omitted: interface retained */
+}
+
+/// returns the buffer `i` of `array` interpreted as a [`Bitmap`].
+/// # Safety
+/// This function is safe iff:
+/// * the buffer at position `index` is valid for the declared length
+/// * the buffers' pointer is not mutable for the lifetime of `owner`
+unsafe fn create_bitmap(
+    array: &ArrowArray,
+    data_type: &DataType,
+    owner: InternalArrowArray,
+    index: usize,
+    // if this is the validity bitmap
+    // we can use the null count directly
+    is_validity: bool,
+) -> Result<Bitmap> {
+    /* body omitted: interface retained */
+}
+
+fn buffer_offset(array: &ArrowArray, data_type: &DataType, i: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+/// Returns the length, in slots, of the buffer `i` (indexed according to the C data interface)
+unsafe fn buffer_len(array: &ArrowArray, data_type: &DataType, i: usize) -> Result<usize> {
+    /* body omitted: interface retained */
+}
+
+/// Safety
+/// This function is safe iff:
+/// * `array.children` at `index` is valid
+/// * `array.children` is not mutably shared for the lifetime of `parent`
+/// * the pointer of `array.children` at `index` is valid
+/// * the pointer of `array.children` at `index` is not mutably shared for the lifetime of `parent`
+unsafe fn create_child(
+    array: &ArrowArray,
+    data_type: &DataType,
+    parent: InternalArrowArray,
+    index: usize,
+) -> Result<ArrowArrayChild<'static>> {
+    /* body omitted: interface retained */
+}
+
+/// Safety
+/// This function is safe iff:
+/// * `array.dictionary` is valid
+/// * `array.dictionary` is not mutably shared for the lifetime of `parent`
+unsafe fn create_dictionary(
+    array: &ArrowArray,
+    data_type: &DataType,
+    parent: InternalArrowArray,
+) -> Result<Option<ArrowArrayChild<'static>>> {
+    /* body omitted: interface retained */
+}
+
+pub trait ArrowArrayRef: std::fmt::Debug {
+    fn owner(&self) -> InternalArrowArray {
+        /* body omitted: interface retained */
+    }
+
+    /// returns the null bit buffer.
+    /// Rust implementation uses a buffer that is not part of the array of buffers.
+    /// The C Data interface's null buffer is part of the array of buffers.
+    /// # Safety
+    /// The caller must guarantee that the buffer `index` corresponds to a bitmap.
+    /// This function assumes that the bitmap created from FFI is valid; this is impossible to prove.
+    unsafe fn validity(&self) -> Result<Option<Bitmap>> {
+        /* body omitted: interface retained */
+    }
+
+    /// # Safety
+    /// The caller must guarantee that the buffer `index` corresponds to a buffer.
+    /// This function assumes that the buffer created from FFI is valid; this is impossible to prove.
+    unsafe fn buffer<T: NativeType>(&self, index: usize) -> Result<Buffer<T>> {
+        /* body omitted: interface retained */
+    }
+
+    /// # Safety
+    /// This function is safe iff:
+    /// * the buffer at position `index` is valid for the declared length
+    /// * the buffers' pointer is not mutable for the lifetime of `owner`
+    unsafe fn bitmap(&self, index: usize) -> Result<Bitmap> {
+        /* body omitted: interface retained */
+    }
+
+    /// # Safety
+    /// * `array.children` at `index` is valid
+    /// * `array.children` is not mutably shared for the lifetime of `parent`
+    /// * the pointer of `array.children` at `index` is valid
+    /// * the pointer of `array.children` at `index` is not mutably shared for the lifetime of `parent`
+    unsafe fn child(&self, index: usize) -> Result<ArrowArrayChild> {
+        create_child(self.array(), self.data_type(), self.parent().clone(), index)
+    }
+
+    unsafe fn dictionary(&self) -> Result<Option<ArrowArrayChild>> {
+        /* body omitted: interface retained */
+    }
+
+    fn n_buffers(&self) -> usize;
+
+    fn parent(&self) -> &InternalArrowArray;
+    fn array(&self) -> &ArrowArray;
+    fn data_type(&self) -> &DataType;
+}
+
+/// Struct used to move an Array from and to the C Data Interface.
+/// Its main responsibility is to expose functionality that requires
+/// both [ArrowArray] and [ArrowSchema].
+///
+/// This struct has two main paths:
+///
+/// ## Import from the C Data Interface
+/// * [InternalArrowArray::empty] to allocate memory to be filled by an external call
+/// * [InternalArrowArray::try_from_raw] to consume two non-null allocated pointers
+/// ## Export to the C Data Interface
+/// * [InternalArrowArray::try_new] to create a new [InternalArrowArray] from Rust-specific information
+/// * [InternalArrowArray::into_raw] to expose two pointers for [ArrowArray] and [ArrowSchema].
+///
+/// # Safety
+/// Whoever creates this struct is responsible for releasing their resources. Specifically,
+/// consumers *must* call [InternalArrowArray::into_raw] and take ownership of the individual pointers,
+/// calling [ArrowArray::release] and [ArrowSchema::release] accordingly.
+///
+/// Furthermore, this struct assumes that the incoming data agrees with the C data interface.
+#[derive(Debug, Clone)]
+pub struct InternalArrowArray {
+    // Arc is used for sharability since this is immutable
+    array: Arc<ArrowArray>,
+    // Arced to reduce cost of cloning
+    data_type: Arc<DataType>,
+}
+
+impl InternalArrowArray {
+    pub fn new(array: ArrowArray, data_type: DataType) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl ArrowArrayRef for InternalArrowArray {
+    /// the data_type as declared in the schema
+    fn data_type(&self) -> &DataType {
+        /* body omitted: interface retained */
+    }
+
+    fn parent(&self) -> &InternalArrowArray {
+        /* body omitted: interface retained */
+    }
+
+    fn array(&self) -> &ArrowArray {
+        /* body omitted: interface retained */
+    }
+
+    fn n_buffers(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug)]
+pub struct ArrowArrayChild<'a> {
+    array: &'a ArrowArray,
+    data_type: DataType,
+    parent: InternalArrowArray,
+}
+
+impl<'a> ArrowArrayRef for ArrowArrayChild<'a> {
+    /// the data_type as declared in the schema
+    fn data_type(&self) -> &DataType {
+        /* body omitted: interface retained */
+    }
+
+    fn parent(&self) -> &InternalArrowArray {
+        /* body omitted: interface retained */
+    }
+
+    fn array(&self) -> &ArrowArray {
+        /* body omitted: interface retained */
+    }
+
+    fn n_buffers(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> ArrowArrayChild<'a> {
+    fn new(array: &'a ArrowArray, data_type: DataType, parent: InternalArrowArray) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/ffi/generated.rs">
+```rust
+/* automatically generated by rust-bindgen 0.59.2 */
+
+/// ABI-compatible struct for [`ArrowSchema`](https://arrow.apache.org/docs/format/CDataInterface.html#structure-definitions)
+#[repr(C)]
+#[derive(Debug)]
+pub struct ArrowSchema {
+    pub(super) format: *const ::std::os::raw::c_char,
+    pub(super) name: *const ::std::os::raw::c_char,
+    pub(super) metadata: *const ::std::os::raw::c_char,
+    pub(super) flags: i64,
+    pub(super) n_children: i64,
+    pub(super) children: *mut *mut ArrowSchema,
+    pub(super) dictionary: *mut ArrowSchema,
+    pub(super) release: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ArrowSchema)>,
+    pub(super) private_data: *mut ::std::os::raw::c_void,
+}
+
+/// ABI-compatible struct for [`ArrowArray`](https://arrow.apache.org/docs/format/CDataInterface.html#structure-definitions)
+#[repr(C)]
+#[derive(Debug)]
+pub struct ArrowArray {
+    pub(super) length: i64,
+    pub(super) null_count: i64,
+    pub(super) offset: i64,
+    pub(super) n_buffers: i64,
+    pub(super) n_children: i64,
+    pub(super) buffers: *mut *const ::std::os::raw::c_void,
+    pub(super) children: *mut *mut ArrowArray,
+    pub(super) dictionary: *mut ArrowArray,
+    pub(super) release: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ArrowArray)>,
+    pub(super) private_data: *mut ::std::os::raw::c_void,
+}
+
+/// ABI-compatible struct for [`ArrowArrayStream`](https://arrow.apache.org/docs/format/CStreamInterface.html).
+#[repr(C)]
+#[derive(Debug)]
+pub struct ArrowArrayStream {
+    pub(super) get_schema: ::std::option::Option<
+        unsafe extern "C" fn(
+            arg1: *mut ArrowArrayStream,
+            out: *mut ArrowSchema,
+        ) -> ::std::os::raw::c_int,
+    >,
+    pub(super) get_next: ::std::option::Option<
+        unsafe extern "C" fn(
+            arg1: *mut ArrowArrayStream,
+            out: *mut ArrowArray,
+        ) -> ::std::os::raw::c_int,
+    >,
+    pub(super) get_last_error: ::std::option::Option<
+        unsafe extern "C" fn(arg1: *mut ArrowArrayStream) -> *const ::std::os::raw::c_char,
+    >,
+    pub(super) release: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ArrowArrayStream)>,
+    pub(super) private_data: *mut ::std::os::raw::c_void,
+}
+```
+</file>
+
+<file path="src/ffi/mod.rs">
+```rust
+//! contains FFI bindings to import and export [`Array`](crate::array::Array) via
+//! Arrow's [C Data Interface](https://arrow.apache.org/docs/format/CDataInterface.html)
+mod array;
+mod bridge;
+mod generated;
+pub mod mmap;
+mod schema;
+mod stream;
+
+pub(crate) use array::try_from;
+pub(crate) use array::{ArrowArrayRef, InternalArrowArray};
+
+use crate::array::Array;
+use crate::datatypes::{DataType, Field};
+use crate::error::Result;
+
+use self::schema::to_field;
+
+pub use generated::{ArrowArray, ArrowArrayStream, ArrowSchema};
+pub use stream::{export_iterator, ArrowArrayStreamReader};
+
+/// Exports an [`Box<dyn Array>`] to the C data interface.
+pub fn export_array_to_c(array: Box<dyn Array>) -> ArrowArray {
+    /* body omitted: interface retained */
+}
+
+/// Exports a [`Field`] to the C data interface.
+pub fn export_field_to_c(field: &Field) -> ArrowSchema {
+    /* body omitted: interface retained */
+}
+
+/// Imports a [`Field`] from the C data interface.
+/// # Safety
+/// This function is intrinsically `unsafe` and relies on a [`ArrowSchema`]
+/// being valid according to the [C data interface](https://arrow.apache.org/docs/format/CDataInterface.html) (FFI).
+pub unsafe fn import_field_from_c(field: &ArrowSchema) -> Result<Field> {
+    /* body omitted: interface retained */
+}
+
+/// Imports an [`Array`] from the C data interface.
+/// # Safety
+/// This function is intrinsically `unsafe` and relies on a [`ArrowArray`]
+/// being valid according to the [C data interface](https://arrow.apache.org/docs/format/CDataInterface.html) (FFI).
+pub unsafe fn import_array_from_c(
+    array: ArrowArray,
+    data_type: DataType,
+) -> Result<Box<dyn Array>> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/ffi/schema.rs">
+```rust
+use std::{collections::BTreeMap, convert::TryInto, ffi::CStr, ffi::CString, ptr};
+use crate::{
+    datatypes::{
+        DataType, Extension, Field, IntegerType, IntervalUnit, Metadata, TimeUnit,
+        UnionMode,
+    },
+    error::{Error, Result},
+};
+use super::ArrowSchema;
+#[allow(dead_code)]
+struct SchemaPrivateData {
+    name: CString,
+    format: CString,
+    metadata: Option<Vec<u8>>,
+    children_ptr: Box<[*mut ArrowSchema]>,
+    dictionary: Option<*mut ArrowSchema>,
+}
+unsafe extern "C" fn c_release_schema(schema: *mut ArrowSchema) {
+    /* body omitted: interface retained */
+}
+/// allocate (and hold) the children
+fn schema_children(data_type: &DataType, flags: &mut i64) -> Box<[*mut ArrowSchema]> {
+    /* body omitted: interface retained */
+}
+impl ArrowSchema {
+    /// creates a new [ArrowSchema]
+    pub(crate) fn new(field: &Field) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// create an empty [ArrowSchema]
+    pub fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// returns the format of this schema.
+    #[inline(never)]
+    pub(crate) fn format(&self) -> &str {
+        /* body omitted: interface retained */
+    }
+    /// returns the name of this schema.
+    ///
+    /// Since this field is optional, `""` is returned if it is not set (as per the spec).
+    #[inline(never)]
+    pub(crate) fn name(&self) -> &str {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub(crate) fn child(&self, index: usize) -> &'static Self {
+        assert!(index < self.n_children as usize);
+        unsafe {
+            let __klee_arg3 = &self.children;
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg3);
+            klee_ext_bind::bind_arg_u64_value(1, &index);
+            klee_ext_bind::callsite!("src-ffi-schema-rs-169-18");
+            let mut __klee_ret_src_ffi_schema_rs_169_18_add = __klee_arg3.add(index);
+            let __klee_arg2 = __klee_ret_src_ffi_schema_rs_169_18_add;
+            klee_ext_bind::callsite!("src-ffi-schema-rs-169-18-as_ref");
+            let mut __klee_ret_src_ffi_schema_rs_169_18_as_ref_as_ref = __klee_arg2
+                .as_ref();
+            __klee_ret_src_ffi_schema_rs_169_18_as_ref_as_ref.unwrap().as_ref().unwrap()
+        }
+    }
+    #[inline(never)]
+    pub(crate) fn dictionary(&self) -> Option<&'static Self> {
+        /* body omitted: interface retained */
+    }
+    pub(crate) fn nullable(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl Drop for ArrowSchema {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+pub(crate) unsafe fn to_field(schema: &ArrowSchema) -> Result<Field> {
+    /* body omitted: interface retained */
+}
+fn to_integer_type(format: &str) -> Result<IntegerType> {
+    /* body omitted: interface retained */
+}
+unsafe fn to_data_type(schema: &ArrowSchema) -> Result<DataType> {
+    /* body omitted: interface retained */
+}
+/// the inverse of [to_field]
+fn to_format(data_type: &DataType) -> String {
+    /* body omitted: interface retained */
+}
+pub(super) fn get_child(data_type: &DataType, index: usize) -> Result<DataType> {
+    /* body omitted: interface retained */
+}
+fn metadata_to_bytes(metadata: &BTreeMap<String, String>) -> Vec<u8> {
+    /* body omitted: interface retained */
+}
+unsafe fn read_ne_i32(ptr: *const u8) -> i32 {
+    /* body omitted: interface retained */
+}
+unsafe fn read_bytes(ptr: *const u8, len: usize) -> &'static str {
+    /* body omitted: interface retained */
+}
+unsafe fn metadata_from_bytes(
+    data: *const ::std::os::raw::c_char,
+) -> (Metadata, Extension) {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/io/parquet/read/deserialize/binary/utils.rs">
+```rust
+use crate::offset::{Offset, Offsets};
+
+use super::super::utils::Pushable;
+
+/// [`Pushable`] for variable length binary data.
+#[derive(Debug)]
+pub struct Binary<O: Offset> {
+    pub offsets: Offsets<O>,
+    pub values: Vec<u8>,
+}
+
+impl<O: Offset> Pushable<usize> for Offsets<O> {
+    fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn push(&mut self, value: usize) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn push_null(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn extend_constant(&mut self, additional: usize, _: usize) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<O: Offset> Binary<O> {
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub fn push(&mut self, v: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub fn extend_constant(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub fn extend_lengths<I: Iterator<Item = usize>>(&mut self, lengths: I, values: &mut &[u8]) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a, O: Offset> Pushable<&'a [u8]> for Binary<O> {
+    #[inline]
+    fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn push_null(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn push(&mut self, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn extend_constant(&mut self, additional: usize, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug)]
+pub struct BinaryIter<'a> {
+    values: &'a [u8],
+}
+
+impl<'a> BinaryIter<'a> {
+    pub fn new(values: &'a [u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> Iterator for BinaryIter<'a> {
+    type Item = &'a [u8];
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug)]
+pub struct SizedBinaryIter<'a> {
+    iter: BinaryIter<'a>,
+    remaining: usize,
+}
+
+impl<'a> SizedBinaryIter<'a> {
+    pub fn new(values: &'a [u8], size: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> Iterator for SizedBinaryIter<'a> {
+    type Item = &'a [u8];
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/io/parquet/read/deserialize/fixed_size_binary/utils.rs">
+```rust
+use super::super::utils::Pushable;
+
+/// A [`Pushable`] for fixed sized binary data
+#[derive(Debug)]
+pub struct FixedSizeBinary {
+    pub values: Vec<u8>,
+    pub size: usize,
+}
+
+impl FixedSizeBinary {
+    #[inline]
+    pub fn with_capacity(capacity: usize, size: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub fn push(&mut self, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    pub fn extend_constant(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> Pushable<&'a [u8]> for FixedSizeBinary {
+    #[inline]
+    fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn push(&mut self, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn push_null(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn extend_constant(&mut self, additional: usize, value: &[u8]) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("doc/lib.md")]
+#![deny(missing_docs)]
+// So that we have more control over what is `unsafe` inside an `unsafe` block
+#![allow(unused_unsafe)]
+//
+#![allow(clippy::len_without_is_empty)]
+// this landed on 1.60. Let's not force everyone to bump just yet
+#![allow(clippy::unnecessary_lazy_evaluations)]
+// Trait objects must be returned as a &Box<dyn Array> so that they can be cloned
+#![allow(clippy::borrowed_box)]
+// Allow type complexity warning to avoid API break.
+#![allow(clippy::type_complexity)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
+#![cfg_attr(feature = "nightly_build", feature(build_hasher_simple_hash_one))]
+
+#[macro_use]
+pub mod array;
+pub mod bitmap;
+pub mod buffer;
+pub mod chunk;
+pub mod error;
+#[cfg(feature = "io_ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "io_ipc")))]
+pub mod mmap;
+
+pub mod offset;
+pub mod scalar;
+pub mod trusted_len;
+pub mod types;
+
+pub mod compute;
+pub mod io;
+pub mod temporal_conversions;
+
+pub mod datatypes;
+
+pub mod ffi;
+pub mod util;
+
+// so that documentation gets test
+#[cfg(any(test, doctest))]
+mod docs;
+
+// re-exported because we return `Either` in our public API
+pub use either::Either;
+
+// re-exported to construct dictionaries
+pub use ahash::AHashMap;
+```
+</file>
+
+<file path="src/trusted_len.rs">
+```rust
+//! Declares [`TrustedLen`].
+use std::slice::Iter;
+
+/// An iterator of known, fixed size.
+/// A trait denoting Rusts' unstable [TrustedLen](https://doc.rust-lang.org/std/iter/trait.TrustedLen.html).
+/// This is re-defined here and implemented for some iterators until `std::iter::TrustedLen`
+/// is stabilized.
+///
+/// # Safety
+/// This trait must only be implemented when the contract is upheld.
+/// Consumers of this trait must inspect Iterator::size_hint()’s upper bound.
+pub unsafe trait TrustedLen: Iterator {}
+
+unsafe impl<T> TrustedLen for Iter<'_, T> {}
+
+unsafe impl<B, I: TrustedLen, T: FnMut(I::Item) -> B> TrustedLen for std::iter::Map<I, T> {}
+
+unsafe impl<'a, I, T: 'a> TrustedLen for std::iter::Copied<I>
+where
+    I: TrustedLen<Item = &'a T>,
+    T: Copy,
+{
+}
+unsafe impl<'a, I, T: 'a> TrustedLen for std::iter::Cloned<I>
+where
+    I: TrustedLen<Item = &'a T>,
+    T: Clone,
+{
+}
+
+unsafe impl<I> TrustedLen for std::iter::Enumerate<I> where I: TrustedLen {}
+
+unsafe impl<A, B> TrustedLen for std::iter::Zip<A, B>
+where
+    A: TrustedLen,
+    B: TrustedLen,
+{
+}
+
+unsafe impl<T> TrustedLen for std::slice::ChunksExact<'_, T> {}
+
+unsafe impl<T> TrustedLen for std::slice::Windows<'_, T> {}
+
+unsafe impl<A, B> TrustedLen for std::iter::Chain<A, B>
+where
+    A: TrustedLen,
+    B: TrustedLen<Item = A::Item>,
+{
+}
+
+unsafe impl<T> TrustedLen for std::iter::Once<T> {}
+
+unsafe impl<T> TrustedLen for std::vec::IntoIter<T> {}
+
+unsafe impl<A: Clone> TrustedLen for std::iter::Repeat<A> {}
+unsafe impl<A, F: FnMut() -> A> TrustedLen for std::iter::RepeatWith<F> {}
+unsafe impl<A: TrustedLen> TrustedLen for std::iter::Take<A> {}
+```
+</file>
+
+<file path="src/types/bit_chunk.rs">
+```rust
+use std::{
+    fmt::Binary,
+    ops::{BitAndAssign, Not, Shl, ShlAssign, ShrAssign},
+};
+
+use num_traits::PrimInt;
+
+use super::NativeType;
+
+/// A chunk of bits. This is used to create masks of a given length
+/// whose width is `1` bit. In `portable_simd` notation, this corresponds to `m1xY`.
+///
+/// This (sealed) trait is implemented for [`u8`], [`u16`], [`u32`] and [`u64`].
+pub trait BitChunk:
+    super::private::Sealed
+    + PrimInt
+    + NativeType
+    + Binary
+    + ShlAssign
+    + Not<Output = Self>
+    + ShrAssign<usize>
+    + ShlAssign<usize>
+    + Shl<usize, Output = Self>
+    + BitAndAssign
+{
+    /// convert itself into bytes.
+    fn to_ne_bytes(self) -> Self::Bytes;
+    /// convert itself from bytes.
+    fn from_ne_bytes(v: Self::Bytes) -> Self;
+}
+
+macro_rules! bit_chunk {
+    ($ty:ty) => {
+        impl BitChunk for $ty {
+            #[inline(always)]
+            fn to_ne_bytes(self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline(always)]
+            fn from_ne_bytes(v: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+bit_chunk!(u8);
+bit_chunk!(u16);
+bit_chunk!(u32);
+bit_chunk!(u64);
+
+/// An [`Iterator<Item=bool>`] over a [`BitChunk`]. This iterator is often
+/// compiled to SIMD.
+/// The [LSB](https://en.wikipedia.org/wiki/Bit_numbering#Least_significant_bit) corresponds
+/// to the first slot, as defined by the arrow specification.
+/// # Example
+/// ```
+/// use arrow2::types::BitChunkIter;
+/// let a = 0b00010000u8;
+/// let iter = BitChunkIter::new(a, 7);
+/// let r = iter.collect::<Vec<_>>();
+/// assert_eq!(r, vec![false, false, false, false, true, false, false]);
+/// ```
+pub struct BitChunkIter<T: BitChunk> {
+    value: T,
+    mask: T,
+    remaining: usize,
+}
+
+impl<T: BitChunk> BitChunkIter<T> {
+    /// Creates a new [`BitChunkIter`] with `len` bits.
+    #[inline]
+    pub fn new(value: T, len: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BitChunk> Iterator for BitChunkIter<T> {
+    type Item = bool;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+// # Safety
+// a mathematical invariant of this iterator
+unsafe impl<T: BitChunk> crate::trusted_len::TrustedLen for BitChunkIter<T> {}
+
+/// An [`Iterator<Item=usize>`] over a [`BitChunk`] returning the index of each bit set in the chunk
+/// See <https://lemire.me/blog/2018/03/08/iterating-over-set-bits-quickly-simd-edition/> for details
+/// # Example
+/// ```
+/// use arrow2::types::BitChunkOnes;
+/// let a = 0b00010000u8;
+/// let iter = BitChunkOnes::new(a);
+/// let r = iter.collect::<Vec<_>>();
+/// assert_eq!(r, vec![4]);
+/// ```
+pub struct BitChunkOnes<T: BitChunk> {
+    value: T,
+    remaining: usize,
+}
+
+impl<T: BitChunk> BitChunkOnes<T> {
+    /// Creates a new [`BitChunkOnes`] with `len` bits.
+    #[inline]
+    pub fn new(value: T) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    #[cfg(feature = "compute_filter")]
+    pub(crate) fn from_known_count(value: T, remaining: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BitChunk> Iterator for BitChunkOnes<T> {
+    type Item = usize;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+// # Safety
+// a mathematical invariant of this iterator
+unsafe impl<T: BitChunk> crate::trusted_len::TrustedLen for BitChunkOnes<T> {}
+```
+</file>
+
+<file path="src/types/index.rs">
+```rust
+use std::convert::TryFrom;
+
+use crate::trusted_len::TrustedLen;
+
+use super::NativeType;
+
+/// Sealed trait describing the subset of [`NativeType`] (`i32`, `i64`, `u32` and `u64`)
+/// that can be used to index a slot of an array.
+pub trait Index:
+    NativeType
+    + std::ops::AddAssign
+    + std::ops::Sub<Output = Self>
+    + num_traits::One
+    + num_traits::Num
+    + num_traits::CheckedAdd
+    + PartialOrd
+    + Ord
+{
+    /// Convert itself to [`usize`].
+    fn to_usize(&self) -> usize;
+    /// Convert itself from [`usize`].
+    fn from_usize(index: usize) -> Option<Self>;
+
+    /// Convert itself from [`usize`].
+    fn from_as_usize(index: usize) -> Self;
+
+    /// An iterator from (inclusive) `start` to (exclusive) `end`.
+    fn range(start: usize, end: usize) -> Option<IndexRange<Self>> {
+        /* body omitted: interface retained */
+    }
+}
+
+macro_rules! index {
+    ($t:ty) => {
+        impl Index for $t {
+            #[inline]
+            fn to_usize(&self) -> usize {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_usize(value: usize) -> Option<Self> {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_as_usize(value: usize) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+index!(i8);
+index!(i16);
+index!(i32);
+index!(i64);
+index!(u8);
+index!(u16);
+index!(u32);
+index!(u64);
+
+/// Range of [`Index`], equivalent to `(a..b)`.
+/// `Step` is unstable in Rust, which does not allow us to implement (a..b) for [`Index`].
+pub struct IndexRange<I: Index> {
+    start: I,
+    end: I,
+}
+
+impl<I: Index> IndexRange<I> {
+    /// Returns a new [`IndexRange`].
+    pub fn new(start: I, end: I) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<I: Index> Iterator for IndexRange<I> {
+    type Item = I;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Safety: a range is always of known length
+unsafe impl<I: Index> TrustedLen for IndexRange<I> {}
+```
+</file>
+
+<file path="src/types/mod.rs">
+```rust
+//! Sealed traits and implementations to handle all _physical types_ used in this crate.
+//!
+//! Most physical types used in this crate are native Rust types, such as `i32`.
+//! The trait [`NativeType`] describes the interfaces required by this crate to be conformant
+//! with Arrow.
+//!
+//! Every implementation of [`NativeType`] has an associated variant in [`PrimitiveType`],
+//! available via [`NativeType::PRIMITIVE`].
+//! Combined, these allow structs generic over [`NativeType`] to be trait objects downcastable
+//! to concrete implementations based on the matched [`NativeType::PRIMITIVE`] variant.
+//!
+//! Another important trait in this module is [`Offset`], the subset of [`NativeType`] that can
+//! be used in Arrow offsets (`i32` and `i64`).
+//!
+//! Another important trait in this module is [`BitChunk`], describing types that can be used to
+//! represent chunks of bits (e.g. 8 bits via `u8`, 16 via `u16`), and [`BitChunkIter`],
+//! that can be used to iterate over bitmaps in [`BitChunk`]s according to
+//! Arrow's definition of bitmaps.
+//!
+//! Finally, this module contains traits used to compile code based on [`NativeType`] optimized
+//! for SIMD, at [`mod@simd`].
+
+mod bit_chunk;
+pub use bit_chunk::{BitChunk, BitChunkIter, BitChunkOnes};
+mod index;
+pub mod simd;
+pub use index::*;
+mod native;
+pub use native::*;
+mod offset;
+pub use offset::*;
+
+#[cfg(feature = "serde_types")]
+use serde_derive::{Deserialize, Serialize};
+
+/// The set of all implementations of the sealed trait [`NativeType`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde_types", derive(Serialize, Deserialize))]
+pub enum PrimitiveType {
+    /// A signed 8-bit integer.
+    Int8,
+    /// A signed 16-bit integer.
+    Int16,
+    /// A signed 32-bit integer.
+    Int32,
+    /// A signed 64-bit integer.
+    Int64,
+    /// A signed 128-bit integer.
+    Int128,
+    /// A signed 256-bit integer.
+    Int256,
+    /// An unsigned 8-bit integer.
+    UInt8,
+    /// An unsigned 16-bit integer.
+    UInt16,
+    /// An unsigned 32-bit integer.
+    UInt32,
+    /// An unsigned 64-bit integer.
+    UInt64,
+    /// A 16-bit floating point number.
+    Float16,
+    /// A 32-bit floating point number.
+    Float32,
+    /// A 64-bit floating point number.
+    Float64,
+    /// Two i32 representing days and ms
+    DaysMs,
+    /// months_days_ns(i32, i32, i64)
+    MonthDayNano,
+}
+
+mod private {
+    pub trait Sealed {}
+
+    impl Sealed for u8 {}
+    impl Sealed for u16 {}
+    impl Sealed for u32 {}
+    impl Sealed for u64 {}
+    impl Sealed for i8 {}
+    impl Sealed for i16 {}
+    impl Sealed for i32 {}
+    impl Sealed for i64 {}
+    impl Sealed for i128 {}
+    impl Sealed for super::i256 {}
+    impl Sealed for super::f16 {}
+    impl Sealed for f32 {}
+    impl Sealed for f64 {}
+    impl Sealed for super::days_ms {}
+    impl Sealed for super::months_days_ns {}
+}
+```
+</file>
+
+<file path="src/types/native.rs">
+```rust
+use std::convert::TryFrom;
+use std::ops::Neg;
+use std::panic::RefUnwindSafe;
+
+use bytemuck::{Pod, Zeroable};
+
+use super::PrimitiveType;
+
+/// Sealed trait implemented by all physical types that can be allocated,
+/// serialized and deserialized by this crate.
+/// All O(N) allocations in this crate are done for this trait alone.
+pub trait NativeType:
+    super::private::Sealed
+    + Pod
+    + Send
+    + Sync
+    + Sized
+    + RefUnwindSafe
+    + std::fmt::Debug
+    + std::fmt::Display
+    + PartialEq
+    + Default
+{
+    /// The corresponding variant of [`PrimitiveType`].
+    const PRIMITIVE: PrimitiveType;
+
+    /// Type denoting its representation as bytes.
+    /// This is `[u8; N]` where `N = size_of::<T>`.
+    type Bytes: AsRef<[u8]>
+        + std::ops::Index<usize, Output = u8>
+        + std::ops::IndexMut<usize, Output = u8>
+        + for<'a> TryFrom<&'a [u8]>
+        + std::fmt::Debug
+        + Default;
+
+    /// To bytes in little endian
+    fn to_le_bytes(&self) -> Self::Bytes;
+
+    /// To bytes in big endian
+    fn to_be_bytes(&self) -> Self::Bytes;
+
+    /// From bytes in little endian
+    fn from_le_bytes(bytes: Self::Bytes) -> Self;
+
+    /// From bytes in big endian
+    fn from_be_bytes(bytes: Self::Bytes) -> Self;
+}
+
+macro_rules! native_type {
+    ($type:ty, $primitive_type:expr) => {
+        impl NativeType for $type {
+            const PRIMITIVE: PrimitiveType = $primitive_type;
+
+            type Bytes = [u8; std::mem::size_of::<Self>()];
+            #[inline]
+            fn to_le_bytes(&self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn to_be_bytes(&self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_le_bytes(bytes: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_be_bytes(bytes: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+native_type!(u8, PrimitiveType::UInt8);
+native_type!(u16, PrimitiveType::UInt16);
+native_type!(u32, PrimitiveType::UInt32);
+native_type!(u64, PrimitiveType::UInt64);
+native_type!(i8, PrimitiveType::Int8);
+native_type!(i16, PrimitiveType::Int16);
+native_type!(i32, PrimitiveType::Int32);
+native_type!(i64, PrimitiveType::Int64);
+native_type!(f32, PrimitiveType::Float32);
+native_type!(f64, PrimitiveType::Float64);
+native_type!(i128, PrimitiveType::Int128);
+
+/// The in-memory representation of the DayMillisecond variant of arrow's "Interval" logical type.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct days_ms(pub i32, pub i32);
+
+impl days_ms {
+    /// A new [`days_ms`].
+    #[inline]
+    pub fn new(days: i32, milliseconds: i32) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of days
+    #[inline]
+    pub fn days(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of milliseconds
+    #[inline]
+    pub fn milliseconds(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for days_ms {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::DaysMs;
+    type Bytes = [u8; 8];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The in-memory representation of the MonthDayNano variant of the "Interval" logical type.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct months_days_ns(pub i32, pub i32, pub i64);
+
+impl months_days_ns {
+    /// A new [`months_days_ns`].
+    #[inline]
+    pub fn new(months: i32, days: i32, nanoseconds: i64) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of months
+    #[inline]
+    pub fn months(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of days
+    #[inline]
+    pub fn days(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of nanoseconds
+    #[inline]
+    pub fn ns(&self) -> i64 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for months_days_ns {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::MonthDayNano;
+    type Bytes = [u8; 16];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for days_ms {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for months_days_ns {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for days_ms {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for months_days_ns {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Type representation of the Float16 physical type
+#[derive(Copy, Clone, Default, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct f16(pub u16);
+
+impl PartialEq for f16 {
+    #[inline]
+    fn eq(&self, other: &f16) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+// see https://github.com/starkat99/half-rs/blob/main/src/binary16.rs
+impl f16 {
+    /// The difference between 1.0 and the next largest representable number.
+    pub const EPSILON: f16 = f16(0x1400u16);
+
+    #[inline]
+    #[must_use]
+    pub(crate) const fn is_nan(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts from u16.
+    #[inline]
+    pub const fn from_bits(bits: u16) -> f16 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts to u16.
+    #[inline]
+    pub const fn to_bits(self) -> u16 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts this `f16` to `f32`
+    pub fn to_f32(self) -> f32 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts an `f32` into `f16`
+    pub fn from_f32(value: f32) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for f16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for f16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for f16 {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::Float16;
+    type Bytes = [u8; 2];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Physical representation of a decimal
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct i256(pub ethnum::I256);
+
+impl i256 {
+    /// Returns a new [`i256`] from two `i128`.
+    pub fn from_words(hi: i128, lo: i128) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for i256 {
+    type Output = Self;
+
+    #[inline]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for i256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for i256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+unsafe impl Pod for i256 {}
+unsafe impl Zeroable for i256 {}
+
+impl NativeType for i256 {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::Int256;
+
+    type Bytes = [u8; 32];
+
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

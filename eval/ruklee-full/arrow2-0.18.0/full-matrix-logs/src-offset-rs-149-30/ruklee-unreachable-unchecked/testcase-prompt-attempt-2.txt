@@ -1,0 +1,3115 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-offset-rs-149-30-ruklee-unreachable-unchecked-2bf360d5d2`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_offset_rs_149_30_ruklee_unreachable_unchecked_2bf360d5d2`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-offset-rs-149-30-ruklee-unreachable-unchecked-2bf360d5d2")]`.
+- Define `pub extern "C" fn __unsat_poc_src_offset_rs_149_30_ruklee_unreachable_unchecked_2bf360d5d2()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-offset-rs-149-30-ruklee-unreachable-unchecked-2bf360d5d2")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_offset_rs_149_30_ruklee_unreachable_unchecked_2bf360d5d2() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:offset::Offsets::<O>::new",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "Offsets"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "0",
+        "function": "offset::Offsets::<O>::new",
+        "kind": "mutator",
+        "root_type": "offset::Offsets"
+      }
+    ],
+    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.receiver_control_state"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "offset::Offsets",
+    "path": "src/offset.rs",
+    "line_start": 13,
+    "body_end": 13,
+    "is_public": true
+  },
+  "caller": {
+    "name": "offset::Offsets::<O>::last",
+    "path": "src/offset.rs",
+    "line_start": 144,
+    "line_end": 146,
+    "body_end": 151,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "&O"
+  },
+  "callee": {
+    "name": "std::hint::unreachable_unchecked",
+    "path": "rust/library/core/src/hint.rs",
+    "line_start": 9,
+    "line_end": 101,
+    "body_end": 101,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "!"
+  },
+  "callsite": {
+    "line": 149,
+    "col": 30,
+    "path": "src/offset.rs",
+    "id": "src-offset-rs-149-30"
+  }
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> construct or obtain a `Offsets` value -> call safe `offset::Offsets::<O>::new` to affect `0` -> call target caller `offset::Offsets::<O>::last`
+2. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> call safe `new` -> call target caller `offset::Offsets::<O>::last`
+3. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> call target caller `offset::Offsets::<O>::last` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `offset::Offsets::<O>::last`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::hint::unreachable_unchecked;
+use crate::buffer::Buffer;
+use crate::error::Error;
+```
+
+Target expression selected by the callsite line/column:
+- column: `30`
+- expression: `unreachable_unchecked()`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/offset.rs:149
+```rust
+141:         Self(offsets)
+142:     }
+143: 
+144:     /// Returns the last offset of this container.
+145:     #[inline]
+146:     pub fn last(&self) -> &O {
+147:         match self.0.last() {
+148:             Some(element) => element,
+149:             None => unsafe { unreachable_unchecked() },
+150:         }
+151:     }
+152: 
+153:     /// Returns a range (start, end) corresponding to the position `index`
+154:     /// # Panic
+155:     /// This function panics iff `index >= self.len()`
+156:     #[inline]
+157:     pub fn start_end(&self, index: usize) -> (usize, usize) {
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/offset.rs:146-149
+```rust
+146:     pub fn last(&self) -> &O {
+147:         match self.0.last() {
+148:             Some(element) => element,
+149:             None => unsafe { unreachable_unchecked() },
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/array/specification.rs:7-11
+```rust
+ 7:     fn last(&self) -> usize;
+ 8:     fn as_slice(&self) -> &[O];
+ 9: }
+10: 
+11: impl<O: Offset> OffsetsContainer<O> for OffsetsBuffer<O> {
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/csv-1.4.0/src/writer.rs:582-721
+```rust
+582: struct Buffer {
+583:     /// The contents of the buffer.
+584:     buf: Vec<u8>,
+585:     /// The number of bytes written to the buffer.
+586:     len: usize,
+587: }
+588: 
+589: impl<W: io::Write> Drop for Writer<W> {
+590:     fn drop(&mut self) {
+591:         if self.wtr.is_some() && !self.state.panicked {
+592:             let _ = self.flush();
+593:         }
+594:     }
+595: }
+596: 
+597: impl Writer<File> {
+598:     /// Build a CSV writer with a default configuration that writes data to the
+599:     /// given file path. The file is truncated if it already exists.
+600:     ///
+601:     /// If there was a problem opening the file at the given path, then this
+602:     /// returns the corresponding error.
+603:     ///
+604:     /// # Example
+605:     ///
+606:     /// ```no_run
+607:     /// use std::error::Error;
+608:     /// use csv::Writer;
+609:     ///
+610:     /// # fn main() { example().unwrap(); }
+611:     /// fn example() -> Result<(), Box<dyn Error>> {
+612:     ///     let mut wtr = Writer::from_path("foo.csv")?;
+613:     ///     wtr.write_record(&["a", "b", "c"])?;
+614:     ///     wtr.write_record(&["x", "y", "z"])?;
+615:     ///     wtr.flush()?;
+616:     ///     Ok(())
+617:     /// }
+618:     /// ```
+619:     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Writer<File>> {
+620:         WriterBuilder::new().from_path(path)
+621:     }
+622: }
+623: 
+624: impl<W: io::Write> Writer<W> {
+625:     fn new(builder: &WriterBuilder, wtr: W) -> Writer<W> {
+626:         let header_state = if builder.has_headers {
+627:             HeaderState::Write
+628:         } else {
+629:             HeaderState::None
+630:         };
+631:         Writer {
+632:             core: builder.builder.build(),
+633:             wtr: Some(wtr),
+634:             buf: Buffer { buf: vec![0; builder.capacity], len: 0 },
+635:             state: WriterState {
+636:                 header: header_state,
+637:                 flexible: builder.flexible,
+638:                 first_field_count: None,
+639:                 fields_written: 0,
+640:                 panicked: false,
+641:             },
+642:         }
+643:     }
+644: 
+645:     /// Build a CSV writer with a default configuration that writes data to
+646:     /// `wtr`.
+647:     ///
+648:     /// Note that the CSV writer is buffered automatically, so you should not
+649:     /// wrap `wtr` in a buffered writer like `io::BufWriter`.
+650:     ///
+651:     /// # Example
+652:     ///
+653:     /// ```
+654:     /// use std::error::Error;
+655:     /// use csv::Writer;
+656:     ///
+657:     /// # fn main() { example().unwrap(); }
+658:     /// fn example() -> Result<(), Box<dyn Error>> {
+659:     ///     let mut wtr = Writer::from_writer(vec![]);
+660:     ///     wtr.write_record(&["a", "b", "c"])?;
+661:     ///     wtr.write_record(&["x", "y", "z"])?;
+662:     ///
+663:     ///     let data = String::from_utf8(wtr.into_inner()?)?;
+664:     ///     assert_eq!(data, "a,b,c\nx,y,z\n");
+665:     ///     Ok(())
+666:     /// }
+667:     /// ```
+668:     pub fn from_writer(wtr: W) -> Writer<W> {
+669:         WriterBuilder::new().from_writer(wtr)
+670:     }
+671: 
+672:     /// Serialize a single record using Serde.
+673:     ///
+674:     /// # Example
+675:     ///
+676:     /// This shows how to serialize normal Rust structs as CSV records. The
+677:     /// fields of the struct are used to write a header row automatically.
+678:     /// (Writing the header row automatically can be disabled by building the
+679:     /// CSV writer with a [`WriterBuilder`](struct.WriterBuilder.html) and
+680:     /// calling the `has_headers` method.)
+681:     ///
+682:     /// ```
+683:     /// use std::error::Error;
+684:     ///
+685:     /// use csv::Writer;
+686:     ///
+687:     /// #[derive(serde::Serialize)]
+688:     /// struct Row<'a> {
+689:     ///     city: &'a str,
+690:     ///     country: &'a str,
+691:     ///     // Serde allows us to name our headers exactly,
+692:     ///     // even if they don't match our struct field names.
+693:     ///     #[serde(rename = "popcount")]
+694:     ///     population: u64,
+695:     /// }
+696:     ///
+697:     /// # fn main() { example().unwrap(); }
+698:     /// fn example() -> Result<(), Box<dyn Error>> {
+699:     ///     let mut wtr = Writer::from_writer(vec![]);
+700:     ///     wtr.serialize(Row {
+701:     ///         city: "Boston",
+702:     ///         country: "United States",
+703:     ///         population: 4628910,
+704:     ///     })?;
+705:     ///     wtr.serialize(Row {
+706:     ///         city: "Concord",
+707:     ///         country: "United States",
+708:     ///         population: 42695,
+709:     ///     })?;
+710:     ///
+711:     ///     let data = String::from_utf8(wtr.into_inner()?)?;
+712:     ///     assert_eq!(data, "\
+713:     /// city,country,popcount
+714:     /// Boston,United States,4628910
+715:     /// Concord,United States,42695
+716:     /// ");
+717:     ///     Ok(())
+718:     /// }
+719:     /// ```
+720:     ///
+721:     /// # Rules
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytemuck-1.25.0/src/offset_of.rs:82-135
+```rust
+ 82: /// struct Example {
+ 83: ///   field: u32,
+ 84: /// }
+ 85: /// // Doesn't compile:
+ 86: /// let _offset = bytemuck::offset_of!(Example, field);
+ 87: /// ```
+ 88: ///
+ 89: /// While the error message this generates will mention the
+ 90: /// `safe_packed_borrows` lint, the macro will still fail to compile even if
+ 91: /// that lint is `#[allow]`ed:
+ 92: ///
+ 93: /// ```compile_fail
+ 94: /// # #[repr(C, packed)] #[derive(Default)] struct Example { field: u32 }
+ 95: /// // Still doesn't compile:
+ 96: /// #[allow(safe_packed_borrows)]
+ 97: /// {
+ 98: ///   let _offset = bytemuck::offset_of!(Example, field);
+ 99: /// }
+100: /// ```
+101: ///
+102: /// This *can* be worked around by using `unsafe`, but it is only sound to do so
+103: /// if you can guarantee that taking a reference to the field is sound.
+104: ///
+105: /// In practice, this means it only works for fields of align(1) types, or if
+106: /// you know the field's offset in advance (defeating the point of `offset_of`)
+107: /// and can prove that the struct's alignment and the field's offset are enough
+108: /// to prove the field's alignment.
+109: ///
+110: /// Once the `raw_ref` macros are available, a future version of this crate will
+111: /// use them to lift the limitations of packed structs. For the duration of the
+112: /// `1.x` version of this crate that will be behind an on-by-default cargo
+113: /// feature (to maintain minimum rust version support).
+114: #[macro_export]
+115: macro_rules! offset_of {
+116:   ($instance:expr, $Type:path, $field:tt) => {{
+117:     #[forbid(safe_packed_borrows)]
+118:     {
+119:       // This helps us guard against field access going through a Deref impl.
+120:       #[allow(clippy::unneeded_field_pattern)]
+121:       let $Type { $field: _, .. };
+122:       let reference: &$Type = &$instance;
+123:       let address = reference as *const _ as usize;
+124:       let field_pointer = &reference.$field as *const _ as usize;
+125:       // These asserts/unwraps are compiled away at release, and defend against
+126:       // the case where somehow a deref impl is still invoked.
+127:       let result = field_pointer.checked_sub(address).unwrap();
+128:       assert!(result <= $crate::__core::mem::size_of::<$Type>());
+129:       result
+130:     }
+131:   }};
+132:   ($Type:path, $field:tt) => {{
+133:     $crate::offset_of!(<$Type as Default>::default(), $Type, $field)
+134:   }};
+135: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde_json-1.0.150/src/value/index.rs:144-258
+```rust
+144: struct Type<'a>(&'a Value);
+145: 
+146: impl<'a> Display for Type<'a> {
+147:     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+148:         match *self.0 {
+149:             Value::Null => formatter.write_str("null"),
+150:             Value::Bool(_) => formatter.write_str("boolean"),
+151:             Value::Number(_) => formatter.write_str("number"),
+152:             Value::String(_) => formatter.write_str("string"),
+153:             Value::Array(_) => formatter.write_str("array"),
+154:             Value::Object(_) => formatter.write_str("object"),
+155:         }
+156:     }
+157: }
+158: 
+159: // The usual semantics of Index is to panic on invalid indexing.
+160: //
+161: // That said, the usual semantics are for things like Vec and BTreeMap which
+162: // have different use cases than Value. If you are working with a Vec, you know
+163: // that you are working with a Vec and you can get the len of the Vec and make
+164: // sure your indices are within bounds. The Value use cases are more
+165: // loosey-goosey. You got some JSON from an endpoint and you want to pull values
+166: // out of it. Outside of this Index impl, you already have the option of using
+167: // value.as_array() and working with the Vec directly, or matching on
+168: // Value::Array and getting the Vec directly. The Index impl means you can skip
+169: // that and index directly into the thing using a concise syntax. You don't have
+170: // to check the type, you don't have to check the len, it is all about what you
+171: // expect the Value to look like.
+172: //
+173: // Basically the use cases that would be well served by panicking here are
+174: // better served by using one of the other approaches: get and get_mut,
+175: // as_array, or match. The value of this impl is that it adds a way of working
+176: // with Value that is not well served by the existing approaches: concise and
+177: // careless and sometimes that is exactly what you want.
+178: impl<I> ops::Index<I> for Value
+179: where
+180:     I: Index,
+181: {
+182:     type Output = Value;
+183: 
+184:     /// Index into a `serde_json::Value` using the syntax `value[0]` or
+185:     /// `value["k"]`.
+186:     ///
+187:     /// Returns `Value::Null` if the type of `self` does not match the type of
+188:     /// the index, for example if the index is a string and `self` is an array
+189:     /// or a number. Also returns `Value::Null` if the given key does not exist
+190:     /// in the map or the given index is not within the bounds of the array.
+191:     ///
+192:     /// For retrieving deeply nested values, you should have a look at the
+193:     /// `Value::pointer` method.
+194:     ///
+195:     /// # Examples
+196:     ///
+197:     /// ```
+198:     /// # use serde_json::json;
+199:     /// #
+200:     /// let data = json!({
+201:     ///     "x": {
+202:     ///         "y": ["z", "zz"]
+203:     ///     }
+204:     /// });
+205:     ///
+206:     /// assert_eq!(data["x"]["y"], json!(["z", "zz"]));
+207:     /// assert_eq!(data["x"]["y"][0], json!("z"));
+208:     ///
+209:     /// assert_eq!(data["a"], json!(null)); // returns null for undefined values
+210:     /// assert_eq!(data["a"]["b"], json!(null)); // does not panic
+211:     /// ```
+212:     fn index(&self, index: I) -> &Value {
+213:         static NULL: Value = Value::Null;
+214:         index.index_into(self).unwrap_or(&NULL)
+215:     }
+216: }
+217: 
+218: impl<I> ops::IndexMut<I> for Value
+219: where
+220:     I: Index,
+221: {
+222:     /// Write into a `serde_json::Value` using the syntax `value[0] = ...` or
+223:     /// `value["k"] = ...`.
+224:     ///
+225:     /// If the index is a number, the value must be an array of length bigger
+226:     /// than the index. Indexing into a value that is not an array or an array
+227:     /// that is too small will panic.
+228:     ///
+229:     /// If the index is a string, the value must be an object or null which is
+230:     /// treated like an empty object. If the key is not already present in the
+231:     /// object, it will be inserted with a value of null. Indexing into a value
+232:     /// that is neither an object nor null will panic.
+233:     ///
+234:     /// # Examples
+235:     ///
+236:     /// ```
+237:     /// # use serde_json::json;
+238:     /// #
+239:     /// let mut data = json!({ "x": 0 });
+240:     ///
+241:     /// // replace an existing key
+242:     /// data["x"] = json!(1);
+243:     ///
+244:     /// // insert a new key
+245:     /// data["y"] = json!([false, false, false]);
+246:     ///
+247:     /// // replace an array value
+248:     /// data["y"][0] = json!(true);
+249:     ///
+250:     /// // inserted a deeply nested key
+251:     /// data["a"]["b"]["c"]["d"] = json!(true);
+252:     ///
+253:     /// println!("{}", data);
+254:     /// ```
+255:     fn index_mut(&mut self, index: I) -> &mut Value {
+256:         index.index_or_insert(self)
+257:     }
+258: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ahash-0.8.12/src/hash_map.rs:450-501
+```rust
+450:             type Value = ();
+451: 
+452:             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+453:                 formatter.write_str("a map")
+454:             }
+455: 
+456:             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+457:             where
+458:                 A: MapAccess<'de>,
+459:             {
+460:                 self.0.clear();
+461:                 self.0.reserve(map.size_hint().unwrap_or(0).min(4096));
+462: 
+463:                 while let Some((key, value)) = map.next_entry()? {
+464:                     self.0.insert(key, value);
+465:                 }
+466: 
+467:                 Ok(())
+468:             }
+469:         }
+470: 
+471:         deserializer.deserialize_map(MapInPlaceVisitor(place))
+472:     }
+473: }
+474: 
+475: #[cfg(test)]
+476: mod test {
+477:     use super::*;
+478:     #[test]
+479:     fn test_borrow() {
+480:         let mut map: AHashMap<String, String> = AHashMap::new();
+481:         map.insert("foo".to_string(), "Bar".to_string());
+482:         map.insert("Bar".to_string(), map.get("foo").unwrap().to_owned());
+483:     }
+484: 
+485:     #[cfg(feature = "serde")]
+486:     #[test]
+487:     fn test_serde() {
+488:         let mut map = AHashMap::new();
+489:         map.insert("for".to_string(), 0);
+490:         map.insert("bar".to_string(), 1);
+491:         let mut serialization = serde_json::to_string(&map).unwrap();
+492:         let mut deserialization: AHashMap<String, u64> = serde_json::from_str(&serialization).unwrap();
+493:         assert_eq!(deserialization, map);
+494: 
+495:         map.insert("baz".to_string(), 2);
+496:         serialization = serde_json::to_string(&map).unwrap();
+497:         let mut deserializer = serde_json::Deserializer::from_str(&serialization);
+498:         AHashMap::deserialize_in_place(&mut deserializer, &mut deserialization).unwrap();
+499:         assert_eq!(deserialization, map);
+500:     }
+501: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde_json-1.0.150/src/de.rs:1972-2111
+```rust
+1972: struct MapAccess<'a, R: 'a> {
+1973:     de: &'a mut Deserializer<R>,
+1974:     first: bool,
+1975: }
+1976: 
+1977: impl<'a, R: 'a> MapAccess<'a, R> {
+1978:     fn new(de: &'a mut Deserializer<R>) -> Self {
+1979:         MapAccess { de, first: true }
+1980:     }
+1981: }
+1982: 
+1983: impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
+1984:     type Error = Error;
+1985: 
+1986:     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+1987:     where
+1988:         K: de::DeserializeSeed<'de>,
+1989:     {
+1990:         fn has_next_key<'de, 'a, R: Read<'de> + 'a>(map: &mut MapAccess<'a, R>) -> Result<bool> {
+1991:             let peek = match tri!(map.de.parse_whitespace()) {
+1992:                 Some(b) => b,
+1993:                 None => {
+1994:                     return Err(map.de.peek_error(ErrorCode::EofWhileParsingObject));
+1995:                 }
+1996:             };
+1997: 
+1998:             if peek == b'}' {
+1999:                 Ok(false)
+2000:             } else if map.first {
+2001:                 map.first = false;
+2002:                 if peek == b'"' {
+2003:                     Ok(true)
+2004:                 } else {
+2005:                     Err(map.de.peek_error(ErrorCode::KeyMustBeAString))
+2006:                 }
+2007:             } else if peek == b',' {
+2008:                 map.de.eat_char();
+2009:                 match tri!(map.de.parse_whitespace()) {
+2010:                     Some(b'"') => Ok(true),
+2011:                     Some(b'}') => Err(map.de.peek_error(ErrorCode::TrailingComma)),
+2012:                     Some(_) => Err(map.de.peek_error(ErrorCode::KeyMustBeAString)),
+2013:                     None => Err(map.de.peek_error(ErrorCode::EofWhileParsingValue)),
+2014:                 }
+2015:             } else {
+2016:                 Err(map.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd))
+2017:             }
+2018:         }
+2019: 
+2020:         if tri!(has_next_key(self)) {
+2021:             Ok(Some(tri!(seed.deserialize(MapKey { de: &mut *self.de }))))
+2022:         } else {
+2023:             Ok(None)
+2024:         }
+2025:     }
+2026: 
+2027:     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+2028:     where
+2029:         V: de::DeserializeSeed<'de>,
+2030:     {
+2031:         tri!(self.de.parse_object_colon());
+2032: 
+2033:         seed.deserialize(&mut *self.de)
+2034:     }
+2035: }
+2036: 
+2037: struct VariantAccess<'a, R: 'a> {
+2038:     de: &'a mut Deserializer<R>,
+2039: }
+2040: 
+2041: impl<'a, R: 'a> VariantAccess<'a, R> {
+2042:     fn new(de: &'a mut Deserializer<R>) -> Self {
+2043:         VariantAccess { de }
+2044:     }
+2045: }
+2046: 
+2047: impl<'de, 'a, R: Read<'de> + 'a> de::EnumAccess<'de> for VariantAccess<'a, R> {
+2048:     type Error = Error;
+2049:     type Variant = Self;
+2050: 
+2051:     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self)>
+2052:     where
+2053:         V: de::DeserializeSeed<'de>,
+2054:     {
+2055:         match tri!(self.de.parse_whitespace()) {
+2056:             Some(b'"') => {}
+2057:             Some(b'}') => return Err(self.de.peek_error(ErrorCode::ExpectedSomeValue)),
+2058:             Some(_) => return Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
+2059:             None => return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject)),
+2060:         }
+2061: 
+2062:         let val = match seed.deserialize(MapKey { de: &mut *self.de }) {
+2063:             Ok(value) => value,
+2064:             Err(err) => return Err(self.de.fix_position(err)),
+2065:         };
+2066:         tri!(self.de.parse_object_colon());
+2067:         Ok((val, self))
+2068:     }
+2069: }
+2070: 
+2071: impl<'de, 'a, R: Read<'de> + 'a> de::VariantAccess<'de> for VariantAccess<'a, R> {
+2072:     type Error = Error;
+2073: 
+2074:     fn unit_variant(self) -> Result<()> {
+2075:         de::Deserialize::deserialize(self.de)
+2076:     }
+2077: 
+2078:     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
+2079:     where
+2080:         T: de::DeserializeSeed<'de>,
+2081:     {
+2082:         seed.deserialize(self.de)
+2083:     }
+2084: 
+2085:     fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+2086:     where
+2087:         V: de::Visitor<'de>,
+2088:     {
+2089:         de::Deserializer::deserialize_seq(self.de, visitor)
+2090:     }
+2091: 
+2092:     fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+2093:     where
+2094:         V: de::Visitor<'de>,
+2095:     {
+2096:         de::Deserializer::deserialize_struct(self.de, "", fields, visitor)
+2097:     }
+2098: }
+2099: 
+2100: struct UnitVariantAccess<'a, R: 'a> {
+2101:     de: &'a mut Deserializer<R>,
+2102: }
+2103: 
+2104: impl<'a, R: 'a> UnitVariantAccess<'a, R> {
+2105:     fn new(de: &'a mut Deserializer<R>) -> Self {
+2106:         UnitVariantAccess { de }
+2107:     }
+2108: }
+2109: 
+2110: impl<'de, 'a, R: Read<'de> + 'a> de::EnumAccess<'de> for UnitVariantAccess<'a, R> {
+2111:     type Error = Error;
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/datetime/mod.rs:1890-2016
+```rust
+1890:     type Err = ParseError;
+1891: 
+1892:     fn from_str(s: &str) -> ParseResult<DateTime<Utc>> {
+1893:         s.parse::<DateTime<FixedOffset>>().map(|dt| dt.with_timezone(&Utc))
+1894:     }
+1895: }
+1896: 
+1897: /// Accepts a relaxed form of RFC3339.
+1898: /// A space or a 'T' are accepted as the separator between the date and time
+1899: /// parts.
+1900: ///
+1901: /// All of these examples are equivalent:
+1902: /// ```
+1903: /// # use chrono::{DateTime, Local};
+1904: /// "2012-12-12T12:12:12Z".parse::<DateTime<Local>>()?;
+1905: /// "2012-12-12 12:12:12Z".parse::<DateTime<Local>>()?;
+1906: /// "2012-12-12 12:12:12+0000".parse::<DateTime<Local>>()?;
+1907: /// "2012-12-12 12:12:12+00:00".parse::<DateTime<Local>>()?;
+1908: /// # Ok::<(), chrono::ParseError>(())
+1909: /// ```
+1910: #[cfg(feature = "clock")]
+1911: impl str::FromStr for DateTime<Local> {
+1912:     type Err = ParseError;
+1913: 
+1914:     fn from_str(s: &str) -> ParseResult<DateTime<Local>> {
+1915:         s.parse::<DateTime<FixedOffset>>().map(|dt| dt.with_timezone(&Local))
+1916:     }
+1917: }
+1918: 
+1919: #[cfg(feature = "std")]
+1920: impl From<SystemTime> for DateTime<Utc> {
+1921:     fn from(t: SystemTime) -> DateTime<Utc> {
+1922:         let (sec, nsec) = match t.duration_since(UNIX_EPOCH) {
+1923:             Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
+1924:             Err(e) => {
+1925:                 // unlikely but should be handled
+1926:                 let dur = e.duration();
+1927:                 let (sec, nsec) = (dur.as_secs() as i64, dur.subsec_nanos());
+1928:                 if nsec == 0 { (-sec, 0) } else { (-sec - 1, 1_000_000_000 - nsec) }
+1929:             }
+1930:         };
+1931:         Utc.timestamp_opt(sec, nsec).unwrap()
+1932:     }
+1933: }
+1934: 
+1935: #[cfg(feature = "clock")]
+1936: impl From<SystemTime> for DateTime<Local> {
+1937:     fn from(t: SystemTime) -> DateTime<Local> {
+1938:         DateTime::<Utc>::from(t).with_timezone(&Local)
+1939:     }
+1940: }
+1941: 
+1942: #[cfg(feature = "std")]
+1943: impl<Tz: TimeZone> From<DateTime<Tz>> for SystemTime {
+1944:     fn from(dt: DateTime<Tz>) -> SystemTime {
+1945:         let sec = dt.timestamp();
+1946:         let nsec = dt.timestamp_subsec_nanos();
+1947:         if sec < 0 {
+1948:             // unlikely but should be handled
+1949:             UNIX_EPOCH - Duration::new(-sec as u64, 0) + Duration::new(0, nsec)
+1950:         } else {
+1951:             UNIX_EPOCH + Duration::new(sec as u64, nsec)
+1952:         }
+1953:     }
+1954: }
+1955: 
+1956: #[cfg(all(
+1957:     target_arch = "wasm32",
+1958:     feature = "wasmbind",
+1959:     not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
+1960: ))]
+1961: impl From<js_sys::Date> for DateTime<Utc> {
+1962:     fn from(date: js_sys::Date) -> DateTime<Utc> {
+1963:         DateTime::<Utc>::from(&date)
+1964:     }
+1965: }
+1966: 
+1967: #[cfg(all(
+1968:     target_arch = "wasm32",
+1969:     feature = "wasmbind",
+1970:     not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
+1971: ))]
+1972: impl From<&js_sys::Date> for DateTime<Utc> {
+1973:     fn from(date: &js_sys::Date) -> DateTime<Utc> {
+1974:         Utc.timestamp_millis_opt(date.get_time() as i64).unwrap()
+1975:     }
+1976: }
+1977: 
+1978: #[cfg(all(
+1979:     target_arch = "wasm32",
+1980:     feature = "wasmbind",
+1981:     not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
+1982: ))]
+1983: impl From<DateTime<Utc>> for js_sys::Date {
+1984:     /// Converts a `DateTime<Utc>` to a JS `Date`. The resulting value may be lossy,
+1985:     /// any values that have a millisecond timestamp value greater/less than ±8,640,000,000,000,000
+1986:     /// (April 20, 271821 BCE ~ September 13, 275760 CE) will become invalid dates in JS.
+1987:     fn from(date: DateTime<Utc>) -> js_sys::Date {
+1988:         let js_millis = wasm_bindgen::JsValue::from_f64(date.timestamp_millis() as f64);
+1989:         js_sys::Date::new(&js_millis)
+1990:     }
+1991: }
+1992: 
+1993: // Note that implementation of Arbitrary cannot be simply derived for DateTime<Tz>, due to
+1994: // the nontrivial bound <Tz as TimeZone>::Offset: Arbitrary.
+1995: #[cfg(all(feature = "arbitrary", feature = "std"))]
+1996: impl<'a, Tz> arbitrary::Arbitrary<'a> for DateTime<Tz>
+1997: where
+1998:     Tz: TimeZone,
+1999:     <Tz as TimeZone>::Offset: arbitrary::Arbitrary<'a>,
+2000: {
+2001:     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<DateTime<Tz>> {
+2002:         let datetime = NaiveDateTime::arbitrary(u)?;
+2003:         let offset = <Tz as TimeZone>::Offset::arbitrary(u)?;
+2004:         Ok(DateTime::from_naive_utc_and_offset(datetime, offset))
+2005:     }
+2006: }
+2007: 
+2008: /// Number of days between January 1, 1970 and December 31, 1 BCE which we define to be day 0.
+2009: /// 4 full leap year cycles until December 31, 1600     4 * 146097 = 584388
+2010: /// 1 day until January 1, 1601                                           1
+2011: /// 369 years until January 1, 1970                      369 * 365 = 134685
+2012: /// of which floor(369 / 4) are leap years          floor(369 / 4) =     92
+2013: /// except for 1700, 1800 and 1900                                       -3 +
+2014: ///                                                                  --------
+2015: ///                                                                  719163
+2016: pub(crate) const UNIX_EPOCH_DAY: i64 = 719_163;
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/format/mod.rs:424-563
+```rust
+424: pub struct ParseError(ParseErrorKind);
+425: 
+426: impl ParseError {
+427:     /// The category of parse error
+428:     pub const fn kind(&self) -> ParseErrorKind {
+429:         self.0
+430:     }
+431: }
+432: 
+433: /// The category of parse error
+434: #[allow(clippy::manual_non_exhaustive)]
+435: #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
+436: #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+437: pub enum ParseErrorKind {
+438:     /// Given field is out of permitted range.
+439:     OutOfRange,
+440: 
+441:     /// There is no possible date and time value with given set of fields.
+442:     ///
+443:     /// This does not include the out-of-range conditions, which are trivially invalid.
+444:     /// It includes the case that there are one or more fields that are inconsistent to each other.
+445:     Impossible,
+446: 
+447:     /// Given set of fields is not enough to make a requested date and time value.
+448:     ///
+449:     /// Note that there *may* be a case that given fields constrain the possible values so much
+450:     /// that there is a unique possible value. Chrono only tries to be correct for
+451:     /// most useful sets of fields however, as such constraint solving can be expensive.
+452:     NotEnough,
+453: 
+454:     /// The input string has some invalid character sequence for given formatting items.
+455:     Invalid,
+456: 
+457:     /// The input string has been prematurely ended.
+458:     TooShort,
+459: 
+460:     /// All formatting items have been read but there is a remaining input.
+461:     TooLong,
+462: 
+463:     /// There was an error on the formatting string, or there were non-supported formatting items.
+464:     BadFormat,
+465: 
+466:     // TODO: Change this to `#[non_exhaustive]` (on the enum) with the next breaking release.
+467:     #[doc(hidden)]
+468:     __Nonexhaustive,
+469: }
+470: 
+471: /// Same as `Result<T, ParseError>`.
+472: pub type ParseResult<T> = Result<T, ParseError>;
+473: 
+474: impl fmt::Display for ParseError {
+475:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+476:         match self.0 {
+477:             ParseErrorKind::OutOfRange => write!(f, "input is out of range"),
+478:             ParseErrorKind::Impossible => write!(f, "no possible date and time matching input"),
+479:             ParseErrorKind::NotEnough => write!(f, "input is not enough for unique date and time"),
+480:             ParseErrorKind::Invalid => write!(f, "input contains invalid characters"),
+481:             ParseErrorKind::TooShort => write!(f, "premature end of input"),
+482:             ParseErrorKind::TooLong => write!(f, "trailing input"),
+483:             ParseErrorKind::BadFormat => write!(f, "bad or unsupported format string"),
+484:             _ => unreachable!(),
+485:         }
+486:     }
+487: }
+488: 
+489: #[cfg(any(feature = "core-error", feature = "std"))]
+490: impl Error for ParseError {
+491:     #[allow(deprecated)]
+492:     fn description(&self) -> &str {
+493:         "parser error, see to_string() for details"
+494:     }
+495: }
+496: 
+497: // to be used in this module and submodules
+498: pub(crate) const OUT_OF_RANGE: ParseError = ParseError(ParseErrorKind::OutOfRange);
+499: const IMPOSSIBLE: ParseError = ParseError(ParseErrorKind::Impossible);
+500: const NOT_ENOUGH: ParseError = ParseError(ParseErrorKind::NotEnough);
+501: const INVALID: ParseError = ParseError(ParseErrorKind::Invalid);
+502: const TOO_SHORT: ParseError = ParseError(ParseErrorKind::TooShort);
+503: pub(crate) const TOO_LONG: ParseError = ParseError(ParseErrorKind::TooLong);
+504: const BAD_FORMAT: ParseError = ParseError(ParseErrorKind::BadFormat);
+505: 
+506: // this implementation is here only because we need some private code from `scan`
+507: 
+508: /// Parsing a `str` into a `Weekday` uses the format [`%A`](./format/strftime/index.html).
+509: ///
+510: /// # Example
+511: ///
+512: /// ```
+513: /// use chrono::Weekday;
+514: ///
+515: /// assert_eq!("Sunday".parse::<Weekday>(), Ok(Weekday::Sun));
+516: /// assert!("any day".parse::<Weekday>().is_err());
+517: /// ```
+518: ///
+519: /// The parsing is case-insensitive.
+520: ///
+521: /// ```
+522: /// # use chrono::Weekday;
+523: /// assert_eq!("mON".parse::<Weekday>(), Ok(Weekday::Mon));
+524: /// ```
+525: ///
+526: /// Only the shortest form (e.g. `sun`) and the longest form (e.g. `sunday`) is accepted.
+527: ///
+528: /// ```
+529: /// # use chrono::Weekday;
+530: /// assert!("thurs".parse::<Weekday>().is_err());
+531: /// ```
+532: impl FromStr for Weekday {
+533:     type Err = ParseWeekdayError;
+534: 
+535:     fn from_str(s: &str) -> Result<Self, Self::Err> {
+536:         if let Ok(("", w)) = scan::short_or_long_weekday(s) {
+537:             Ok(w)
+538:         } else {
+539:             Err(ParseWeekdayError { _dummy: () })
+540:         }
+541:     }
+542: }
+543: 
+544: /// Parsing a `str` into a `Month` uses the format [`%B`](./format/strftime/index.html).
+545: ///
+546: /// # Example
+547: ///
+548: /// ```
+549: /// use chrono::Month;
+550: ///
+551: /// assert_eq!("January".parse::<Month>(), Ok(Month::January));
+552: /// assert!("any day".parse::<Month>().is_err());
+553: /// ```
+554: ///
+555: /// The parsing is case-insensitive.
+556: ///
+557: /// ```
+558: /// # use chrono::Month;
+559: /// assert_eq!("fEbruARy".parse::<Month>(), Ok(Month::February));
+560: /// ```
+561: ///
+562: /// Only the shortest form (e.g. `jan`) and the longest form (e.g. `january`) is accepted.
+563: ///
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/itertools-0.10.5/src/format.rs:25-113
+```rust
+ 25: pub struct Format<'a, I> {
+ 26:     sep: &'a str,
+ 27:     /// Format uses interior mutability because Display::fmt takes &self.
+ 28:     inner: RefCell<Option<I>>,
+ 29: }
+ 30: 
+ 31: pub fn new_format<I, F>(iter: I, separator: &str, f: F) -> FormatWith<'_, I, F>
+ 32:     where I: Iterator,
+ 33:           F: FnMut(I::Item, &mut dyn FnMut(&dyn fmt::Display) -> fmt::Result) -> fmt::Result
+ 34: {
+ 35:     FormatWith {
+ 36:         sep: separator,
+ 37:         inner: RefCell::new(Some((iter, f))),
+ 38:     }
+ 39: }
+ 40: 
+ 41: pub fn new_format_default<I>(iter: I, separator: &str) -> Format<'_, I>
+ 42:     where I: Iterator,
+ 43: {
+ 44:     Format {
+ 45:         sep: separator,
+ 46:         inner: RefCell::new(Some(iter)),
+ 47:     }
+ 48: }
+ 49: 
+ 50: impl<'a, I, F> fmt::Display for FormatWith<'a, I, F>
+ 51:     where I: Iterator,
+ 52:           F: FnMut(I::Item, &mut dyn  FnMut(&dyn fmt::Display) -> fmt::Result) -> fmt::Result
+ 53: {
+ 54:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+ 55:         let (mut iter, mut format) = match self.inner.borrow_mut().take() {
+ 56:             Some(t) => t,
+ 57:             None => panic!("FormatWith: was already formatted once"),
+ 58:         };
+ 59: 
+ 60:         if let Some(fst) = iter.next() {
+ 61:             format(fst, &mut |disp: &dyn fmt::Display| disp.fmt(f))?;
+ 62:             iter.try_for_each(|elt| {
+ 63:                 if !self.sep.is_empty() {
+ 64:                     f.write_str(self.sep)?;
+ 65:                 }
+ 66:                 format(elt, &mut |disp: &dyn fmt::Display| disp.fmt(f))
+ 67:             })?;
+ 68:         }
+ 69:         Ok(())
+ 70:     }
+ 71: }
+ 72: 
+ 73: impl<'a, I> Format<'a, I>
+ 74:     where I: Iterator,
+ 75: {
+ 76:     fn format<F>(&self, f: &mut fmt::Formatter, mut cb: F) -> fmt::Result
+ 77:         where F: FnMut(&I::Item, &mut fmt::Formatter) -> fmt::Result,
+ 78:     {
+ 79:         let mut iter = match self.inner.borrow_mut().take() {
+ 80:             Some(t) => t,
+ 81:             None => panic!("Format: was already formatted once"),
+ 82:         };
+ 83: 
+ 84:         if let Some(fst) = iter.next() {
+ 85:             cb(&fst, f)?;
+ 86:             iter.try_for_each(|elt| {
+ 87:                 if !self.sep.is_empty() {
+ 88:                     f.write_str(self.sep)?;
+ 89:                 }
+ 90:                 cb(&elt, f)
+ 91:             })?;
+ 92:         }
+ 93:         Ok(())
+ 94:     }
+ 95: }
+ 96: 
+ 97: macro_rules! impl_format {
+ 98:     ($($fmt_trait:ident)*) => {
+ 99:         $(
+100:             impl<'a, I> fmt::$fmt_trait for Format<'a, I>
+101:                 where I: Iterator,
+102:                       I::Item: fmt::$fmt_trait,
+103:             {
+104:                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+105:                     self.format(f, fmt::$fmt_trait::fmt)
+106:                 }
+107:             }
+108:         )*
+109:     }
+110: }
+111: 
+112: impl_format!{Display Debug
+113:              UpperExp LowerExp UpperHex LowerHex Octal Binary Pointer}
+```
+
+/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ethnum-1.5.3/src/fmt.rs:61-153
+```rust
+ 61: pub(crate) struct UpperHex;
+ 62: 
+ 63: macro_rules! radix {
+ 64:     ($T:ident, $base:expr, $prefix:expr, $($x:pat => $conv:expr),+) => {
+ 65:         impl GenericRadix for $T {
+ 66:             const BASE: u8 = $base;
+ 67:             const PREFIX: &'static str = $prefix;
+ 68:             fn digit(x: u8) -> u8 {
+ 69:                 match x {
+ 70:                     $($x => $conv,)+
+ 71:                     x => panic!("number not in the range 0..={}: {}", Self::BASE - 1, x),
+ 72:                 }
+ 73:             }
+ 74:         }
+ 75:     }
+ 76: }
+ 77: 
+ 78: radix! { Binary,    2, "0b", x @  0 ..=  1 => b'0' + x }
+ 79: radix! { Octal,     8, "0o", x @  0 ..=  7 => b'0' + x }
+ 80: radix! { LowerHex, 16, "0x", x @  0 ..=  9 => b'0' + x, x @ 10 ..= 15 => b'a' + (x - 10) }
+ 81: radix! { UpperHex, 16, "0x", x @  0 ..=  9 => b'0' + x, x @ 10 ..= 15 => b'A' + (x - 10) }
+ 82: 
+ 83: const DEC_DIGITS_LUT: &[u8; 200] = b"\
+ 84:     0001020304050607080910111213141516171819\
+ 85:     2021222324252627282930313233343536373839\
+ 86:     4041424344454647484950515253545556575859\
+ 87:     6061626364656667686970717273747576777879\
+ 88:     8081828384858687888990919293949596979899";
+ 89: 
+ 90: pub(crate) fn fmt_u256(mut n: U256, is_nonnegative: bool, f: &mut fmt::Formatter) -> fmt::Result {
+ 91:     // 2^256 is about 1*10^78, so 79 gives an extra byte of space
+ 92:     let mut buf = [MaybeUninit::<u8>::uninit(); 79];
+ 93:     let mut curr = buf.len() as isize;
+ 94:     let buf_ptr = &mut buf[0] as *mut _ as *mut u8;
+ 95:     let lut_ptr = DEC_DIGITS_LUT.as_ptr();
+ 96: 
+ 97:     // SAFETY: Since `d1` and `d2` are always less than or equal to `198`, we
+ 98:     // can copy from `lut_ptr[d1..d1 + 1]` and `lut_ptr[d2..d2 + 1]`. To show
+ 99:     // that it's OK to copy into `buf_ptr`, notice that at the beginning
+100:     // `curr == buf.len() == 39 > log(n)` since `n < 2^128 < 10^39`, and at
+101:     // each step this is kept the same as `n` is divided. Since `n` is always
+102:     // non-negative, this means that `curr > 0` so `buf_ptr[curr..curr + 1]`
+103:     // is safe to access.
+104:     unsafe {
+105:         // eagerly decode 4 characters at a time
+106:         while n >= 10000 {
+107:             let (q, r) = n.div_rem(U256::new(10000));
+108:             n = q;
+109:             let rem = r.as_isize();
+110: 
+111:             let d1 = (rem / 100) << 1;
+112:             let d2 = (rem % 100) << 1;
+113:             curr -= 4;
+114: 
+115:             // We are allowed to copy to `buf_ptr[curr..curr + 3]` here since
+116:             // otherwise `curr < 0`. But then `n` was originally at least `10000^10`
+117:             // which is `10^40 > 2^128 > n`.
+118:             ptr::copy_nonoverlapping(lut_ptr.offset(d1), buf_ptr.offset(curr), 2);
+119:             ptr::copy_nonoverlapping(lut_ptr.offset(d2), buf_ptr.offset(curr + 2), 2);
+120:         }
+121: 
+122:         // if we reach here numbers are <= 9999, so at most 4 chars long
+123:         let mut n = n.as_isize(); // possibly reduce 64bit math
+124: 
+125:         // decode 2 more chars, if > 2 chars
+126:         if n >= 100 {
+127:             let d1 = (n % 100) << 1;
+128:             n /= 100;
+129:             curr -= 2;
+130:             ptr::copy_nonoverlapping(lut_ptr.offset(d1), buf_ptr.offset(curr), 2);
+131:         }
+132: 
+133:         // decode last 1 or 2 chars
+134:         if n < 10 {
+135:             curr -= 1;
+136:             *buf_ptr.offset(curr) = (n as u8) + b'0';
+137:         } else {
+138:             let d1 = n << 1;
+139:             curr -= 2;
+140:             ptr::copy_nonoverlapping(lut_ptr.offset(d1), buf_ptr.offset(curr), 2);
+141:         }
+142:     }
+143: 
+144:     // SAFETY: `curr` > 0 (since we made `buf` large enough), and all the chars are valid
+145:     // UTF-8 since `DEC_DIGITS_LUT` is
+146:     let buf_slice = unsafe {
+147:         str::from_utf8_unchecked(slice::from_raw_parts(
+148:             buf_ptr.offset(curr),
+149:             buf.len() - curr as usize,
+150:         ))
+151:     };
+152:     f.pad_integral(is_nonnegative, "", buf_slice)
+153: }
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/io/parquet/read/deserialize/primitive/integer.rs:88-128
+```rust
+ 88: 
+ 89:     fn build_state(&self, page: &'a DataPage, dict: Option<&'a Self::Dict>) -> Result<Self::State> {
+ 90:         let is_optional =
+ 91:             page.descriptor.primitive_type.field_info.repetition == Repetition::Optional;
+ 92:         let is_filtered = page.selected_rows().is_some();
+ 93: 
+ 94:         match (page.encoding(), dict, is_optional, is_filtered) {
+ 95:             (Encoding::DeltaBinaryPacked, _, false, false) => {
+ 96:                 let (_, _, values) = split_buffer(page)?;
+ 97:                 Decoder::try_new(values)
+ 98:                     .map(State::DeltaBinaryPackedRequired)
+ 99:                     .map_err(Error::from)
+100:             }
+101:             (Encoding::DeltaBinaryPacked, _, true, false) => {
+102:                 let (_, _, values) = split_buffer(page)?;
+103:                 Ok(State::DeltaBinaryPackedOptional(
+104:                     OptionalPageValidity::try_new(page)?,
+105:                     Decoder::try_new(values)?,
+106:                 ))
+107:             }
+108:             (Encoding::DeltaBinaryPacked, _, false, true) => {
+109:                 let (_, _, values) = split_buffer(page)?;
+110:                 let values = Decoder::try_new(values)?;
+111: 
+112:                 let rows = get_selected_rows(page);
+113:                 let values = SliceFilteredIter::new(values, rows);
+114: 
+115:                 Ok(State::FilteredDeltaBinaryPackedRequired(values))
+116:             }
+117:             (Encoding::DeltaBinaryPacked, _, true, true) => {
+118:                 let (_, _, values) = split_buffer(page)?;
+119:                 let values = Decoder::try_new(values)?;
+120: 
+121:                 Ok(State::FilteredDeltaBinaryPackedOptional(
+122:                     FilteredOptionalPageValidity::try_new(page)?,
+123:                     values,
+124:                 ))
+125:             }
+126:             _ => self.0.build_state(page, dict).map(State::Common),
+127:         }
+128:     }
+```
+
+src/io/ipc/read/file.rs:260-322
+```rust
+260: #[allow(clippy::too_many_arguments)]
+261: pub fn read_batch<R: Read + Seek>(
+262:     reader: &mut R,
+263:     dictionaries: &Dictionaries,
+264:     metadata: &FileMetadata,
+265:     projection: Option<&[usize]>,
+266:     limit: Option<usize>,
+267:     index: usize,
+268:     message_scratch: &mut Vec<u8>,
+269:     data_scratch: &mut Vec<u8>,
+270: ) -> Result<Chunk<Box<dyn Array>>> {
+271:     let block = metadata.blocks[index];
+272: 
+273:     let offset: u64 = block
+274:         .offset
+275:         .try_into()
+276:         .map_err(|_| Error::from(OutOfSpecKind::NegativeFooterLength))?;
+277: 
+278:     let length: u64 = block
+279:         .meta_data_length
+280:         .try_into()
+281:         .map_err(|_| Error::from(OutOfSpecKind::NegativeFooterLength))?;
+282: 
+283:     // read length
+284:     reader.seek(SeekFrom::Start(offset))?;
+285:     let mut meta_buf = [0; 4];
+286:     reader.read_exact(&mut meta_buf)?;
+287:     if meta_buf == CONTINUATION_MARKER {
+288:         // continuation marker encountered, read message next
+289:         reader.read_exact(&mut meta_buf)?;
+290:     }
+291:     let meta_len = i32::from_le_bytes(meta_buf)
+292:         .try_into()
+293:         .map_err(|_| Error::from(OutOfSpecKind::UnexpectedNegativeInteger))?;
+294: 
+295:     message_scratch.clear();
+296:     message_scratch.try_reserve(meta_len)?;
+297:     reader
+298:         .by_ref()
+299:         .take(meta_len as u64)
+300:         .read_to_end(message_scratch)?;
+301: 
+302:     let message = arrow_format::ipc::MessageRef::read_as_root(message_scratch.as_ref())
+303:         .map_err(|err| Error::from(OutOfSpecKind::InvalidFlatbufferMessage(err)))?;
+304: 
+305:     let batch = get_record_batch(message)?;
+306: 
+307:     read_record_batch(
+308:         batch,
+309:         &metadata.schema.fields,
+310:         &metadata.ipc_schema,
+311:         projection,
+312:         limit,
+313:         dictionaries,
+314:         message
+315:             .version()
+316:             .map_err(|err| Error::from(OutOfSpecKind::InvalidFlatbufferVersion(err)))?,
+317:         reader,
+318:         offset + length,
+319:         metadata.size,
+320:         data_scratch,
+321:     )
+322: }
+```
+
+src/io/ndjson/read/deserialize.rs:32-43
+```rust
+32: pub fn deserialize_iter<'a>(
+33:     rows: impl Iterator<Item = &'a str>,
+34:     data_type: DataType,
+35: ) -> Result<Box<dyn Array>, Error> {
+36:     // deserialize strings to `Value`s
+37:     let rows = rows
+38:         .map(|row| parse(row.as_bytes()).map_err(Error::from))
+39:         .collect::<Result<Vec<_>, Error>>()?;
+40: 
+41:     // deserialize &[Value] to Array
+42:     Ok(_deserialize(&rows, data_type))
+43: }
+```
+
+src/offset.rs:227-252
+```rust
+227:     #[inline]
+228:     pub fn try_extend_from_lengths<I: Iterator<Item = usize>>(
+229:         &mut self,
+230:         lengths: I,
+231:     ) -> Result<(), Error> {
+232:         let mut total_length = 0;
+233:         let mut offset = *self.last();
+234:         let original_offset = offset.to_usize();
+235: 
+236:         let lengths = lengths.map(|length| {
+237:             total_length += length;
+238:             O::from_as_usize(length)
+239:         });
+240: 
+241:         let offsets = lengths.map(|length| {
+242:             offset += length; // this may overflow, checked below
+243:             offset
+244:         });
+245:         self.0.extend(offsets);
+246: 
+247:         let last_offset = original_offset
+248:             .checked_add(total_length)
+249:             .ok_or(Error::Overflow)?;
+250:         O::from_usize(last_offset).ok_or(Error::Overflow)?;
+251:         Ok(())
+252:     }
+```
+
+src/offset/local/tz_info/timezone.rs:609-629
+```rust
+609: fn find_tz_file(path: impl AsRef<Path>) -> Result<File, Error> {
+610:     // Don't check system timezone directories on non-UNIX platforms
+611:     #[cfg(not(unix))]
+612:     return Ok(File::open(path)?);
+613: 
+614:     #[cfg(unix)]
+615:     {
+616:         let path = path.as_ref();
+617:         if path.is_absolute() {
+618:             return Ok(File::open(path)?);
+619:         }
+620: 
+621:         for folder in &ZONE_INFO_DIRECTORIES {
+622:             if let Ok(file) = File::open(PathBuf::from(folder).join(path)) {
+623:                 return Ok(file);
+624:             }
+625:         }
+626: 
+627:         Err(Error::Io(io::ErrorKind::NotFound.into()))
+628:     }
+629: }
+```
+
+src/array/binary/mod.rs:45-66
+```rust
+45: /// assert_eq!(array.values(), &Buffer::from(vec![1, 2, 3]));
+46: /// assert_eq!(array.offsets().buffer(), &Buffer::from(vec![0, 2, 2, 3]));
+47: /// assert_eq!(array.validity(), Some(&Bitmap::from([true, false, true])));
+48: /// ```
+49: ///
+50: /// # Generic parameter
+51: /// The generic parameter [`Offset`] can only be `i32` or `i64` and tradeoffs maximum array length with
+52: /// memory usage:
+53: /// * the sum of lengths of all elements cannot exceed `Offset::MAX`
+54: /// * the total size of the underlying data is `array.len() * size_of::<Offset>() + sum of lengths of all elements`
+55: ///
+56: /// # Safety
+57: /// The following invariants hold:
+58: /// * Two consecutives `offsets` casted (`as`) to `usize` are valid slices of `values`.
+59: /// * `len` is equal to `validity.len()`, when defined.
+60: #[derive(Clone)]
+61: pub struct BinaryArray<O: Offset> {
+62:     data_type: DataType,
+63:     offsets: OffsetsBuffer<O>,
+64:     values: Buffer<u8>,
+65:     validity: Option<Bitmap>,
+66: }
+```
+
+src/array/binary/mod.rs:46-66
+```rust
+46: /// assert_eq!(array.offsets().buffer(), &Buffer::from(vec![0, 2, 2, 3]));
+47: /// assert_eq!(array.validity(), Some(&Bitmap::from([true, false, true])));
+48: /// ```
+49: ///
+50: /// # Generic parameter
+51: /// The generic parameter [`Offset`] can only be `i32` or `i64` and tradeoffs maximum array length with
+52: /// memory usage:
+53: /// * the sum of lengths of all elements cannot exceed `Offset::MAX`
+54: /// * the total size of the underlying data is `array.len() * size_of::<Offset>() + sum of lengths of all elements`
+55: ///
+56: /// # Safety
+57: /// The following invariants hold:
+58: /// * Two consecutives `offsets` casted (`as`) to `usize` are valid slices of `values`.
+59: /// * `len` is equal to `validity.len()`, when defined.
+60: #[derive(Clone)]
+61: pub struct BinaryArray<O: Offset> {
+62:     data_type: DataType,
+63:     offsets: OffsetsBuffer<O>,
+64:     values: Buffer<u8>,
+65:     validity: Option<Bitmap>,
+66: }
+```
+
+src/io/ipc/read/array/map.rs:13-83
+```rust
+13: 
+14: #[allow(clippy::too_many_arguments)]
+15: pub fn read_map<R: Read + Seek>(
+16:     field_nodes: &mut VecDeque<Node>,
+17:     data_type: DataType,
+18:     ipc_field: &IpcField,
+19:     buffers: &mut VecDeque<IpcBuffer>,
+20:     reader: &mut R,
+21:     dictionaries: &Dictionaries,
+22:     block_offset: u64,
+23:     is_little_endian: bool,
+24:     compression: Option<Compression>,
+25:     limit: Option<usize>,
+26:     version: Version,
+27:     scratch: &mut Vec<u8>,
+28: ) -> Result<MapArray> {
+29:     let field_node = field_nodes.pop_front().ok_or_else(|| {
+30:         Error::oos(format!(
+31:             "IPC: unable to fetch the field for {data_type:?}. The file or stream is corrupted."
+32:         ))
+33:     })?;
+34: 
+35:     let validity = read_validity(
+36:         buffers,
+37:         field_node,
+38:         reader,
+39:         block_offset,
+40:         is_little_endian,
+41:         compression,
+42:         limit,
+43:         scratch,
+44:     )?;
+45: 
+46:     let length: usize = field_node
+47:         .length()
+48:         .try_into()
+49:         .map_err(|_| Error::from(OutOfSpecKind::NegativeFooterLength))?;
+50:     let length = limit.map(|limit| limit.min(length)).unwrap_or(length);
+51: 
+52:     let offsets = read_buffer::<i32, _>(
+53:         buffers,
+54:         1 + length,
+55:         reader,
+56:         block_offset,
+57:         is_little_endian,
+58:         compression,
+59:         scratch,
+60:     )
+61:     // Older versions of the IPC format sometimes do not report an offset
+62:     .or_else(|_| Result::Ok(Buffer::<i32>::from(vec![0i32])))?;
+63: 
+64:     let field = MapArray::get_field(&data_type);
+65: 
+66:     let last_offset: usize = offsets.last().copied().unwrap() as usize;
+67: 
+68:     let field = read(
+69:         field_nodes,
+70:         field,
+71:         &ipc_field.fields[0],
+72:         buffers,
+73:         reader,
+74:         dictionaries,
+75:         block_offset,
+76:         is_little_endian,
+77:         compression,
+78:         Some(last_offset),
+79:         version,
+80:         scratch,
+81:     )?;
+82:     MapArray::try_new(data_type, offsets.try_into()?, field, validity)
+83: }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-offset-rs-149-30
+
+Rule id: ruklee-unreachable-unchecked
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling hashbrown v0.15.2
+   Compiling std_detect v0.1.5 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/stdarch/crates/std_detect)
+   Compiling proc_macro v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+   Compiling cfg-if v1.0.4
+   Compiling once_cell v1.21.4
+   Compiling dyn-clone v1.0.20
+   Compiling hash_hasher v2.0.4
+   Compiling simdutf8 v0.1.5
+   Compiling ethnum v1.5.3
+   Compiling foreign_vec v0.1.0
+   Compiling bytemuck v1.25.0
+   Compiling klee-ext-bind v0.1.0 (/workspaces/UnSAT-Rust/tools/klee-ext-bind)
+   Compiling either v1.16.0
+   Compiling chrono v0.4.45
+   Compiling hashbrown v0.14.5
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `offset`
+   --> src/offset.rs:502:41
+    |
+502 |     let offsets: offset::Offsets<i32> = offset::Offsets::new();
+    |                                         ^^^^^^ use of unresolved module or unlinked crate `offset`
+    |
+    = help: if you wanted to use a crate named `offset`, use `cargo add offset` to add it to your `Cargo.toml`
+
+warning: unexpected `cfg` condition value: `nightly_build`
+  --> src/lib.rs:15:13
+   |
+15 | #![cfg_attr(feature = "nightly_build", feature(build_hasher_simple_hash_one))]
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `arrow`, `arrow-array`, `arrow-buffer`, `arrow-data`, `arrow-format`, `arrow-schema`, `async-stream`, `avro-schema`, `base64`, `benchmarks`, `chrono-tz`, `comfy-table`, `compute`, `compute_aggregate`, `compute_arithmetics`, `compute_arithmetics_decimal`, `compute_bitwise`, `compute_boolean`, `compute_boolean_kleene`, `compute_cast`, `compute_comparison`, `compute_concatenate`, `compute_contains`, `compute_filter`, `compute_hash`, `compute_if_then_else`, `compute_length`, `compute_like`, `compute_limit`, `compute_merge_sort`, `compute_nullif`, `compute_partition`, `compute_regex_match`, `compute_sort`, and `compute_substring` and 63 more
+   = help: consider adding `nightly_build` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unused import: `iterator::*`
+  --> src/array/boolean/mod.rs:22:9
+   |
+22 | pub use iterator::*;
+   |         ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `iterator::*`
+  --> src/array/fixed_size_list/mod.rs:14:9
+   |
+14 | pub use iterator::*;
+   |         ^^^^^^^^^^^
+
+warning: unused import: `iterator::*`
+  --> src/array/map/mod.rs:15:9
+   |
+15 | pub use iterator::*;
+   |         ^^^^^^^^^^^
+
+warning: unused import: `iterator::*`
+  --> src/array/primitive/mod.rs:17:9
+   |
+17 | pub use iterator::*;
+   |         ^^^^^^^^^^^
+
+warning: unreachable statement
+  --> src/array/dictionary/mod.rs:42:9
+   |
+41 | ...   let mut __klee_ret_src_array_dictionary_mod_rs_389_30_unreachable_unchecked = unreachable_unchecked();
+   |                                                                                     ----------------------- any code following this expression is unreachable
+42 | ...   let mut __klee_ret_src_array_dictionary_mod_rs_371_18_unreachable_unchecked = __klee_ret_src_array_dictionary_mod_rs_389_30_unreachable_unchecked;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` on by default
+
+warning: unreachable expression
+   --> src/offset.rs:131:21
+    |
+130 |                     let mut __klee_ret_src_offset_rs_149_30_unreachable_unchecked = unreachable_unchecked();
+    |                                                                                     ----------------------- any code following this expression is unreachable
+131 |                     __klee_ret_src_offset_rs_149_30_unreachable_unchecked
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable expression
+
+warning: unreachable expression
+   --> src/offset.rs:381:21
+    |
+380 |                     let mut __klee_ret_src_offset_rs_409_30_unreachable_unchecked = unreachable_unchecked();
+    |                                                                                     ----------------------- any code following this expression is unreachable
+381 |                     __klee_ret_src_offset_rs_409_30_unreachable_unchecked
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable expression
+
+warning: unreachable expression
+   --> src/offset.rs:395:21
+    |
+394 |                     let mut __klee_ret_src_offset_rs_418_30_unreachable_unchecked = unreachable_unchecked();
+    |                                                                                     ----------------------- any code following this expression is unreachable
+395 |                     __klee_ret_src_offset_rs_418_30_unreachable_unchecked
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable expression
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+  --> src/temporal_conversions.rs:41:20
+   |
+41 |     NaiveDateTime::from_timestamp_opt(v as i64 * SECONDS_IN_DAY, 0)
+   |                    ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+  --> src/temporal_conversions.rs:59:20
+   |
+59 |     NaiveDateTime::from_timestamp_opt(
+   |                    ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:160:20
+    |
+160 |     NaiveDateTime::from_timestamp_opt(seconds, 0)
+    |                    ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:173:24
+    |
+173 |         NaiveDateTime::from_timestamp_opt(
+    |                        ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:183:28
+    |
+183 |             NaiveDateTime::from_timestamp_opt(secs_rem.0, 0)
+    |                            ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:187:28
+    |
+187 |             NaiveDateTime::from_timestamp_opt(
+    |                            ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:205:24
+    |
+205 |         NaiveDateTime::from_timestamp_opt(
+    |                        ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:215:28
+    |
+215 |             NaiveDateTime::from_timestamp_opt(secs_rem.0, 0)
+    |                            ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:219:28
+    |
+219 |             NaiveDateTime::from_timestamp_opt(
+    |                            ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:237:24
+    |
+237 |         NaiveDateTime::from_timestamp_opt(
+    |                        ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:247:28
+    |
+247 |             NaiveDateTime::from_timestamp_opt(secs_rem.0, 0)
+    |                            ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
+   --> src/temporal_conversions.rs:251:28
+    |
+251 |             NaiveDateTime::from_timestamp_opt(
+    |                            ^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp`: use `.and_utc().timestamp()` instead
+   --> src/temporal_conversions.rs:390:35
+    |
+390 |             TimeUnit::Second => x.timestamp(),
+    |                                   ^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_millis`: use `.and_utc().timestamp_millis()` instead
+   --> src/temporal_conversions.rs:391:40
+    |
+391 |             TimeUnit::Millisecond => x.timestamp_millis(),
+    |                                        ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_micros`: use `.and_utc().timestamp_micros()` instead
+   --> src/temporal_conversions.rs:392:40
+    |
+392 |             TimeUnit::Microsecond => x.timestamp_micros(),
+    |                                        ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_nanos_opt`: use `.and_utc().timestamp_nanos_opt()` instead
+   --> src/temporal_conversions.rs:393:39
+    |
+393 |             TimeUnit::Nanosecond => x.timestamp_nanos_opt().unwrap(),
+    |                                       ^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_millis`: use `.and_utc().timestamp_millis()` instead
+   --> src/temporal_conversions.rs:516:45
+    |
+516 |         TimeUnit::Second => new_datetime_tz.timestamp_millis() / 1000,
+    |                                             ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_millis`: use `.and_utc().timestamp_millis()` instead
+   --> src/temporal_conversions.rs:517:50
+    |
+517 |         TimeUnit::Millisecond => new_datetime_tz.timestamp_millis(),
+    |                                                  ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_nanos_opt`: use `.and_utc().timestamp_nanos_opt()` instead
+   --> src/temporal_conversions.rs:518:50
+    |
+518 |         TimeUnit::Microsecond => new_datetime_tz.timestamp_nanos_opt().unwrap() / 1000,
+    |                                                  ^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `chrono::NaiveDateTime::timestamp_nanos_opt`: use `.and_utc().timestamp_nanos_opt()` instead
+   --> src/temporal_conversions.rs:519:49
+    |
+519 |         TimeUnit::Nanosecond => new_datetime_tz.timestamp_nanos_opt().unwrap(),
+    |                                                 ^^^^^^^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `offset`
+   --> src/offset.rs:502:18
+    |
+502 |     let offsets: offset::Offsets<i32> = offset::Offsets::new();
+    |                  ^^^^^^
+    |                  |
+    |                  use of unresolved module or unlinked crate `offset`
+    |                  help: a trait with a similar name exists (notice the capitalization): `Offset`
+    |
+    = help: if you wanted to use a crate named `offset`, use `cargo add offset` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `arrow2` (lib) generated 29 warnings
+error: could not compile `arrow2` (lib) due to 2 previous errors; 29 warnings emitted
+
+
+</previous attempt feedback>
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer/immutable.rs">
+```rust
+use std::{iter::FromIterator, ops::Deref, sync::Arc, usize};
+use either::Either;
+use super::Bytes;
+use super::IntoIter;
+/// [`Buffer`] is a contiguous memory region that can be shared across
+/// thread boundaries.
+///
+/// The easiest way to think about [`Buffer<T>`] is being equivalent to
+/// a `Arc<Vec<T>>`, with the following differences:
+/// * slicing and cloning is `O(1)`.
+/// * it supports external allocated memory
+///
+/// The easiest way to create one is to use its implementation of `From<Vec<T>>`.
+///
+/// # Examples
+/// ```
+/// use arrow2::buffer::Buffer;
+///
+/// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+/// assert_eq!(buffer.as_ref(), [1, 2, 3].as_ref());
+///
+/// // it supports copy-on-write semantics (i.e. back to a `Vec`)
+/// let vec: Vec<u32> = buffer.into_mut().right().unwrap();
+/// assert_eq!(vec, vec![1, 2, 3]);
+///
+/// // cloning and slicing is `O(1)` (data is shared)
+/// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+/// let mut sliced = buffer.clone();
+/// sliced.slice(1, 1);
+/// assert_eq!(sliced.as_ref(), [2].as_ref());
+/// // but cloning forbids getting mut since `slice` and `buffer` now share data
+/// assert_eq!(buffer.get_mut_slice(), None);
+/// ```
+#[derive(Clone)]
+pub struct Buffer<T> {
+    /// the internal byte buffer.
+    data: Arc<Bytes<T>>,
+    /// The offset into the buffer.
+    offset: usize,
+    length: usize,
+}
+impl<T: PartialEq> PartialEq for Buffer<T> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: std::fmt::Debug> std::fmt::Debug for Buffer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Default for Buffer<T> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Buffer<T> {
+    /// Creates an empty [`Buffer`].
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Auxiliary method to create a new Buffer
+    pub(crate) fn from_bytes(bytes: Bytes<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of bytes in the buffer
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the buffer is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether underlying data is sliced.
+    /// If sliced the [`Buffer`] is backed by
+    /// more data than the length of `Self`.
+    pub fn is_sliced(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline(never)]
+    pub fn as_slice(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    /// # Safety
+    /// `index` must be smaller than `len`
+    #[inline]
+    pub(super) unsafe fn get_unchecked(&self, index: usize) -> &T {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+    /// Doing so allows the same memory region to be shared between buffers.
+    /// # Panics
+    /// Panics iff `offset + length` is larger than `len`.
+    #[inline]
+    pub fn sliced(self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Slices this buffer starting at `offset`.
+    /// # Panics
+    /// Panics iff `offset` is larger than `len`.
+    #[inline]
+    pub fn slice(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+    /// Doing so allows the same memory region to be shared between buffers.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    #[must_use]
+    pub unsafe fn sliced_unchecked(mut self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Slices this buffer starting at `offset`.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a pointer to the start of this buffer.
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const T {
+        /* body omitted: interface retained */
+    }
+    /// Returns the offset of this buffer.
+    #[inline]
+    pub fn offset(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// # Safety
+    /// The caller must ensure that the buffer was properly initialized up to `len`.
+    #[inline]
+    pub unsafe fn set_len(&mut self, len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its underlying [`Vec`], if possible.
+    ///
+    /// This operation returns [`Either::Right`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    #[inline]
+    pub fn into_mut(mut self) -> Either<Self, Vec<T>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its underlying `Vec`, if possible.
+    /// Note that only `[self.offset(), self.offset() + self.len()[` in this vector is visible
+    /// by this buffer.
+    ///
+    /// This operation returns [`Some`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    /// # Safety
+    /// The caller must ensure that the vector in the mutable reference keeps a length of at least `self.offset() + self.len() - 1`.
+    #[inline]
+    pub unsafe fn get_mut(&mut self) -> Option<&mut Vec<T>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its slice, if possible.
+    ///
+    /// This operation returns [`Some`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    #[inline]
+    pub fn get_mut_slice(&mut self) -> Option<&mut [T]> {
+        /* body omitted: interface retained */
+    }
+    /// Get the strong count of underlying `Arc` data buffer.
+    pub fn shared_count_strong(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Get the weak count of underlying `Arc` data buffer.
+    pub fn shared_count_weak(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns its internal representation
+    #[must_use]
+    pub fn into_inner(self) -> (Arc<Bytes<T>>, usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Creates a `[Bitmap]` from its internal representation.
+    /// This is the inverted from `[Bitmap::into_inner]`
+    ///
+    /// # Safety
+    /// Callers must ensure all invariants of this struct are upheld.
+    pub unsafe fn from_inner_unchecked(
+        data: Arc<Bytes<T>>,
+        offset: usize,
+        length: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> From<Vec<T>> for Buffer<T> {
+    #[inline]
+    fn from(p: Vec<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> std::ops::Deref for Buffer<T> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> FromIterator<T> for Buffer<T> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: Copy> IntoIterator for Buffer<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "arrow")]
+impl<T: crate::types::NativeType> From<arrow_buffer::Buffer> for Buffer<T> {
+    fn from(value: arrow_buffer::Buffer) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "arrow")]
+impl<T: crate::types::NativeType> From<Buffer<T>> for arrow_buffer::Buffer {
+    fn from(value: Buffer<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/error.rs">
+```rust
+//! Defines [`Error`], representing all errors returned by this crate.
+use std::fmt::{Debug, Display, Formatter};
+
+/// Enum with all errors in this crate.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Error {
+    /// Returned when functionality is not yet available.
+    NotYetImplemented(String),
+    /// Wrapper for an error triggered by a dependency
+    External(String, Box<dyn std::error::Error + Send + Sync>),
+    /// Wrapper for IO errors
+    Io(std::io::Error),
+    /// When an invalid argument is passed to a function.
+    InvalidArgumentError(String),
+    /// Error during import or export to/from a format
+    ExternalFormat(String),
+    /// Whenever pushing to a container fails because it does not support more entries.
+    /// The solution is usually to use a higher-capacity container-backing type.
+    Overflow,
+    /// Whenever incoming data from the C data interface, IPC or Flight does not fulfil the Arrow specification.
+    OutOfSpec(String),
+}
+
+impl Error {
+    /// Wraps an external error in an `Error`.
+    pub fn from_external_error(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub(crate) fn oos<A: Into<String>>(msg: A) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn nyi<A: Into<String>>(msg: A) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<::std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(error: std::str::Utf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<simdutf8::basic::Utf8Error> for Error {
+    fn from(error: simdutf8::basic::Utf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::collections::TryReserveError> for Error {
+    fn from(_: std::collections::TryReserveError) -> Error {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Typedef for a [`std::result::Result`] of an [`Error`].
+pub type Result<T> = std::result::Result<T, Error>;
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("doc/lib.md")]
+#![deny(missing_docs)]
+// So that we have more control over what is `unsafe` inside an `unsafe` block
+#![allow(unused_unsafe)]
+//
+#![allow(clippy::len_without_is_empty)]
+// this landed on 1.60. Let's not force everyone to bump just yet
+#![allow(clippy::unnecessary_lazy_evaluations)]
+// Trait objects must be returned as a &Box<dyn Array> so that they can be cloned
+#![allow(clippy::borrowed_box)]
+// Allow type complexity warning to avoid API break.
+#![allow(clippy::type_complexity)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
+#![cfg_attr(feature = "nightly_build", feature(build_hasher_simple_hash_one))]
+
+#[macro_use]
+pub mod array;
+pub mod bitmap;
+pub mod buffer;
+pub mod chunk;
+pub mod error;
+#[cfg(feature = "io_ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "io_ipc")))]
+pub mod mmap;
+
+pub mod offset;
+pub mod scalar;
+pub mod trusted_len;
+pub mod types;
+
+pub mod compute;
+pub mod io;
+pub mod temporal_conversions;
+
+pub mod datatypes;
+
+pub mod ffi;
+pub mod util;
+
+// so that documentation gets test
+#[cfg(any(test, doctest))]
+mod docs;
+
+// re-exported because we return `Either` in our public API
+pub use either::Either;
+
+// re-exported to construct dictionaries
+pub use ahash::AHashMap;
+```
+</file>
+
+<file path="src/offset.rs">
+```rust
+//! Contains the declaration of [`Offset`]
+use std::hint::unreachable_unchecked;
+use crate::buffer::Buffer;
+use crate::error::Error;
+pub use crate::types::Offset;
+/// A wrapper type of [`Vec<O>`] representing the invariants of Arrow's offsets.
+/// It is guaranteed to (sound to assume that):
+/// * every element is `>= 0`
+/// * element at position `i` is >= than element at position `i-1`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Offsets<O: Offset>(Vec<O>);
+impl<O: Offset> Default for Offsets<O> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> TryFrom<Vec<O>> for Offsets<O> {
+    type Error = Error;
+    #[inline]
+    fn try_from(offsets: Vec<O>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> TryFrom<Buffer<O>> for OffsetsBuffer<O> {
+    type Error = Error;
+    #[inline]
+    fn try_from(offsets: Buffer<O>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> TryFrom<Vec<O>> for OffsetsBuffer<O> {
+    type Error = Error;
+    #[inline]
+    fn try_from(offsets: Vec<O>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> From<Offsets<O>> for OffsetsBuffer<O> {
+    #[inline]
+    fn from(offsets: Offsets<O>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> Offsets<O> {
+    /// Returns an empty [`Offsets`] (i.e. with a single element, the zero)
+    #[inline]
+    pub fn new() -> Self {
+        Self(vec![O::zero()])
+    }
+    /// Returns an [`Offsets`] whose all lengths are zero.
+    #[inline]
+    pub fn new_zeroed(length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new [`Offsets`] from an iterator of lengths
+    #[inline]
+    pub fn try_from_iter<I: IntoIterator<Item = usize>>(iter: I) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Offsets`] with a capacity, allocating at least `capacity + 1` entries.
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the capacity of [`Offsets`].
+    pub fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Reserves `additional` entries.
+    pub fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Shrinks the capacity of self to fit.
+    pub fn shrink_to_fit(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Pushes a new element with a given length.
+    /// # Error
+    /// This function errors iff the new last item is larger than what `O` supports.
+    /// # Panic
+    /// This function asserts that `length > 0`.
+    #[inline]
+    pub fn try_push(&mut self, length: O) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Pushes a new element with a given length.
+    /// # Error
+    /// This function errors iff the new last item is larger than what `O` supports.
+    /// # Implementation
+    /// This function:
+    /// * checks that this length does not overflow
+    #[inline]
+    pub fn try_push_usize(&mut self, length: usize) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Returns [`Offsets`] assuming that `offsets` fulfills its invariants
+    /// # Safety
+    /// This is safe iff the invariants of this struct are guaranteed in `offsets`.
+    #[inline]
+    pub unsafe fn new_unchecked(offsets: Vec<O>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the last offset of this container.
+    #[inline(never)]
+    pub fn last(&self) -> &O {
+        match self.0.last() {
+            Some(element) => element,
+            None => {
+                unsafe {
+                    klee_ext_bind::callsite!("src-offset-rs-149-30");
+                    let mut __klee_ret_src_offset_rs_149_30_unreachable_unchecked = unreachable_unchecked();
+                    __klee_ret_src_offset_rs_149_30_unreachable_unchecked
+                }
+            }
+        }
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Panic
+    /// This function panics iff `index >= self.len()`
+    #[inline(never)]
+    pub fn start_end(&self, index: usize) -> (usize, usize) {
+        assert!(index < self.len_proxy());
+        unsafe {
+            {
+                klee_ext_bind::callsite!("src-offset-rs-160-18-root");
+                {
+                    klee_ext_bind::callsite!("src-offset-rs-160-18-get_unchecked-root");
+                    self.start_end_unchecked(index)
+                }
+            }
+        }
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Safety
+    /// `index` must be `< self.len()`
+    #[inline(never)]
+    pub unsafe fn start_end_unchecked(&self, index: usize) -> (usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length an array with these offsets would be.
+    #[inline]
+    pub fn len_proxy(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    /// Returns the number of offsets in this container.
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline]
+    pub fn as_slice(&self) -> &[O] {
+        /* body omitted: interface retained */
+    }
+    /// Pops the last element
+    #[inline]
+    pub fn pop(&mut self) -> Option<O> {
+        /* body omitted: interface retained */
+    }
+    /// Extends itself with `additional` elements equal to the last offset.
+    /// This is useful to extend offsets with empty values, e.g. for null slots.
+    #[inline]
+    pub fn extend_constant(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Try to create a new [`Offsets`] from a sequence of `lengths`
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    #[inline]
+    pub fn try_from_lengths<I: Iterator<Item = usize>>(
+        lengths: I,
+    ) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Try extend from an iterator of lengths
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    #[inline]
+    pub fn try_extend_from_lengths<I: Iterator<Item = usize>>(
+        &mut self,
+        lengths: I,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Extends itself from another [`Offsets`]
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    pub fn try_extend_from_self(&mut self, other: &Self) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Extends itself from another [`Offsets`] sliced by `start, length`
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    pub fn try_extend_from_slice(
+        &mut self,
+        other: &OffsetsBuffer<O>,
+        start: usize,
+        length: usize,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Returns the inner [`Vec`].
+    #[inline]
+    pub fn into_inner(self) -> Vec<O> {
+        /* body omitted: interface retained */
+    }
+}
+/// Checks that `offsets` is monotonically increasing.
+fn try_check_offsets<O: Offset>(offsets: &[O]) -> Result<(), Error> {
+    /* body omitted: interface retained */
+}
+/// A wrapper type of [`Buffer<O>`] that is guaranteed to:
+/// * Always contain an element
+/// * Every element is `>= 0`
+/// * element at position `i` is >= than element at position `i-1`.
+#[derive(Clone, PartialEq, Debug)]
+pub struct OffsetsBuffer<O: Offset>(Buffer<O>);
+impl<O: Offset> Default for OffsetsBuffer<O> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> OffsetsBuffer<O> {
+    /// # Safety
+    /// This is safe iff the invariants of this struct are guaranteed in `offsets`.
+    #[inline]
+    pub unsafe fn new_unchecked(offsets: Buffer<O>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns an empty [`OffsetsBuffer`] (i.e. with a single element, the zero)
+    #[inline]
+    pub fn new() -> Self {
+        Self(vec![O::zero()].into())
+    }
+    /// Copy-on-write API to convert [`OffsetsBuffer`] into [`Offsets`].
+    #[inline]
+    pub fn into_mut(self) -> either::Either<Self, Offsets<O>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to its internal [`Buffer`].
+    #[inline]
+    pub fn buffer(&self) -> &Buffer<O> {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length an array with these offsets would be.
+    #[inline]
+    pub fn len_proxy(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of offsets in this container.
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline]
+    pub fn as_slice(&self) -> &[O] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the range of the offsets.
+    #[inline]
+    pub fn range(&self) -> O {
+        /* body omitted: interface retained */
+    }
+    /// Returns the first offset.
+    #[inline(never)]
+    pub fn first(&self) -> &O {
+        /* body omitted: interface retained */
+    }
+    /// Returns the last offset.
+    #[inline(never)]
+    pub fn last(&self) -> &O {
+        match self.0.last() {
+            Some(element) => element,
+            None => {
+                unsafe {
+                    klee_ext_bind::callsite!("src-offset-rs-418-30");
+                    let mut __klee_ret_src_offset_rs_418_30_unreachable_unchecked = unreachable_unchecked();
+                    __klee_ret_src_offset_rs_418_30_unreachable_unchecked
+                }
+            }
+        }
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Panic
+    /// This function panics iff `index >= self.len()`
+    #[inline(never)]
+    pub fn start_end(&self, index: usize) -> (usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Safety
+    /// `index` must be `< self.len()`
+    #[inline(never)]
+    pub unsafe fn start_end_unchecked(&self, index: usize) -> (usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Slices this [`OffsetsBuffer`].
+    /// # Panics
+    /// Panics if `offset + length` is larger than `len`
+    /// or `length == 0`.
+    #[inline]
+    pub fn slice(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Slices this [`OffsetsBuffer`] starting at `offset`.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns an iterator with the lengths of the offsets
+    #[inline]
+    pub fn lengths(&self) -> impl Iterator<Item = usize> + '_ {
+        /* body omitted: interface retained */
+    }
+    /// Returns the inner [`Buffer`].
+    #[inline]
+    pub fn into_inner(self) -> Buffer<O> {
+        /* body omitted: interface retained */
+    }
+}
+impl From<&OffsetsBuffer<i32>> for OffsetsBuffer<i64> {
+    fn from(offsets: &OffsetsBuffer<i32>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl TryFrom<&OffsetsBuffer<i64>> for OffsetsBuffer<i32> {
+    type Error = Error;
+    fn try_from(offsets: &OffsetsBuffer<i64>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl From<Offsets<i32>> for Offsets<i64> {
+    fn from(offsets: Offsets<i32>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl TryFrom<Offsets<i64>> for Offsets<i32> {
+    type Error = Error;
+    fn try_from(offsets: Offsets<i64>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> std::ops::Deref for OffsetsBuffer<O> {
+    type Target = [O];
+    #[inline]
+    fn deref(&self) -> &[O] {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/types/index.rs">
+```rust
+use std::convert::TryFrom;
+
+use crate::trusted_len::TrustedLen;
+
+use super::NativeType;
+
+/// Sealed trait describing the subset of [`NativeType`] (`i32`, `i64`, `u32` and `u64`)
+/// that can be used to index a slot of an array.
+pub trait Index:
+    NativeType
+    + std::ops::AddAssign
+    + std::ops::Sub<Output = Self>
+    + num_traits::One
+    + num_traits::Num
+    + num_traits::CheckedAdd
+    + PartialOrd
+    + Ord
+{
+    /// Convert itself to [`usize`].
+    fn to_usize(&self) -> usize;
+    /// Convert itself from [`usize`].
+    fn from_usize(index: usize) -> Option<Self>;
+
+    /// Convert itself from [`usize`].
+    fn from_as_usize(index: usize) -> Self;
+
+    /// An iterator from (inclusive) `start` to (exclusive) `end`.
+    fn range(start: usize, end: usize) -> Option<IndexRange<Self>> {
+        /* body omitted: interface retained */
+    }
+}
+
+macro_rules! index {
+    ($t:ty) => {
+        impl Index for $t {
+            #[inline]
+            fn to_usize(&self) -> usize {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_usize(value: usize) -> Option<Self> {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_as_usize(value: usize) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+index!(i8);
+index!(i16);
+index!(i32);
+index!(i64);
+index!(u8);
+index!(u16);
+index!(u32);
+index!(u64);
+
+/// Range of [`Index`], equivalent to `(a..b)`.
+/// `Step` is unstable in Rust, which does not allow us to implement (a..b) for [`Index`].
+pub struct IndexRange<I: Index> {
+    start: I,
+    end: I,
+}
+
+impl<I: Index> IndexRange<I> {
+    /// Returns a new [`IndexRange`].
+    pub fn new(start: I, end: I) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<I: Index> Iterator for IndexRange<I> {
+    type Item = I;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Safety: a range is always of known length
+unsafe impl<I: Index> TrustedLen for IndexRange<I> {}
+```
+</file>
+
+<file path="src/types/native.rs">
+```rust
+use std::convert::TryFrom;
+use std::ops::Neg;
+use std::panic::RefUnwindSafe;
+
+use bytemuck::{Pod, Zeroable};
+
+use super::PrimitiveType;
+
+/// Sealed trait implemented by all physical types that can be allocated,
+/// serialized and deserialized by this crate.
+/// All O(N) allocations in this crate are done for this trait alone.
+pub trait NativeType:
+    super::private::Sealed
+    + Pod
+    + Send
+    + Sync
+    + Sized
+    + RefUnwindSafe
+    + std::fmt::Debug
+    + std::fmt::Display
+    + PartialEq
+    + Default
+{
+    /// The corresponding variant of [`PrimitiveType`].
+    const PRIMITIVE: PrimitiveType;
+
+    /// Type denoting its representation as bytes.
+    /// This is `[u8; N]` where `N = size_of::<T>`.
+    type Bytes: AsRef<[u8]>
+        + std::ops::Index<usize, Output = u8>
+        + std::ops::IndexMut<usize, Output = u8>
+        + for<'a> TryFrom<&'a [u8]>
+        + std::fmt::Debug
+        + Default;
+
+    /// To bytes in little endian
+    fn to_le_bytes(&self) -> Self::Bytes;
+
+    /// To bytes in big endian
+    fn to_be_bytes(&self) -> Self::Bytes;
+
+    /// From bytes in little endian
+    fn from_le_bytes(bytes: Self::Bytes) -> Self;
+
+    /// From bytes in big endian
+    fn from_be_bytes(bytes: Self::Bytes) -> Self;
+}
+
+macro_rules! native_type {
+    ($type:ty, $primitive_type:expr) => {
+        impl NativeType for $type {
+            const PRIMITIVE: PrimitiveType = $primitive_type;
+
+            type Bytes = [u8; std::mem::size_of::<Self>()];
+            #[inline]
+            fn to_le_bytes(&self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn to_be_bytes(&self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_le_bytes(bytes: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_be_bytes(bytes: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+native_type!(u8, PrimitiveType::UInt8);
+native_type!(u16, PrimitiveType::UInt16);
+native_type!(u32, PrimitiveType::UInt32);
+native_type!(u64, PrimitiveType::UInt64);
+native_type!(i8, PrimitiveType::Int8);
+native_type!(i16, PrimitiveType::Int16);
+native_type!(i32, PrimitiveType::Int32);
+native_type!(i64, PrimitiveType::Int64);
+native_type!(f32, PrimitiveType::Float32);
+native_type!(f64, PrimitiveType::Float64);
+native_type!(i128, PrimitiveType::Int128);
+
+/// The in-memory representation of the DayMillisecond variant of arrow's "Interval" logical type.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct days_ms(pub i32, pub i32);
+
+impl days_ms {
+    /// A new [`days_ms`].
+    #[inline]
+    pub fn new(days: i32, milliseconds: i32) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of days
+    #[inline]
+    pub fn days(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of milliseconds
+    #[inline]
+    pub fn milliseconds(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for days_ms {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::DaysMs;
+    type Bytes = [u8; 8];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The in-memory representation of the MonthDayNano variant of the "Interval" logical type.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct months_days_ns(pub i32, pub i32, pub i64);
+
+impl months_days_ns {
+    /// A new [`months_days_ns`].
+    #[inline]
+    pub fn new(months: i32, days: i32, nanoseconds: i64) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of months
+    #[inline]
+    pub fn months(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of days
+    #[inline]
+    pub fn days(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of nanoseconds
+    #[inline]
+    pub fn ns(&self) -> i64 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for months_days_ns {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::MonthDayNano;
+    type Bytes = [u8; 16];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for days_ms {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for months_days_ns {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for days_ms {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for months_days_ns {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Type representation of the Float16 physical type
+#[derive(Copy, Clone, Default, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct f16(pub u16);
+
+impl PartialEq for f16 {
+    #[inline]
+    fn eq(&self, other: &f16) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+// see https://github.com/starkat99/half-rs/blob/main/src/binary16.rs
+impl f16 {
+    /// The difference between 1.0 and the next largest representable number.
+    pub const EPSILON: f16 = f16(0x1400u16);
+
+    #[inline]
+    #[must_use]
+    pub(crate) const fn is_nan(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts from u16.
+    #[inline]
+    pub const fn from_bits(bits: u16) -> f16 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts to u16.
+    #[inline]
+    pub const fn to_bits(self) -> u16 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts this `f16` to `f32`
+    pub fn to_f32(self) -> f32 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts an `f32` into `f16`
+    pub fn from_f32(value: f32) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for f16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for f16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for f16 {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::Float16;
+    type Bytes = [u8; 2];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Physical representation of a decimal
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct i256(pub ethnum::I256);
+
+impl i256 {
+    /// Returns a new [`i256`] from two `i128`.
+    pub fn from_words(hi: i128, lo: i128) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for i256 {
+    type Output = Self;
+
+    #[inline]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for i256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for i256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+unsafe impl Pod for i256 {}
+unsafe impl Zeroable for i256 {}
+
+impl NativeType for i256 {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::Int256;
+
+    type Bytes = [u8; 32];
+
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/types/offset.rs">
+```rust
+use super::Index;
+
+/// Sealed trait describing the subset (`i32` and `i64`) of [`Index`] that can be used
+/// as offsets of variable-length Arrow arrays.
+pub trait Offset: super::private::Sealed + Index {
+    /// Whether it is `i32` (false) or `i64` (true).
+    const IS_LARGE: bool;
+}
+
+impl Offset for i32 {
+    const IS_LARGE: bool = false;
+}
+
+impl Offset for i64 {
+    const IS_LARGE: bool = true;
+}
+```
+</file>
+</rust context>

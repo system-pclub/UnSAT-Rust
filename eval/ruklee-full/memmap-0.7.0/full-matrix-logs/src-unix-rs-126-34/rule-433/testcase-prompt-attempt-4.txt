@@ -1,0 +1,1545 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 128567111319552; get_arg(1) = 0; target counterexample query was unsat.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-unix-rs-126-34-rule-433-e944602416`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_unix_rs_126_34_rule_433_e944602416`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-unix-rs-126-34-rule-433-e944602416")]`.
+- Define `pub extern "C" fn __unsat_poc_src_unix_rs_126_34_rule_433_e944602416()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-unix-rs-126-34-rule-433-e944602416")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_unix_rs_126_34_rule_433_e944602416() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "unix::MmapInner",
+    "path": "src/unix.rs",
+    "line_start": 21,
+    "body_end": 21,
+    "is_public": true
+  },
+  "caller": {
+    "name": "unix::MmapInner::flush",
+    "path": "src/unix.rs",
+    "line_start": 121,
+    "line_end": 121,
+    "body_end": 132,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "std::result::Result<(), std::io::Error>"
+  },
+  "callee": {
+    "name": "std::ptr::mut_ptr::<impl *mut T>::offset",
+    "path": "rust/library/core/src/ptr/mut_ptr.rs",
+    "line_start": 371,
+    "line_end": 418,
+    "body_end": 418,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*mut T"
+  },
+  "callsite": {
+    "line": 126,
+    "col": 34,
+    "path": "src/unix.rs",
+    "id": "src-unix-rs-126-34"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "unix::libc::c_void",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> call safe `map` -> call target caller `unix::MmapInner::flush`
+2. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> call target caller `unix::MmapInner::flush` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `unix::MmapInner::flush`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::fs::File;
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::{io, ptr};
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `libc::...`.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/unix.rs:126
+```rust
+118:         )
+119:     }
+120: 
+121:     pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {
+122:         let alignment = (self.ptr as usize + offset) % page_size();
+123:         let offset = offset as isize - alignment as isize;
+124:         let len = len + alignment;
+125:         let result =
+126:             unsafe { libc::msync(self.ptr.offset(offset), len as libc::size_t, libc::MS_SYNC) };
+127:         if result == 0 {
+128:             Ok(())
+129:         } else {
+130:             Err(io::Error::last_os_error())
+131:         }
+132:     }
+133: 
+134:     pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/unix.rs:121-126
+```rust
+121:     pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {
+122:         let alignment = (self.ptr as usize + offset) % page_size();
+123:         let offset = offset as isize - alignment as isize;
+124:         let len = len + alignment;
+125:         let result =
+126:             unsafe { libc::msync(self.ptr.offset(offset), len as libc::size_t, libc::MS_SYNC) };
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/lib.rs:87-90
+```rust
+87:     pub fn offset(&mut self, offset: u64) -> &mut Self {
+88:         self.offset = offset;
+89:         self
+90:     }
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/lib.rs:120-131
+```rust
+120:     fn get_len(&self, file: &File) -> Result<usize> {
+121:         self.len.map(Ok).unwrap_or_else(|| {
+122:             let len = file.metadata()?.len() - self.offset;
+123:             if len > (usize::MAX as u64) {
+124:                 return Err(Error::new(
+125:                     ErrorKind::InvalidData,
+126:                     "memory map length overflows usize",
+127:                 ));
+128:             }
+129:             Ok(len as usize)
+130:         })
+131:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-unix-rs-126-34
+
+Rule id: rule-433
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+generated testcase contains `unsafe`; refusing to inject
+
+<still required semantic retry feedback from the last KLEE rerun>
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-unix-rs-126-34`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-unix-rs-126-34`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-unix-rs-126-34` and reproduce the target counterexample there.
+KLEE stopped before the target at external function(s): `close`, `fcntl`, `ftruncate64`, `msync`, `open64`, `sysconf`, `write`. Avoid constructors/wrappers/destructors that call these symbols; build the target caller receiver/arguments from fields visible in the injection module when possible.
+The metadata caller `unix::MmapInner::flush` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 128567111319552; get_arg(1) = 0; target counterexample query was unsat.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</still required semantic retry feedback from the last KLEE rerun>
+
+</previous attempt feedback>
+
+
+<rust context>
+
+<file path="examples/cat.rs">
+```rust
+extern crate memmap;
+
+use std::env;
+use std::fs::File;
+use std::io::{self, Write};
+
+use memmap::Mmap;
+
+/// Output a file's contents to stdout. The file path must be provided as the first process
+/// argument.
+fn main() {
+    let path = env::args()
+        .nth(1)
+        .expect("supply a single path as the program argument");
+
+    let file = File::open(path).expect("failed to open the file");
+
+    let mmap = unsafe { Mmap::map(&file).expect("failed to map the file") };
+
+    io::stdout()
+        .write_all(&mmap[..])
+        .expect("failed to output the file contents");
+}
+
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! A cross-platform Rust API for memory mapped buffers.
+
+#![doc(html_root_url = "https://docs.rs/memmap/0.7.0")]
+
+#[cfg(windows)]
+extern crate winapi;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows::MmapInner;
+
+#[cfg(unix)]
+mod unix;
+#[cfg(unix)]
+use unix::MmapInner;
+
+use std::fmt;
+use std::fs::File;
+use std::io::{Error, ErrorKind, Result};
+use std::ops::{Deref, DerefMut};
+use std::slice;
+use std::usize;
+
+/// A memory map builder, providing advanced options and flags for specifying memory map behavior.
+///
+/// `MmapOptions` can be used to create an anonymous memory map using `MmapOptions::map_anon`, or a
+/// file-backed memory map using one of `MmapOptions::map`, `MmapOptions::map_mut`,
+/// `MmapOptions::map_exec`, or `MmapOptions::map_copy`.
+#[derive(Clone, Debug, Default)]
+pub struct MmapOptions {
+    offset: u64,
+    len: Option<usize>,
+    stack: bool,
+}
+
+impl MmapOptions {
+    /// Creates a new set of options for configuring and creating a memory map.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use memmap::{MmapMut, MmapOptions};
+    /// # use std::io::Result;
+    ///
+    /// # fn main() -> Result<()> {
+    /// // Create a new memory map builder.
+    /// let mut mmap_options = MmapOptions::new();
+    ///
+    /// // Configure the memory map builder using option setters, then create
+    /// // a memory map using one of `mmap_options.map_anon`, `mmap_options.map`,
+    /// // `mmap_options.map_mut`, `mmap_options.map_exec`, or `mmap_options.map_copy`:
+    /// let mut mmap: MmapMut = mmap_options.len(36).map_anon()?;
+    ///
+    /// // Use the memory map:
+    /// mmap.copy_from_slice(b"...data to copy to the memory map...");
+    /// # let _ = mmap_options;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new() -> MmapOptions {
+        MmapOptions::default()
+    }
+
+    /// Configures the memory map to start at byte `offset` from the beginning of the file.
+    ///
+    /// This option has no effect on anonymous memory maps.
+    ///
+    /// By default, the offset is 0.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use memmap::MmapOptions;
+    /// use std::fs::File;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let mmap = unsafe {
+    ///     MmapOptions::new()
+    ///                 .offset(10)
+    ///                 .map(&File::open("README.md")?)?
+    /// };
+    /// assert_eq!(&b"A Rust library for cross-platform memory mapped IO."[..],
+    ///            &mmap[..51]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn offset(&mut self, offset: u64) -> &mut Self {
+        self.offset = offset;
+        self
+    }
+
+    /// Configures the created memory mapped buffer to be `len` bytes long.
+    ///
+    /// This option is mandatory for anonymous memory maps.
+    ///
+    /// For file-backed memory maps, the length will default to the file length.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use memmap::MmapOptions;
+    /// use std::fs::File;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let mmap = unsafe {
+    ///     MmapOptions::new()
+    ///                 .len(8)
+    ///                 .map(&File::open("README.md")?)?
+    /// };
+    /// assert_eq!(&b"# memmap"[..], &mmap[..]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn len(&mut self, len: usize) -> &mut Self {
+        self.len = Some(len);
+        self
+    }
+
+    /// Returns the configured length, or the length of the provided file.
+    fn get_len(&self, file: &File) -> Result<usize> {
+        self.len.map(Ok).unwrap_or_else(|| {
+            let len = file.metadata()?.len() - self.offset;
+            if len > (usize::MAX as u64) {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "memory map length overflows usize",
+                ));
+            }
+            Ok(len as usize)
+        })
+    }
+
+    /// Configures the anonymous memory map to be suitable for a process or thread stack.
+    ///
+    /// This option corresponds to the `MAP_STACK` flag on Linux.
+    ///
+    /// This option has no effect on file-backed memory maps.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use memmap::MmapOptions;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let stack = MmapOptions::new().stack().len(4096).map_anon();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn stack(&mut self) -> &mut Self {
+        self.stack = true;
+        self
+    }
+
+    /// Creates a read-only memory map backed by a file.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with read permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use memmap::MmapOptions;
+    /// use std::fs::File;
+    /// use std::io::Read;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let mut file = File::open("README.md")?;
+    ///
+    /// let mut contents = Vec::new();
+    /// file.read_to_end(&mut contents)?;
+    ///
+    /// let mmap = unsafe {
+    ///     MmapOptions::new().map(&file)?
+    /// };
+    ///
+    /// assert_eq!(&contents[..], &mmap[..]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub unsafe fn map(&self, file: &File) -> Result<Mmap> {
+        MmapInner::map(self.get_len(file)?, file, self.offset).map(|inner| Mmap { inner: inner })
+    }
+
+    /// Creates a readable and executable memory map backed by a file.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with read permissions.
+    pub unsafe fn map_exec(&self, file: &File) -> Result<Mmap> {
+        MmapInner::map_exec(self.get_len(file)?, file, self.offset)
+            .map(|inner| Mmap { inner: inner })
+    }
+
+    /// Creates a writeable memory map backed by a file.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with read and write permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate memmap;
+    /// # extern crate tempdir;
+    /// #
+    /// use std::fs::OpenOptions;
+    /// use std::path::PathBuf;
+    ///
+    /// use memmap::MmapOptions;
+    /// #
+    /// # fn main() -> std::io::Result<()> {
+    /// # let tempdir = tempdir::TempDir::new("mmap")?;
+    /// let path: PathBuf = /* path to file */
+    /// #   tempdir.path().join("map_mut");
+    /// let file = OpenOptions::new().read(true).write(true).create(true).open(&path)?;
+    /// file.set_len(13)?;
+    ///
+    /// let mut mmap = unsafe {
+    ///     MmapOptions::new().map_mut(&file)?
+    /// };
+    ///
+    /// mmap.copy_from_slice(b"Hello, world!");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub unsafe fn map_mut(&self, file: &File) -> Result<MmapMut> {
+        MmapInner::map_mut(self.get_len(file)?, file, self.offset)
+            .map(|inner| MmapMut { inner: inner })
+    }
+
+    /// Creates a copy-on-write memory map backed by a file.
+    ///
+    /// Data written to the memory map will not be visible by other processes,
+    /// and will not be carried through to the underlying file.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with writable permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use memmap::MmapOptions;
+    /// use std::fs::File;
+    /// use std::io::Write;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let file = File::open("README.md")?;
+    /// let mut mmap = unsafe { MmapOptions::new().map_copy(&file)? };
+    /// (&mut mmap[..]).write_all(b"Hello, world!")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub unsafe fn map_copy(&self, file: &File) -> Result<MmapMut> {
+        MmapInner::map_copy(self.get_len(file)?, file, self.offset)
+            .map(|inner| MmapMut { inner: inner })
+    }
+
+    /// Creates an anonymous memory map.
+    ///
+    /// Note: the memory map length must be configured to be greater than 0 before creating an
+    /// anonymous memory map using `MmapOptions::len()`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails.
+    pub fn map_anon(&self) -> Result<MmapMut> {
+        MmapInner::map_anon(self.len.unwrap_or(0), self.stack).map(|inner| MmapMut { inner: inner })
+    }
+}
+
+/// An immutable memory mapped buffer.
+///
+/// A `Mmap` may be backed by a file, or it can be anonymous map, backed by volatile memory.
+///
+/// Use `MmapOptions` to configure and create a file-backed memory map. To create an immutable
+/// anonymous memory map, first create a mutable anonymous memory map using `MmapOptions`, and then
+/// make it immutable with `MmapMut::make_read_only`.
+///
+/// # Example
+///
+/// ```
+/// use memmap::MmapOptions;
+/// use std::io::Write;
+/// use std::fs::File;
+///
+/// # fn main() -> std::io::Result<()> {
+/// let file = File::open("README.md")?;
+/// let mmap = unsafe { MmapOptions::new().map(&file)? };
+/// assert_eq!(b"# memmap", &mmap[0..8]);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// See `MmapMut` for the mutable version.
+pub struct Mmap {
+    inner: MmapInner,
+}
+
+impl Mmap {
+    /// Creates a read-only memory map backed by a file.
+    ///
+    /// This is equivalent to calling `MmapOptions::new().map(file)`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with read permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::fs::File;
+    /// use std::io::Read;
+    ///
+    /// use memmap::Mmap;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let mut file = File::open("README.md")?;
+    ///
+    /// let mut contents = Vec::new();
+    /// file.read_to_end(&mut contents)?;
+    ///
+    /// let mmap = unsafe { Mmap::map(&file)?  };
+    ///
+    /// assert_eq!(&contents[..], &mmap[..]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub unsafe fn map(file: &File) -> Result<Mmap> {
+        MmapOptions::new().map(file)
+    }
+
+    /// Transition the memory map to be writable.
+    ///
+    /// If the memory map is file-backed, the file must have been opened with write permissions.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with writable permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate memmap;
+    /// # extern crate tempdir;
+    /// #
+    /// use memmap::Mmap;
+    /// use std::ops::DerefMut;
+    /// use std::io::Write;
+    /// # use std::fs::OpenOptions;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// # let tempdir = tempdir::TempDir::new("mmap")?;
+    /// let file = /* file opened with write permissions */
+    /// #          OpenOptions::new()
+    /// #                      .read(true)
+    /// #                      .write(true)
+    /// #                      .create(true)
+    /// #                      .open(tempdir.path()
+    /// #                      .join("make_mut"))?;
+    /// # file.set_len(128)?;
+    /// let mmap = unsafe { Mmap::map(&file)? };
+    /// // ... use the read-only memory map ...
+    /// let mut mut_mmap = mmap.make_mut()?;
+    /// mut_mmap.deref_mut().write_all(b"hello, world!")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn make_mut(mut self) -> Result<MmapMut> {
+        self.inner.make_mut()?;
+        Ok(MmapMut { inner: self.inner })
+    }
+}
+
+impl Deref for Mmap {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.inner.ptr(), self.inner.len()) }
+    }
+}
+
+impl AsRef<[u8]> for Mmap {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.deref()
+    }
+}
+
+impl fmt::Debug for Mmap {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Mmap")
+            .field("ptr", &self.as_ptr())
+            .field("len", &self.len())
+            .finish()
+    }
+}
+
+/// A mutable memory mapped buffer.
+///
+/// A file-backed `MmapMut` buffer may be used to read from or write to a file. An anonymous
+/// `MmapMut` buffer may be used any place that an in-memory byte buffer is needed. Use
+/// `MmapOptions` for creating memory maps.
+///
+/// See `Mmap` for the immutable version.
+pub struct MmapMut {
+    inner: MmapInner,
+}
+
+impl MmapMut {
+    /// Creates a writeable memory map backed by a file.
+    ///
+    /// This is equivalent to calling `MmapOptions::new().map_mut(file)`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file is not open with read and write permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate memmap;
+    /// # extern crate tempdir;
+    /// #
+    /// use std::fs::OpenOptions;
+    /// use std::path::PathBuf;
+    ///
+    /// use memmap::MmapMut;
+    /// #
+    /// # fn main() -> std::io::Result<()> {
+    /// # let tempdir = tempdir::TempDir::new("mmap")?;
+    /// let path: PathBuf = /* path to file */
+    /// #   tempdir.path().join("map_mut");
+    /// let file = OpenOptions::new()
+    ///                        .read(true)
+    ///                        .write(true)
+    ///                        .create(true)
+    ///                        .open(&path)?;
+    /// file.set_len(13)?;
+    ///
+    /// let mut mmap = unsafe { MmapMut::map_mut(&file)? };
+    ///
+    /// mmap.copy_from_slice(b"Hello, world!");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub unsafe fn map_mut(file: &File) -> Result<MmapMut> {
+        MmapOptions::new().map_mut(file)
+    }
+
+    /// Creates an anonymous memory map.
+    ///
+    /// This is equivalent to calling `MmapOptions::new().len(length).map_anon()`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails.
+    pub fn map_anon(length: usize) -> Result<MmapMut> {
+        MmapOptions::new().len(length).map_anon()
+    }
+
+    /// Flushes outstanding memory map modifications to disk.
+    ///
+    /// When this method returns with a non-error result, all outstanding changes to a file-backed
+    /// memory map are guaranteed to be durably stored. The file's metadata (including last
+    /// modification timestamp) may not be updated.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate memmap;
+    /// # extern crate tempdir;
+    /// #
+    /// use std::fs::OpenOptions;
+    /// use std::io::Write;
+    /// use std::path::PathBuf;
+    ///
+    /// use memmap::MmapMut;
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// # let tempdir = tempdir::TempDir::new("mmap")?;
+    /// let path: PathBuf = /* path to file */
+    /// #   tempdir.path().join("flush");
+    /// let file = OpenOptions::new().read(true).write(true).create(true).open(&path)?;
+    /// file.set_len(128)?;
+    ///
+    /// let mut mmap = unsafe { MmapMut::map_mut(&file)? };
+    ///
+    /// (&mut mmap[..]).write_all(b"Hello, world!")?;
+    /// mmap.flush()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn flush(&self) -> Result<()> {
+        let len = self.len();
+        self.inner.flush(0, len)
+    }
+
+    /// Asynchronously flushes outstanding memory map modifications to disk.
+    ///
+    /// This method initiates flushing modified pages to durable storage, but it will not wait for
+    /// the operation to complete before returning. The file's metadata (including last
+    /// modification timestamp) may not be updated.
+    pub fn flush_async(&self) -> Result<()> {
+        let len = self.len();
+        self.inner.flush_async(0, len)
+    }
+
+    /// Flushes outstanding memory map modifications in the range to disk.
+    ///
+    /// The offset and length must be in the bounds of the memory map.
+    ///
+    /// When this method returns with a non-error result, all outstanding changes to a file-backed
+    /// memory in the range are guaranteed to be durable stored. The file's metadata (including
+    /// last modification timestamp) may not be updated. It is not guaranteed the only the changes
+    /// in the specified range are flushed; other outstanding changes to the memory map may be
+    /// flushed as well.
+    pub fn flush_range(&self, offset: usize, len: usize) -> Result<()> {
+        self.inner.flush(offset, len)
+    }
+
+    /// Asynchronously flushes outstanding memory map modifications in the range to disk.
+    ///
+    /// The offset and length must be in the bounds of the memory map.
+    ///
+    /// This method initiates flushing modified pages to durable storage, but it will not wait for
+    /// the operation to complete before returning. The file's metadata (including last
+    /// modification timestamp) may not be updated. It is not guaranteed that the only changes
+    /// flushed are those in the specified range; other outstanding changes to the memory map may
+    /// be flushed as well.
+    pub fn flush_async_range(&self, offset: usize, len: usize) -> Result<()> {
+        self.inner.flush_async(offset, len)
+    }
+
+    /// Returns an immutable version of this memory mapped buffer.
+    ///
+    /// If the memory map is file-backed, the file must have been opened with read permissions.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file has not been opened with read permissions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate memmap;
+    /// #
+    /// use std::io::Write;
+    /// use std::path::PathBuf;
+    ///
+    /// use memmap::{Mmap, MmapMut};
+    ///
+    /// # fn main() -> std::io::Result<()> {
+    /// let mut mmap = MmapMut::map_anon(128)?;
+    ///
+    /// (&mut mmap[..]).write(b"Hello, world!")?;
+    ///
+    /// let mmap: Mmap = mmap.make_read_only()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn make_read_only(mut self) -> Result<Mmap> {
+        self.inner.make_read_only()?;
+        Ok(Mmap { inner: self.inner })
+    }
+
+    /// Transition the memory map to be readable and executable.
+    ///
+    /// If the memory map is file-backed, the file must have been opened with execute permissions.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error when the underlying system call fails, which can happen for a
+    /// variety of reasons, such as when the file has not been opened with execute permissions.
+    pub fn make_exec(mut self) -> Result<Mmap> {
+        self.inner.make_exec()?;
+        Ok(Mmap { inner: self.inner })
+    }
+}
+
+impl Deref for MmapMut {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.inner.ptr(), self.inner.len()) }
+    }
+}
+
+impl DerefMut for MmapMut {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [u8] {
+        unsafe { slice::from_raw_parts_mut(self.inner.mut_ptr(), self.inner.len()) }
+    }
+}
+
+impl AsRef<[u8]> for MmapMut {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.deref()
+    }
+}
+
+impl AsMut<[u8]> for MmapMut {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.deref_mut()
+    }
+}
+
+impl fmt::Debug for MmapMut {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("MmapMut")
+            .field("ptr", &self.as_ptr())
+            .field("len", &self.len())
+            .finish()
+    }
+}
+
+
+```
+</file>
+
+<file path="src/unix.rs">
+```rust
+extern crate libc;
+use std::fs::File;
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::{io, ptr};
+#[cfg(
+    any(
+        all(target_os = "linux", not(target_arch = "mips")),
+        target_os = "freebsd",
+        target_os = "android"
+    )
+)]
+const MAP_STACK: libc::c_int = libc::MAP_STACK;
+#[cfg(
+    not(
+        any(
+            all(target_os = "linux", not(target_arch = "mips")),
+            target_os = "freebsd",
+            target_os = "android"
+        )
+    )
+)]
+const MAP_STACK: libc::c_int = 0;
+pub struct MmapInner {
+    ptr: *mut libc::c_void,
+    len: usize,
+}
+impl MmapInner {
+    /// Creates a new `MmapInner`.
+    ///
+    /// This is a thin wrapper around the `mmap` sytem call.
+    fn new(
+        len: usize,
+        prot: libc::c_int,
+        flags: libc::c_int,
+        file: RawFd,
+        offset: u64,
+    ) -> io::Result<MmapInner> {
+        let alignment = offset % page_size() as u64;
+        let aligned_offset = offset - alignment;
+        let aligned_len = len + alignment as usize;
+        if aligned_len == 0 {
+            return Err(
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "memory map must have a non-zero length",
+                ),
+            );
+        }
+        unsafe {
+            let ptr = libc::mmap(
+                ptr::null_mut(),
+                aligned_len as libc::size_t,
+                prot,
+                flags,
+                file,
+                aligned_offset as libc::off_t,
+            );
+            if ptr == libc::MAP_FAILED {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(MmapInner {
+                    ptr: ptr.offset(alignment as isize),
+                    len: len,
+                })
+            }
+        }
+    }
+    pub fn map(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        MmapInner::new(len, libc::PROT_READ, libc::MAP_SHARED, file.as_raw_fd(), offset)
+    }
+    pub fn map_exec(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        MmapInner::new(
+            len,
+            libc::PROT_READ | libc::PROT_EXEC,
+            libc::MAP_SHARED,
+            file.as_raw_fd(),
+            offset,
+        )
+    }
+    pub fn map_mut(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        MmapInner::new(
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED,
+            file.as_raw_fd(),
+            offset,
+        )
+    }
+    pub fn map_copy(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        MmapInner::new(
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE,
+            file.as_raw_fd(),
+            offset,
+        )
+    }
+    /// Open an anonymous memory map.
+    pub fn map_anon(len: usize, stack: bool) -> io::Result<MmapInner> {
+        let stack = if stack { MAP_STACK } else { 0 };
+        MmapInner::new(
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED | libc::MAP_ANON | stack,
+            -1,
+            0,
+        )
+    }
+    #[inline(never)]
+    pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {
+        let alignment = (self.ptr as usize + offset) % page_size();
+        let offset = offset as isize - alignment as isize;
+        let len = len + alignment;
+        let result = unsafe {
+            let __klee_arg0 = &self.ptr;
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg0);
+            klee_ext_bind::bind_arg_u64_value(1, &offset);
+            klee_ext_bind::callsite!("src-unix-rs-126-34");
+            let mut __klee_ret_src_unix_rs_126_34_offset = __klee_arg0.offset(offset);
+            libc::msync(
+                __klee_ret_src_unix_rs_126_34_offset,
+                len as libc::size_t,
+                libc::MS_SYNC,
+            )
+        };
+        if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+    }
+    #[inline(never)]
+    pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {
+        let alignment = offset % page_size();
+        let aligned_offset = offset - alignment;
+        let aligned_len = len + alignment;
+        let result = unsafe {
+            let __klee_arg1 = &self.ptr;
+            let __klee_arg2 = aligned_offset as isize;
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg1);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
+            klee_ext_bind::callsite!("src-unix-rs-140-17");
+            let mut __klee_ret_src_unix_rs_140_17_offset = __klee_arg1
+                .offset(__klee_arg2);
+            libc::msync(
+                __klee_ret_src_unix_rs_140_17_offset,
+                aligned_len as libc::size_t,
+                libc::MS_ASYNC,
+            )
+        };
+        if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+    }
+    fn mprotect(&mut self, prot: libc::c_int) -> io::Result<()> {
+        unsafe {
+            let alignment = self.ptr as usize % page_size();
+            let ptr = self.ptr.offset(-(alignment as isize));
+            let len = self.len + alignment;
+            if libc::mprotect(ptr, len, prot) == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+    }
+    pub fn make_read_only(&mut self) -> io::Result<()> {
+        self.mprotect(libc::PROT_READ)
+    }
+    pub fn make_exec(&mut self) -> io::Result<()> {
+        self.mprotect(libc::PROT_READ | libc::PROT_EXEC)
+    }
+    pub fn make_mut(&mut self) -> io::Result<()> {
+        self.mprotect(libc::PROT_READ | libc::PROT_WRITE)
+    }
+    #[inline]
+    pub fn ptr(&self) -> *const u8 {
+        self.ptr as *const u8
+    }
+    #[inline]
+    pub fn mut_ptr(&mut self) -> *mut u8 {
+        self.ptr as *mut u8
+    }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+}
+impl Drop for MmapInner {
+    fn drop(&mut self) {
+        let alignment = self.ptr as usize % page_size();
+        unsafe {
+            assert!(
+                libc::munmap(self.ptr.offset(- (alignment as isize)), (self.len +
+                alignment) as libc::size_t) == 0, "unable to unmap mmap: {}",
+                io::Error::last_os_error()
+            );
+        }
+    }
+}
+unsafe impl Sync for MmapInner {}
+unsafe impl Send for MmapInner {}
+fn page_size() -> usize {
+    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
+}
+
+```
+</file>
+
+<file path="src/windows.rs">
+```rust
+use std::fs::File;
+use std::os::raw::c_void;
+use std::os::windows::io::{AsRawHandle, RawHandle};
+use std::{io, mem, ptr};
+
+use winapi::shared::basetsd::SIZE_T;
+use winapi::shared::minwindef::DWORD;
+use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+use winapi::um::memoryapi::{
+    CreateFileMappingW, FlushViewOfFile, MapViewOfFile, UnmapViewOfFile, VirtualProtect,
+    FILE_MAP_ALL_ACCESS, FILE_MAP_COPY, FILE_MAP_EXECUTE, FILE_MAP_READ, FILE_MAP_WRITE,
+};
+use winapi::um::sysinfoapi::GetSystemInfo;
+use winapi::um::winnt::{
+    PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_READONLY,
+    PAGE_READWRITE, PAGE_WRITECOPY,
+};
+
+pub struct MmapInner {
+    file: Option<File>,
+    ptr: *mut c_void,
+    len: usize,
+    copy: bool,
+}
+
+impl MmapInner {
+    /// Creates a new `MmapInner`.
+    ///
+    /// This is a thin wrapper around the `CreateFileMappingW` and `MapViewOfFile` system calls.
+    pub fn new(
+        file: &File,
+        protect: DWORD,
+        access: DWORD,
+        offset: u64,
+        len: usize,
+        copy: bool,
+    ) -> io::Result<MmapInner> {
+        let alignment = offset % allocation_granularity() as u64;
+        let aligned_offset = offset - alignment as u64;
+        let aligned_len = len + alignment as usize;
+
+        unsafe {
+            let handle = CreateFileMappingW(
+                file.as_raw_handle(),
+                ptr::null_mut(),
+                protect,
+                0,
+                0,
+                ptr::null(),
+            );
+            if handle == ptr::null_mut() {
+                return Err(io::Error::last_os_error());
+            }
+
+            let ptr = MapViewOfFile(
+                handle,
+                access,
+                (aligned_offset >> 16 >> 16) as DWORD,
+                (aligned_offset & 0xffffffff) as DWORD,
+                aligned_len as SIZE_T,
+            );
+            CloseHandle(handle);
+
+            if ptr == ptr::null_mut() {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(MmapInner {
+                    file: Some(file.try_clone()?),
+                    ptr: ptr.offset(alignment as isize),
+                    len: len as usize,
+                    copy: copy,
+                })
+            }
+        }
+    }
+
+    pub fn map(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        let write = protection_supported(file.as_raw_handle(), PAGE_READWRITE);
+        let exec = protection_supported(file.as_raw_handle(), PAGE_EXECUTE_READ);
+        let mut access = FILE_MAP_READ;
+        let protection = match (write, exec) {
+            (true, true) => {
+                access |= FILE_MAP_WRITE | FILE_MAP_EXECUTE;
+                PAGE_EXECUTE_READWRITE
+            }
+            (true, false) => {
+                access |= FILE_MAP_WRITE;
+                PAGE_READWRITE
+            }
+            (false, true) => {
+                access |= FILE_MAP_EXECUTE;
+                PAGE_EXECUTE_READ
+            }
+            (false, false) => PAGE_READONLY,
+        };
+
+        let mut inner = MmapInner::new(file, protection, access, offset, len, false)?;
+        if write || exec {
+            inner.make_read_only()?;
+        }
+        Ok(inner)
+    }
+
+    pub fn map_exec(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        let write = protection_supported(file.as_raw_handle(), PAGE_READWRITE);
+        let mut access = FILE_MAP_READ | FILE_MAP_EXECUTE;
+        let protection = if write {
+            access |= FILE_MAP_WRITE;
+            PAGE_EXECUTE_READWRITE
+        } else {
+            PAGE_EXECUTE_READ
+        };
+
+        let mut inner = MmapInner::new(file, protection, access, offset, len, false)?;
+        if write {
+            inner.make_exec()?;
+        }
+        Ok(inner)
+    }
+
+    pub fn map_mut(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        let exec = protection_supported(file.as_raw_handle(), PAGE_EXECUTE_READ);
+        let mut access = FILE_MAP_READ | FILE_MAP_WRITE;
+        let protection = if exec {
+            access |= FILE_MAP_EXECUTE;
+            PAGE_EXECUTE_READWRITE
+        } else {
+            PAGE_READWRITE
+        };
+
+        let mut inner = MmapInner::new(file, protection, access, offset, len, false)?;
+        if exec {
+            inner.make_mut()?;
+        }
+        Ok(inner)
+    }
+
+    pub fn map_copy(len: usize, file: &File, offset: u64) -> io::Result<MmapInner> {
+        let exec = protection_supported(file.as_raw_handle(), PAGE_EXECUTE_READWRITE);
+        let mut access = FILE_MAP_COPY;
+        let protection = if exec {
+            access |= FILE_MAP_EXECUTE;
+            PAGE_EXECUTE_WRITECOPY
+        } else {
+            PAGE_WRITECOPY
+        };
+
+        let mut inner = MmapInner::new(file, protection, access, offset, len, true)?;
+        if exec {
+            inner.make_mut()?;
+        }
+        Ok(inner)
+    }
+
+    pub fn map_anon(len: usize, _stack: bool) -> io::Result<MmapInner> {
+        unsafe {
+            // Create a mapping and view with maximum access permissions, then use `VirtualProtect`
+            // to set the actual `Protection`. This way, we can set more permissive protection later
+            // on.
+            // Also see https://msdn.microsoft.com/en-us/library/windows/desktop/aa366537.aspx
+
+            let handle = CreateFileMappingW(
+                INVALID_HANDLE_VALUE,
+                ptr::null_mut(),
+                PAGE_EXECUTE_READWRITE,
+                (len >> 16 >> 16) as DWORD,
+                (len & 0xffffffff) as DWORD,
+                ptr::null(),
+            );
+            if handle == ptr::null_mut() {
+                return Err(io::Error::last_os_error());
+            }
+            let access = FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE;
+            let ptr = MapViewOfFile(handle, access, 0, 0, len as SIZE_T);
+            CloseHandle(handle);
+
+            if ptr == ptr::null_mut() {
+                return Err(io::Error::last_os_error());
+            }
+
+            let mut old = 0;
+            let result = VirtualProtect(ptr, len as SIZE_T, PAGE_READWRITE, &mut old);
+            if result != 0 {
+                Ok(MmapInner {
+                    file: None,
+                    ptr: ptr,
+                    len: len as usize,
+                    copy: false,
+                })
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+    }
+
+    pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {
+        self.flush_async(offset, len)?;
+        if let Some(ref file) = self.file {
+            file.sync_data()?;
+        }
+        Ok(())
+    }
+
+    pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {
+        let result = unsafe { FlushViewOfFile(self.ptr.offset(offset as isize), len as SIZE_T) };
+        if result != 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+
+    fn virtual_protect(&mut self, protect: DWORD) -> io::Result<()> {
+        unsafe {
+            let alignment = self.ptr as usize % allocation_granularity();
+            let ptr = self.ptr.offset(-(alignment as isize));
+            let aligned_len = self.len as SIZE_T + alignment as SIZE_T;
+
+            let mut old = 0;
+            let result = VirtualProtect(ptr, aligned_len, protect, &mut old);
+
+            if result != 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+    }
+
+    pub fn make_read_only(&mut self) -> io::Result<()> {
+        self.virtual_protect(PAGE_READONLY)
+    }
+
+    pub fn make_exec(&mut self) -> io::Result<()> {
+        if self.copy {
+            self.virtual_protect(PAGE_EXECUTE_WRITECOPY)
+        } else {
+            self.virtual_protect(PAGE_EXECUTE_READ)
+        }
+    }
+
+    pub fn make_mut(&mut self) -> io::Result<()> {
+        if self.copy {
+            self.virtual_protect(PAGE_WRITECOPY)
+        } else {
+            self.virtual_protect(PAGE_READWRITE)
+        }
+    }
+
+    #[inline]
+    pub fn ptr(&self) -> *const u8 {
+        self.ptr as *const u8
+    }
+
+    #[inline]
+    pub fn mut_ptr(&mut self) -> *mut u8 {
+        self.ptr as *mut u8
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl Drop for MmapInner {
+    fn drop(&mut self) {
+        let alignment = self.ptr as usize % allocation_granularity();
+        unsafe {
+            let ptr = self.ptr.offset(-(alignment as isize));
+            assert!(
+                UnmapViewOfFile(ptr) != 0,
+                "unable to unmap mmap: {}",
+                io::Error::last_os_error()
+            );
+        }
+    }
+}
+
+unsafe impl Sync for MmapInner {}
+unsafe impl Send for MmapInner {}
+
+fn protection_supported(handle: RawHandle, protection: DWORD) -> bool {
+    unsafe {
+        let handle = CreateFileMappingW(handle, ptr::null_mut(), protection, 0, 0, ptr::null());
+        if handle == ptr::null_mut() {
+            return false;
+        }
+        CloseHandle(handle);
+        true
+    }
+}
+
+fn allocation_granularity() -> usize {
+    unsafe {
+        let mut info = mem::zeroed();
+        GetSystemInfo(&mut info);
+        return info.dwAllocationGranularity as usize;
+    }
+}
+
+```
+</file>
+</rust context>

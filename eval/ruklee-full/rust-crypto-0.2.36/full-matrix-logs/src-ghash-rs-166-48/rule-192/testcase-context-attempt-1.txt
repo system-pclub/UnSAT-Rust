@@ -1,0 +1,343 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/ghash.rs">
+```rust
+/// This is an implementaiton of GHASH as used in GCM [1].
+/// It is defined as GHASH(H, A, C), where H is a MAC key, A is authenticated data,
+/// and C is the ciphertext. GHASH can be used as a keyed MAC, if C is left empty.
+///
+/// In order to ensure constant time computation it uses the approach described in [2] section 5.2.
+///
+/// [1] - "The Galois/Counter Mode of Operation (GCM)" - David A. McGrew and John Viega
+///       <http://csrc.nist.gov/groups/ST/toolkit/BCM/documents/proposedmodes/gcm/gcm-spec.pdf>
+/// [2] - "Faster and Timing-Attack Resistant AES-GCM" - Emilia Käsper and Peter Schwabe
+///       <http://cryptojedi.org/papers/aesbs-20090616.pdf>
+use std::ops::BitXor;
+use std::mem;
+use cryptoutil::copy_memory;
+use cryptoutil::{read_u32_be, write_u32_be};
+use mac::{Mac, MacResult};
+use simd;
+#[derive(Clone, Copy)]
+struct Gf128 {
+    d: simd::u32x4,
+}
+impl Gf128 {
+    fn new(a: u32, b: u32, c: u32, d: u32) -> Gf128 {
+        Gf128 {
+            d: simd::u32x4(a, b, c, d),
+        }
+    }
+    fn from_bytes(bytes: &[u8]) -> Gf128 {
+        /* body omitted: interface retained */
+    }
+    fn to_bytes(&self) -> [u8; 16] {
+        /* body omitted: interface retained */
+    }
+    fn times_x(self) -> Gf128 {
+        /* body omitted: interface retained */
+    }
+    fn times_x_reduce(self) -> Gf128 {
+        /* body omitted: interface retained */
+    }
+    fn add_and_mul(&mut self, y: Gf128, hs: &[Gf128; 128]) {
+        /* body omitted: interface retained */
+    }
+    fn cond_xor(self, x: Gf128, y: Gf128) -> Gf128 {
+        /* body omitted: interface retained */
+    }
+}
+impl BitXor for Gf128 {
+    type Output = Gf128;
+    fn bitxor(self, rhs: Gf128) -> Gf128 {
+        /* body omitted: interface retained */
+    }
+}
+/// A structure representing the state of a GHASH computation
+#[derive(Copy)]
+pub struct Ghash {
+    hs: [Gf128; 128],
+    state: Gf128,
+    a_len: usize,
+    rest: Option<[u8; 16]>,
+    finished: bool,
+}
+impl Clone for Ghash {
+    fn clone(&self) -> Ghash {
+        /* body omitted: interface retained */
+    }
+}
+/// A structure representing the state of a GHASH computation, after input for C was provided
+#[derive(Copy)]
+pub struct GhashWithC {
+    hs: [Gf128; 128],
+    state: Gf128,
+    a_len: usize,
+    c_len: usize,
+    rest: Option<[u8; 16]>,
+}
+impl Clone for GhashWithC {
+    fn clone(&self) -> GhashWithC {
+        /* body omitted: interface retained */
+    }
+}
+fn update(
+    state: &mut Gf128,
+    len: &mut usize,
+    data: &[u8],
+    srest: &mut Option<[u8; 16]>,
+    hs: &[Gf128; 128],
+) {
+    /* body omitted: interface retained */
+}
+impl Ghash {
+    /// Creates a new GHASH state, with `h` as the key
+    #[inline(never)]
+    pub fn new(h: &[u8]) -> Ghash {
+        assert!(h.len() == 16);
+        let mut table: [Gf128; 128] = unsafe {
+            klee_ext_bind::callsite!("src-ghash-rs-166-48");
+            let mut __klee_ret_src_ghash_rs_166_48_uninitialized = mem::uninitialized();
+            __klee_ret_src_ghash_rs_166_48_uninitialized
+        };
+        let mut h = Gf128::from_bytes(h);
+        for poly in table.iter_mut() {
+            *poly = h;
+            h = h.times_x_reduce();
+        }
+        Ghash {
+            hs: table,
+            state: Gf128::new(0, 0, 0, 0),
+            a_len: 0,
+            rest: None,
+            finished: false,
+        }
+    }
+    fn flush(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Feeds data for GHASH's A input
+    #[inline]
+    pub fn input_a(mut self, a: &[u8]) -> Ghash {
+        /* body omitted: interface retained */
+    }
+    /// Feeds data for GHASH's C input
+    #[inline]
+    pub fn input_c(mut self, c: &[u8]) -> GhashWithC {
+        /* body omitted: interface retained */
+    }
+    /// Retrieve the digest result
+    #[inline]
+    pub fn result(mut self) -> [u8; 16] {
+        /* body omitted: interface retained */
+    }
+}
+impl GhashWithC {
+    /// Feeds data for GHASH's C input
+    #[inline]
+    pub fn input_c(mut self, c: &[u8]) -> GhashWithC {
+        /* body omitted: interface retained */
+    }
+    /// Retrieve the digest result
+    #[inline]
+    pub fn result(mut self) -> [u8; 16] {
+        /* body omitted: interface retained */
+    }
+}
+impl Mac for Ghash {
+    fn input(&mut self, data: &[u8]) {
+        /* body omitted: interface retained */
+    }
+    fn reset(&mut self) {
+        /* body omitted: interface retained */
+    }
+    fn result(&mut self) -> MacResult {
+        /* body omitted: interface retained */
+    }
+    fn raw_result(&mut self, output: &mut [u8]) {
+        /* body omitted: interface retained */
+    }
+    fn output_bytes(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use test::Bencher;
+    use mac::Mac;
+    use ghash::Ghash;
+    #[bench]
+    pub fn ghash_10(bh: &mut Bencher) {
+        /* body omitted: interface retained */
+    }
+    #[bench]
+    pub fn ghash_1k(bh: &mut Bencher) {
+        /* body omitted: interface retained */
+    }
+    #[bench]
+    pub fn ghash_64k(bh: &mut Bencher) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+#![cfg_attr(feature = "with-bench", feature(test))]
+
+extern crate rand;
+extern crate rustc_serialize as serialize;
+extern crate time;
+extern crate libc;
+
+#[cfg(all(test, feature = "with-bench"))]
+extern crate test;
+
+pub mod aead;
+pub mod aes;
+pub mod aes_gcm;
+pub mod aessafe;
+pub mod bcrypt;
+pub mod bcrypt_pbkdf;
+pub mod blake2b;
+pub mod blake2s;
+pub mod blockmodes;
+pub mod blowfish;
+pub mod buffer;
+pub mod chacha20;
+pub mod chacha20poly1305;
+mod cryptoutil;
+pub mod curve25519;
+pub mod digest;
+pub mod ed25519;
+pub mod fortuna;
+pub mod ghash;
+pub mod hc128;
+pub mod hmac;
+pub mod hkdf;
+pub mod mac;
+pub mod md5;
+pub mod pbkdf2;
+pub mod poly1305;
+pub mod rc4;
+pub mod ripemd160;
+pub mod salsa20;
+pub mod scrypt;
+pub mod sha1;
+pub mod sha2;
+pub mod sha3;
+mod simd;
+pub mod sosemanuk;
+mod step_by;
+pub mod symmetriccipher;
+pub mod util;
+pub mod whirlpool;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod aesni;
+```
+</file>
+
+<file path="src/mac.rs">
+```rust
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+/*!
+ * The mac module defines the Message Authentication Code (Mac) trait.
+ */
+
+use util::fixed_time_eq;
+
+/**
+ * The Mac trait defines methods for a Message Authentication function.
+ */
+pub trait Mac {
+    /**
+     * Process input data.
+     *
+     * # Arguments
+     * * data - The input data to process.
+     *
+     */
+    fn input(&mut self, data: &[u8]);
+
+    /**
+     * Reset the Mac state to begin processing another input stream.
+     */
+    fn reset(&mut self);
+
+    /**
+     * Obtain the result of a Mac computation as a MacResult.
+     */
+    fn result(&mut self) -> MacResult;
+
+    /**
+     * Obtain the result of a Mac computation as [u8]. This method should be used very carefully
+     * since incorrect use of the Mac code could result in permitting a timing attack which defeats
+     * the security provided by a Mac function.
+     */
+    fn raw_result(&mut self, output: &mut [u8]);
+
+    /**
+     * Get the size of the Mac code, in bytes.
+     */
+    fn output_bytes(&self) -> usize;
+}
+
+/**
+ * A MacResult wraps a Mac code and provides a safe Eq implementation that runs in fixed time.
+ */
+pub struct MacResult {
+    code: Vec<u8>
+}
+
+impl MacResult {
+    /**
+     * Create a new MacResult.
+     */
+    pub fn new(code: &[u8]) -> MacResult {
+        /* body omitted: interface retained */
+    }
+
+    /**
+     * Create a new MacResult taking ownership of the specified code value.
+     */
+    pub fn new_from_owned(code: Vec<u8>) -> MacResult {
+        /* body omitted: interface retained */
+    }
+
+    /**
+     * Get the code value. Be very careful using this method, since incorrect use of the code value
+     * may permit timing attacks which defeat the security provided by the Mac function.
+     */
+    pub fn code<'s>(&'s self) -> &'s [u8] {
+        /* body omitted: interface retained */
+    }
+}
+
+impl PartialEq for MacResult {
+    fn eq(&self, x: &MacResult) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Eq for MacResult { }
+```
+</file>
+</rust context>

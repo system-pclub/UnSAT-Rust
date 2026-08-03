@@ -1,0 +1,1240 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/buffer/immutable.rs">
+```rust
+use std::{iter::FromIterator, ops::Deref, sync::Arc, usize};
+use either::Either;
+use super::Bytes;
+use super::IntoIter;
+/// [`Buffer`] is a contiguous memory region that can be shared across
+/// thread boundaries.
+///
+/// The easiest way to think about [`Buffer<T>`] is being equivalent to
+/// a `Arc<Vec<T>>`, with the following differences:
+/// * slicing and cloning is `O(1)`.
+/// * it supports external allocated memory
+///
+/// The easiest way to create one is to use its implementation of `From<Vec<T>>`.
+///
+/// # Examples
+/// ```
+/// use arrow2::buffer::Buffer;
+///
+/// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+/// assert_eq!(buffer.as_ref(), [1, 2, 3].as_ref());
+///
+/// // it supports copy-on-write semantics (i.e. back to a `Vec`)
+/// let vec: Vec<u32> = buffer.into_mut().right().unwrap();
+/// assert_eq!(vec, vec![1, 2, 3]);
+///
+/// // cloning and slicing is `O(1)` (data is shared)
+/// let mut buffer: Buffer<u32> = vec![1, 2, 3].into();
+/// let mut sliced = buffer.clone();
+/// sliced.slice(1, 1);
+/// assert_eq!(sliced.as_ref(), [2].as_ref());
+/// // but cloning forbids getting mut since `slice` and `buffer` now share data
+/// assert_eq!(buffer.get_mut_slice(), None);
+/// ```
+#[derive(Clone)]
+pub struct Buffer<T> {
+    /// the internal byte buffer.
+    data: Arc<Bytes<T>>,
+    /// The offset into the buffer.
+    offset: usize,
+    length: usize,
+}
+impl<T: PartialEq> PartialEq for Buffer<T> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: std::fmt::Debug> std::fmt::Debug for Buffer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Default for Buffer<T> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> Buffer<T> {
+    /// Creates an empty [`Buffer`].
+    #[inline]
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Auxiliary method to create a new Buffer
+    pub(crate) fn from_bytes(bytes: Bytes<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of bytes in the buffer
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether the buffer is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns whether underlying data is sliced.
+    /// If sliced the [`Buffer`] is backed by
+    /// more data than the length of `Self`.
+    pub fn is_sliced(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline(never)]
+    pub fn as_slice(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    /// # Safety
+    /// `index` must be smaller than `len`
+    #[inline]
+    pub(super) unsafe fn get_unchecked(&self, index: usize) -> &T {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+    /// Doing so allows the same memory region to be shared between buffers.
+    /// # Panics
+    /// Panics iff `offset + length` is larger than `len`.
+    #[inline]
+    pub fn sliced(self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Slices this buffer starting at `offset`.
+    /// # Panics
+    /// Panics iff `offset` is larger than `len`.
+    #[inline]
+    pub fn slice(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Buffer`] that is a slice of this buffer starting at `offset`.
+    /// Doing so allows the same memory region to be shared between buffers.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    #[must_use]
+    pub unsafe fn sliced_unchecked(mut self, offset: usize, length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Slices this buffer starting at `offset`.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a pointer to the start of this buffer.
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const T {
+        /* body omitted: interface retained */
+    }
+    /// Returns the offset of this buffer.
+    #[inline]
+    pub fn offset(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// # Safety
+    /// The caller must ensure that the buffer was properly initialized up to `len`.
+    #[inline]
+    pub unsafe fn set_len(&mut self, len: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its underlying [`Vec`], if possible.
+    ///
+    /// This operation returns [`Either::Right`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    #[inline]
+    pub fn into_mut(mut self) -> Either<Self, Vec<T>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its underlying `Vec`, if possible.
+    /// Note that only `[self.offset(), self.offset() + self.len()[` in this vector is visible
+    /// by this buffer.
+    ///
+    /// This operation returns [`Some`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    /// # Safety
+    /// The caller must ensure that the vector in the mutable reference keeps a length of at least `self.offset() + self.len() - 1`.
+    #[inline]
+    pub unsafe fn get_mut(&mut self) -> Option<&mut Vec<T>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a mutable reference to its slice, if possible.
+    ///
+    /// This operation returns [`Some`] iff this [`Buffer`]:
+    /// * has not been cloned (i.e. [`Arc`]`::get_mut` yields [`Some`])
+    /// * has not been imported from the c data interface (FFI)
+    #[inline]
+    pub fn get_mut_slice(&mut self) -> Option<&mut [T]> {
+        /* body omitted: interface retained */
+    }
+    /// Get the strong count of underlying `Arc` data buffer.
+    pub fn shared_count_strong(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Get the weak count of underlying `Arc` data buffer.
+    pub fn shared_count_weak(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns its internal representation
+    #[must_use]
+    pub fn into_inner(self) -> (Arc<Bytes<T>>, usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Creates a `[Bitmap]` from its internal representation.
+    /// This is the inverted from `[Bitmap::into_inner]`
+    ///
+    /// # Safety
+    /// Callers must ensure all invariants of this struct are upheld.
+    pub unsafe fn from_inner_unchecked(
+        data: Arc<Bytes<T>>,
+        offset: usize,
+        length: usize,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> From<Vec<T>> for Buffer<T> {
+    #[inline]
+    fn from(p: Vec<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> std::ops::Deref for Buffer<T> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T> FromIterator<T> for Buffer<T> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: Copy> IntoIterator for Buffer<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "arrow")]
+impl<T: crate::types::NativeType> From<arrow_buffer::Buffer> for Buffer<T> {
+    fn from(value: arrow_buffer::Buffer) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+#[cfg(feature = "arrow")]
+impl<T: crate::types::NativeType> From<Buffer<T>> for arrow_buffer::Buffer {
+    fn from(value: Buffer<T>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/error.rs">
+```rust
+//! Defines [`Error`], representing all errors returned by this crate.
+use std::fmt::{Debug, Display, Formatter};
+
+/// Enum with all errors in this crate.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Error {
+    /// Returned when functionality is not yet available.
+    NotYetImplemented(String),
+    /// Wrapper for an error triggered by a dependency
+    External(String, Box<dyn std::error::Error + Send + Sync>),
+    /// Wrapper for IO errors
+    Io(std::io::Error),
+    /// When an invalid argument is passed to a function.
+    InvalidArgumentError(String),
+    /// Error during import or export to/from a format
+    ExternalFormat(String),
+    /// Whenever pushing to a container fails because it does not support more entries.
+    /// The solution is usually to use a higher-capacity container-backing type.
+    Overflow,
+    /// Whenever incoming data from the C data interface, IPC or Flight does not fulfil the Arrow specification.
+    OutOfSpec(String),
+}
+
+impl Error {
+    /// Wraps an external error in an `Error`.
+    pub fn from_external_error(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub(crate) fn oos<A: Into<String>>(msg: A) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn nyi<A: Into<String>>(msg: A) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<::std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(error: std::str::Utf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<simdutf8::basic::Utf8Error> for Error {
+    fn from(error: simdutf8::basic::Utf8Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::collections::TryReserveError> for Error {
+    fn from(_: std::collections::TryReserveError) -> Error {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Typedef for a [`std::result::Result`] of an [`Error`].
+pub type Result<T> = std::result::Result<T, Error>;
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("doc/lib.md")]
+#![deny(missing_docs)]
+// So that we have more control over what is `unsafe` inside an `unsafe` block
+#![allow(unused_unsafe)]
+//
+#![allow(clippy::len_without_is_empty)]
+// this landed on 1.60. Let's not force everyone to bump just yet
+#![allow(clippy::unnecessary_lazy_evaluations)]
+// Trait objects must be returned as a &Box<dyn Array> so that they can be cloned
+#![allow(clippy::borrowed_box)]
+// Allow type complexity warning to avoid API break.
+#![allow(clippy::type_complexity)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
+#![cfg_attr(feature = "nightly_build", feature(build_hasher_simple_hash_one))]
+
+#[macro_use]
+pub mod array;
+pub mod bitmap;
+pub mod buffer;
+pub mod chunk;
+pub mod error;
+#[cfg(feature = "io_ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "io_ipc")))]
+pub mod mmap;
+
+pub mod offset;
+pub mod scalar;
+pub mod trusted_len;
+pub mod types;
+
+pub mod compute;
+pub mod io;
+pub mod temporal_conversions;
+
+pub mod datatypes;
+
+pub mod ffi;
+pub mod util;
+
+// so that documentation gets test
+#[cfg(any(test, doctest))]
+mod docs;
+
+// re-exported because we return `Either` in our public API
+pub use either::Either;
+
+// re-exported to construct dictionaries
+pub use ahash::AHashMap;
+```
+</file>
+
+<file path="src/offset.rs">
+```rust
+//! Contains the declaration of [`Offset`]
+use std::hint::unreachable_unchecked;
+use crate::buffer::Buffer;
+use crate::error::Error;
+pub use crate::types::Offset;
+/// A wrapper type of [`Vec<O>`] representing the invariants of Arrow's offsets.
+/// It is guaranteed to (sound to assume that):
+/// * every element is `>= 0`
+/// * element at position `i` is >= than element at position `i-1`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Offsets<O: Offset>(Vec<O>);
+impl<O: Offset> Default for Offsets<O> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> TryFrom<Vec<O>> for Offsets<O> {
+    type Error = Error;
+    #[inline]
+    fn try_from(offsets: Vec<O>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> TryFrom<Buffer<O>> for OffsetsBuffer<O> {
+    type Error = Error;
+    #[inline]
+    fn try_from(offsets: Buffer<O>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> TryFrom<Vec<O>> for OffsetsBuffer<O> {
+    type Error = Error;
+    #[inline]
+    fn try_from(offsets: Vec<O>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> From<Offsets<O>> for OffsetsBuffer<O> {
+    #[inline]
+    fn from(offsets: Offsets<O>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> Offsets<O> {
+    /// Returns an empty [`Offsets`] (i.e. with a single element, the zero)
+    #[inline]
+    pub fn new() -> Self {
+        Self(vec![O::zero()])
+    }
+    /// Returns an [`Offsets`] whose all lengths are zero.
+    #[inline]
+    pub fn new_zeroed(length: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Creates a new [`Offsets`] from an iterator of lengths
+    #[inline]
+    pub fn try_from_iter<I: IntoIterator<Item = usize>>(iter: I) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a new [`Offsets`] with a capacity, allocating at least `capacity + 1` entries.
+    pub fn with_capacity(capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the capacity of [`Offsets`].
+    pub fn capacity(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Reserves `additional` entries.
+    pub fn reserve(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Shrinks the capacity of self to fit.
+    pub fn shrink_to_fit(&mut self) {
+        /* body omitted: interface retained */
+    }
+    /// Pushes a new element with a given length.
+    /// # Error
+    /// This function errors iff the new last item is larger than what `O` supports.
+    /// # Panic
+    /// This function asserts that `length > 0`.
+    #[inline]
+    pub fn try_push(&mut self, length: O) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Pushes a new element with a given length.
+    /// # Error
+    /// This function errors iff the new last item is larger than what `O` supports.
+    /// # Implementation
+    /// This function:
+    /// * checks that this length does not overflow
+    #[inline]
+    pub fn try_push_usize(&mut self, length: usize) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Returns [`Offsets`] assuming that `offsets` fulfills its invariants
+    /// # Safety
+    /// This is safe iff the invariants of this struct are guaranteed in `offsets`.
+    #[inline]
+    pub unsafe fn new_unchecked(offsets: Vec<O>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns the last offset of this container.
+    #[inline(never)]
+    pub fn last(&self) -> &O {
+        match self.0.last() {
+            Some(element) => element,
+            None => {
+                unsafe {
+                    klee_ext_bind::callsite!("src-offset-rs-149-30");
+                    let mut __klee_ret_src_offset_rs_149_30_unreachable_unchecked = unreachable_unchecked();
+                    __klee_ret_src_offset_rs_149_30_unreachable_unchecked
+                }
+            }
+        }
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Panic
+    /// This function panics iff `index >= self.len()`
+    #[inline(never)]
+    pub fn start_end(&self, index: usize) -> (usize, usize) {
+        assert!(index < self.len_proxy());
+        unsafe {
+            {
+                klee_ext_bind::callsite!("src-offset-rs-160-18-root");
+                {
+                    klee_ext_bind::callsite!("src-offset-rs-160-18-get_unchecked-root");
+                    self.start_end_unchecked(index)
+                }
+            }
+        }
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Safety
+    /// `index` must be `< self.len()`
+    #[inline(never)]
+    pub unsafe fn start_end_unchecked(&self, index: usize) -> (usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length an array with these offsets would be.
+    #[inline]
+    pub fn len_proxy(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    /// Returns the number of offsets in this container.
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline]
+    pub fn as_slice(&self) -> &[O] {
+        /* body omitted: interface retained */
+    }
+    /// Pops the last element
+    #[inline]
+    pub fn pop(&mut self) -> Option<O> {
+        /* body omitted: interface retained */
+    }
+    /// Extends itself with `additional` elements equal to the last offset.
+    /// This is useful to extend offsets with empty values, e.g. for null slots.
+    #[inline]
+    pub fn extend_constant(&mut self, additional: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Try to create a new [`Offsets`] from a sequence of `lengths`
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    #[inline]
+    pub fn try_from_lengths<I: Iterator<Item = usize>>(
+        lengths: I,
+    ) -> Result<Self, Error> {
+        /* body omitted: interface retained */
+    }
+    /// Try extend from an iterator of lengths
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    #[inline]
+    pub fn try_extend_from_lengths<I: Iterator<Item = usize>>(
+        &mut self,
+        lengths: I,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Extends itself from another [`Offsets`]
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    pub fn try_extend_from_self(&mut self, other: &Self) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Extends itself from another [`Offsets`] sliced by `start, length`
+    /// # Errors
+    /// This function errors iff this operation overflows for the maximum value of `O`.
+    pub fn try_extend_from_slice(
+        &mut self,
+        other: &OffsetsBuffer<O>,
+        start: usize,
+        length: usize,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+    /// Returns the inner [`Vec`].
+    #[inline]
+    pub fn into_inner(self) -> Vec<O> {
+        /* body omitted: interface retained */
+    }
+}
+/// Checks that `offsets` is monotonically increasing.
+fn try_check_offsets<O: Offset>(offsets: &[O]) -> Result<(), Error> {
+    /* body omitted: interface retained */
+}
+/// A wrapper type of [`Buffer<O>`] that is guaranteed to:
+/// * Always contain an element
+/// * Every element is `>= 0`
+/// * element at position `i` is >= than element at position `i-1`.
+#[derive(Clone, PartialEq, Debug)]
+pub struct OffsetsBuffer<O: Offset>(Buffer<O>);
+impl<O: Offset> Default for OffsetsBuffer<O> {
+    #[inline]
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> OffsetsBuffer<O> {
+    /// # Safety
+    /// This is safe iff the invariants of this struct are guaranteed in `offsets`.
+    #[inline]
+    pub unsafe fn new_unchecked(offsets: Buffer<O>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns an empty [`OffsetsBuffer`] (i.e. with a single element, the zero)
+    #[inline]
+    pub fn new() -> Self {
+        Self(vec![O::zero()].into())
+    }
+    /// Copy-on-write API to convert [`OffsetsBuffer`] into [`Offsets`].
+    #[inline]
+    pub fn into_mut(self) -> either::Either<Self, Offsets<O>> {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to its internal [`Buffer`].
+    #[inline]
+    pub fn buffer(&self) -> &Buffer<O> {
+        /* body omitted: interface retained */
+    }
+    /// Returns the length an array with these offsets would be.
+    #[inline]
+    pub fn len_proxy(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the number of offsets in this container.
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns the byte slice stored in this buffer
+    #[inline]
+    pub fn as_slice(&self) -> &[O] {
+        /* body omitted: interface retained */
+    }
+    /// Returns the range of the offsets.
+    #[inline]
+    pub fn range(&self) -> O {
+        /* body omitted: interface retained */
+    }
+    /// Returns the first offset.
+    #[inline(never)]
+    pub fn first(&self) -> &O {
+        /* body omitted: interface retained */
+    }
+    /// Returns the last offset.
+    #[inline(never)]
+    pub fn last(&self) -> &O {
+        match self.0.last() {
+            Some(element) => element,
+            None => {
+                unsafe {
+                    klee_ext_bind::callsite!("src-offset-rs-418-30");
+                    let mut __klee_ret_src_offset_rs_418_30_unreachable_unchecked = unreachable_unchecked();
+                    __klee_ret_src_offset_rs_418_30_unreachable_unchecked
+                }
+            }
+        }
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Panic
+    /// This function panics iff `index >= self.len()`
+    #[inline(never)]
+    pub fn start_end(&self, index: usize) -> (usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns a range (start, end) corresponding to the position `index`
+    /// # Safety
+    /// `index` must be `< self.len()`
+    #[inline(never)]
+    pub unsafe fn start_end_unchecked(&self, index: usize) -> (usize, usize) {
+        /* body omitted: interface retained */
+    }
+    /// Slices this [`OffsetsBuffer`].
+    /// # Panics
+    /// Panics if `offset + length` is larger than `len`
+    /// or `length == 0`.
+    #[inline]
+    pub fn slice(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Slices this [`OffsetsBuffer`] starting at `offset`.
+    /// # Safety
+    /// The caller must ensure `offset + length <= self.len()`
+    #[inline]
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        /* body omitted: interface retained */
+    }
+    /// Returns an iterator with the lengths of the offsets
+    #[inline]
+    pub fn lengths(&self) -> impl Iterator<Item = usize> + '_ {
+        /* body omitted: interface retained */
+    }
+    /// Returns the inner [`Buffer`].
+    #[inline]
+    pub fn into_inner(self) -> Buffer<O> {
+        /* body omitted: interface retained */
+    }
+}
+impl From<&OffsetsBuffer<i32>> for OffsetsBuffer<i64> {
+    fn from(offsets: &OffsetsBuffer<i32>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl TryFrom<&OffsetsBuffer<i64>> for OffsetsBuffer<i32> {
+    type Error = Error;
+    fn try_from(offsets: &OffsetsBuffer<i64>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl From<Offsets<i32>> for Offsets<i64> {
+    fn from(offsets: Offsets<i32>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl TryFrom<Offsets<i64>> for Offsets<i32> {
+    type Error = Error;
+    fn try_from(offsets: Offsets<i64>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+impl<O: Offset> std::ops::Deref for OffsetsBuffer<O> {
+    type Target = [O];
+    #[inline]
+    fn deref(&self) -> &[O] {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/types/index.rs">
+```rust
+use std::convert::TryFrom;
+
+use crate::trusted_len::TrustedLen;
+
+use super::NativeType;
+
+/// Sealed trait describing the subset of [`NativeType`] (`i32`, `i64`, `u32` and `u64`)
+/// that can be used to index a slot of an array.
+pub trait Index:
+    NativeType
+    + std::ops::AddAssign
+    + std::ops::Sub<Output = Self>
+    + num_traits::One
+    + num_traits::Num
+    + num_traits::CheckedAdd
+    + PartialOrd
+    + Ord
+{
+    /// Convert itself to [`usize`].
+    fn to_usize(&self) -> usize;
+    /// Convert itself from [`usize`].
+    fn from_usize(index: usize) -> Option<Self>;
+
+    /// Convert itself from [`usize`].
+    fn from_as_usize(index: usize) -> Self;
+
+    /// An iterator from (inclusive) `start` to (exclusive) `end`.
+    fn range(start: usize, end: usize) -> Option<IndexRange<Self>> {
+        /* body omitted: interface retained */
+    }
+}
+
+macro_rules! index {
+    ($t:ty) => {
+        impl Index for $t {
+            #[inline]
+            fn to_usize(&self) -> usize {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_usize(value: usize) -> Option<Self> {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_as_usize(value: usize) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+index!(i8);
+index!(i16);
+index!(i32);
+index!(i64);
+index!(u8);
+index!(u16);
+index!(u32);
+index!(u64);
+
+/// Range of [`Index`], equivalent to `(a..b)`.
+/// `Step` is unstable in Rust, which does not allow us to implement (a..b) for [`Index`].
+pub struct IndexRange<I: Index> {
+    start: I,
+    end: I,
+}
+
+impl<I: Index> IndexRange<I> {
+    /// Returns a new [`IndexRange`].
+    pub fn new(start: I, end: I) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<I: Index> Iterator for IndexRange<I> {
+    type Item = I;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Safety: a range is always of known length
+unsafe impl<I: Index> TrustedLen for IndexRange<I> {}
+```
+</file>
+
+<file path="src/types/native.rs">
+```rust
+use std::convert::TryFrom;
+use std::ops::Neg;
+use std::panic::RefUnwindSafe;
+
+use bytemuck::{Pod, Zeroable};
+
+use super::PrimitiveType;
+
+/// Sealed trait implemented by all physical types that can be allocated,
+/// serialized and deserialized by this crate.
+/// All O(N) allocations in this crate are done for this trait alone.
+pub trait NativeType:
+    super::private::Sealed
+    + Pod
+    + Send
+    + Sync
+    + Sized
+    + RefUnwindSafe
+    + std::fmt::Debug
+    + std::fmt::Display
+    + PartialEq
+    + Default
+{
+    /// The corresponding variant of [`PrimitiveType`].
+    const PRIMITIVE: PrimitiveType;
+
+    /// Type denoting its representation as bytes.
+    /// This is `[u8; N]` where `N = size_of::<T>`.
+    type Bytes: AsRef<[u8]>
+        + std::ops::Index<usize, Output = u8>
+        + std::ops::IndexMut<usize, Output = u8>
+        + for<'a> TryFrom<&'a [u8]>
+        + std::fmt::Debug
+        + Default;
+
+    /// To bytes in little endian
+    fn to_le_bytes(&self) -> Self::Bytes;
+
+    /// To bytes in big endian
+    fn to_be_bytes(&self) -> Self::Bytes;
+
+    /// From bytes in little endian
+    fn from_le_bytes(bytes: Self::Bytes) -> Self;
+
+    /// From bytes in big endian
+    fn from_be_bytes(bytes: Self::Bytes) -> Self;
+}
+
+macro_rules! native_type {
+    ($type:ty, $primitive_type:expr) => {
+        impl NativeType for $type {
+            const PRIMITIVE: PrimitiveType = $primitive_type;
+
+            type Bytes = [u8; std::mem::size_of::<Self>()];
+            #[inline]
+            fn to_le_bytes(&self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn to_be_bytes(&self) -> Self::Bytes {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_le_bytes(bytes: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+
+            #[inline]
+            fn from_be_bytes(bytes: Self::Bytes) -> Self {
+                /* body omitted: interface retained */
+            }
+        }
+    };
+}
+
+native_type!(u8, PrimitiveType::UInt8);
+native_type!(u16, PrimitiveType::UInt16);
+native_type!(u32, PrimitiveType::UInt32);
+native_type!(u64, PrimitiveType::UInt64);
+native_type!(i8, PrimitiveType::Int8);
+native_type!(i16, PrimitiveType::Int16);
+native_type!(i32, PrimitiveType::Int32);
+native_type!(i64, PrimitiveType::Int64);
+native_type!(f32, PrimitiveType::Float32);
+native_type!(f64, PrimitiveType::Float64);
+native_type!(i128, PrimitiveType::Int128);
+
+/// The in-memory representation of the DayMillisecond variant of arrow's "Interval" logical type.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct days_ms(pub i32, pub i32);
+
+impl days_ms {
+    /// A new [`days_ms`].
+    #[inline]
+    pub fn new(days: i32, milliseconds: i32) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of days
+    #[inline]
+    pub fn days(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of milliseconds
+    #[inline]
+    pub fn milliseconds(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for days_ms {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::DaysMs;
+    type Bytes = [u8; 8];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The in-memory representation of the MonthDayNano variant of the "Interval" logical type.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct months_days_ns(pub i32, pub i32, pub i64);
+
+impl months_days_ns {
+    /// A new [`months_days_ns`].
+    #[inline]
+    pub fn new(months: i32, days: i32, nanoseconds: i64) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of months
+    #[inline]
+    pub fn months(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of days
+    #[inline]
+    pub fn days(&self) -> i32 {
+        /* body omitted: interface retained */
+    }
+
+    /// The number of nanoseconds
+    #[inline]
+    pub fn ns(&self) -> i64 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for months_days_ns {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::MonthDayNano;
+    type Bytes = [u8; 16];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for days_ms {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for months_days_ns {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for days_ms {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for months_days_ns {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Type representation of the Float16 physical type
+#[derive(Copy, Clone, Default, Zeroable, Pod)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct f16(pub u16);
+
+impl PartialEq for f16 {
+    #[inline]
+    fn eq(&self, other: &f16) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+// see https://github.com/starkat99/half-rs/blob/main/src/binary16.rs
+impl f16 {
+    /// The difference between 1.0 and the next largest representable number.
+    pub const EPSILON: f16 = f16(0x1400u16);
+
+    #[inline]
+    #[must_use]
+    pub(crate) const fn is_nan(self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts from u16.
+    #[inline]
+    pub const fn from_bits(bits: u16) -> f16 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts to u16.
+    #[inline]
+    pub const fn to_bits(self) -> u16 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts this `f16` to `f32`
+    pub fn to_f32(self) -> f32 {
+        /* body omitted: interface retained */
+    }
+
+    /// Casts an `f32` into `f16`
+    pub fn from_f32(value: f32) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for f16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for f16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NativeType for f16 {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::Float16;
+    type Bytes = [u8; 2];
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Physical representation of a decimal
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct i256(pub ethnum::I256);
+
+impl i256 {
+    /// Returns a new [`i256`] from two `i128`.
+    pub fn from_words(hi: i128, lo: i128) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Neg for i256 {
+    type Output = Self;
+
+    #[inline]
+    fn neg(self) -> Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for i256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for i256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+unsafe impl Pod for i256 {}
+unsafe impl Zeroable for i256 {}
+
+impl NativeType for i256 {
+    const PRIMITIVE: PrimitiveType = PrimitiveType::Int256;
+
+    type Bytes = [u8; 32];
+
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn to_be_bytes(&self) -> Self::Bytes {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn from_le_bytes(bytes: Self::Bytes) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/types/offset.rs">
+```rust
+use super::Index;
+
+/// Sealed trait describing the subset (`i32` and `i64`) of [`Index`] that can be used
+/// as offsets of variable-length Arrow arrays.
+pub trait Offset: super::private::Sealed + Index {
+    /// Whether it is `i32` (false) or `i64` (true).
+    const IS_LARGE: bool;
+}
+
+impl Offset for i32 {
+    const IS_LARGE: bool = false;
+}
+
+impl Offset for i64 {
+    const IS_LARGE: bool = true;
+}
+```
+</file>
+</rust context>
