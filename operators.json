@@ -73,6 +73,11 @@
           "description": "The allocation size in bytes."
         },
         {
+          "name": "written",
+          "type": "bool",
+          "description": "Whether every byte in the allocation has been written according to KLEE's source-level initialization mask."
+        },
+        {
           "name": "end",
           "type": "uint",
           "description": "The first address after the allocation."
@@ -112,6 +117,27 @@
           "name": "allocation",
           "type": "Allocation",
           "description": "The allocation containing the range start."
+        }
+      ]
+    },
+    {
+      "name": "RustRange",
+      "description": "A half-open Rust slice index range [start, end) in element units.",
+      "fields": [
+        {
+          "name": "start",
+          "type": "uint",
+          "description": "The first element index in the range."
+        },
+        {
+          "name": "end",
+          "type": "uint",
+          "description": "The first element index after the range."
+        },
+        {
+          "name": "size",
+          "type": "uint",
+          "description": "The number of elements in the range."
         }
       ]
     },
@@ -221,6 +247,124 @@
       "description": "Constructs a half-open byte range [ptr.address, ptr.address + size)."
     },
     {
+      "name": "within",
+      "input": [
+        {
+          "name": "subject",
+          "type": "Value"
+        },
+        {
+          "name": "start",
+          "type": "uint"
+        },
+        {
+          "name": "end",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Tests membership in the half-open interval [start, end). For a MemoryRange subject, tests full range containment and permits an empty range at end."
+    },
+    {
+      "name": "memory_between",
+      "input": [
+        {
+          "name": "a",
+          "type": "Pointer"
+        },
+        {
+          "name": "b",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "MemoryRange"
+      },
+      "description": "Constructs the half-open byte range between two addresses, independent of their order."
+    },
+    {
+      "name": "offset_does_not_wrap",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "count",
+          "type": "uint"
+        },
+        {
+          "name": "element_size",
+          "type": "uint"
+        },
+        {
+          "name": "direction",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Uses mathematical 128-bit arithmetic to check that ptr plus a signed offset, an unsigned add offset, or an unsigned sub offset does not cross the address-space boundary. direction is signed, add, or sub."
+    },
+    {
+      "name": "mul_fits",
+      "input": [
+        {
+          "name": "a",
+          "type": "uint"
+        },
+        {
+          "name": "b",
+          "type": "uint"
+        },
+        {
+          "name": "target",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Uses 128-bit mathematical multiplication and checks that the result fits the target integer type. target is one of isize, usize, i32, u32, i64, or u64; pointer-sized targets use KLEE's current pointer width. Plain operands are non-negative mathematical integers; wrap a signed operand with as_signed."
+    },
+    {
+      "name": "as_signed",
+      "input": [
+        {
+          "name": "value",
+          "type": "uint"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "int"
+      },
+      "description": "Interprets a bit-vector value as isize, i32, or i64 and sign-extends it for mathematical arithmetic."
+    },
+    {
+      "name": "rustrange",
+      "input": [
+        {
+          "name": "start",
+          "type": "uint"
+        },
+        {
+          "name": "end",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "RustRange"
+      },
+      "description": "Constructs a half-open Rust slice index range [start, end) in element units."
+    },
+    {
       "name": "get_type_at_func",
       "input": [
         {
@@ -278,7 +422,7 @@
       "output": {
         "type": "bool"
       },
-      "description": "Returns whether the range is valid for reads, writes, or both. This is an atomic verifier predicate."
+      "description": "Returns whether the range is valid for the requested access. read requires allocation containment/readability, write additionally requires a writable allocation, and read_write is their conjunction. Initialization is a separate is_initialized_for_type rule."
     },
     {
       "name": "is_initialized",
@@ -291,7 +435,93 @@
       "output": {
         "type": "bool"
       },
-      "description": "Returns whether every byte in the range belongs to an initialized value."
+      "description": "Legacy byte-only initialization check. Prefer is_initialized_for_type when validating a Rust value."
+    },
+    {
+      "name": "is_initialized_for_type",
+      "input": [
+        {
+          "name": "range",
+          "type": "MemoryRange"
+        },
+        {
+          "name": "type_info",
+          "type": "TypeInfo"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Requires every byte in range to be written and applies supported Rust type-validity constraints from TypeInfo (currently exact for bool; other types retain byte-initialization semantics)."
+    },
+    {
+      "name": "allows_uninitialized_value",
+      "input": [
+        {
+          "name": "type_info",
+          "type": "TypeInfo"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether a value of this Rust type may legally be wholly uninitialized."
+    },
+    {
+      "name": "is_valid_c_str",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether ptr is non-null and reaches an initialized NUL byte within one allocation."
+    },
+    {
+      "name": "c_str_in_allocation",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether the complete CStr byte range through its terminator is contained in one allocation."
+    },
+    {
+      "name": "has_nul_terminator",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether ptr has a reachable initialized nul terminator."
+    },
+    {
+      "name": "is_valid_for_c_str",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "access",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Applies an access/lifetime condition to the complete CStr range rather than a fixed byte prefix."
     },
     {
       "name": "is_convertible_to_ref",
@@ -305,6 +535,23 @@
         "type": "bool"
       },
       "description": "Atomic predicate for Rust raw-pointer-to-reference convertibility."
+    },
+    {
+      "name": "is_allocated_via",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "allocator",
+          "type": "Value"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether ptr denotes a currently live block allocated by the specified allocator identity; the string global denotes Rust's global allocator."
     },
     {
       "name": "not_overlapping",
