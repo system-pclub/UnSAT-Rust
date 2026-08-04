@@ -911,6 +911,80 @@ def _mirscan_type_index(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return index
 
 
+def _validate_no_private_receiver_field_access(
+    *, code: str, target: dict[str, Any], report: dict[str, Any]
+) -> None:
+    """Reject harnesses that exploit the injection file's extra visibility.
+
+    A generated function is appended beside the target only as a build
+    mechanism.  It must represent a real safe caller, so it cannot read or
+    write receiver fields that are hidden from safe API users.
+    """
+
+    parent = target.get("caller_parent")
+    parent_name = parent.get("name") if isinstance(parent, dict) else None
+    if not isinstance(parent_name, str) or not parent_name:
+        caller = target.get("caller")
+        caller_name = caller.get("name") if isinstance(caller, dict) else None
+        if isinstance(caller_name, str):
+            match = re.search(r"<impl\s+(.+?)>::", caller_name)
+            parent_name = match.group(1) if match else None
+    if not isinstance(parent_name, str) or not parent_name:
+        return
+
+    type_index = _mirscan_type_index(report)
+    entry = (
+        type_index.get(parent_name)
+        or type_index.get(_terminal_name(parent_name) or "")
+    )
+    if not isinstance(entry, dict):
+        return
+    layouts = entry.get("field_layouts")
+    public = entry.get("public_fields")
+    all_fields = {
+        item.get("name")
+        for item in layouts
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    } if isinstance(layouts, list) else set()
+    public_fields = {
+        item.get("name")
+        for item in public
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    } if isinstance(public, list) else set()
+    private_fields = sorted(all_fields - public_fields)
+    if not private_fields:
+        return
+
+    for field in private_fields:
+        # Method calls with the same spelling are safe API use; direct member
+        # access is not.
+        member = re.compile(
+            rf"\.\s*{re.escape(field)}\b(?!\s*\()"
+        )
+        if member.search(code):
+            raise RuntimeError(
+                "generated testcase accesses non-public receiver field "
+                f"`{parent_name}.{field}`; use safe constructors/mutators"
+            )
+
+    terminal = _terminal_name(parent_name)
+    if not terminal:
+        return
+    for literal in re.finditer(
+        rf"\b(?:[A-Za-z_][A-Za-z0-9_]*::)*{re.escape(terminal)}\s*\{{"
+        rf"(?P<body>.*?)\}}",
+        code,
+        re.S,
+    ):
+        body = literal.group("body")
+        for field in private_fields:
+            if re.search(rf"\b{re.escape(field)}\s*:", body):
+                raise RuntimeError(
+                    "generated testcase constructs non-public receiver field "
+                    f"`{parent_name}.{field}`; use safe constructors/mutators"
+                )
+
+
 def _split_top_level_commas(text: str) -> list[str]:
     parts: list[str] = []
     start = 0
@@ -1104,9 +1178,9 @@ def _constructor_phrases(
         ]
         if field_parts:
             phrases.append(
-                f"construct `{type_name}` for `{role}` using fields visible "
-                "from the injection module when that better controls the "
-                "target caller state: "
+                f"construct `{type_name}` for `{role}` using its genuinely "
+                "public fields when that better controls the target caller "
+                "state: "
                 + ", ".join(field_parts)
             )
         if constructors:
@@ -3722,6 +3796,11 @@ def generate_safe_testcase(
         code=code,
         crate_dir=source_crate_dir or crate_dir,
         target=target,
+    )
+    _validate_no_private_receiver_field_access(
+        code=code,
+        target=target,
+        report=_load_mirscan_report(report_path),
     )
     _validate_pointer_to_pointer_casts(code)
     if "missing_docs" not in code:

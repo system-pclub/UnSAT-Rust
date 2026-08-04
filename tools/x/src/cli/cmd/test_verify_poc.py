@@ -5,6 +5,7 @@ from pathlib import Path
 
 from cli.cmd.verify_poc import (
     INJECTION_STATE_FILE,
+    _validate_no_private_receiver_field_access,
     _prefix_path_obligation_items,
     _source_level_bound_relation_hint,
     build_target_context_block,
@@ -63,6 +64,43 @@ class VerifyPocInjectionTests(unittest.TestCase):
                 self.assertEqual(entry["function"], injection.function)
                 self.assertEqual(entry["source_path"], "src/lib.rs")
                 self.assertGreater(entry["line"], 0)
+
+    def test_private_receiver_fields_are_not_usable_from_injection_scope(self) -> None:
+        report = {
+            "types": [
+                {
+                    "type": {"name": "ffi::ArrowSchema"},
+                    "field_layouts": [
+                        {"name": "dictionary"},
+                        {"name": "flags"},
+                    ],
+                    "public_fields": [{"name": "flags"}],
+                }
+            ]
+        }
+        target = {
+            "caller_parent": {"name": "ffi::ArrowSchema"},
+            "caller": {"name": "ffi::<impl ffi::ArrowSchema>::dictionary"},
+        }
+        with self.assertRaisesRegex(RuntimeError, "non-public receiver field"):
+            _validate_no_private_receiver_field_access(
+                code=(
+                    "let mut schema = ArrowSchema::empty();\n"
+                    "schema.dictionary = Box::into_raw(dict);\n"
+                    "schema.dictionary();\n"
+                ),
+                target=target,
+                report=report,
+            )
+        _validate_no_private_receiver_field_access(
+            code=(
+                "let mut schema = ArrowSchema::empty();\n"
+                "schema.flags = 1;\n"
+                "schema.dictionary();\n"
+            ),
+            target=target,
+            report=report,
+        )
 
     def test_reinjection_replaces_only_the_matching_combination(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

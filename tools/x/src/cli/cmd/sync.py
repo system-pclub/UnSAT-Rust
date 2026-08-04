@@ -8,7 +8,15 @@ import subprocess
 import tomllib
 from typing import Iterable
 
-from dsl import DSLParseError, DSLValidationError, list_operators, parse_dsl, validate_task1_ast, validate_task2_ast
+from dsl import (
+    DSLParseError,
+    DSLValidationError,
+    list_operators,
+    parse_dsl,
+    validate_task1_ast,
+    validate_task2_ast,
+)
+from dsl.lint import lint_dsl_ast
 
 
 PLACEHOLDER = "<placeholder>"
@@ -199,7 +207,13 @@ def _run_autoinj_for_crate(
     return dest_dir
 
 
-def _compile_crate(crate_dir: Path, mirscan_rustc: str, report_path: Path) -> None:
+def _compile_crate(
+    crate_dir: Path,
+    mirscan_rustc: str,
+    report_path: Path,
+    *,
+    features: list[str] | None = None,
+) -> None:
     if report_path.exists():
         report_path.unlink()
 
@@ -210,7 +224,10 @@ def _compile_crate(crate_dir: Path, mirscan_rustc: str, report_path: Path) -> No
     env = os.environ.copy()
     env["RUSTC"] = mirscan_rustc
     env["ANALYSIS_OUT"] = str(report_path)
-    check_result = subprocess.run(["cargo", "check", "--lib"], cwd=crate_dir, env=env, check=False)
+    command = ["cargo", "check", "--lib"]
+    if features:
+        command += ["--features", ",".join(features)]
+    check_result = subprocess.run(command, cwd=crate_dir, env=env, check=False)
     if check_result.returncode != 0:
         raise RuntimeError(
             f"cargo check failed in {crate_dir} with RUSTC={mirscan_rustc} "
@@ -486,13 +503,21 @@ def _validate_task_dsl(
     target_name = caller.get("name") if isinstance(caller, dict) else "<unknown target>"
 
     try:
-        ast = parse_dsl(dsl_text, operators, allow_unknown_operators=True)
+        ast = parse_dsl(dsl_text, operators)
         if task_name == "task1":
             used_operators = list_operators(ast)
-            added = _merge_new_operator_entries(operators, used_operators)
-            if added:
-                _save_operator_entries(repo_root, operators, operator_document)
             validate_task1_ast(ast, used_operators)
+            lint_errors = [
+                issue
+                for issue in lint_dsl_ast(ast, operators)
+                if issue.severity == "error"
+            ]
+            if lint_errors:
+                raise DSLValidationError(
+                    "; ".join(
+                        f"{issue.code}: {issue.message}" for issue in lint_errors
+                    )
+                )
         elif task_name == "task2":
             validate_task2_ast(ast)
     except (DSLParseError, DSLValidationError) as exc:
@@ -907,6 +932,7 @@ def _sync_single_crate(
     autoinj_output_dir: Path | None,
     autoinj_bin: str | None,
     autoinj_failures: list[str] | None = None,
+    features: list[str] | None = None,
 ) -> Path:
     crate_name = crate_dir.name or "unknown"
     crates_dir = repo_root / "crates"
@@ -917,7 +943,7 @@ def _sync_single_crate(
     print(f"syncing crate {crate_name} with rustc={mirscan_rustc}")
 
     report_path = crate_dir / "report.json"
-    _compile_crate(crate_dir, mirscan_rustc, report_path)
+    _compile_crate(crate_dir, mirscan_rustc, report_path, features=features)
 
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -990,6 +1016,7 @@ def ensure_crate_metadata_file(
     studied_rules: str | Path = "studied_rules",
     force: bool = False,
     strict: bool = False,
+    features: list[str] | None = None,
 ) -> Path:
     cargo_dir_path = Path(cargo_dir)
     if not cargo_dir_path.is_absolute():
@@ -1030,6 +1057,7 @@ def ensure_crate_metadata_file(
         autoinj_output_dir=None,
         autoinj_bin=None,
         autoinj_failures=None,
+        features=features,
     )
 
 
@@ -1061,6 +1089,11 @@ def run(args: argparse.Namespace) -> int:
     repo_root = _find_repo_root()
     crates_dir = repo_root / "crates"
     cargo_dir = getattr(args, "cargo_dir", None)
+    features = sorted(
+        {item.strip() for item in getattr(args, "features", "").split(",") if item.strip()}
+    )
+    if features and not cargo_dir:
+        raise RuntimeError("--features requires --cargo-dir")
 
     studied_rules_path = _resolve_studied_rules_path(repo_root, args.studied_rules)
     allowed_rule_ids = _load_studied_rule_ids(studied_rules_path)
@@ -1106,6 +1139,7 @@ def run(args: argparse.Namespace) -> int:
                 autoinj_output_dir=None if skip_autoinj else autoinj_output_dir,
                 autoinj_bin=autoinj_bin,
                 autoinj_failures=autoinj_failures,
+                features=features,
             )
         except RuntimeError as exc:
             message = f"{crate_dir.name}: {exc}"

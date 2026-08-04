@@ -9,9 +9,10 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from dsl import parse_dsl
+from dsl.lint import lint_dsl_ast
 from dsl.simplifier import simplify_variables
 
 from cli.cmd.compare import (
@@ -285,6 +286,38 @@ def _callsite_marker_id_from_path(raw_target: dict[str, object]) -> str | None:
     return f"{stem}-{line}-{col}"
 
 
+def _marker_id_conflicts_with_other_callee(
+    targets: list[object] | None,
+    *,
+    raw_target: dict[str, object],
+    marker_id: str,
+) -> bool:
+    """Return true when a fallback marker is owned by another unsafe callee.
+
+    Some report targets use logical ids such as ``<base>-read_unaligned`` for a
+    nested safe-wrapper call, while the emitted IR may only contain ``<base>``
+    for a different unsafe operation at the same source expression.  Falling
+    back to that base marker would make KLEE evaluate the rule against the
+    wrong unsafe callee.
+    """
+
+    if targets is None:
+        return False
+    location_key = _callsite_location_key(raw_target)
+    callee_key = _callee_key(raw_target)
+    for candidate in targets:
+        if not isinstance(candidate, dict) or candidate is raw_target:
+            continue
+        candidate_id = _callsite_id_from_target(candidate, 0)
+        if candidate_id != marker_id:
+            continue
+        if location_key is not None and _callsite_location_key(candidate) != location_key:
+            continue
+        if callee_key is not None and _callee_key(candidate) != callee_key:
+            return True
+    return False
+
+
 def _llvm_ir_contains_callsite_marker(ll_path: Path, callsite_id: str) -> bool:
     try:
         text = ll_path.read_text(encoding="utf-8", errors="ignore")
@@ -294,14 +327,25 @@ def _llvm_ir_contains_callsite_marker(ll_path: Path, callsite_id: str) -> bool:
 
 
 def _resolve_callsite_marker_for_ir(
-    *, ll_path: Path, target: dict[str, object] | None, callsite_id: str
+    *,
+    ll_path: Path,
+    target: dict[str, object] | None,
+    callsite_id: str,
+    targets: list[object] | None = None,
 ) -> str:
     if _llvm_ir_contains_callsite_marker(ll_path, callsite_id):
         return callsite_id
     if target is None:
         return callsite_id
     marker_id = _callsite_marker_id_from_path(target)
-    if marker_id and marker_id != callsite_id and _llvm_ir_contains_callsite_marker(ll_path, marker_id):
+    if (
+        marker_id
+        and marker_id != callsite_id
+        and not _marker_id_conflicts_with_other_callee(
+            targets, raw_target=target, marker_id=marker_id
+        )
+        and _llvm_ir_contains_callsite_marker(ll_path, marker_id)
+    ):
         logger.info(
             "[verify] using LLVM marker id %s for report callsite id %s",
             marker_id,
@@ -496,7 +540,15 @@ def _load_rule_ids_by_callee(rule_dsl_path: Path) -> dict[tuple[str, int], list[
 
 
 def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> str:
-    ast = parse_dsl(task1, operators, allow_unknown_operators=True)
+    ast = parse_dsl(task1, operators)
+    issues = lint_dsl_ast(ast, operators)
+    errors = [issue for issue in issues if issue.severity == "error"]
+    if errors:
+        details = "; ".join(f"{issue.code}: {issue.message}" for issue in errors)
+        raise RuntimeError(f"invalid rule DSL: {details}")
+    for issue in issues:
+        if issue.severity == "warning":
+            logger.warning("[dsl-lint] %s: %s", issue.code, issue.message)
     simplified = simplify_variables(ast)
     return json.dumps(
         {
@@ -614,21 +666,33 @@ def _analyze_rerun_output(
     }
 
 
-def _control_chain_has_certain_symbol(chain_path: Path) -> bool:
+def _control_chain_all_certain(chain_path: Path) -> bool | None:
+    """Return the structured certainty verdict, or None for legacy/missing data."""
     if not chain_path.is_file():
-        return False
+        return None
     try:
         raw = json.loads(chain_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return False
+        return None
     if not isinstance(raw, dict):
-        return False
-    symbols = raw.get("symbols")
-    if not isinstance(symbols, list):
-        return False
-    return any(
-        isinstance(symbol, dict) and symbol.get("certainty") == "certain_symbol"
-        for symbol in symbols
+        return None
+    all_certain = raw.get("all_certain")
+    return all_certain if isinstance(all_certain, bool) else None
+
+
+def _compose_has_actionable_certainty(
+    chain_path: Path, text: str, raw_ptr_deref: bool
+) -> bool:
+    chain_all_certain = _control_chain_all_certain(chain_path)
+    if chain_all_certain is not None:
+        # The structured chain is authoritative: a query can mention a
+        # certain input while still depending on an uncertain external result
+        # that made the target reachable.
+        return chain_all_certain
+    return (
+        "[ext.dsl] resolved constraint uses certain symbol: true" in text
+        or "[ext.dsl] violation query uses certain symbol: true" in text
+        or (raw_ptr_deref and "pointer uses certain symbol: true" in text)
     )
 
 
@@ -860,10 +924,25 @@ def _matrix_callsite_rows(
         llvm_callsite_id = callsite_id
         if not (f'c"{llvm_callsite_id}\\00"' in llvm_text or f'c"{llvm_callsite_id}"' in llvm_text):
             marker_id = _callsite_marker_id_from_path(raw_target)
-            if marker_id and (
+            if marker_id and not _marker_id_conflicts_with_other_callee(
+                targets, raw_target=raw_target, marker_id=marker_id
+            ) and (
                 f'c"{marker_id}\\00"' in llvm_text or f'c"{marker_id}"' in llvm_text
             ):
                 llvm_callsite_id = marker_id
+
+        marker_present = (
+            f'c"{llvm_callsite_id}\\00"' in llvm_text
+            or f'c"{llvm_callsite_id}"' in llvm_text
+        )
+        if marker_present and not _marker_is_in_expected_caller(
+            ll_path=ll_path,
+            llvm_text=llvm_text,
+            marker_id=llvm_callsite_id,
+            caller_name=caller.get("name"),
+            source_path=callsite.get("path"),
+        ):
+            marker_present = False
 
         rows.append(
             {
@@ -871,10 +950,7 @@ def _matrix_callsite_rows(
                 "target": raw_target,
                 "callsite_id": callsite_id,
                 "llvm_callsite_id": llvm_callsite_id,
-                "present_in_llvm_ir": (
-                    f'c"{llvm_callsite_id}\\00"' in llvm_text
-                    or f'c"{llvm_callsite_id}"' in llvm_text
-                ),
+                "present_in_llvm_ir": marker_present,
                 "path": callsite.get("path"),
                 "line": callsite.get("line"),
                 "col": callsite.get("col"),
@@ -885,6 +961,131 @@ def _matrix_callsite_rows(
             }
         )
     return rows
+
+
+_LLVM_DEFINE_RE = re.compile(r"^define\b.*@([^\s(]+).*?(?:!dbg !(\d+))?")
+
+
+def _llvm_debug_source_functions(
+    llvm_text: str,
+) -> tuple[dict[str, tuple[str, str]], dict[str, tuple[str, str]]]:
+    files: dict[str, tuple[str, str]] = {}
+    subprograms: dict[str, tuple[str, str]] = {}
+    for line in llvm_text.splitlines():
+        file_match = _LLVM_DI_FILE_RE.match(line)
+        if file_match:
+            files[file_match.group(1)] = (
+                file_match.group(2),
+                file_match.group(3),
+            )
+            continue
+        if "DISubprogram(" not in line:
+            continue
+        subprogram_match = _LLVM_DI_SUBPROGRAM_RE.match(line)
+        if not subprogram_match:
+            continue
+        file_info = files.get(subprogram_match.group(2))
+        if file_info is None:
+            continue
+        filename, directory = file_info
+        path = f"{directory.rstrip('/')}/{filename}" if directory else filename
+        metadata_id = line.split("=", 1)[0].strip().lstrip("!")
+        subprograms[metadata_id] = (
+            path.replace("\\", "/"),
+            subprogram_match.group(1),
+        )
+    return files, subprograms
+
+
+def _marker_global_names(llvm_text: str, marker_id: str) -> set[str]:
+    names: set[str] = set()
+    for line in llvm_text.splitlines():
+        if not line.startswith("@") or marker_id not in line:
+            continue
+        match = re.match(r"^(@[A-Za-z0-9_.$-]+)\b", line)
+        if match:
+            names.add(match.group(1))
+    return names
+
+
+def _iter_llvm_function_bodies(llvm_text: str) -> Iterable[tuple[str, str | None, str]]:
+    current: list[str] = []
+    name: str | None = None
+    dbg: str | None = None
+    for line in llvm_text.splitlines():
+        if not current:
+            match = _LLVM_DEFINE_RE.match(line)
+            if not match:
+                continue
+            current = [line]
+            name = match.group(1)
+            dbg = match.group(2)
+            if line.strip() == "}":
+                yield name or "", dbg, "\n".join(current)
+                current = []
+            continue
+        current.append(line)
+        if line.strip() == "}":
+            yield name or "", dbg, "\n".join(current)
+            current = []
+            name = None
+            dbg = None
+
+
+def _function_matches_report_caller(
+    *,
+    function_name: str,
+    debug: tuple[str, str] | None,
+    caller_name: object,
+    source_path: object,
+) -> bool:
+    leaf_name = _caller_leaf_name(caller_name)
+    if not leaf_name:
+        return False
+    if debug is not None:
+        debug_path, debug_name = debug
+        if isinstance(source_path, str) and source_path:
+            normalized_path = source_path.replace("\\", "/")
+            if not (
+                debug_path == normalized_path
+                or debug_path.endswith("/" + normalized_path)
+            ):
+                return False
+        if debug_name == leaf_name or debug_name.startswith(leaf_name + "<"):
+            return True
+    return leaf_name in function_name
+
+
+def _marker_is_in_expected_caller(
+    *,
+    ll_path: Path,
+    llvm_text: str,
+    marker_id: str,
+    caller_name: object,
+    source_path: object,
+) -> bool:
+    del ll_path
+    global_names = _marker_global_names(llvm_text, marker_id)
+    _, subprograms = _llvm_debug_source_functions(llvm_text)
+    marker_users: list[tuple[str, str | None]] = []
+    for function_name, debug_id, body in _iter_llvm_function_bodies(llvm_text):
+        if marker_id not in body and not any(name in body for name in global_names):
+            continue
+        marker_users.append((function_name, debug_id))
+        debug = subprograms.get(debug_id or "")
+        if _function_matches_report_caller(
+            function_name=function_name,
+            debug=debug,
+            caller_name=caller_name,
+            source_path=source_path,
+        ):
+            return True
+    # If the IR text only contains the marker string/global and we cannot find
+    # a using function body, preserve the historical "marker is present" answer.
+    # When we do find using functions, require one of them to be the MIRScan
+    # metadata caller; a marker cloned into a shared unsafe helper lacks the
+    # caller's safe prefix guards.
+    return not marker_users
 
 
 def _load_callsites_file(repo_root: Path, path_arg: str | None) -> set[str] | None:
@@ -1985,7 +2186,16 @@ def _run_llm_testcase_pipeline(
                 build_std=True,
                 panic_abort=True,
                 force=True,
-                features=[injection.feature],
+                features=sorted(
+                    {
+                        *(
+                            item.strip()
+                            for item in getattr(args, "features", "").split(",")
+                            if item.strip()
+                        ),
+                        injection.feature,
+                    }
+                ),
                 build_log_path=build_log_path,
             )
             shutil.copyfile(build_log_path, artifact_dir / "testcase-build.log")
@@ -2215,7 +2425,16 @@ def _run_llm_testcase_pipeline(
                 build_std=True,
                 panic_abort=True,
                 force=True,
-                features=[injection.feature],
+                features=sorted(
+                    {
+                        *(
+                            item.strip()
+                            for item in getattr(args, "features", "").split(",")
+                            if item.strip()
+                        ),
+                        injection.feature,
+                    }
+                ),
                 build_log_path=rerun_sym_build_log,
             )
             rerun_sym_log_path = artifact_dir / "klee-rerun-sym.log"
@@ -2659,13 +2878,9 @@ def _run_verify_matrix_locked(
                 returncode, combined, timed_out, llvm_callsite_id
             )
             chain_path = output_dir.parent / "klee-control-chains.json"
-            has_certain_symbol = _control_chain_has_certain_symbol(chain_path)
-            if "[ext.dsl] resolved constraint uses certain symbol: true" in combined:
-                has_certain_symbol = True
-            if "[ext.dsl] violation query uses certain symbol: true" in combined:
-                has_certain_symbol = True
-            if raw_ptr_deref and "pointer uses certain symbol: true" in combined:
-                has_certain_symbol = True
+            has_certain_symbol = _compose_has_actionable_certainty(
+                chain_path, combined, raw_ptr_deref
+            )
             if status == "violation" and not has_certain_symbol and rule not in REACHABILITY_ONLY_RULES:
                 status = "low-confidence-sat"
             row = {
@@ -2893,6 +3108,9 @@ def run(args: argparse.Namespace) -> int:
         raise RuntimeError("--llm-testcase-retries must be positive")
 
     cargo_dir = Path(args.cargo_dir)
+    crate_features = sorted(
+        {item.strip() for item in getattr(args, "features", "").split(",") if item.strip()}
+    )
     if not cargo_dir.is_absolute():
         cargo_dir = (repo_root / cargo_dir).resolve()
     else:
@@ -2912,6 +3130,7 @@ def run(args: argparse.Namespace) -> int:
         cargo_dir,
         studied_rules=studied_rules,
         force=True,
+        features=crate_features,
     )
     injected_dir = ensure_injected_crate(repo_root, cargo_dir, meta_path)
 
@@ -2925,6 +3144,7 @@ def run(args: argparse.Namespace) -> int:
         build_std=True,
         panic_abort=True,
         force=True,
+        features=crate_features,
     )
 
     if args.skip_klee:
@@ -2967,7 +3187,7 @@ def run(args: argparse.Namespace) -> int:
         raise RuntimeError(f"could not find callsite {args.callsite!r} in {meta_path}")
     report_callsite_id = resolved_callsite_id
     resolved_callsite_id = _resolve_callsite_marker_for_ir(
-        ll_path=ll_path, target=target, callsite_id=resolved_callsite_id
+        ll_path=ll_path, target=target, callsite_id=resolved_callsite_id, targets=targets
     )
     callsite_key = _target_callsite_key(target, 0) if target is not None else None
     task1 = _load_rule_dsl(rule_dsl_path, args.rule)

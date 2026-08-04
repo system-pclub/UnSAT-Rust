@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from lark import Lark, Transformer, Token
-from lark.exceptions import UnexpectedCharacters, UnexpectedToken
+from lark.exceptions import UnexpectedCharacters, UnexpectedToken, VisitError
 
 from dsl.ast import BinaryExpression, CallExpression, Expression, Identifier, Literal, SourceRef, UnaryExpression
 from dsl.errors import DSLParseError, DSLValidationError
@@ -60,8 +60,8 @@ source_ref: IDENT "@" INT ":" INT
         | NONE     -> none_lit
         | STRING   -> string_lit
 
-BOOL: "true" | "false" | "True" | "False"
-NONE: "None"
+BOOL.2: "true" | "false" | "True" | "False"
+NONE.2: "None"
 IDENT: /[A-Za-z_][A-Za-z0-9_]*/
 
 %import common.INT
@@ -189,7 +189,12 @@ def parse_dsl(
         raise _to_parse_error(exc) from exc
 
     transformer = _TreeToAst(allowed_operators, allow_unknown_operators=allow_unknown_operators)
-    return transformer.transform(parse_tree)
+    try:
+        return transformer.transform(parse_tree)
+    except VisitError as exc:
+        if isinstance(exc.orig_exc, DSLValidationError):
+            raise exc.orig_exc from exc
+        raise
 
 
 def validate_task1_ast(ast: Expression, required_operators: Iterable[str]) -> None:

@@ -874,7 +874,7 @@ fn is_core_or_std_fn(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
 
 fn is_ignored_std_unsafe_shim(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     let path = tcx.def_path_str(def_id);
-    path.ends_with("core::fmt::rt::UnsafeArg::new") || path.ends_with("::_mm_prefetch")
+    path.ends_with("core::fmt::rt::UnsafeArg::new")
 }
 
 fn configured_max_call_depth() -> usize {
@@ -2810,9 +2810,6 @@ fn is_constructor<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, parent_def_id: Option<
         }
     }
 
-    // Check if function name is "new" or similar
-    let binding = tcx.item_name(def_id);
-    let fn_name = binding.as_str();
     // Check if return type matches the parent struct
     if let Some(parent) = parent_def_id {
         let output = fn_sig.output().skip_binder();
@@ -2823,13 +2820,31 @@ fn is_constructor<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, parent_def_id: Option<
             return true;
         }
 
-        // Check if it returns Self wrapped in Result, Option, etc.
-        // For now, just check the outermost type
+        // A specialized inherent impl can construct the same ADT with different
+        // generic arguments, e.g.
+        //
+        //   impl TokenReader<()> {
+        //       fn from_slice(...) -> TokenReader<&[u8]>
+        //   }
+        //
+        // Comparing the complete type against TokenReader<R> misses this safe
+        // constructor. Match the returned ADT definition itself, while retaining
+        // the wrapped Result/Option handling below.
         if let rustc_middle::ty::TyKind::Adt(adt_def, substs) = output.kind() {
+            if adt_def.did() == parent {
+                return true;
+            }
+
             // Check substs for the parent type
             for subst in substs.iter() {
                 if let Some(ty) = subst.as_type() {
-                    if ty == parent_ty {
+                    if ty == parent_ty
+                        || matches!(
+                            ty.kind(),
+                            rustc_middle::ty::TyKind::Adt(inner_adt, _)
+                                if inner_adt.did() == parent
+                        )
+                    {
                         return true;
                     }
                 }
@@ -2853,7 +2868,14 @@ fn collect_constructors<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId) -> Vec<Fn
             }
 
             let fn_def_id = item.def_id;
-            if is_fn_unsafe(tcx, fn_def_id) || !tcx.visibility(fn_def_id).is_public() {
+            // A safe caller inside the crate can use restricted-visible
+            // constructors such as `pub(crate)` and `pub(super)`.  Limiting
+            // state composition to externally-public constructors leaves
+            // crate-visible safe observers with an arbitrary receiver and
+            // loses invariants established by their real constructors.
+            if is_fn_unsafe(tcx, fn_def_id)
+                || !fn_is_public_or_source_visible(tcx, fn_def_id)
+            {
                 continue;
             }
 

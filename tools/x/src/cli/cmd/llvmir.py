@@ -168,11 +168,14 @@ def compile_test_with_emit_llvm(
         )
         
 def _get_crate_name(cargo_dir: Path) -> str | None:
-    """Return the [package] name from Cargo.toml, or None."""
+    """Return the linkable crate name from Cargo.toml, or None."""
     toml_path = cargo_dir / "Cargo.toml"
     try:
         with open(toml_path, "rb") as f:
             data = tomllib.load(f)
+        lib_name = data.get("lib", {}).get("name")
+        if lib_name:
+            return lib_name
         return data.get("package", {}).get("name")
     except (OSError, tomllib.TOMLDecodeError):
         return None

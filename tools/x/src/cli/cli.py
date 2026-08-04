@@ -6,6 +6,12 @@ def _run_view(args: argparse.Namespace) -> int:
     return run(args)
 
 
+def _run_lint_rule_dsl(args: argparse.Namespace) -> int:
+    from cli.cmd.lint_rule_dsl import run
+
+    return run(args)
+
+
 def _run_compare(args: argparse.Namespace) -> int:
     from cli.cmd.compare import run
 
@@ -106,6 +112,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to rule JSON file.",
     )
     view_parser.set_defaults(func=_run_view)
+
+    lint_rule_dsl_parser = subparsers.add_parser(
+        "lint-rule-dsl",
+        help="Parse and lint the shared rule DSL against operators.json.",
+    )
+    lint_rule_dsl_parser.add_argument(
+        "--rule-dsl",
+        default="ptr_rule_dsl.json",
+        help="Shared rule DSL path (default: ptr_rule_dsl.json).",
+    )
+    lint_rule_dsl_parser.add_argument(
+        "--operators",
+        default="operators.json",
+        help="Operator definition path (default: operators.json).",
+    )
+    lint_rule_dsl_parser.set_defaults(func=_run_lint_rule_dsl)
 
     compare_parser = subparsers.add_parser(
         "compare",
@@ -312,6 +334,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional custom rustc for llvmir generation.",
     )
     verify_parser.add_argument(
+        "--features",
+        default="",
+        help="Comma-separated crate features enabled for MIR scan and LLVM IR generation.",
+    )
+    verify_parser.add_argument(
         "--test",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -324,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     result_parser = subparsers.add_parser(
         "result",
-        help="Print one BUG/OK result per callsite from x verify artifacts.",
+        help="Print BUG/OK results from x verify artifacts.",
     )
     result_input = result_parser.add_mutually_exclusive_group()
     result_input.add_argument(
@@ -342,8 +369,27 @@ def build_parser() -> argparse.ArgumentParser:
         dest="result_dirdir",
         help="Directory whose child directories contain x verify results.",
     )
+    result_parser.add_argument(
+        "-g",
+        "--granularity",
+        choices=("rule", "caller"),
+        default="rule",
+        help=(
+            "Result grouping: one row per callsite/rule pair (rule, default), "
+            "or one row per caller function (caller)."
+        ),
+    )
+    result_parser.add_argument(
+        "--unsafe-api-summary",
+        "--unsafe-api",
+        action="store_true",
+        help=(
+            "For each unsafe API, print confirmed-bug/total callsite counts "
+            "per crate and across all crates, instead of individual results."
+        ),
+    )
     result_parser.set_defaults(func=_run_result)
-    
+
     generate_parser = subparsers.add_parser(
         "generate",
         help="Generate rule JSON files from a Rust crate.",
@@ -421,6 +467,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument(
         "--cargo-dir",
         help="Path to only one Rust crate to sync. If not provided, all crates in crates/ will be synced.",
+    )
+    sync_parser.add_argument(
+        "--features",
+        default="",
+        help="Comma-separated crate features (requires --cargo-dir).",
     )
     sync_parser.add_argument(
         "--strict",

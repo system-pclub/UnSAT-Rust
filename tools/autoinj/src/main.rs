@@ -1,6 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
 use proc_macro2::{LineColumn, Span};
-use quote::ToTokens;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -73,6 +72,8 @@ struct Injection {
     raw_pointer_deref: bool,
     source_line: Option<String>,
     best_effort: bool,
+    caller_name: Option<String>,
+    preserve_export: bool,
 }
 
 fn main() -> Result<()> {
@@ -303,47 +304,58 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
         let mut seen_callsites = BTreeSet::new();
         let mut injections = Vec::new();
         for target in &meta.report.targets {
-            let mut push_injection = |callsite: &Callsite, best_effort: bool, actual_unsafe: bool| {
-                if target_path_for_callsite(target, callsite) != Some(rel_file.as_str()) {
-                    return;
-                }
-                let base_id = target.callsite.id.clone().unwrap_or_else(|| {
-                    callsite_id(&rel_file, target.callsite.line, target.callsite.col)
-                });
-                let id = if target.unsafe_callsite.is_some() && !actual_unsafe {
-                    format!("{base_id}-root")
-                } else {
-                    base_id
+            let mut push_injection =
+                |callsite: &Callsite, best_effort: bool, actual_unsafe: bool| {
+                    if target_path_for_callsite(target, callsite) != Some(rel_file.as_str()) {
+                        return;
+                    }
+                    let base_id = target.callsite.id.clone().unwrap_or_else(|| {
+                        callsite_id(&rel_file, target.callsite.line, target.callsite.col)
+                    });
+                    let id = if target.unsafe_callsite.is_some() && !actual_unsafe {
+                        format!("{base_id}-root")
+                    } else {
+                        base_id
+                    };
+                    let callee_name = target
+                        .callee
+                        .as_ref()
+                        .and_then(|callee| callee.name.clone());
+                    let raw_pointer_deref = callee_name
+                        .as_deref()
+                        .is_some_and(|name| name == "core::ptr::__raw_ptr_deref__");
+                    // A MIR location can be reported once for an inlined unsafe
+                    // operation and again for a raw-pointer dereference. Both map
+                    // to the same source marker id, which must only be injected
+                    // once at the same source location.  For nested safe-wrapper
+                    // reports, keep the user-visible/base id on the actual unsafe
+                    // marker and give the root wrapper a reach-only suffix.  If
+                    // the root shares the base id, KLEE can solve the DSL at the
+                    // wrapper call with stale argument bindings from an earlier
+                    // marker before the actual unsafe operation executes.
+                    if !seen_callsites.insert((id.clone(), callsite.line, callsite.col)) {
+                        return;
+                    }
+                    injections.push(Injection {
+                        id,
+                        line: callsite.line,
+                        col: callsite.col,
+                        callee_name,
+                        raw_pointer_deref,
+                        source_line: None,
+                        best_effort,
+                        caller_name: target
+                            .caller
+                            .as_ref()
+                            .and_then(|caller| caller.name.clone()),
+                        preserve_export: target
+                            .caller
+                            .as_ref()
+                            .and_then(|caller| caller.extra.get("require_template"))
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(false),
+                    });
                 };
-                let callee_name = target
-                    .callee
-                    .as_ref()
-                    .and_then(|callee| callee.name.clone());
-                let raw_pointer_deref = callee_name
-                    .as_deref()
-                    .is_some_and(|name| name == "core::ptr::__raw_ptr_deref__");
-                // A MIR location can be reported once for an inlined unsafe
-                // operation and again for a raw-pointer dereference. Both map
-                // to the same source marker id, which must only be injected
-                // once at the same source location.  For nested safe-wrapper
-                // reports, keep the user-visible/base id on the actual unsafe
-                // marker and give the root wrapper a reach-only suffix.  If
-                // the root shares the base id, KLEE can solve the DSL at the
-                // wrapper call with stale argument bindings from an earlier
-                // marker before the actual unsafe operation executes.
-                if !seen_callsites.insert((id.clone(), callsite.line, callsite.col)) {
-                    return;
-                }
-                injections.push(Injection {
-                    id,
-                    line: callsite.line,
-                    col: callsite.col,
-                    callee_name,
-                    raw_pointer_deref,
-                    source_line: None,
-                    best_effort,
-                });
-            };
             push_injection(&target.callsite, false, false);
             if let Some(unsafe_callsite) = &target.unsafe_callsite {
                 push_injection(unsafe_callsite, true, true);
@@ -568,7 +580,7 @@ impl VisitMut for Injector<'_> {
         let inserted_before = self.inserted;
         visit_mut::visit_item_fn_mut(self, function);
         if !inserted_before && self.inserted {
-            preserve_target_caller_symbol(&mut function.attrs);
+            preserve_target_caller_symbol(&mut function.attrs, self.injection);
         }
     }
 
@@ -576,7 +588,7 @@ impl VisitMut for Injector<'_> {
         let inserted_before = self.inserted;
         visit_mut::visit_impl_item_fn_mut(self, function);
         if !inserted_before && self.inserted {
-            preserve_target_caller_symbol(&mut function.attrs);
+            preserve_target_caller_symbol(&mut function.attrs, self.injection);
         }
     }
 
@@ -584,7 +596,7 @@ impl VisitMut for Injector<'_> {
         let inserted_before = self.inserted;
         visit_mut::visit_trait_item_fn_mut(self, function);
         if !inserted_before && self.inserted {
-            preserve_target_caller_symbol(&mut function.attrs);
+            preserve_target_caller_symbol(&mut function.attrs, self.injection);
         }
     }
 
@@ -652,9 +664,36 @@ impl VisitMut for Injector<'_> {
     }
 }
 
-fn preserve_target_caller_symbol(attrs: &mut Vec<syn::Attribute>) {
+fn rust_legacy_symbol_needle(name: &str) -> String {
+    name.split("::")
+        .filter_map(|part| {
+            let simple = part.split('<').next().unwrap_or("");
+            (!simple.is_empty()
+                && simple
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_'))
+            .then(|| format!("{}{}", simple.len(), simple))
+        })
+        .collect()
+}
+
+fn preserve_target_caller_symbol(attrs: &mut Vec<syn::Attribute>, injection: &Injection) {
     attrs.retain(|attr| !attr.path().is_ident("inline"));
     attrs.push(parse_quote! { #[inline(never)] });
+    if injection.preserve_export && !attrs.iter().any(|attr| attr.path().is_ident("export_name")) {
+        let Some(caller_name) = injection.caller_name.as_deref() else {
+            return;
+        };
+        let symbol = format!(
+            "__klee_target_ZN{}E_{}",
+            rust_legacy_symbol_needle(caller_name),
+            injection
+                .id
+                .replace(|ch: char| !ch.is_ascii_alphanumeric(), "_")
+        );
+        let symbol = syn::LitStr::new(&symbol, proc_macro2::Span::call_site());
+        attrs.push(parse_quote! { #[unsafe(export_name = #symbol)] });
+    }
 }
 
 struct CallRewrite {
@@ -1148,9 +1187,10 @@ fn lift_method_call_parts(
     let mut lift_stmts = Vec::new();
 
     if bind_receiver_in_place {
-        // set_len's receiver must remain an in-place expression. The executor
-        // captures the receiver directly from the target CallInst, so no
-        // temporary or explicit binding is needed.
+        // set_len's receiver must remain an in-place expression. Keep the
+        // expression in place, but bind its header address explicitly: the
+        // target call can be hidden behind an inlined/core wrapper, in which
+        // case deferred call capture otherwise sees the wrapper's arguments.
     } else if simple_ident_name(&node.receiver).is_some() {
     } else {
         let name = format!("__klee_arg{}", *next_temp_index);
@@ -1179,14 +1219,47 @@ fn lift_method_call_parts(
         }
     }
 
-    let raw_bind_first_tail_arg_as_u64 = node
-        .args
-        .first()
-        .is_some_and(|arg| is_scalar_index_bind_candidate(arg) && !tokens_look_like_range(arg));
     let (tail_arg_names, mut tail_stmts) = lift_call_args_only(&mut node.args, next_temp_index);
-    let first_tail_lift_is_range = tail_stmts.first().is_some_and(tokens_look_like_range);
-    let bind_first_tail_arg_as_u64 = raw_bind_first_tail_arg_as_u64 && !first_tail_lift_is_range;
     lift_stmts.append(&mut tail_stmts);
+    if callee_method == "set_len" {
+        let receiver = (*node.receiver).clone();
+        let owner_ident = syn::Ident::new(
+            &format!("__klee_vec_owner{}", *next_temp_index),
+            Span::call_site(),
+        );
+        *next_temp_index += 1;
+        let bind_receiver_stmt: syn::Stmt = parse_quote! {
+            let #owner_ident = &(#receiver) as *const _;
+        };
+        lift_stmts.push(bind_receiver_stmt);
+        let bind_receiver_stmt: syn::Stmt = parse_quote! {
+            klee_ext_bind::bind_arg_ptr_value(0, &#owner_ident);
+        };
+        lift_stmts.push(bind_receiver_stmt);
+        if let Some(new_len_arg) = tail_arg_names.first().filter(|name| !name.is_empty()) {
+            let new_len_ident = syn::Ident::new(new_len_arg, Span::call_site());
+            let bind_len_stmt: syn::Stmt = parse_quote! {
+                klee_ext_bind::bind_arg_u64_value(1, &#new_len_ident);
+            };
+            lift_stmts.push(bind_len_stmt);
+        }
+    }
+    if callee_method == "dealloc" && node.args.len() >= 2 {
+        let ptr = node.args[0].clone();
+        let layout = node.args[1].clone();
+        let bind_ptr_stmt: syn::Stmt = parse_quote! {
+            klee_ext_bind::bind_arg_ptr_value(1, #ptr);
+        };
+        let bind_size_stmt: syn::Stmt = parse_quote! {
+            klee_ext_bind::bind_arg_u64(2, (#layout).size() as u64);
+        };
+        let bind_align_stmt: syn::Stmt = parse_quote! {
+            klee_ext_bind::bind_arg_u64(3, (#layout).align() as u64);
+        };
+        lift_stmts.push(bind_ptr_stmt);
+        lift_stmts.push(bind_size_stmt);
+        lift_stmts.push(bind_align_stmt);
+    }
     if is_pointer_arithmetic_method(callee_method) {
         let receiver = (*node.receiver).clone();
         let bind_receiver_stmt: syn::Stmt = parse_quote! {
@@ -1201,17 +1274,25 @@ fn lift_method_call_parts(
             lift_stmts.push(bind_index_stmt);
         }
     }
-    if matches!(callee_method, "get_unchecked" | "get_unchecked_mut") && bind_first_tail_arg_as_u64
-    {
+    if matches!(callee_method, "get_unchecked" | "get_unchecked_mut") {
         let receiver = (*node.receiver).clone();
+        let len_ident = syn::Ident::new(
+            &format!("__klee_len{}", *next_temp_index),
+            Span::call_site(),
+        );
+        *next_temp_index += 1;
+        let lift_len_stmt: syn::Stmt = parse_quote! {
+            let #len_ident = (#receiver).len() as u64;
+        };
+        lift_stmts.push(lift_len_stmt);
         let bind_len_stmt: syn::Stmt = parse_quote! {
-            klee_ext_bind::bind_arg_u64(1, (#receiver).len() as u64);
+            klee_ext_bind::bind_arg_u64(1, #len_ident);
         };
         lift_stmts.push(bind_len_stmt);
-        if let Some(index_arg) = tail_arg_names.first() {
+        if let Some(index_arg) = tail_arg_names.first().filter(|name| !name.is_empty()) {
             let index_ident = syn::Ident::new(index_arg, Span::call_site());
             let bind_stmt: syn::Stmt = parse_quote! {
-                klee_ext_bind::bind_arg_u64_value(2, &#index_ident);
+                klee_ext_bind::bind_arg_rustrange_value(2, &#index_ident, #len_ident);
             };
             lift_stmts.push(bind_stmt);
         }
@@ -1235,38 +1316,6 @@ fn is_place_expr(expr: &syn::Expr) -> bool {
         syn::Expr::Paren(paren) => is_place_expr(&paren.expr),
         _ => false,
     }
-}
-
-fn is_scalar_index_bind_candidate(expr: &syn::Expr) -> bool {
-    match expr {
-        syn::Expr::Array(_)
-        | syn::Expr::Async(_)
-        | syn::Expr::Await(_)
-        | syn::Expr::Block(_)
-        | syn::Expr::Call(_)
-        | syn::Expr::Closure(_)
-        | syn::Expr::ForLoop(_)
-        | syn::Expr::Loop(_)
-        | syn::Expr::Macro(_)
-        | syn::Expr::MethodCall(_)
-        | syn::Expr::Range(_)
-        | syn::Expr::Repeat(_)
-        | syn::Expr::Struct(_)
-        | syn::Expr::Try(_)
-        | syn::Expr::TryBlock(_)
-        | syn::Expr::Tuple(_)
-        | syn::Expr::Unsafe(_)
-        | syn::Expr::While(_)
-        | syn::Expr::Yield(_) => false,
-        syn::Expr::Group(group) => is_scalar_index_bind_candidate(&group.expr),
-        syn::Expr::Paren(paren) => is_scalar_index_bind_candidate(&paren.expr),
-        _ => true,
-    }
-}
-
-fn tokens_look_like_range<T: ToTokens>(tokens: &T) -> bool {
-    let text = tokens.to_token_stream().to_string();
-    text.contains("..") || text.contains(". .")
 }
 
 fn span_matches(span: Span, injection: &Injection) -> bool {
@@ -1402,6 +1451,8 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }
         ));
         assert!(span_matches(
@@ -1414,6 +1465,8 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }
         ));
     }
@@ -1512,6 +1565,8 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1550,12 +1605,16 @@ impl Values {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: Some("values::Values::get".to_string()),
+                preserve_export: true,
             }],
         )?;
 
         let injected = fs::read_to_string(source)?;
         assert!(!injected.contains("inline(always)"));
         assert!(injected.contains("inline(never)"));
+        assert!(injected
+            .contains("export_name = \"__klee_target_ZN6values6Values3getE_src_lib_rs_5_18\""));
         assert!(injected.contains("klee_ext_bind::callsite!"));
         Ok(())
     }
@@ -1587,6 +1646,8 @@ impl Select {
                 raw_pointer_deref: true,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1623,6 +1684,8 @@ fn make_value() -> u8 { 0 }
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1636,6 +1699,79 @@ fn make_value() -> u8 { 0 }
             compact.contains("core::ptr::write(__klee_arg0,__klee_arg1"),
             "unexpected injection:\n{injected}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_binds_set_len_receiver_and_new_len() -> Result<()> {
+        let tmp = TempDir::new("bind-set-len")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub fn truncate(mut values: Vec<u8>, new_len: usize) {
+    unsafe { values.set_len(new_len) }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-2-14".to_string(),
+                line: 2,
+                col: 14,
+                callee_name: Some("alloc::vec::Vec::set_len".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+                best_effort: false,
+                caller_name: None,
+                preserve_export: false,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("let__klee_vec_owner"));
+        assert!(compact.contains("=&(values)as*const_;"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_ptr_value(0,&__klee_vec_owner"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64_value(1,&new_len);"));
+        assert!(compact.contains("values.set_len(new_len)"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_binds_dealloc_pointer_and_layout() -> Result<()> {
+        let tmp = TempDir::new("bind-dealloc")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"use std::alloc::{GlobalAlloc, Layout, System};
+pub unsafe fn release(ptr: *mut u8, layout: Layout) {
+    System.dealloc(ptr, layout)
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-3-12".to_string(),
+                line: 3,
+                col: 12,
+                callee_name: Some("std::alloc::GlobalAlloc::dealloc".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+                best_effort: false,
+                caller_name: None,
+                preserve_export: false,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("klee_ext_bind::bind_arg_ptr_value(1,ptr);"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64(2,(layout).size()asu64);"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64(3,(layout).align()asu64);"));
         Ok(())
     }
 
@@ -1663,6 +1799,8 @@ fn run(ptr: *const i8) {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1699,6 +1837,8 @@ fn make_value() -> u8 { 0 }
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1738,6 +1878,8 @@ fn make_value() -> u8 { 0 }
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
                 Injection {
                     id: "src-lib-rs-3-second".to_string(),
@@ -1747,6 +1889,8 @@ fn make_value() -> u8 { 0 }
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
             ],
         )?;
@@ -1800,6 +1944,8 @@ impl Rank {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1809,8 +1955,9 @@ impl Rank {
             compact.contains("let__klee_arg0=&self.ranks;"),
             "unexpected injection:\n{injected}"
         );
-        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,(__klee_arg0).len()asu64);"));
-        assert!(compact.contains("klee_ext_bind::bind_arg_u64_value(2,&block);"));
+        assert!(compact.contains("let__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_rustrange_value(2,&block,__klee_len"));
         assert!(compact.contains("=__klee_arg0.get_unchecked(block);"));
         Ok(())
     }
@@ -1837,6 +1984,8 @@ impl Rank {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -1875,6 +2024,8 @@ impl Rank {
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
                 Injection {
                     id: "src-lib-rs-4-15".to_string(),
@@ -1884,6 +2035,8 @@ impl Rank {
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
             ],
         )?;
@@ -1930,6 +2083,8 @@ fn consume(_: &mut u8) {}
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
                 Injection {
                     id: "src-lib-rs-3-19".to_string(),
@@ -1939,6 +2094,8 @@ fn consume(_: &mut u8) {}
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
             ],
         )?;
@@ -1980,6 +2137,8 @@ fn consume(_: &mut u8) {}
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2027,6 +2186,8 @@ impl Window {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2065,6 +2226,8 @@ impl Interpreter {
                 raw_pointer_deref: true,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2102,6 +2265,8 @@ impl Error {
                 raw_pointer_deref: true,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2135,6 +2300,8 @@ impl Buffer {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2177,6 +2344,8 @@ fn pop(interpreter: &mut Interpreter) -> u8 {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2222,6 +2391,8 @@ impl Tree {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
@@ -2264,6 +2435,8 @@ impl D {
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
                 Injection {
                     id: "src-lib-rs-5-9-get_unchecked_mut".to_string(),
@@ -2273,6 +2446,8 @@ impl D {
                     raw_pointer_deref: false,
                     source_line: None,
                     best_effort: false,
+                    caller_name: None,
+                    preserve_export: false,
                 },
             ],
         )?;
@@ -2286,8 +2461,9 @@ impl D {
             2,
             "unexpected injection:\n{injected}"
         );
-        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,(self.xs).len()asu64);"));
-        assert!(compact.contains("klee_ext_bind::bind_arg_u64_value(2,&i);"));
+        assert!(compact.contains("let__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_rustrange_value(2,&i,__klee_len"));
         assert!(compact.contains("=self.xs.get_unchecked_mut(i);"));
         Ok(())
     }
@@ -2321,9 +2497,7 @@ impl D {
                 targets: vec![Target {
                     caller: None,
                     callee: Some(FnInfo {
-                        name: Some(
-                            "core::slice::<impl [T]>::get_unchecked_mut".to_string(),
-                        ),
+                        name: Some("core::slice::<impl [T]>::get_unchecked_mut".to_string()),
                         path: None,
                         extra: serde_json::Map::new(),
                     }),
@@ -2359,7 +2533,9 @@ impl D {
             "unexpected injection:\n{injected}"
         );
         assert_eq!(
-            compact.matches("klee_ext_bind::callsite!(\"src-lib-rs-5-9\");").count(),
+            compact
+                .matches("klee_ext_bind::callsite!(\"src-lib-rs-5-9\");")
+                .count(),
             1,
             "actual unsafe marker should be the only base-id marker:\n{injected}"
         );
@@ -2403,6 +2579,8 @@ fn dispatch(operation: &Operation) -> Result<(), ()> {
                 raw_pointer_deref: false,
                 source_line: None,
                 best_effort: false,
+                caller_name: None,
+                preserve_export: false,
             }],
         )?;
 
