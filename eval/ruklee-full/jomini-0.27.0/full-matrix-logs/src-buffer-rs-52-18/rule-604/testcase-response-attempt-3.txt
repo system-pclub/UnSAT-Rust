@@ -2,17 +2,24 @@
 #[cfg(feature = "unsat-poc-src-buffer-rs-52-18-rule-604-70e03e5bf1")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_buffer_rs_52_18_rule_604_70e03e5bf1() {
-    let backing = vec![11u8, 22u8].into_boxed_slice();
-    let start = backing.as_ptr();
-    let end = start.wrapping_add(1);
-
-    let window = BufferWindow {
+    let backing = vec![0u8; 1].into_boxed_slice();
+    let base = backing.as_ptr();
+    let mut window = BufferWindow {
         buf: backing,
-        start_buf: start,
-        start,
-        end,
+        start_buf: base,
+        start: base,
+        end: base,
         prior_reads: 0,
     };
+
+    let _ = window.window();
+
+    let mut backing2 = vec![1u8].into_boxed_slice();
+    let base2 = backing2.as_ptr();
+    window.buf = backing2;
+    window.start_buf = base2;
+    window.start = base2;
+    window.end = base2.wrapping_add(1);
 
     let _ = window.window();
 }

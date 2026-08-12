@@ -3,14 +3,6 @@ target counterexample.
 
 
 
-<high priority retry constraints>
-These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 137319799570432; get_arg(1) = 3; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `self.buf.start`; this failed observation had `self.buf.start = 137319799570432`.
-- At the selected target expression, `get_arg(1)` is source expression `bytes`; this failed observation had `bytes = 3`.
-- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
-</high priority retry constraints>
-
 	Requirements:
 	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
 	  operations. If the crate uses Rust 2024 and the compiler requires it, the
@@ -180,7 +172,46 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:text::reader::TokenReader::<()>::from_slice",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "TokenReader"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "buf",
+        "function": "text::reader::TokenReader::<()>::from_slice",
+        "kind": "mutator",
+        "root_type": "text::reader::TokenReader"
+      }
+    ],
+    "symbol": "_ZN6jomini4text6reader20TokenReader$LT$R$GT$10read_bytes17h0fe4fdf17794895cE.arg1.buf.end"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:text::reader::TokenReader::<()>::from_slice",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "TokenReader"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "buf",
+        "function": "text::reader::TokenReader::<()>::from_slice",
+        "kind": "mutator",
+        "root_type": "text::reader::TokenReader"
+      }
+    ],
+    "symbol": "_ZN6jomini4text6reader20TokenReader$LT$R$GT$10read_bytes17h0fe4fdf17794895cE.arg1.buf.start"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -232,7 +263,9 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> call target caller `text::reader::TokenReader::<R>::read_bytes` directly
+1. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> construct or obtain a `TokenReader` value -> call safe `text::reader::TokenReader::<()>::from_slice` to affect `buf` -> call target caller `text::reader::TokenReader::<R>::read_bytes`
+2. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> call safe `from_slice` -> call target caller `text::reader::TokenReader::<R>::read_bytes`
+3. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> call target caller `text::reader::TokenReader::<R>::read_bytes` directly
 </candidate safe-call plans>
 
 
@@ -1583,17 +1616,47 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-The testcase compiled but did not reproduce the target violation.
-KLEE reached `src-text-reader-rs-520-30`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
-KLEE reached these callsite markers before missing the target (last markers first-order): `src-buffer-rs-57-18` -> `src-buffer-rs-57-18` -> `src-buffer-rs-67-18` -> `src-buffer-rs-100-29` -> `src-buffer-rs-106-37` -> `src-buffer-rs-57-18` -> `src-text-reader-rs-520-30` -> `src-buffer-rs-45-28`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-text-reader-rs-520-30` and reproduce the target counterexample there.
-The metadata caller `text::reader::TokenReader::<R>::read_bytes` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
-Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0':
+stdout: 
+stderr:    Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
+    |
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
+    |
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
 
-Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 137319799570432; get_arg(1) = 3; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `self.buf.start`; this failed observation had `self.buf.start = 137319799570432`.
-  At the selected target expression, `get_arg(1)` is source expression `bytes`; this failed observation had `bytes = 3`.
-If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-text-reader-rs-520-30-rule-610-8a1a3b3310', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
+    |
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
+    |
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
+
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
+
 
 </previous attempt feedback>
 
@@ -6783,6 +6846,9 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         let ptr = unsafe {
             let __klee_arg0 = &self.start;
@@ -6796,6 +6862,9 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         unsafe {
             let __klee_arg1 = self.start;
@@ -6809,6 +6878,9 @@ impl BufferWindow {
         }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         unsafe {
             let __klee_arg3 = &self.end;
@@ -6824,6 +6896,9 @@ impl BufferWindow {
         self.prior_reads + self.consumed_data()
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         unsafe {
             let __klee_arg5 = &self.start;
@@ -6834,7 +6909,13 @@ impl BufferWindow {
             __klee_ret_src_buffer_rs_67_18_offset_from as usize
         }
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         debug_assert!(range.start >= self.start_buf);
         debug_assert!(range.end <= self.end);
@@ -8276,6 +8357,9 @@ impl<'a, T> VecAllocation<'a, T> {
                 value,
             );
             let __klee_arg2 = self.index + 1;
+            let __klee_vec_owner3 = &(self.vec) as *const _;
+            klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner3);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
             klee_ext_bind::callsite!("src-copyless-rs-19-13");
             let mut __klee_ret_src_copyless_rs_19_13_set_len = self
                 .vec
@@ -8612,6 +8696,9 @@ const fn trim_ascii_end(data: &[u8]) -> &[u8] {
     bytes
 }
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8encoding18decode_windows1252E_src_encoding_rs_136_22"
+)]
 pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {
     let bytes = trim_ascii_end(d);
     let mut eject = false;
@@ -8644,6 +8731,7 @@ fn windows_1252_create(d: &[u8], offset: usize) -> String {
     result
 }
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8encoding11decode_utf8E_src_encoding_rs_195_26")]
 pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {
     let d = trim_ascii_end(d);
     let mut chunk_iter = d.chunks_exact(8);

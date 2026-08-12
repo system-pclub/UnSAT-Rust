@@ -1,0 +1,1679 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-utils-mod-rs-20-13-ruklee-mm-prefetch-read-valid-rustc-1-87-line1830-18757f2ce9`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_utils_mod_rs_20_13_ruklee_mm_prefetch_read_valid_rustc_1_87_line1830_18757f2ce9`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-utils-mod-rs-20-13-ruklee-mm-prefetch-read-valid-rustc-1-87-line1830-18757f2ce9")]`.
+- Define `pub extern "C" fn __unsat_poc_src_utils_mod_rs_20_13_ruklee_mm_prefetch_read_valid_rustc_1_87_line1830_18757f2ce9()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-utils-mod-rs-20-13-ruklee-mm-prefetch-read-valid-rustc-1-87-line1830-18757f2ce9")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_utils_mod_rs_20_13_ruklee_mm_prefetch_read_valid_rustc_1_87_line1830_18757f2ce9() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "utils::prefetch_read_NTA",
+    "path": "src/utils/mod.rs",
+    "line_start": 8,
+    "line_end": 8,
+    "body_end": 32,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::arch::x86_64::_mm_prefetch",
+    "path": "rust/library/core/src/../../stdarch/crates/core_arch/src/x86/sse.rs",
+    "line_start": 1830,
+    "line_end": 1880,
+    "body_end": 1880,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "()"
+  },
+  "callsite": {
+    "line": 20,
+    "col": 13,
+    "path": "src/utils/mod.rs",
+    "id": "src-utils-mod-rs-20-13"
+  }
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `utils::prefetch_read_NTA` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `utils::prefetch_read_NTA`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use std::collections::{HashMap, HashSet};
+use std::ops::Shr;
+use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};
+use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};
+use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `num_traits::...`.
+
+Target expression selected by the callsite line/column:
+- column: `13`
+- expression: `_mm_prefetch(_p, _MM_HINT_NTA)`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/utils/mod.rs:20
+```rust
+12:     {
+13:         #[cfg(target_arch = "x86")]
+14:         use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};
+15: 
+16:         #[cfg(target_arch = "x86_64")]
+17:         use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};
+18: 
+19:         unsafe {
+20:             _mm_prefetch(_p, _MM_HINT_NTA);
+21:         }
+22:     }
+23: 
+24:     #[cfg(all(feature = "prefetch", target_arch = "aarch64"))]
+25:     {
+26:         use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};
+27: 
+28:         unsafe {
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/utils/mod.rs:8-20
+```rust
+ 8: pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {
+ 9:     let _p = data.as_ptr().wrapping_add(offset) as *const i8;
+10: 
+11:     #[cfg(all(feature = "prefetch", any(target_arch = "x86", target_arch = "x86_64")))]
+12:     {
+13:         #[cfg(target_arch = "x86")]
+14:         use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};
+15: 
+16:         #[cfg(target_arch = "x86_64")]
+17:         use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};
+18: 
+19:         unsafe {
+20:             _mm_prefetch(_p, _MM_HINT_NTA);
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.228/src/core/ser/mod.rs:1152-1291
+```rust
+1152:     /// # struct HashMap<K, V>(PhantomData<K>, PhantomData<V>);
+1153:     /// #
+1154:     /// # impl<K, V> HashMap<K, V> {
+1155:     /// #     fn len(&self) -> usize {
+1156:     /// #         unimplemented!()
+1157:     /// #     }
+1158:     /// # }
+1159:     /// #
+1160:     /// # impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
+1161:     /// #     type Item = (&'a K, &'a V);
+1162:     /// #     type IntoIter = Box<dyn Iterator<Item = (&'a K, &'a V)>>;
+1163:     /// #
+1164:     /// #     fn into_iter(self) -> Self::IntoIter {
+1165:     /// #         unimplemented!()
+1166:     /// #     }
+1167:     /// # }
+1168:     /// #
+1169:     /// use serde::ser::{Serialize, SerializeMap, Serializer};
+1170:     ///
+1171:     /// impl<K, V> Serialize for HashMap<K, V>
+1172:     /// where
+1173:     ///     K: Serialize,
+1174:     ///     V: Serialize,
+1175:     /// {
+1176:     ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+1177:     ///     where
+1178:     ///         S: Serializer,
+1179:     ///     {
+1180:     ///         let mut map = serializer.serialize_map(Some(self.len()))?;
+1181:     ///         for (k, v) in self {
+1182:     ///             map.serialize_entry(k, v)?;
+1183:     ///         }
+1184:     ///         map.end()
+1185:     ///     }
+1186:     /// }
+1187:     /// ```
+1188:     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error>;
+1189: 
+1190:     /// Begin to serialize a struct like `struct Rgb { r: u8, g: u8, b: u8 }`.
+1191:     /// This call must be followed by zero or more calls to `serialize_field`,
+1192:     /// then a call to `end`.
+1193:     ///
+1194:     /// The `name` is the name of the struct and the `len` is the number of
+1195:     /// data fields that will be serialized. `len` does not include fields
+1196:     /// which are skipped with [`SerializeStruct::skip_field`].
+1197:     ///
+1198:     /// ```edition2021
+1199:     /// use serde::ser::{Serialize, SerializeStruct, Serializer};
+1200:     ///
+1201:     /// struct Rgb {
+1202:     ///     r: u8,
+1203:     ///     g: u8,
+1204:     ///     b: u8,
+1205:     /// }
+1206:     ///
+1207:     /// impl Serialize for Rgb {
+1208:     ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+1209:     ///     where
+1210:     ///         S: Serializer,
+1211:     ///     {
+1212:     ///         let mut rgb = serializer.serialize_struct("Rgb", 3)?;
+1213:     ///         rgb.serialize_field("r", &self.r)?;
+1214:     ///         rgb.serialize_field("g", &self.g)?;
+1215:     ///         rgb.serialize_field("b", &self.b)?;
+1216:     ///         rgb.end()
+1217:     ///     }
+1218:     /// }
+1219:     /// ```
+1220:     fn serialize_struct(
+1221:         self,
+1222:         name: &'static str,
+1223:         len: usize,
+1224:     ) -> Result<Self::SerializeStruct, Self::Error>;
+1225: 
+1226:     /// Begin to serialize a struct variant like `E::S` in `enum E { S { r: u8,
+1227:     /// g: u8, b: u8 } }`. This call must be followed by zero or more calls to
+1228:     /// `serialize_field`, then a call to `end`.
+1229:     ///
+1230:     /// The `name` is the name of the enum, the `variant_index` is the index of
+1231:     /// this variant within the enum, the `variant` is the name of the variant,
+1232:     /// and the `len` is the number of data fields that will be serialized.
+1233:     /// `len` does not include fields which are skipped with
+1234:     /// [`SerializeStructVariant::skip_field`].
+1235:     ///
+1236:     /// ```edition2021
+1237:     /// use serde::ser::{Serialize, SerializeStructVariant, Serializer};
+1238:     ///
+1239:     /// enum E {
+1240:     ///     S { r: u8, g: u8, b: u8 },
+1241:     /// }
+1242:     ///
+1243:     /// impl Serialize for E {
+1244:     ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+1245:     ///     where
+1246:     ///         S: Serializer,
+1247:     ///     {
+1248:     ///         match *self {
+1249:     ///             E::S {
+1250:     ///                 ref r,
+1251:     ///                 ref g,
+1252:     ///                 ref b,
+1253:     ///             } => {
+1254:     ///                 let mut sv = serializer.serialize_struct_variant("E", 0, "S", 3)?;
+1255:     ///                 sv.serialize_field("r", r)?;
+1256:     ///                 sv.serialize_field("g", g)?;
+1257:     ///                 sv.serialize_field("b", b)?;
+1258:     ///                 sv.end()
+1259:     ///             }
+1260:     ///         }
+1261:     ///     }
+1262:     /// }
+1263:     /// ```
+1264:     fn serialize_struct_variant(
+1265:         self,
+1266:         name: &'static str,
+1267:         variant_index: u32,
+1268:         variant: &'static str,
+1269:         len: usize,
+1270:     ) -> Result<Self::SerializeStructVariant, Self::Error>;
+1271: 
+1272:     /// Collect an iterator as a sequence.
+1273:     ///
+1274:     /// The default implementation serializes each item yielded by the iterator
+1275:     /// using [`serialize_seq`]. Implementors should not need to override this
+1276:     /// method.
+1277:     ///
+1278:     /// ```edition2021
+1279:     /// use serde::{Serialize, Serializer};
+1280:     ///
+1281:     /// struct SecretlyOneHigher {
+1282:     ///     data: Vec<i32>,
+1283:     /// }
+1284:     ///
+1285:     /// impl Serialize for SecretlyOneHigher {
+1286:     ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+1287:     ///     where
+1288:     ///         S: Serializer,
+1289:     ///     {
+1290:     ///         serializer.collect_seq(self.data.iter().map(|x| x + 1))
+1291:     ///     }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.6/src/distributions/distribution.rs:140-272
+```rust
+140:     type Item = T;
+141: 
+142:     #[inline(always)]
+143:     fn next(&mut self) -> Option<T> {
+144:         // Here, self.rng may be a reference, but we must take &mut anyway.
+145:         // Even if sample could take an R: Rng by value, we would need to do this
+146:         // since Rng is not copyable and we cannot enforce that this is "reborrowable".
+147:         Some(self.distr.sample(&mut self.rng))
+148:     }
+149: 
+150:     fn size_hint(&self) -> (usize, Option<usize>) {
+151:         (usize::max_value(), None)
+152:     }
+153: }
+154: 
+155: impl<D, R, T> iter::FusedIterator for DistIter<D, R, T>
+156: where
+157:     D: Distribution<T>,
+158:     R: Rng,
+159: {
+160: }
+161: 
+162: #[cfg(feature = "nightly")]
+163: unsafe impl<D, R, T> iter::TrustedLen for DistIter<D, R, T>
+164: where
+165:     D: Distribution<T>,
+166:     R: Rng,
+167: {
+168: }
+169: 
+170: /// A distribution of values of type `S` derived from the distribution `D`
+171: /// by mapping its output of type `T` through the closure `F`.
+172: ///
+173: /// This `struct` is created by the [`Distribution::map`] method.
+174: /// See its documentation for more.
+175: #[derive(Debug)]
+176: pub struct DistMap<D, F, T, S> {
+177:     distr: D,
+178:     func: F,
+179:     phantom: ::core::marker::PhantomData<fn(T) -> S>,
+180: }
+181: 
+182: impl<D, F, T, S> Distribution<S> for DistMap<D, F, T, S>
+183: where
+184:     D: Distribution<T>,
+185:     F: Fn(T) -> S,
+186: {
+187:     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> S {
+188:         (self.func)(self.distr.sample(rng))
+189:     }
+190: }
+191: 
+192: /// `String` sampler
+193: ///
+194: /// Sampling a `String` of random characters is not quite the same as collecting
+195: /// a sequence of chars. This trait contains some helpers.
+196: #[cfg(feature = "alloc")]
+197: pub trait DistString {
+198:     /// Append `len` random chars to `string`
+199:     fn append_string<R: Rng + ?Sized>(&self, rng: &mut R, string: &mut String, len: usize);
+200: 
+201:     /// Generate a `String` of `len` random chars
+202:     #[inline]
+203:     fn sample_string<R: Rng + ?Sized>(&self, rng: &mut R, len: usize) -> String {
+204:         let mut s = String::new();
+205:         self.append_string(rng, &mut s, len);
+206:         s
+207:     }
+208: }
+209: 
+210: #[cfg(test)]
+211: mod tests {
+212:     use crate::distributions::{Distribution, Uniform};
+213:     use crate::Rng;
+214: 
+215:     #[test]
+216:     fn test_distributions_iter() {
+217:         use crate::distributions::Open01;
+218:         let mut rng = crate::test::rng(210);
+219:         let distr = Open01;
+220:         let mut iter = Distribution::<f32>::sample_iter(distr, &mut rng);
+221:         let mut sum: f32 = 0.;
+222:         for _ in 0..100 {
+223:             sum += iter.next().unwrap();
+224:         }
+225:         assert!(0. < sum && sum < 100.);
+226:     }
+227: 
+228:     #[test]
+229:     fn test_distributions_map() {
+230:         let dist = Uniform::new_inclusive(0, 5).map(|val| val + 15);
+231: 
+232:         let mut rng = crate::test::rng(212);
+233:         let val = dist.sample(&mut rng);
+234:         assert!((15..=20).contains(&val));
+235:     }
+236: 
+237:     #[test]
+238:     fn test_make_an_iter() {
+239:         fn ten_dice_rolls_other_than_five<R: Rng>(
+240:             rng: &mut R,
+241:         ) -> impl Iterator<Item = i32> + '_ {
+242:             Uniform::new_inclusive(1, 6)
+243:                 .sample_iter(rng)
+244:                 .filter(|x| *x != 5)
+245:                 .take(10)
+246:         }
+247: 
+248:         let mut rng = crate::test::rng(211);
+249:         let mut count = 0;
+250:         for val in ten_dice_rolls_other_than_five(&mut rng) {
+251:             assert!((1..=6).contains(&val) && val != 5);
+252:             count += 1;
+253:         }
+254:         assert_eq!(count, 10);
+255:     }
+256: 
+257:     #[test]
+258:     #[cfg(feature = "alloc")]
+259:     fn test_dist_string() {
+260:         use core::str;
+261:         use crate::distributions::{Alphanumeric, DistString, Standard};
+262:         let mut rng = crate::test::rng(213);
+263: 
+264:         let s1 = Alphanumeric.sample_string(&mut rng, 20);
+265:         assert_eq!(s1.len(), 20);
+266:         assert_eq!(str::from_utf8(s1.as_bytes()), Ok(s1.as_str()));
+267: 
+268:         let s2 = Standard.sample_string(&mut rng, 20);
+269:         assert_eq!(s2.chars().count(), 20);
+270:         assert_eq!(str::from_utf8(s2.as_bytes()), Ok(s2.as_str()));
+271:     }
+272: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.6/src/rngs/small.rs:14-117
+```rust
+ 14: type Rng = super::xoshiro256plusplus::Xoshiro256PlusPlus;
+ 15: #[cfg(not(target_pointer_width = "64"))]
+ 16: type Rng = super::xoshiro128plusplus::Xoshiro128PlusPlus;
+ 17: 
+ 18: /// A small-state, fast non-crypto PRNG
+ 19: ///
+ 20: /// `SmallRng` may be a good choice when a PRNG with small state, cheap
+ 21: /// initialization, good statistical quality and good performance are required.
+ 22: /// Note that depending on the application, [`StdRng`] may be faster on many
+ 23: /// modern platforms while providing higher-quality randomness. Furthermore,
+ 24: /// `SmallRng` is **not** a good choice when:
+ 25: /// - Security against prediction is important. Use [`StdRng`] instead.
+ 26: /// - Seeds with many zeros are provided. In such cases, it takes `SmallRng`
+ 27: ///   about 10 samples to produce 0 and 1 bits with equal probability. Either
+ 28: ///   provide seeds with an approximately equal number of 0 and 1 (for example
+ 29: ///   by using [`SeedableRng::from_entropy`] or [`SeedableRng::seed_from_u64`]),
+ 30: ///   or use [`StdRng`] instead.
+ 31: ///
+ 32: /// The algorithm is deterministic but should not be considered reproducible
+ 33: /// due to dependence on platform and possible replacement in future
+ 34: /// library versions. For a reproducible generator, use a named PRNG from an
+ 35: /// external crate, e.g. [rand_xoshiro] or [rand_chacha].
+ 36: /// Refer also to [The Book](https://rust-random.github.io/book/guide-rngs.html).
+ 37: ///
+ 38: /// The PRNG algorithm in `SmallRng` is chosen to be efficient on the current
+ 39: /// platform, without consideration for cryptography or security. The size of
+ 40: /// its state is much smaller than [`StdRng`]. The current algorithm is
+ 41: /// `Xoshiro256PlusPlus` on 64-bit platforms and `Xoshiro128PlusPlus` on 32-bit
+ 42: /// platforms. Both are also implemented by the [rand_xoshiro] crate.
+ 43: ///
+ 44: /// # Examples
+ 45: ///
+ 46: /// Initializing `SmallRng` with a random seed can be done using [`SeedableRng::from_entropy`]:
+ 47: ///
+ 48: /// ```
+ 49: /// use rand::{Rng, SeedableRng};
+ 50: /// use rand::rngs::SmallRng;
+ 51: ///
+ 52: /// // Create small, cheap to initialize and fast RNG with a random seed.
+ 53: /// // The randomness is supplied by the operating system.
+ 54: /// let mut small_rng = SmallRng::from_entropy();
+ 55: /// # let v: u32 = small_rng.gen();
+ 56: /// ```
+ 57: ///
+ 58: /// When initializing a lot of `SmallRng`'s, using [`thread_rng`] can be more
+ 59: /// efficient:
+ 60: ///
+ 61: /// ```
+ 62: /// use rand::{SeedableRng, thread_rng};
+ 63: /// use rand::rngs::SmallRng;
+ 64: ///
+ 65: /// // Create a big, expensive to initialize and slower, but unpredictable RNG.
+ 66: /// // This is cached and done only once per thread.
+ 67: /// let mut thread_rng = thread_rng();
+ 68: /// // Create small, cheap to initialize and fast RNGs with random seeds.
+ 69: /// // One can generally assume this won't fail.
+ 70: /// let rngs: Vec<SmallRng> = (0..10)
+ 71: ///     .map(|_| SmallRng::from_rng(&mut thread_rng).unwrap())
+ 72: ///     .collect();
+ 73: /// ```
+ 74: ///
+ 75: /// [`StdRng`]: crate::rngs::StdRng
+ 76: /// [`thread_rng`]: crate::thread_rng
+ 77: /// [rand_chacha]: https://crates.io/crates/rand_chacha
+ 78: /// [rand_xoshiro]: https://crates.io/crates/rand_xoshiro
+ 79: #[cfg_attr(docsrs, doc(cfg(feature = "small_rng")))]
+ 80: #[derive(Clone, Debug, PartialEq, Eq)]
+ 81: pub struct SmallRng(Rng);
+ 82: 
+ 83: impl RngCore for SmallRng {
+ 84:     #[inline(always)]
+ 85:     fn next_u32(&mut self) -> u32 {
+ 86:         self.0.next_u32()
+ 87:     }
+ 88: 
+ 89:     #[inline(always)]
+ 90:     fn next_u64(&mut self) -> u64 {
+ 91:         self.0.next_u64()
+ 92:     }
+ 93: 
+ 94:     #[inline(always)]
+ 95:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 96:         self.0.fill_bytes(dest);
+ 97:     }
+ 98: 
+ 99:     #[inline(always)]
+100:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+101:         self.0.try_fill_bytes(dest)
+102:     }
+103: }
+104: 
+105: impl SeedableRng for SmallRng {
+106:     type Seed = <Rng as SeedableRng>::Seed;
+107: 
+108:     #[inline(always)]
+109:     fn from_seed(seed: Self::Seed) -> Self {
+110:         SmallRng(Rng::from_seed(seed))
+111:     }
+112: 
+113:     #[inline(always)]
+114:     fn from_rng<R: RngCore>(rng: R) -> Result<Self, Error> {
+115:         Rng::from_rng(rng).map(SmallRng)
+116:     }
+117: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.6/src/rngs/xoshiro256plusplus.rs:24-122
+```rust
+ 24: pub struct Xoshiro256PlusPlus {
+ 25:     s: [u64; 4],
+ 26: }
+ 27: 
+ 28: impl SeedableRng for Xoshiro256PlusPlus {
+ 29:     type Seed = [u8; 32];
+ 30: 
+ 31:     /// Create a new `Xoshiro256PlusPlus`.  If `seed` is entirely 0, it will be
+ 32:     /// mapped to a different seed.
+ 33:     #[inline]
+ 34:     fn from_seed(seed: [u8; 32]) -> Xoshiro256PlusPlus {
+ 35:         if seed.iter().all(|&x| x == 0) {
+ 36:             return Self::seed_from_u64(0);
+ 37:         }
+ 38:         let mut state = [0; 4];
+ 39:         read_u64_into(&seed, &mut state);
+ 40:         Xoshiro256PlusPlus { s: state }
+ 41:     }
+ 42: 
+ 43:     /// Create a new `Xoshiro256PlusPlus` from a `u64` seed.
+ 44:     ///
+ 45:     /// This uses the SplitMix64 generator internally.
+ 46:     fn seed_from_u64(mut state: u64) -> Self {
+ 47:         const PHI: u64 = 0x9e3779b97f4a7c15;
+ 48:         let mut seed = Self::Seed::default();
+ 49:         for chunk in seed.as_mut().chunks_mut(8) {
+ 50:             state = state.wrapping_add(PHI);
+ 51:             let mut z = state;
+ 52:             z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+ 53:             z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+ 54:             z = z ^ (z >> 31);
+ 55:             chunk.copy_from_slice(&z.to_le_bytes());
+ 56:         }
+ 57:         Self::from_seed(seed)
+ 58:     }
+ 59: }
+ 60: 
+ 61: impl RngCore for Xoshiro256PlusPlus {
+ 62:     #[inline]
+ 63:     fn next_u32(&mut self) -> u32 {
+ 64:         // The lowest bits have some linear dependencies, so we use the
+ 65:         // upper bits instead.
+ 66:         (self.next_u64() >> 32) as u32
+ 67:     }
+ 68: 
+ 69:     #[inline]
+ 70:     fn next_u64(&mut self) -> u64 {
+ 71:         let result_plusplus = self.s[0]
+ 72:             .wrapping_add(self.s[3])
+ 73:             .rotate_left(23)
+ 74:             .wrapping_add(self.s[0]);
+ 75: 
+ 76:         let t = self.s[1] << 17;
+ 77: 
+ 78:         self.s[2] ^= self.s[0];
+ 79:         self.s[3] ^= self.s[1];
+ 80:         self.s[1] ^= self.s[2];
+ 81:         self.s[0] ^= self.s[3];
+ 82: 
+ 83:         self.s[2] ^= t;
+ 84: 
+ 85:         self.s[3] = self.s[3].rotate_left(45);
+ 86: 
+ 87:         result_plusplus
+ 88:     }
+ 89: 
+ 90:     #[inline]
+ 91:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 92:         fill_bytes_via_next(self, dest);
+ 93:     }
+ 94: 
+ 95:     #[inline]
+ 96:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+ 97:         self.fill_bytes(dest);
+ 98:         Ok(())
+ 99:     }
+100: }
+101: 
+102: #[cfg(test)]
+103: mod tests {
+104:     use super::*;
+105: 
+106:     #[test]
+107:     fn reference() {
+108:         let mut rng = Xoshiro256PlusPlus::from_seed(
+109:             [1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
+110:              3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
+111:         // These values were produced with the reference implementation:
+112:         // http://xoshiro.di.unimi.it/xoshiro256plusplus.c
+113:         let expected = [
+114:             41943041, 58720359, 3588806011781223, 3591011842654386,
+115:             9228616714210784205, 9973669472204895162, 14011001112246962877,
+116:             12406186145184390807, 15849039046786891736, 10450023813501588000,
+117:         ];
+118:         for &e in &expected {
+119:             assert_eq!(rng.next_u64(), e);
+120:         }
+121:     }
+122: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.6/src/rngs/xoshiro128plusplus.rs:24-118
+```rust
+ 24: pub struct Xoshiro128PlusPlus {
+ 25:     s: [u32; 4],
+ 26: }
+ 27: 
+ 28: impl SeedableRng for Xoshiro128PlusPlus {
+ 29:     type Seed = [u8; 16];
+ 30: 
+ 31:     /// Create a new `Xoshiro128PlusPlus`.  If `seed` is entirely 0, it will be
+ 32:     /// mapped to a different seed.
+ 33:     #[inline]
+ 34:     fn from_seed(seed: [u8; 16]) -> Xoshiro128PlusPlus {
+ 35:         if seed.iter().all(|&x| x == 0) {
+ 36:             return Self::seed_from_u64(0);
+ 37:         }
+ 38:         let mut state = [0; 4];
+ 39:         read_u32_into(&seed, &mut state);
+ 40:         Xoshiro128PlusPlus { s: state }
+ 41:     }
+ 42: 
+ 43:     /// Create a new `Xoshiro128PlusPlus` from a `u64` seed.
+ 44:     ///
+ 45:     /// This uses the SplitMix64 generator internally.
+ 46:     fn seed_from_u64(mut state: u64) -> Self {
+ 47:         const PHI: u64 = 0x9e3779b97f4a7c15;
+ 48:         let mut seed = Self::Seed::default();
+ 49:         for chunk in seed.as_mut().chunks_mut(8) {
+ 50:             state = state.wrapping_add(PHI);
+ 51:             let mut z = state;
+ 52:             z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+ 53:             z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+ 54:             z = z ^ (z >> 31);
+ 55:             chunk.copy_from_slice(&z.to_le_bytes());
+ 56:         }
+ 57:         Self::from_seed(seed)
+ 58:     }
+ 59: }
+ 60: 
+ 61: impl RngCore for Xoshiro128PlusPlus {
+ 62:     #[inline]
+ 63:     fn next_u32(&mut self) -> u32 {
+ 64:         let result_starstar = self.s[0]
+ 65:             .wrapping_add(self.s[3])
+ 66:             .rotate_left(7)
+ 67:             .wrapping_add(self.s[0]);
+ 68: 
+ 69:         let t = self.s[1] << 9;
+ 70: 
+ 71:         self.s[2] ^= self.s[0];
+ 72:         self.s[3] ^= self.s[1];
+ 73:         self.s[1] ^= self.s[2];
+ 74:         self.s[0] ^= self.s[3];
+ 75: 
+ 76:         self.s[2] ^= t;
+ 77: 
+ 78:         self.s[3] = self.s[3].rotate_left(11);
+ 79: 
+ 80:         result_starstar
+ 81:     }
+ 82: 
+ 83:     #[inline]
+ 84:     fn next_u64(&mut self) -> u64 {
+ 85:         next_u64_via_u32(self)
+ 86:     }
+ 87: 
+ 88:     #[inline]
+ 89:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 90:         fill_bytes_via_next(self, dest);
+ 91:     }
+ 92: 
+ 93:     #[inline]
+ 94:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+ 95:         self.fill_bytes(dest);
+ 96:         Ok(())
+ 97:     }
+ 98: }
+ 99: 
+100: #[cfg(test)]
+101: mod tests {
+102:     use super::*;
+103: 
+104:     #[test]
+105:     fn reference() {
+106:         let mut rng = Xoshiro128PlusPlus::from_seed(
+107:             [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0]);
+108:         // These values were produced with the reference implementation:
+109:         // http://xoshiro.di.unimi.it/xoshiro128plusplus.c
+110:         let expected = [
+111:             641, 1573767, 3222811527, 3517856514, 836907274, 4247214768,
+112:             3867114732, 1355841295, 495546011, 621204420,
+113:         ];
+114:         for &e in &expected {
+115:             assert_eq!(rng.next_u32(), e);
+116:         }
+117:     }
+118: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.6/src/rngs/std.rs:34-98
+```rust
+34: pub struct StdRng(Rng);
+35: 
+36: impl RngCore for StdRng {
+37:     #[inline(always)]
+38:     fn next_u32(&mut self) -> u32 {
+39:         self.0.next_u32()
+40:     }
+41: 
+42:     #[inline(always)]
+43:     fn next_u64(&mut self) -> u64 {
+44:         self.0.next_u64()
+45:     }
+46: 
+47:     #[inline(always)]
+48:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+49:         self.0.fill_bytes(dest);
+50:     }
+51: 
+52:     #[inline(always)]
+53:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+54:         self.0.try_fill_bytes(dest)
+55:     }
+56: }
+57: 
+58: impl SeedableRng for StdRng {
+59:     type Seed = <Rng as SeedableRng>::Seed;
+60: 
+61:     #[inline(always)]
+62:     fn from_seed(seed: Self::Seed) -> Self {
+63:         StdRng(Rng::from_seed(seed))
+64:     }
+65: 
+66:     #[inline(always)]
+67:     fn from_rng<R: RngCore>(rng: R) -> Result<Self, Error> {
+68:         Rng::from_rng(rng).map(StdRng)
+69:     }
+70: }
+71: 
+72: impl CryptoRng for StdRng {}
+73: 
+74: 
+75: #[cfg(test)]
+76: mod test {
+77:     use crate::rngs::StdRng;
+78:     use crate::{RngCore, SeedableRng};
+79: 
+80:     #[test]
+81:     fn test_stdrng_construction() {
+82:         // Test value-stability of StdRng. This is expected to break any time
+83:         // the algorithm is changed.
+84:         #[rustfmt::skip]
+85:         let seed = [1,0,0,0, 23,0,0,0, 200,1,0,0, 210,30,0,0,
+86:                     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+87: 
+88:         let target = [10719222850664546238, 14064965282130556830];
+89: 
+90:         let mut rng0 = StdRng::from_seed(seed);
+91:         let x0 = rng0.next_u64();
+92: 
+93:         let mut rng1 = StdRng::from_rng(rng0).unwrap();
+94:         let x1 = rng1.next_u64();
+95: 
+96:         assert_eq!([x0, x1], target);
+97:     }
+98: }
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/signature.rs:105-154
+```rust
+105:     fn try_build<'a>(inputs: impl IntoIterator<Item = &'a FnArg>) -> syn::Result<Self> {
+106:         let mut lifetime_collector = LifetimeCollector::new(LifetimeSubstMode::Input);
+107:         let args = inputs
+108:             .into_iter()
+109:             .map(|input| match input {
+110:                 FnArg::Typed(arg) => match &*arg.pat {
+111:                     Pat::Ident(PatIdent {
+112:                         ident,
+113:                         mutability: _,
+114:                         attrs,
+115:                         by_ref,
+116:                         subpat,
+117:                     }) => {
+118:                         if by_ref.is_some() || subpat.is_some() || !attrs.is_empty() {
+119:                             return Err(Error::new_spanned(
+120:                                 &arg.pat,
+121:                                 "unsupported features in an argument pattern",
+122:                             ));
+123:                         }
+124:                         let arg_ty = arg.ty.clone();
+125:                         let mut field_ty = arg_ty.clone();
+126:                         lifetime_collector.visit_type_mut(&mut field_ty);
+127:                         Ok(TestFnArg {
+128:                             attrs: arg.attrs.clone(),
+129:                             ident: ident.clone(),
+130:                             arg_ty,
+131:                             field_ty,
+132:                         })
+133:                     }
+134:                     Pat::Wild(wild) => Err(Error::new_spanned(
+135:                         wild,
+136:                         "wildcard pattern not allowed in generic test function input",
+137:                     )),
+138:                     _ => Err(Error::new_spanned(
+139:                         arg,
+140:                         "unsupported argument pattern in generic test function input",
+141:                     )),
+142:                 },
+143:                 FnArg::Receiver(_) => Err(Error::new_spanned(
+144:                     input,
+145:                     "unexpected receiver argument in a test function",
+146:                 )),
+147:             })
+148:             .collect::<syn::Result<_>>()?;
+149:         let lifetimes = lifetime_collector.validate()?;
+150:         Ok(TestInputSignature {
+151:             item: TestSignatureItem { lifetimes },
+152:             args,
+153:         })
+154:     }
+```
+
+src/private/ser.rs:1289-1297
+```rust
+1289: 
+1290:     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
+1291:     where
+1292:         T: ?Sized + Serialize,
+1293:     {
+1294:         let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+1295:         self.fields.push(value);
+1296:         Ok(())
+1297:     }
+```
+
+src/private/ser.rs:1336-1344
+```rust
+1336: 
+1337:     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
+1338:     where
+1339:         T: ?Sized + Serialize,
+1340:     {
+1341:         let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+1342:         self.fields.push((key, value));
+1343:         Ok(())
+1344:     }
+```
+
+src/private/ser.rs:367-375
+```rust
+367: 
+368:         fn serialize_field<T>(&mut self, value: &T) -> Result<(), M::Error>
+369:         where
+370:             T: ?Sized + Serialize,
+371:         {
+372:             let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+373:             self.fields.push(value);
+374:             Ok(())
+375:         }
+```
+
+src/private/ser.rs:408-416
+```rust
+408: 
+409:         fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), M::Error>
+410:         where
+411:             T: ?Sized + Serialize,
+412:         {
+413:             let value = tri!(value.serialize(ContentSerializer::<M::Error>::new()));
+414:             self.fields.push((key, value));
+415:             Ok(())
+416:         }
+```
+
+src/internal.rs:8-23
+```rust
+ 8: 
+ 9: pub(crate) fn serialize_into<W, T: ?Sized, O>(writer: W, value: &T, mut options: O) -> Result<()>
+10: where
+11:     W: Write,
+12:     T: serde::Serialize,
+13:     O: InternalOptions,
+14: {
+15:     if options.limit().limit().is_some() {
+16:         // "compute" the size for the side-effect
+17:         // of returning Err if the bound was reached.
+18:         serialized_size(value, &mut options)?;
+19:     }
+20: 
+21:     let mut serializer = ::ser::Serializer::<_, O>::new(writer, options);
+22:     serde::Serialize::serialize(value, &mut serializer)
+23: }
+```
+
+src/lib.rs:353-432
+```rust
+353: 
+354: fn parse_bracket_as_segments(input: TokenStream, scope: Span) -> Result<Vec<Segment>> {
+355:     let mut tokens = input.into_iter().peekable();
+356: 
+357:     match &tokens.next() {
+358:         Some(TokenTree::Punct(punct)) if punct.as_char() == '<' => {}
+359:         Some(wrong) => return Err(Error::new(wrong.span(), "expected `<`")),
+360:         None => return Err(Error::new(scope, "expected `[< ... >]`")),
+361:     }
+362: 
+363:     let mut segments = segment::parse(&mut tokens)?;
+364: 
+365:     match &tokens.next() {
+366:         Some(TokenTree::Punct(punct)) if punct.as_char() == '>' => {}
+367:         Some(wrong) => return Err(Error::new(wrong.span(), "expected `>`")),
+368:         None => return Err(Error::new(scope, "expected `[< ... >]`")),
+369:     }
+370: 
+371:     if let Some(unexpected) = tokens.next() {
+372:         return Err(Error::new(
+373:             unexpected.span(),
+374:             "unexpected input, expected `[< ... >]`",
+375:         ));
+376:     }
+377: 
+378:     for segment in &mut segments {
+379:         if let Segment::String(string) = segment {
+380:             if string.value.starts_with("'\\u{") {
+381:                 let hex = &string.value[4..string.value.len() - 2];
+382:                 if let Ok(unsigned) = u32::from_str_radix(hex, 16) {
+383:                     if let Some(ch) = char::from_u32(unsigned) {
+384:                         string.value.clear();
+385:                         string.value.push(ch);
+386:                         continue;
+387:                     }
+388:                 }
+389:             }
+390:             if string.value.contains(&['#', '\\', '.', '+'][..])
+391:                 || string.value.starts_with("b'")
+392:                 || string.value.starts_with("b\"")
+393:                 || string.value.starts_with("br\"")
+394:             {
+395:                 return Err(Error::new(string.span, "unsupported literal"));
+396:             }
+397:             let mut range = 0..string.value.len();
+398:             if string.value.starts_with("r\"") {
+399:                 range.start += 2;
+400:                 range.end -= 1;
+401:             } else if string.value.starts_with(&['"', '\''][..]) {
+402:                 range.start += 1;
+403:                 range.end -= 1;
+404:             }
+405:             string.value = string.value[range].replace('-', "_");
+406:         }
+407:     }
+408: 
+409:     Ok(segments)
+410: }
+411: 
+412: fn pasted_to_tokens(mut pasted: String, span: Span) -> Result<TokenStream> {
+413:     let mut tokens = TokenStream::new();
+414: 
+415:     #[cfg(not(no_literal_fromstr))]
+416:     {
+417:         use proc_macro::{LexError, Literal};
+418:         use std::str::FromStr;
+419: 
+420:         if pasted.starts_with(|ch: char| ch.is_ascii_digit()) {
+421:             let literal = match panic::catch_unwind(|| Literal::from_str(&pasted)) {
+422:                 Ok(Ok(literal)) => TokenTree::Literal(literal),
+423:                 Ok(Err(LexError { .. })) | Err(_) => {
+424:                     return Err(Error::new(
+425:                         span,
+426:                         &format!("`{:?}` is not a valid literal", pasted),
+427:                     ));
+428:                 }
+429:             };
+430:             tokens.extend(iter::once(literal));
+431:             return Ok(tokens);
+432:         }
+```
+
+src/lib.rs:411-454
+```rust
+411: 
+412: fn pasted_to_tokens(mut pasted: String, span: Span) -> Result<TokenStream> {
+413:     let mut tokens = TokenStream::new();
+414: 
+415:     #[cfg(not(no_literal_fromstr))]
+416:     {
+417:         use proc_macro::{LexError, Literal};
+418:         use std::str::FromStr;
+419: 
+420:         if pasted.starts_with(|ch: char| ch.is_ascii_digit()) {
+421:             let literal = match panic::catch_unwind(|| Literal::from_str(&pasted)) {
+422:                 Ok(Ok(literal)) => TokenTree::Literal(literal),
+423:                 Ok(Err(LexError { .. })) | Err(_) => {
+424:                     return Err(Error::new(
+425:                         span,
+426:                         &format!("`{:?}` is not a valid literal", pasted),
+427:                     ));
+428:                 }
+429:             };
+430:             tokens.extend(iter::once(literal));
+431:             return Ok(tokens);
+432:         }
+433:     }
+434: 
+435:     if pasted.starts_with('\'') {
+436:         let mut apostrophe = TokenTree::Punct(Punct::new('\'', Spacing::Joint));
+437:         apostrophe.set_span(span);
+438:         tokens.extend(iter::once(apostrophe));
+439:         pasted.remove(0);
+440:     }
+441: 
+442:     let ident = match panic::catch_unwind(|| Ident::new(&pasted, span)) {
+443:         Ok(ident) => TokenTree::Ident(ident),
+444:         Err(_) => {
+445:             return Err(Error::new(
+446:                 span,
+447:                 &format!("`{:?}` is not a valid identifier", pasted),
+448:             ));
+449:         }
+450:     };
+451: 
+452:     tokens.extend(iter::once(ident));
+453:     Ok(tokens)
+454: }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-utils-mod-rs-20-13
+
+Rule id: ruklee-mm-prefetch-read-valid-rustc-1_87-line1830
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("../README.md")]
+#![cfg_attr(
+    all(feature = "prefetch", target_arch = "aarch64"),
+    feature(stdarch_aarch64_prefetch)
+)]
+
+pub mod perf_and_test_utils;
+pub mod qvector;
+pub use qvector::QVector;
+pub use qvector::QVectorBuilder;
+
+pub mod bitvector;
+pub use bitvector::rs_narrow::RSNarrow;
+pub use bitvector::rs_wide::RSWide;
+pub use bitvector::BitVector;
+pub use bitvector::BitVectorMut;
+
+pub mod utils;
+
+pub use qvector::rs_qvector::RSQVector;
+pub use qvector::rs_qvector::RSQVector256;
+pub use qvector::rs_qvector::RSQVector512;
+
+pub mod quadwt;
+pub use quadwt::QWaveletTree;
+pub use quadwt::WTIndexable;
+
+pub mod space_usage;
+pub use space_usage::SpaceUsage;
+
+pub mod darray;
+pub use darray::DArray;
+
+/// Type alias for a Quad Wavelet Tree with block size of 256
+pub type QWT256<T> = QWaveletTree<T, RSQVector256>;
+/// Type alias for a Quad Wavelet Tree with block size of 512
+pub type QWT512<T> = QWaveletTree<T, RSQVector512>;
+/// Type alias for a Quad Wavelet Tree with block size of 256 with prefetching support enabled
+pub type QWT256Pfs<T> = QWaveletTree<T, RSQVector256, true>;
+/// Type alias for a Quad Wavelet Tree with block size of 512 with prefetching support enabled
+pub type QWT512Pfs<T> = QWaveletTree<T, RSQVector512, true>;
+
+
+use num_traits::Unsigned;
+
+/// A trait for the support `get` query over an `Unsigned` alphabet.
+pub trait AccessUnsigned {
+    type Item: Unsigned;
+
+    /// Returns the symbol at position `i`, or `None` if the index `i` is out of bounds.
+    fn get(&self, i: usize) -> Option<Self::Item>;
+
+    /// Returns the symbol at position `i`.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn get_unchecked(&self, i: usize) -> Self::Item;
+}
+
+/// A trait for the support of `rank` query over an `Unsigned` alphabet.
+pub trait RankUnsigned: AccessUnsigned {
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded.
+    fn rank(&self, symbol: Self::Item, i: usize) -> Option<usize>;
+
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded. The function does not check boundaries.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn rank_unchecked(&self, symbol: Self::Item, i: usize) -> usize;
+}
+
+/// A trait for the support of `select` query over an `Unsigned` alphabet.
+pub trait SelectUnsigned: AccessUnsigned {
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of
+    /// `symbol`.
+    /// We start counting from 0, so that `select(symbol, 0)` refers to the first
+    /// occurrence of `symbol`.
+    fn select(&self, symbol: Self::Item, i: usize) -> Option<usize>;
+
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of
+    /// `symbol`.
+    /// We start counting from 0, so that `select(symbol, 0)` refers to the first
+    /// occurrence of `symbol`.
+    ///
+    /// # Safety
+    /// Calling this method if the `i`th occurrence of `symbol` does not exist is undefined behavior.
+    unsafe fn select_unchecked(&self, symbol: Self::Item, i: usize) -> usize;
+}
+
+/// A trait for the support of `get` query over the binary alphabet.
+pub trait AccessBin {
+    /// Returns the bit at the given position `i`,
+    /// or [`None`] if ```i``` is out of bounds.
+    fn get(&self, i: usize) -> Option<bool>;
+
+    /// Returns the symbol at the given position `i`.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn get_unchecked(&self, i: usize) -> bool;
+}
+
+/// A trait for the support of `rank` query over the binary alphabet.
+pub trait RankBin {
+    /// Returns the number of zeros in the indexed sequence up to
+    /// position `i` excluded.
+    #[inline]
+    fn rank0(&self, i: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of ones in the indexed sequence up to
+    /// position `i` excluded.
+    fn rank1(&self, i: usize) -> Option<usize>;
+
+    /// Returns the number of ones in the indexed sequence up to
+    /// position `i` excluded. `None` if the position is out of bound.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn rank1_unchecked(&self, i: usize) -> usize;
+
+    /// Returns the number of zeros in the indexed sequence up to
+    /// position `i` excluded.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    #[inline]
+    unsafe fn rank0_unchecked(&self, i: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A trait for the support of `select` query over the binary alphabet.
+pub trait SelectBin {
+    /// Returns the position of the `i+1`-th occurrence of a bit set to `1`.
+    /// Returns `None` if there is no such position.
+    fn select1(&self, i: usize) -> Option<usize>;
+
+    /// Returns the position of the `i+1`-th occurrence of a bit set to `1`.
+    ///
+    /// # Safety
+    /// This method doesn't check that such element exists
+    /// Calling this method with an i >= maximum rank1 is undefined behaviour.
+    unsafe fn select1_unchecked(&self, i: usize) -> usize;
+
+    /// Returns the position of the `i+1`-th occurrence of a bit set to `0`.
+    /// Returns `None` if there is no such position.
+    fn select0(&self, i: usize) -> Option<usize>;
+
+    /// Returns the position of the `i+1`-th occurrence of a bit set to  `0`.
+    ///
+    /// # Safety
+    /// This method doesnt check that such element exists
+    /// Calling this method with an `i >= maximum rank0` is undefined behaviour.
+    unsafe fn select0_unchecked(&self, i: usize) -> usize;
+}
+
+/// A trait for the support of `get` query over the alphabet [0..3].
+pub trait AccessQuad {
+    /// Returns the symbol at position `i`, `None` if the position is out of bound.
+    fn get(&self, i: usize) -> Option<u8>;
+
+    /// Returns the symbol at position `i`.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn get_unchecked(&self, i: usize) -> u8;
+}
+
+/// A trait for the support of `rank` query over the alphabet [0..3].
+pub trait RankQuad {
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded. `None` if the position is out of bound.
+    fn rank(&self, symbol: u8, i: usize) -> Option<usize>;
+
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded. The function does not check boundaries.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index or with a symbol larger than
+    /// 3 is undefined behavior.
+    unsafe fn rank_unchecked(&self, symbol: u8, i: usize) -> usize;
+}
+
+/// A trait for the support of `select` query over the alphabet [0..3].
+pub trait SelectQuad {
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of `symbol`
+    /// (0-indexed, mening the first occurrence is obtained using `i = 0`).
+    fn select(&self, symbol: u8, i: usize) -> Option<usize>;
+
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of `symbol`.
+    /// We start counting from 0, so that `select(symbol, 0)` refers to the first
+    /// occurrence of `symbol`.
+    ///
+    /// # Safety
+    /// Calling this method if the `i`th occurrence of `symbol` does not exist or with a symbol larger than 3 is undefined behavior.
+    unsafe fn select_unchecked(&self, symbol: u8, i: usize) -> usize;
+}
+
+/// A trait for the operations that a quad vector implementation needs
+/// to provide to be used in a Quad Wavelet Tree.
+pub trait WTSupport: AccessQuad + RankQuad + SelectQuad {
+    /// Returns the number of occurrences of `symbol` in the indexed sequence,
+    /// `None` if `symbol` is larger than 3, i.e., `symbol` is not valid.  
+    fn occs(&self, symbol: u8) -> Option<usize>;
+
+    /// Returns the number of occurrences of `symbol` in the indexed sequence.
+    ///
+    /// # Safety
+    /// Calling this method if the `symbol` is larger than 3 (i.e., `symbol` is not valid)
+    /// is undefined behavior.
+    unsafe fn occs_unchecked(&self, symbol: u8) -> usize;
+
+    /// Returns the number of occurrences of all the symbols smaller than the
+    /// input `symbol`, `None` if `symbol` is larger than 3,
+    /// i.e., `symbol` is not valid.  
+    fn occs_smaller(&self, symbol: u8) -> Option<usize>;
+
+    /// Returns the rank of `symbol` up to the block that contains the position
+    /// `i`.
+    ///
+    /// # Safety
+    /// Calling this method if the `symbol` is larger than 3 of
+    /// if the position `i` is out of bound is undefined behavior.
+    unsafe fn rank_block_unchecked(&self, symbol: u8, i: usize) -> usize;
+
+    /// Returns the number of occurrences of all the symbols smaller than the input
+    /// `symbol` in the indexed sequence.
+    ///
+    /// # Safety
+    /// Calling this method if the `symbol` is larger than 3 is undefined behavior.
+    unsafe fn occs_smaller_unchecked(&self, symbol: u8) -> usize;
+
+    /// Prefetches counter of superblock and blocks containing the position `pos`.
+    fn prefetch_info(&self, pos: usize);
+
+    /// Prefetches data containing the position `pos`.
+    fn prefetch_data(&self, pos: usize);
+}
+```
+</file>
+
+<file path="src/utils/mod.rs">
+```rust
+//! The module provides low-level utilities to perform
+//! bitwise operations, aligned allocation, and so on.
+use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use std::collections::{HashMap, HashSet};
+use std::ops::Shr;
+#[allow(non_snake_case)]
+#[inline(never)]
+pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {
+    let _p = data.as_ptr().wrapping_add(offset) as *const i8;
+    #[cfg(all(feature = "prefetch", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86")]
+        use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};
+        #[cfg(target_arch = "x86_64")]
+        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};
+        unsafe {
+            klee_ext_bind::callsite!("src-utils-mod-rs-20-13");
+            let mut __klee_ret_src_utils_mod_rs_20_13__mm_prefetch = _mm_prefetch(
+                _p,
+                _MM_HINT_NTA,
+            );
+        }
+    }
+    #[cfg(all(feature = "prefetch", target_arch = "aarch64"))]
+    {
+        use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};
+        unsafe {
+            _prefetch(_p, _PREFETCH_READ, _PREFETCH_LOCALITY0);
+        }
+    }
+}
+const K_SELECT_IN_BYTE: [u8; 2048] = [
+    8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 8, 8, 8, 1, 8, 2, 2, 1, 8, 3, 3, 1, 3, 2, 2, 1, 8, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1,
+    4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1,
+    6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1,
+    3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 7, 7, 1, 7, 2, 2, 1,
+    7, 3, 3, 1, 3, 2, 2, 1, 7, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 7, 5, 5, 1,
+    5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1,
+    7, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1, 6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1,
+    3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 8, 8, 8, 8, 8, 8, 2, 8, 8, 8, 3, 8, 3, 3, 2, 8, 8, 8, 4,
+    8, 4, 4, 2, 8, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 5, 8, 5, 5, 2, 8, 5, 5, 3, 5, 3, 3, 2,
+    8, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 6, 8, 6, 6, 2, 8, 6, 6, 3,
+    6, 3, 3, 2, 8, 6, 6, 4, 6, 4, 4, 2, 6, 4, 4, 3, 4, 3, 3, 2, 8, 6, 6, 5, 6, 5, 5, 2,
+    6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 7,
+    8, 7, 7, 2, 8, 7, 7, 3, 7, 3, 3, 2, 8, 7, 7, 4, 7, 4, 4, 2, 7, 4, 4, 3, 4, 3, 3, 2,
+    8, 7, 7, 5, 7, 5, 5, 2, 7, 5, 5, 3, 5, 3, 3, 2, 7, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3,
+    4, 3, 3, 2, 8, 7, 7, 6, 7, 6, 6, 2, 7, 6, 6, 3, 6, 3, 3, 2, 7, 6, 6, 4, 6, 4, 4, 2,
+    6, 4, 4, 3, 4, 3, 3, 2, 7, 6, 6, 5, 6, 5, 5, 2, 6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4,
+    5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 3,
+    8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 4, 8, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5,
+    8, 5, 5, 3, 8, 8, 8, 5, 8, 5, 5, 4, 8, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 3, 8, 8, 8, 6, 8, 6, 6, 4, 8, 6, 6, 4, 6, 4, 4, 3, 8, 8, 8, 6,
+    8, 6, 6, 5, 8, 6, 6, 5, 6, 5, 5, 3, 8, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 3, 8, 8, 8, 7, 8, 7, 7, 4, 8, 7, 7, 4,
+    7, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 3, 8, 7, 7, 5, 7, 5, 5, 4,
+    7, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 3, 8, 7, 7, 6,
+    7, 6, 6, 4, 7, 6, 6, 4, 6, 4, 4, 3, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 3,
+    7, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5, 8, 5, 5, 4, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 4,
+    8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 6, 8, 6, 6, 5, 8, 6, 6, 5,
+    6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 7,
+    8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 4, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6,
+    7, 6, 6, 5, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 5,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 5, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7,
+];
+/// Computes `select(1, k)` operation on a 64-bit word.
+///
+/// It computes the zero-based position of the (k+1)-th
+/// bit set in the word.
+///
+/// For example, if the word is ```(10101010)^4```, select for k = 0
+/// returns 1 and select for k=1 returns 3.
+///
+/// # Examples
+///
+/// ```
+/// use qwt::utils::select_in_word;
+///
+/// unsafe {
+///     let word = 2863311530; // word = (10101010)^4
+///     let res = select_in_word(word, 0);
+///     assert_eq!(res, 1_u32);
+///
+///     let res = select_in_word(word, 1);
+///     assert_eq!(res, 3_u32);
+/// }
+/// ```
+/// # Notes
+///
+/// The current implementation uses the broadword selection algorithm
+/// by Vigna \[1\], improved by Gog and Petri \[2\] and Vigna \[3\].
+/// Facebook's Folly implementation \[4\].
+/// - \[1\] Sebastiano Vigna. Broadword Implementation of Rank/Select Queries. WEA, 200
+/// - \[2\] Simon Gog, Matthias Petri. Optimized succinct data structures for massive data. Softw. Pract. Exper., 2014
+/// - \[3\] Sebastiano Vigna. MG4J 5.2.1. <http://mg4j.di.unimi.it/>
+/// - \[4\] Facebook Folly library: <https://github.com/facebook/folly>
+#[inline(always)]
+pub fn select_in_word(word: u64, k: u64) -> u32 {
+    /* body omitted: interface retained */
+}
+#[inline(always)]
+pub fn select_in_word_u128(word: u128, k: u64) -> u32 {
+    /* body omitted: interface retained */
+}
+/// Compute popcnt for a slice of N words.
+#[inline(always)]
+pub fn popcnt_wide<const N: usize>(data: &[u64]) -> usize {
+    /* body omitted: interface retained */
+}
+use std::mem;
+#[repr(C, align(64))]
+struct AlignToSixtyFour([u8; 64]);
+/// Returns a 64-byte aligned vector of T with at least the
+/// given capacity.
+///
+/// Todo: make this safe by checking invariants.
+///
+/// # Safety
+/// See Safety of [Vec::Vec::from_raw_parts](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.from_raw_parts).
+pub unsafe fn get_64byte_aligned_vector<T>(capacity: usize) -> Vec<T> {
+    /* body omitted: interface retained */
+}
+/// Computes the position of the most significant bit in v.
+pub fn msb<T>(v: T) -> u32
+where
+    T: PrimInt,
+{
+    /* body omitted: interface retained */
+}
+/// Remaps the alphabet of the input text with a new alphabet of consecutive symbols.
+/// New alphabet preserves the original relative order among symbols.
+/// Returns the alphabet size.
+pub fn text_remap(input: &mut [u8]) -> usize {
+    /* body omitted: interface retained */
+}
+/// Utility function to partition values in `sequence` by the two bits
+/// that we obtain by shifting `shift` bits to the right.
+/// This is used by the construction of WaveletTree.
+pub fn stable_partition_of_4<T>(sequence: &mut [T], shift: usize)
+where
+    T: Unsigned + PrimInt + Ord + Shr<usize> + AsPrimitive<u8>,
+    u8: AsPrimitive<T>,
+{
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:StackVec.length",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "StackVec"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "length",
+        "kind": "public_field",
+        "root_type": "StackVec"
+      }
+    ],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$6remove17h1c97bac7b765c4cdE.arg0.length"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -227,7 +246,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::remove` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct or obtain a `StackVec` value -> set or populate public field `StackVec.length` -> call target caller `StackVec::<A>::remove`
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::remove` directly
 </candidate safe-call plans>
 
 
@@ -764,17 +784,17 @@ impl<A: Array> StackVec<A> {
             klee_ext_bind::callsite!("src-lib-rs-550-24");
             let mut __klee_ret_src_lib_rs_550_24_read = ptr::read(ptr);
             let item = __klee_ret_src_lib_rs_550_24_read;
-            let __klee_arg8 = 1;
+            let __klee_arg9 = 1;
             klee_ext_bind::bind_arg_ptr_value(0, ptr);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg8);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg9);
             klee_ext_bind::callsite!("src-lib-rs-551-23");
-            let mut __klee_ret_src_lib_rs_551_23_offset = ptr.offset(__klee_arg8);
-            let __klee_arg9 = self.length - index;
+            let mut __klee_ret_src_lib_rs_551_23_offset = ptr.offset(__klee_arg9);
+            let __klee_arg10 = self.length - index;
             klee_ext_bind::callsite!("src-lib-rs-551-13");
             let mut __klee_ret_src_lib_rs_551_13_copy = ptr::copy(
                 __klee_ret_src_lib_rs_551_23_offset,
                 ptr,
-                __klee_arg9,
+                __klee_arg10,
             );
             item
         }
@@ -787,17 +807,17 @@ impl<A: Array> StackVec<A> {
         assert!(index < self.len() && self.len() < self.capacity());
         unsafe {
             let ptr = self.as_mut_ptr().padd(index);
-            let __klee_arg10 = 1;
+            let __klee_arg11 = 1;
             klee_ext_bind::bind_arg_ptr_value(0, ptr);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg10);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg11);
             klee_ext_bind::callsite!("src-lib-rs-563-28");
-            let mut __klee_ret_src_lib_rs_563_28_offset = ptr.offset(__klee_arg10);
-            let __klee_arg11 = self.length - index;
+            let mut __klee_ret_src_lib_rs_563_28_offset = ptr.offset(__klee_arg11);
+            let __klee_arg12 = self.length - index;
             klee_ext_bind::callsite!("src-lib-rs-563-13");
             let mut __klee_ret_src_lib_rs_563_13_copy = ptr::copy(
                 ptr,
                 __klee_ret_src_lib_rs_563_28_offset,
-                __klee_arg11,
+                __klee_arg12,
             );
             klee_ext_bind::callsite!("src-lib-rs-564-13");
             let mut __klee_ret_src_lib_rs_564_13_write = ptr::write(ptr, element);

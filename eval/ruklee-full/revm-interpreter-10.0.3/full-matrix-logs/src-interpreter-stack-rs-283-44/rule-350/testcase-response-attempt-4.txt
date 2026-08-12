@@ -2,38 +2,54 @@
 #[cfg(feature = "unsat-poc-src-interpreter-stack-rs-283-44-rule-350-460b0d883a")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_interpreter_stack_rs_283_44_rule_350_460b0d883a() {
-    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterResult};
-    use revm_primitives::{Bytecode, Bytes, U256};
+    use crate::{DummyHost, Gas, Interpreter, InterpreterAction, InterpreterResult};
+    use revm_primitives::{Address, Bytes, U256};
 
-    let mut interp = Interpreter::new(
-        crate::Contract::new(
-            Bytes::new(),
-            Bytecode::LegacyRaw(Bytes::from([0x00])),
-            None,
-            revm_primitives::Address::ZERO,
-            None,
-            revm_primitives::Address::ZERO,
-            U256::ZERO,
-        ),
-        1000,
-        false,
+    let mut stack = Stack::new();
+    stack.data_mut().push(U256::from(11u64));
+    stack.data_mut().push(U256::from(22u64));
+    stack.data_mut().push(U256::from(33u64));
+
+    let bytecode = Bytes::from(vec![0u8]);
+    let contract = Contract::new(
+        Bytes::new(),
+        revm_primitives::Bytecode::LegacyRaw(bytecode.clone()),
+        None,
+        Address::ZERO,
+        None,
+        Address::ZERO,
+        U256::ZERO,
     );
 
-    interp.is_eof = true;
-    interp.instruction_result = InstructionResult::Continue;
-    interp.gas = Gas::new(1000);
-
-    interp.stack.data_mut().clear();
-    interp.stack.data_mut().reserve(crate::STACK_LIMIT);
-    interp.stack.data_mut().push(U256::from(32u64));
-    interp.stack.data_mut().push(U256::from(1u64));
-    interp.stack.data_mut().push(U256::from(0u64));
+    let mut interp = Interpreter {
+        instruction_pointer: bytecode.as_ptr(),
+        gas: Gas::new(1000),
+        contract,
+        instruction_result: InterpreterResult::default().result,
+        bytecode,
+        is_eof: false,
+        is_eof_init: false,
+        shared_memory: SharedMemory::new(),
+        stack,
+        function_stack: FunctionStack::new(),
+        return_data_buffer: Bytes::new(),
+        is_static: false,
+        next_action: InterpreterAction::None,
+    };
 
     let mut host = DummyHost::default();
 
     let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 2);
+    let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 1);
+    let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 1);
+    let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 1);
+    let _ = interp.stack.exchange(1, 1);
+    let _ = interp.stack.exchange(0, 1);
 
-    let _ = InterpreterResult::new(InstructionResult::Stop, Bytes::new(), Gas::new(0));
     let _ = &mut host;
 }
 ```

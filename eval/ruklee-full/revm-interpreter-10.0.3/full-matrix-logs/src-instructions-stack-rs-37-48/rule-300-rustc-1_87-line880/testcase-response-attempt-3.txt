@@ -2,13 +2,13 @@
 #[cfg(feature = "unsat-poc-src-instructions-stack-rs-37-48-rule-300-rustc-1-87-line880-e2e1cd33b6")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_instructions_stack_rs_37_48_rule_300_rustc_1_87_line880_e2e1cd33b6() {
-    use crate::{Contract, DummyHost, Gas, InstructionResult, Interpreter, Stack};
+    use crate::{Contract, DummyHost, Gas, InstructionResult, Interpreter};
     use revm_primitives::{Bytecode, Bytes, U256};
 
-    let code = Bytes::from(vec![0x60, 0x11, 0x00, 0x00]);
+    let code = Bytes::from(vec![0x00, 0x00, 0x00, 0x00]);
     let contract = Contract::new(
         Bytes::new(),
-        Bytecode::LegacyRaw(code),
+        Bytecode::LegacyRaw(code.clone()),
         None,
         revm_primitives::Address::ZERO,
         None,
@@ -16,19 +16,18 @@ pub extern "C" fn __unsat_poc_src_instructions_stack_rs_37_48_rule_300_rustc_1_8
         U256::ZERO,
     );
 
-    let mut interpreter = Interpreter::new(contract, 10_000, false);
-    interpreter.stack = Stack::new();
-    interpreter.stack.data_mut().push(U256::from(0xAAu64));
-    interpreter.stack.data_mut().push(U256::from(0xBBu64));
-    interpreter.gas = Gas::new(10_000);
+    let mut interpreter = Interpreter::new(contract, 100, false);
+    interpreter.instruction_pointer = code.as_ptr();
     interpreter.instruction_result = InstructionResult::Continue;
 
-    let ip_storage = vec![0x41u8, 0x42, 0x43];
-    interpreter.instruction_pointer = ip_storage.as_ptr();
+    interpreter.stack.data_mut().clear();
+    interpreter.stack.data_mut().push(U256::from(0x11u64));
+    interpreter.stack.data_mut().push(U256::from(0x22u64));
 
     let mut host = DummyHost::default();
+
     crate::instructions::stack::push::<1, DummyHost>(&mut interpreter, &mut host);
 
-    core::mem::forget(ip_storage);
+    let _ = interpreter.instruction_pointer;
 }
 ```

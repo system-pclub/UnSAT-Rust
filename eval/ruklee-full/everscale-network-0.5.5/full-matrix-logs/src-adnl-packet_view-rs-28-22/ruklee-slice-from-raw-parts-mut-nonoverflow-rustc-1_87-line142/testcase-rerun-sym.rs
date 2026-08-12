@@ -8,8 +8,9 @@ pub extern "C" fn __unsat_poc_src_adnl_packet_view_rs_28_22_ruklee_slice_from_ra
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_001, "__unsat_rerun_sym_001");
     let mut __unsat_rerun_sym_002 = 1;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_002, "__unsat_rerun_sym_002");
-    let mut backing = vec![__unsat_rerun_sym_000, __unsat_rerun_sym_001];
-    let mut view = crate::adnl::packet_view::PacketView::from(backing.as_mut_slice());
+    let mut backing = [__unsat_rerun_sym_000, __unsat_rerun_sym_001];
+    let slice = &mut backing[..];
+    let mut view = crate::adnl::packet_view::PacketView::from(slice);
 
     view.remove_prefix(__unsat_rerun_sym_002);
 

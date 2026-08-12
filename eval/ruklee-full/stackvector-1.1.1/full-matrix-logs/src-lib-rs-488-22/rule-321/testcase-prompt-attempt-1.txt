@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:StackVec.length",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "StackVec"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "length",
+        "kind": "public_field",
+        "root_type": "StackVec"
+      }
+    ],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$3pop17h02d4eff2fd97a650E.arg0.length"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -227,7 +246,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::pop` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct or obtain a `StackVec` value -> set or populate public field `StackVec.length` -> call target caller `StackVec::<A>::pop`
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::pop` directly
 </candidate safe-call plans>
 
 
@@ -717,9 +737,9 @@ impl<A: Array> StackVec<A> {
                 None
             } else {
                 self.length -= 1;
-                let __klee_arg6 = self.as_mut_ptr().padd(self.length);
+                let __klee_arg7 = self.as_mut_ptr().padd(self.length);
                 klee_ext_bind::callsite!("src-lib-rs-488-22");
-                let mut __klee_ret_src_lib_rs_488_22_read = ptr::read(__klee_arg6);
+                let mut __klee_ret_src_lib_rs_488_22_read = ptr::read(__klee_arg7);
                 Some(__klee_ret_src_lib_rs_488_22_read)
             }
         }
@@ -745,7 +765,7 @@ impl<A: Array> StackVec<A> {
     /// Equivalent to `&mut s[..]`.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [A::Item] {
-        /* body omitted: interface retained */
+        self
     }
     /// Remove the element at position `index`, replacing it with the last element.
     ///

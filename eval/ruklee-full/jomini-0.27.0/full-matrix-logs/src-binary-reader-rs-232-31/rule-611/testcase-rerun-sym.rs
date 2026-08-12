@@ -1,0 +1,40 @@
+#[allow(missing_docs)]
+#[cfg(feature = "unsat-poc-src-binary-reader-rs-232-31-rule-611-8fc60f9914")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_binary_reader_rs_232_31_rule_611_8fc60f9914() {
+    let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_000, "__unsat_rerun_sym_000");
+    use crate::binary::{BinaryFlavor, TokenReader, TokenResolver};
+    use std::borrow::Cow;
+
+    #[derive(Debug, Default)]
+    struct F;
+
+    impl crate::Encoding for F {
+        fn decode<__unsat_rerun_sym_000a [u8]) -> Cow<'a, str> {
+            crate::Windows1252Encoding::decode(data)
+        }
+    }
+
+    impl BinaryFlavor for F {
+        fn visit_f32(&self, data: [u8; 4]) -> f32 {
+            f32::from_le_bytes(data)
+        }
+
+        fn visit_f64(&self, data: [u8; 8]) -> f64 {
+            f64::from_le_bytes(data)
+        }
+    }
+
+    impl TokenResolver for () {
+        fn resolve(&self, _token: u16) -> Option<&str> {
+            None
+        }
+    }
+
+    let data = [0x2d, 0x28, 0x01, 0x00];
+    let mut reader = TokenReader::from_slice(&data);
+
+    let _ = reader.next();
+}
+

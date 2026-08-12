@@ -218,7 +218,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `simplify::simplify_sloppy` directly
+1. construct `packing::Vertex` for `vertices` using its genuinely public fields when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `simplify::simplify_sloppy` directly
 </candidate safe-call plans>
 
 
@@ -710,6 +710,7 @@ bitflags! {
 /// If the original vertex data isn't required, creating a compact vertex buffer
 /// using `optimize_vertex_fetch` is recommended.
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8simplify8simplifyE_src_simplify_rs_39_30")]
 pub fn simplify(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -745,6 +746,9 @@ pub fn simplify_decoder<T: DecodePosition>(
 /// If the original vertex data isn't required, creating a compact vertex buffer
 /// using `optimize_vertex_fetch` is recommended.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8simplify19simplify_with_locksE_src_simplify_rs_114_30"
+)]
 pub fn simplify_with_locks(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -780,6 +784,9 @@ pub fn simplify_with_locks_decoder<T: DecodePosition>(
 /// If the original vertex data isn't required, creating a compact vertex buffer using `optimize_vertex_fetch`
 /// is recommended.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8simplify15simplify_sloppyE_src_simplify_rs_198_30"
+)]
 pub fn simplify_sloppy(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,

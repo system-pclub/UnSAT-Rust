@@ -1,0 +1,25 @@
+```rust
+#[cfg(feature = "unsat-poc-src-adnl-handshake-rs-107-29-raw-ptr-deref-102c91dc5f")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_adnl_handshake_rs_107_29_raw_ptr_deref_102c91dc5f() {
+    use std::sync::Arc;
+
+    let local_id = NodeIdShort::new([0u8; 32]);
+    let peer_id = NodeIdShort::new([1u8; 32]);
+
+    let key = Key::from_bytes([7u8; 32]);
+    let mut keys: crate::util::FastHashMap<NodeIdShort, Arc<Key>> =
+        crate::util::FastHashMap::default();
+    keys.insert(local_id, Arc::new(key));
+
+    let mut buffer = [0u8; 96];
+    buffer[..32].copy_from_slice(local_id.as_slice());
+    buffer[32..64].copy_from_slice(&[9u8; 32]);
+    buffer[64..96].copy_from_slice(&[0u8; 32]);
+
+    let mut view = PacketView::from(&mut buffer[..]);
+    let _ = adnl::handshake::parse_handshake_packet(&keys, &mut view);
+
+    let _ = peer_id;
+}
+```

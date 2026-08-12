@@ -1,0 +1,29 @@
+```rust
+#[cfg(feature = "unsat-poc-src-unix-rs-140-17-rule-431-15602de587")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_unix_rs_140_17_rule_431_15602de587() {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let path = std::env::temp_dir().join("memmap_unsat_poc_src_unix_rs_140_17_rule_431_15602de587");
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)
+        .expect("open temp file");
+    file.write_all(b"0123456789abcdef").expect("seed file");
+    file.set_len(16).expect("set len");
+
+    let mut opts = MmapOptions::new();
+    opts.len(1).offset(1);
+
+    let mut mmap = opts.map_mut(&file).expect("map_mut");
+    let inner = &mut mmap.inner;
+
+    let _ = inner.mut_ptr();
+
+    let _ = inner.flush_async(1, 0);
+}
+```

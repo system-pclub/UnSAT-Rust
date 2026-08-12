@@ -172,7 +172,46 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:vec::SyncVec::<V>::new",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "SyncVec"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "dirty",
+        "function": "vec::SyncVec::<V>::new",
+        "kind": "mutator",
+        "root_type": "vec::SyncVec"
+      }
+    ],
+    "symbol": "_ZN9fast_able3vec16SyncVec$LT$V$GT$11get_uncheck17h03e424edb233f2c1E.arg0.dirty.value.cap"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:vec::SyncVec::<V>::new",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "SyncVec"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "dirty",
+        "function": "vec::SyncVec::<V>::new",
+        "kind": "mutator",
+        "root_type": "vec::SyncVec"
+      }
+    ],
+    "symbol": "_ZN9fast_able3vec16SyncVec$LT$V$GT$11get_uncheck17h03e424edb233f2c1E.arg0.dirty.value.len"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -234,7 +273,9 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `vec::SyncVec` for `receiver` using constructor(s): `vec::SyncVec::<V>::new_arc`, `vec::SyncVec::<V>::new`, `vec::SyncVec::<V>::with_capacity` -> call target caller `vec::SyncVec::<V>::get_uncheck` directly
+1. construct `vec::SyncVec` for `receiver` using constructor(s): `vec::SyncVec::<V>::new_arc`, `vec::SyncVec::<V>::with_capacity`, `vec::SyncVec::<V>::with_vec` -> construct or obtain a `SyncVec` value -> call safe `vec::SyncVec::<V>::new` to affect `dirty` -> call target caller `vec::SyncVec::<V>::get_uncheck`
+2. construct `vec::SyncVec` for `receiver` using constructor(s): `vec::SyncVec::<V>::new_arc`, `vec::SyncVec::<V>::with_capacity`, `vec::SyncVec::<V>::with_vec` -> call safe `new` -> call safe `new_arc` -> call target caller `vec::SyncVec::<V>::get_uncheck`
+3. construct `vec::SyncVec` for `receiver` using constructor(s): `vec::SyncVec::<V>::new_arc`, `vec::SyncVec::<V>::with_capacity`, `vec::SyncVec::<V>::with_vec` -> call target caller `vec::SyncVec::<V>::get_uncheck` directly
 </candidate safe-call plans>
 
 
@@ -2118,7 +2159,10 @@ impl<V> SyncVec<V> {
         /* body omitted: interface retained */
     }
     pub fn new() -> Self {
-        /* body omitted: interface retained */
+        Self {
+            dirty: UnsafeCell::new(Vec::new()),
+            lock: Default::default(),
+        }
     }
     pub fn with_capacity(capacity: usize) -> Self {
         /* body omitted: interface retained */
@@ -2178,8 +2222,9 @@ impl<V> SyncVec<V> {
     pub fn get_uncheck(&self, index: usize) -> &V {
         unsafe {
             let __klee_arg0 = (&*self.dirty.get());
-            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &index);
+            let __klee_len1 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+            klee_ext_bind::bind_arg_slice_index_value(1, &index, __klee_len1);
             klee_ext_bind::callsite!("src-vec-rs-184-18");
             let mut __klee_ret_src_vec_rs_184_18_get_unchecked = __klee_arg0
                 .get_unchecked(index);

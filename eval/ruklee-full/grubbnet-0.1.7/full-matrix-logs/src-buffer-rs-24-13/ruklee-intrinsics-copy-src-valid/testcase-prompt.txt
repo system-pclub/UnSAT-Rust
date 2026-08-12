@@ -5,7 +5,7 @@ target counterexample.
 
 <high priority retry constraints>
 These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 124289659432960; get_arg(1) = 1; get_arg(2) = 1; get_arg(3) = false; target counterexample query was unsat.
+- - Observation 1: get_arg(0) = 121991717711873; get_arg(1) = 121991717711872; get_arg(2) = 1; get_arg(3) = false; target counterexample query was unsat.
 - If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 </high priority retry constraints>
 
@@ -230,7 +230,7 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::NetworkBuffer` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
+1. construct `buffer::NetworkBuffer` for `receiver` using its genuinely public fields when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
 </candidate safe-call plans>
 
 
@@ -320,7 +320,7 @@ The metadata caller `buffer::NetworkBuffer::drain` is a safe function that conta
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 124289659432960; get_arg(1) = 1; get_arg(2) = 1; get_arg(3) = false; target counterexample query was unsat.
+- Observation 1: get_arg(0) = 121991717711873; get_arg(1) = 121991717711872; get_arg(2) = 1; get_arg(3) = false; target counterexample query was unsat.
 If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 
 </previous attempt feedback>
@@ -605,7 +605,13 @@ impl NetworkBuffer {
         }
     }
     /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_25_17"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_24_13"
+    )]
     pub fn drain(&mut self, count: usize) {
         unsafe {
             use std::ptr;

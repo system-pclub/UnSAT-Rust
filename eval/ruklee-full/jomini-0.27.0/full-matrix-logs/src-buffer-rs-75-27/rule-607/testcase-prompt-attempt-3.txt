@@ -172,7 +172,45 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.end",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "end",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27.arg0.end"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:buffer::BufferWindow::from_slice",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "start_buf",
+        "function": "buffer::BufferWindow::from_slice",
+        "kind": "mutator",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27.arg0.start_buf"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +262,10 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::BufferWindow` for `receiver` using fields visible from the injection module when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::get` directly
+1. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.end` -> call target caller `buffer::BufferWindow::get`
+2. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> construct or obtain a `BufferWindow` value -> call safe `buffer::BufferWindow::from_slice` to affect `start_buf` -> call target caller `buffer::BufferWindow::get`
+3. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> call safe `from_slice` -> call target caller `buffer::BufferWindow::get`
+4. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> call target caller `buffer::BufferWindow::get` directly
 </candidate safe-call plans>
 
 
@@ -1500,11 +1541,47 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-The testcase compiled but did not reproduce the target violation.
-KLEE did not report the exact target callsite `src-buffer-rs-75-27`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.
-KLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.
-The metadata caller `buffer::BufferWindow::get` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
-Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0':
+stdout: 
+stderr:    Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
+    |
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
+    |
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
+
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-buffer-rs-75-27-rule-607-b3c8a70a4f', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
+    |
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
+    |
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
+
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
+
 
 </previous attempt feedback>
 
@@ -6694,6 +6771,9 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         let ptr = unsafe {
             let __klee_arg0 = &self.start;
@@ -6707,6 +6787,9 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         unsafe {
             let __klee_arg1 = self.start;
@@ -6720,6 +6803,9 @@ impl BufferWindow {
         }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         unsafe {
             let __klee_arg3 = &self.end;
@@ -6735,6 +6821,9 @@ impl BufferWindow {
         self.prior_reads + self.consumed_data()
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         unsafe {
             let __klee_arg5 = &self.start;
@@ -6745,7 +6834,13 @@ impl BufferWindow {
             __klee_ret_src_buffer_rs_67_18_offset_from as usize
         }
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         debug_assert!(range.start >= self.start_buf);
         debug_assert!(range.end <= self.end);
@@ -8187,6 +8282,9 @@ impl<'a, T> VecAllocation<'a, T> {
                 value,
             );
             let __klee_arg2 = self.index + 1;
+            let __klee_vec_owner3 = &(self.vec) as *const _;
+            klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner3);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
             klee_ext_bind::callsite!("src-copyless-rs-19-13");
             let mut __klee_ret_src_copyless_rs_19_13_set_len = self
                 .vec
@@ -8523,6 +8621,9 @@ const fn trim_ascii_end(data: &[u8]) -> &[u8] {
     bytes
 }
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8encoding18decode_windows1252E_src_encoding_rs_136_22"
+)]
 pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {
     let bytes = trim_ascii_end(d);
     let mut eject = false;
@@ -8555,6 +8656,7 @@ fn windows_1252_create(d: &[u8], offset: usize) -> String {
     result
 }
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8encoding11decode_utf8E_src_encoding_rs_195_26")]
 pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {
     let d = trim_ascii_end(d);
     let mut chunk_iter = d.chunks_exact(8);

@@ -14,14 +14,12 @@ pub extern "C" fn __unsat_poc_src_unix_rs_126_34_rule_433_e944602416() {
         .open(&path)
         .expect("open temp file");
     file.set_len(4096).expect("set_len");
-    file.write_all(&[0u8; 4096]).expect("seed file");
+    file.write_all(&[0u8; 4096]).expect("write");
 
-    let mut mmap = crate::MmapOptions::new();
-    mmap.len(1).offset(0);
+    let mut mmap = unsafe { crate::MmapMut::map_mut(&file).expect("map_mut") };
 
-    let mut mapped = unsafe { mmap.map_mut(&file).expect("map_mut") };
-    let inner = &mapped.inner;
+    mmap.inner.ptr = mmap.inner.ptr.wrapping_add(1);
 
-    let _ = inner.flush(1, 0);
+    let _ = mmap.inner.flush(1, 0);
 }
 ```

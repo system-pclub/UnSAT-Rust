@@ -218,7 +218,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `packing::Vertex` for `vertices` using fields visible from the injection module when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> construct `simplify::SimplifyOptions` for `options` using constructor(s): `simplify::_::<impl simplify::SimplifyOptions>::empty`, `simplify::_::<impl simplify::SimplifyOptions>::all`, `simplify::_::<impl simplify::SimplifyOptions>::from_bits` -> call target caller `simplify::simplify` directly
+1. construct `packing::Vertex` for `vertices` using its genuinely public fields when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> construct `simplify::SimplifyOptions` for `options` using constructor(s): `simplify::_::<impl simplify::SimplifyOptions>::empty`, `simplify::_::<impl simplify::SimplifyOptions>::all`, `simplify::_::<impl simplify::SimplifyOptions>::from_bits` -> call target caller `simplify::simplify` directly
 </candidate safe-call plans>
 
 
@@ -395,9 +395,9 @@ Failed to compile '/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0':
 stdout: 
 stderr:    Compiling meshopt v0.3.0 (/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0)
 error[E0433]: failed to resolve: function `simplify` is not a crate or module
-   --> src/simplify.rs:357:61
+   --> src/simplify.rs:366:61
     |
-357 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
+366 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
     |                                                             ^^^^^^^^ function `simplify` is not a crate or module
     |
 help: consider importing this struct through its public re-export
@@ -406,8 +406,8 @@ help: consider importing this struct through its public re-export
     |
 help: if you import `SimplifyOptions`, refer to it directly
     |
-357 -     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
-357 +     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, SimplifyOptions::empty(), None);
+366 -     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
+366 +     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, SimplifyOptions::empty(), None);
     |
 
 warning: unexpected `cfg` condition value: `cargo-clippy`
@@ -422,9 +422,9 @@ warning: unexpected `cfg` condition value: `cargo-clippy`
   = note: `#[warn(unexpected_cfgs)]` on by default
 
 error[E0433]: failed to resolve: function `simplify` is not a crate or module
-   --> src/simplify.rs:357:13
+   --> src/simplify.rs:366:13
     |
-357 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
+366 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
     |             ^^^^^^^^ function `simplify` is not a crate or module
 
 For more information about this error, try `rustc --explain E0433`.
@@ -440,9 +440,9 @@ returncode: 101
 [stderr]
    Compiling meshopt v0.3.0 (/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0)
 error[E0433]: failed to resolve: function `simplify` is not a crate or module
-   --> src/simplify.rs:357:61
+   --> src/simplify.rs:366:61
     |
-357 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
+366 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
     |                                                             ^^^^^^^^ function `simplify` is not a crate or module
     |
 help: consider importing this struct through its public re-export
@@ -451,8 +451,8 @@ help: consider importing this struct through its public re-export
     |
 help: if you import `SimplifyOptions`, refer to it directly
     |
-357 -     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
-357 +     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, SimplifyOptions::empty(), None);
+366 -     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
+366 +     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, SimplifyOptions::empty(), None);
     |
 
 warning: unexpected `cfg` condition value: `cargo-clippy`
@@ -467,9 +467,9 @@ warning: unexpected `cfg` condition value: `cargo-clippy`
   = note: `#[warn(unexpected_cfgs)]` on by default
 
 error[E0433]: failed to resolve: function `simplify` is not a crate or module
-   --> src/simplify.rs:357:13
+   --> src/simplify.rs:366:13
     |
-357 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
+366 |     let _ = simplify::simplify(&indices, &vertices, 0, 0.0, simplify::SimplifyOptions::empty(), None);
     |             ^^^^^^^^ function `simplify` is not a crate or module
 
 For more information about this error, try `rustc --explain E0433`.
@@ -804,6 +804,7 @@ bitflags! {
 /// If the original vertex data isn't required, creating a compact vertex buffer
 /// using `optimize_vertex_fetch` is recommended.
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8simplify8simplifyE_src_simplify_rs_39_30")]
 pub fn simplify(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -865,6 +866,9 @@ pub fn simplify_decoder<T: DecodePosition>(
 /// If the original vertex data isn't required, creating a compact vertex buffer
 /// using `optimize_vertex_fetch` is recommended.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8simplify19simplify_with_locksE_src_simplify_rs_114_30"
+)]
 pub fn simplify_with_locks(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -900,6 +904,9 @@ pub fn simplify_with_locks_decoder<T: DecodePosition>(
 /// If the original vertex data isn't required, creating a compact vertex buffer using `optimize_vertex_fetch`
 /// is recommended.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8simplify15simplify_sloppyE_src_simplify_rs_198_30"
+)]
 pub fn simplify_sloppy(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,

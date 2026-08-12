@@ -1338,6 +1338,84 @@ fn array_len(tokens: &[BinaryToken], mut val_ind: usize) -> usize {
 ```
 </file>
 
+<file path="src/binary/flavor.rs">
+```rust
+#[cfg(feature = "derive")]
+use crate::{
+    binary::{de::BinaryDeserializerBuilder, TokenResolver},
+    BinaryDeserializer, Error,
+};
+
+/// Trait customizing decoding values from binary data
+///
+/// How binary data is encoded differs between games and even
+/// between patches!
+pub trait BinaryFlavor: crate::Encoding {
+    /// Decode a f32 from 4 bytes of data
+    fn visit_f32(&self, data: [u8; 4]) -> f32;
+
+    /// Decode a f64 from 8 bytes of data
+    fn visit_f64(&self, data: [u8; 8]) -> f64;
+
+    /// Create binary deserializer from this binary flavor
+    #[cfg(feature = "derive")]
+    fn deserializer(&self) -> BinaryDeserializerBuilder<&Self>
+    where
+        Self: Sized,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Deserialize value from slice of data with this binary flavor
+    #[cfg(feature = "derive")]
+    fn deserialize_slice<'de, 'res: 'de, T, RES>(
+        &self,
+        data: &'de [u8],
+        resolver: &'res RES,
+    ) -> Result<T, Error>
+    where
+        T: serde::de::Deserialize<'de>,
+        RES: TokenResolver,
+        Self: Sized,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Deserialize value from stream of data with this binary flavor
+    #[cfg(feature = "derive")]
+    fn deserialize_reader<T, RES, R>(&self, reader: R, resolver: &RES) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned,
+        RES: TokenResolver,
+        R: std::io::Read,
+        Self: Sized,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BinaryFlavor + ?Sized> BinaryFlavor for &'_ T {
+    fn visit_f32(&self, data: [u8; 4]) -> f32 {
+        /* body omitted: interface retained */
+    }
+
+    fn visit_f64(&self, data: [u8; 8]) -> f64 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: BinaryFlavor + ?Sized> BinaryFlavor for Box<T> {
+    fn visit_f32(&self, data: [u8; 4]) -> f32 {
+        /* body omitted: interface retained */
+    }
+
+    fn visit_f64(&self, data: [u8; 8]) -> f64 {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
 <file path="src/binary/lexer.rs">
 ```rust
 use super::Rgb;
@@ -2002,7 +2080,10 @@ impl TokenReader<()> {
     /// Read from a byte slice without memcpy's
     #[inline]
     pub fn from_slice(data: &[u8]) -> TokenReader<&'_ [u8]> {
-        /* body omitted: interface retained */
+        TokenReader {
+            reader: data,
+            buf: BufferWindow::from_slice(data),
+        }
     }
 }
 impl<R> TokenReader<R>
@@ -2227,6 +2308,151 @@ impl From<BufferError> for ReaderErrorKind {
 ```
 </file>
 
+<file path="src/binary/resolver.rs">
+```rust
+use std::{collections::HashMap, io::BufRead};
+
+use crate::Error;
+
+/// Resolves binary 16bit tokens to field names
+///
+/// One can create their own `TokenResolver` or rely on the HashMap implementation
+///
+/// ```
+/// use std::collections::HashMap;
+/// use jomini::binary::TokenResolver;
+///
+/// let mut map = HashMap::new();
+/// map.insert(0x2d82, String::from("field1"));
+///
+/// assert_eq!(map.resolve(0x2d82), Some("field1"));
+/// ```
+///
+/// The HashMap implementation works with string slices as well
+///
+/// ```
+/// use std::collections::HashMap;
+/// use jomini::binary::TokenResolver;
+///
+/// let mut map = HashMap::new();
+/// map.insert(0x2d82, "field1");
+///
+/// assert_eq!(map.resolve(0x0000), None);
+/// ```
+pub trait TokenResolver {
+    /// Return the string field name of the 16bit token if found
+    fn resolve(&self, token: u16) -> Option<&str>;
+
+    /// Return whether [`TokenResolver::resolve`] will always return `None`.
+    ///
+    /// By default this returns `false`
+    ///
+    /// This method is not used by jomini itself, but rather targeted at
+    /// downstream save file libraries, who accept an application configured
+    /// [`TokenResolver`]. If the application is not configured for ironman
+    /// support, save file parsers can still handle plain text files, so
+    /// `is_empty` allows the save parsers to lazily check the validity of a
+    /// [`TokenResolver`] when the binary format is encountered. Thus, allowing
+    /// for better error messages. Instead of "missing field" errors, the save
+    /// file libraries can raise a more descriptive "binary file encountered but
+    /// tokens are not configured", as only they know if a non-zero amount of
+    /// tokens need to be resolved for a successful deserialization.
+    ///
+    /// There's not a way for jomini to know whether an empty [`TokenResolver`]
+    /// constitutes an error, as the client may only be deserializing data from
+    /// keys that are already strings. Or, alternatively, direct token
+    /// deserialization is exclusively used.
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<S, V> TokenResolver for HashMap<u16, V, S>
+where
+    S: ::std::hash::BuildHasher,
+    V: AsRef<str>,
+{
+    fn resolve(&self, token: u16) -> Option<&str> {
+        /* body omitted: interface retained */
+    }
+
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: TokenResolver> TokenResolver for &'_ T {
+    fn resolve(&self, token: u16) -> Option<&str> {
+        /* body omitted: interface retained */
+    }
+
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<T: TokenResolver + ?Sized> TokenResolver for Box<T> {
+    fn resolve(&self, token: u16) -> Option<&str> {
+        /* body omitted: interface retained */
+    }
+
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Customize how the deserializer reacts when a token can't be resolved
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum FailedResolveStrategy {
+    /// Stop parsing and return an error
+    Error,
+
+    /// Stringify the token as hexadecimal
+    Stringify,
+
+    /// Ignore the token
+    Ignore,
+}
+
+/// A basic token resolver that facilitates loading tokens from an external
+/// source.
+///
+/// This token resolver is geared towards testing use cases and iteration.
+///
+/// It is recommended to use a different implementation if performance is a
+/// concern.
+pub struct BasicTokenResolver {
+    lookup: HashMap<u16, String>,
+}
+
+impl BasicTokenResolver {
+    /// Create resolver from a `BufRead` implementation over a space delimited
+    /// text format:
+    ///
+    /// ```plain
+    /// 0xffff my_test_token
+    /// 0xeeee my_test_token2
+    /// ```
+    pub fn from_text_lines<T>(mut reader: T) -> Result<Self, Error>
+    where
+        T: BufRead,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+impl TokenResolver for BasicTokenResolver {
+    fn resolve(&self, token: u16) -> Option<&str> {
+        /* body omitted: interface retained */
+    }
+
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
 <file path="src/binary/rgb.rs">
 ```rust
 /// Extracted color info
@@ -2246,6 +2472,296 @@ pub struct Rgb {
 
     /// Optional alpha channel
     pub a: Option<u32>,
+}
+```
+</file>
+
+<file path="src/binary/tape.rs">
+```rust
+use super::{
+    lexer::{
+        read_bool, read_f32, read_f64, read_i32, read_i64, read_id, read_rgb, read_string,
+        read_u32, read_u64,
+    },
+    LexError, LexemeId,
+};
+use crate::{binary::Rgb, copyless::VecHelper, util::get_split, Error, ErrorKind, Scalar};
+
+/// Represents any valid binary value
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryToken<'a> {
+    /// Index of the `BinaryToken::End` that signifies this array's termination
+    Array(usize),
+
+    /// Index of the `BinaryToken::End` that signifies this object's termination
+    ///
+    /// A key's value immediately follows the key.
+    Object(usize),
+
+    /// Denotes the start of where a homogenous object or array becomes
+    /// heterogenous.
+    MixedContainer,
+
+    /// An equal operator inside the mixed container
+    Equal,
+
+    /// Index of the start of this object
+    End(usize),
+
+    /// Represents a binary boolean.
+    Bool(bool),
+
+    /// Represents a binary unsigned 32bit integer
+    U32(u32),
+
+    /// Represents a binary unsigned 64bit integer
+    U64(u64),
+
+    /// Represents a binary signed 64bit integer
+    I64(i64),
+
+    /// Represents a binary signed 32bit integer
+    I32(i32),
+
+    /// Represents a binary encoded quoted string
+    Quoted(Scalar<'a>),
+
+    /// Represents a binary encoded quoted string
+    Unquoted(Scalar<'a>),
+
+    /// Represents the first binary encoding for representing a rational number
+    F32([u8; 4]),
+
+    /// Represents the second binary encoding for representing a rational number
+    F64([u8; 8]),
+
+    /// Represents a 16bit token key that can be resolved to an equivalent textual representation.
+    Token(u16),
+
+    /// Represents the index of the encoded rgb value
+    Rgb(Rgb),
+}
+
+/// Customizes how the binary tape is parsed from data
+#[derive(Debug)]
+pub struct BinaryTapeParser;
+
+impl BinaryTapeParser {
+    /// Parse the binary format return the data tape
+    pub fn parse_slice(self, data: &[u8]) -> Result<BinaryTape, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Parse the binary format into the given tape.
+    pub fn parse_slice_into_tape<'a>(
+        self,
+        data: &'a [u8],
+        tape: &mut BinaryTape<'a>,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[cfg(unoptimized_build)]
+    pub fn parse_slice_into_tape_unoptimized<'a>(
+        self,
+        data: &'a [u8],
+        tape: &mut BinaryTape<'a>,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+
+    fn parse_slice_into_tape_core<'a, const ENABLE_OPTIMIZATION: bool>(
+        self,
+        data: &'a [u8],
+        tape: &mut BinaryTape<'a>,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+
+struct ParserState<'a, 'b> {
+    data: &'a [u8],
+    original_length: usize,
+    token_tape: &'b mut Vec<BinaryToken<'a>>,
+}
+
+/// Enum where the next state is computed by multiplying the current state by 2.
+#[derive(Debug, PartialEq, Copy, Clone, Eq)]
+#[repr(u8)]
+enum ParseState {
+    ArrayValue = 0,
+
+    // Whether the current parent container is both an object and array.
+    // Unlike the text format, we only support one level of a mixed
+    // container for performance.
+    ArrayValueMixed = 2,
+
+    ObjectValue = 4,
+    Key = 8,
+    KeyValueSeparator = 16,
+
+    // Need to convert current object into an array
+    ObjectToArray = 32,
+
+    // Start of a container, TBD if array or object
+    OpenFirst = 64,
+
+    // First scalar read after container start, still TBD if array or object
+    OpenSecond = 128,
+}
+
+impl<'a, 'b> ParserState<'a, 'b> {
+    fn offset(&self, data: &[u8]) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_next_id_opt(&self, data: &'a [u8]) -> Option<(&'a [u8], u16)> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_next_id(&self, data: &'a [u8]) -> Result<(&'a [u8], LexemeId), Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_u32(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_u64(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_i64(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_i32(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_f32(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_f64(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn parse_bool(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    fn parse_rgb(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn parse_quoted_string(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn parse_unquoted_string(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    fn next_state(state: ParseState) -> ParseState {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    unsafe fn set_parent_to_object(&mut self, parent_ind: usize) {
+        /* body omitted: interface retained */
+    }
+
+    fn parse<const ENABLE_OPTIMIZATION: bool>(&mut self) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn mixed_insert2(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    fn mixed_insert1(&mut self) {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn err_position(&self, err: LexError, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn equal_key_error(&self, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn end_location_error(&self, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn empty_object_err(&self, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn equal_in_array_err(&self, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn open_empty_err(&self, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn end_valid_err(&self, data: &[u8]) -> Error {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Houses the tape of tokens that is extracted from binary data
+#[derive(Debug, Default)]
+pub struct BinaryTape<'a> {
+    token_tape: Vec<BinaryToken<'a>>,
+}
+
+impl<'a> BinaryTape<'a> {
+    /// Creates an empty tape
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Convenience method for creating a binary parser and parsing the given input
+    pub fn from_slice(data: &[u8]) -> Result<BinaryTape<'_>, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the parsed tokens
+    pub fn tokens(&self) -> &[BinaryToken<'a>] {
+        /* body omitted: interface retained */
+    }
 }
 ```
 </file>
@@ -2276,14 +2792,23 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         /* body omitted: interface retained */
     }
@@ -2292,10 +2817,19 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         /* body omitted: interface retained */
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         /* body omitted: interface retained */
     }
@@ -3390,6 +3924,330 @@ impl<'de> SeqAccess<'de> for InnerColorSequence {
     where
         T: DeserializeSeed<'de>,
     {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/encoding.rs">
+```rust
+use crate::{
+    data::WINDOWS_1252, util::contains_zero_byte, util::le_u64, util::repeat_byte,
+};
+use std::borrow::Cow;
+/// An encoding for interpreting byte data as UTF-8 text
+///
+/// Used in both text and binary format deserializers
+///
+/// It is heavily encouraged that encoding implementations are marked
+/// as `Copy` to make sure they are as cheap to copy as possible. In
+/// an experiment storing the encoding in a `Rc` resulted in a decrease
+/// of deserialization throughput by over 10%, as encodings are passed
+/// around everywhere.
+///
+/// An encoding should also perform additional actions when:
+///
+/// - trailing whitespace is removed
+/// - escape sequences are unescaped
+pub trait Encoding {
+    /// Decodes bytes into a utf-8 compatible string -- allocating if necessary
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str>;
+}
+/// Decodes bytes according to the windows1252 code page
+///
+/// ```
+/// use jomini::{Windows1252Encoding, Encoding};
+///
+/// let encoding = Windows1252Encoding::new();
+/// assert_eq!(encoding.decode(b"Common Sense"), "Common Sense");
+/// assert_eq!(
+///     encoding.decode(b"\xa7GRichard Plantagenet\xa7 ( 2 / 4 / 3 / 0 )"),
+///     "§GRichard Plantagenet§ ( 2 / 4 / 3 / 0 )"
+/// );
+/// assert_eq!(encoding.decode(br#"Captain \"Joe\" Rogers"#), r#"Captain "Joe" Rogers"#);
+/// assert_eq!(encoding.decode(b"1444.11.11\n"), "1444.11.11");
+/// assert_eq!(encoding.decode(b"\xff"), "ÿ");
+/// assert_eq!(encoding.decode(b"\x8a"), "Š");
+/// assert_eq!(encoding.decode(b"\xfe\xff\xfe\xff\xfe\xff\xfe\xff\xfe\xff"), "þÿþÿþÿþÿþÿ");
+/// assert_eq!(encoding.decode(b"hi\x81\x8a"), "hi\u{81}Š");
+/// ```
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Windows1252Encoding;
+impl Windows1252Encoding {
+    /// Creates a new windows 1252 decoder
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Static method for decoding windows 1252 data
+    pub fn decode(data: &[u8]) -> Cow<str> {
+        /* body omitted: interface retained */
+    }
+}
+impl Encoding for Windows1252Encoding {
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: Encoding + ?Sized> Encoding for &'_ T {
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        /* body omitted: interface retained */
+    }
+}
+impl<T: Encoding + ?Sized> Encoding for Box<T> {
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        /* body omitted: interface retained */
+    }
+}
+/// Decodes bytes according to the utf8 standard
+///
+/// ```
+/// use jomini::{Utf8Encoding, Encoding};
+///
+/// let encoding = Utf8Encoding::new();
+/// assert_eq!(encoding.decode(b"Common Sense"), "Common Sense");
+/// assert_eq!(encoding.decode(br#"Captain \"Joe\" Rogers"#), r#"Captain "Joe" Rogers"#);
+/// assert_eq!(encoding.decode(b"1444.11.11\n"), "1444.11.11");
+/// assert_eq!(encoding.decode(b"J\xc3\xa5hk\xc3\xa5m\xc3\xa5hkke"), "Jåhkåmåhkke");
+/// assert_eq!(encoding.decode("Jåhkåmåhkke".as_bytes()), "Jåhkåmåhkke");
+/// ```
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Utf8Encoding;
+impl Utf8Encoding {
+    /// Creates a new utf8 decoder
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Static method for decoding utf8 data
+    pub fn decode(data: &[u8]) -> Cow<str> {
+        /* body omitted: interface retained */
+    }
+}
+impl Encoding for Utf8Encoding {
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        /* body omitted: interface retained */
+    }
+}
+const fn trim_ascii_end(data: &[u8]) -> &[u8] {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8encoding18decode_windows1252E_src_encoding_rs_136_22"
+)]
+pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+fn windows_1252_create(d: &[u8], offset: usize) -> String {
+    /* body omitted: interface retained */
+}
+#[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8encoding11decode_utf8E_src_encoding_rs_195_26")]
+pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {
+    /* body omitted: interface retained */
+}
+fn utf8_create(d: &[u8], offset: usize) -> String {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/errors.rs">
+```rust
+use crate::{
+    binary::{LexError, LexerError, ReaderError as BinReaderError},
+    text::ReaderError as TextReaderError,
+    ScalarError,
+};
+use std::fmt;
+
+/// An error that can occur when processing data
+#[derive(Debug)]
+pub struct Error(Box<ErrorKind>);
+
+impl Error {
+    pub(crate) fn new(kind: ErrorKind) -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(never)]
+    #[cold]
+    pub(crate) fn eof() -> Error {
+        /* body omitted: interface retained */
+    }
+
+    #[cold]
+    pub(crate) fn invalid_syntax<T>(msg: T, position: usize) -> Error
+    where
+        T: Into<String>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the specific type of error
+    pub fn kind(&self) -> &ErrorKind {
+        /* body omitted: interface retained */
+    }
+
+    /// Unwrap this error into its underlying type
+    pub fn into_kind(self) -> ErrorKind {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the byte offset that the error occurs (if available)
+    pub fn offset(&self) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Specific type of error
+#[derive(Debug)]
+pub enum ErrorKind {
+    /// Unexpected end of input
+    Eof,
+
+    /// Too many close delimiters were encountered
+    StackEmpty {
+        /// The byte offset where the stack became empty
+        offset: usize,
+    },
+
+    /// Expected a close delimiter after encountering an empty opener
+    InvalidEmptyObject {
+        /// The byte offset where the invalid empty object was encountered
+        offset: usize,
+    },
+
+    /// Invalid syntax encountered
+    InvalidSyntax {
+        /// An error message describing the invalid syntax
+        msg: String,
+
+        /// The byte offset where the invalid syntax was encountered
+        offset: usize,
+    },
+
+    /// An error occurred when deserializing the data
+    Deserialize(DeserializeError),
+
+    /// An error occurred when performing IO.
+    Io(std::io::Error),
+
+    /// The internal buffer does not have enough room to store data for the next
+    /// token
+    BufferFull,
+}
+
+impl ErrorKind {
+    /// The byte offset where the invalid syntax was encountered
+    pub fn offset(&self) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<DeserializeError> for Error {
+    fn from(error: DeserializeError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<LexerError> for Error {
+    fn from(value: LexerError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<BinReaderError> for Error {
+    fn from(value: BinReaderError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<TextReaderError> for Error {
+    fn from(value: TextReaderError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A Serde deserialization error.
+#[derive(Debug, PartialEq)]
+pub struct DeserializeError {
+    pub(crate) kind: DeserializeErrorKind,
+}
+
+impl DeserializeError {
+    /// Return the underlying error kind.
+    pub fn kind(&self) -> &DeserializeErrorKind {
+        /* body omitted: interface retained */
+    }
+}
+
+/// The type of a Serde deserialization error.
+#[derive(Debug, PartialEq)]
+pub enum DeserializeErrorKind {
+    /// A generic Serde deserialization error
+    Message(String),
+
+    /// Requested serde operation is unsupported
+    Unsupported(String),
+
+    /// Error converting underlying data to desired format
+    Scalar(ScalarError),
+
+    /// An unknown binary token was encountered
+    UnknownToken {
+        /// The unknown 16bit token
+        token_id: u16,
+    },
+}
+
+impl std::error::Error for DeserializeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::de::Error for Error {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::de::Error for DeserializeError {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<ScalarError> for Error {
+    fn from(error: ScalarError) -> Self {
         /* body omitted: interface retained */
     }
 }
@@ -5226,6 +6084,710 @@ impl<'de> de::Deserializer<'de> for OperatorDeserializer {
 ```
 </file>
 
+<file path="src/text/dom.rs">
+```rust
+use super::fnv::FnvBuildHasher;
+use crate::{
+    text::Operator, DeserializeError, DeserializeErrorKind, Encoding, Scalar, TextTape, TextToken,
+};
+use std::{
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+};
+
+pub type KeyValue<'data, 'tokens, E> = (
+    ScalarReader<'data, E>,
+    Option<Operator>,
+    ValueReader<'data, 'tokens, E>,
+);
+
+pub type KeyValues<'data, 'tokens, E> = (ScalarReader<'data, E>, GroupEntry<'data, 'tokens, E>);
+
+/// Calculate what index the next value is. This assumes that a header + value
+/// are two separate values
+#[inline]
+fn next_idx_header(tokens: &[TextToken], idx: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+/// Calculate what index the next value is. This assumes that a header + value
+/// is one value
+#[inline]
+fn next_idx(tokens: &[TextToken], idx: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn next_idx_values(tokens: &[TextToken], idx: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+fn fields_len(tokens: &[TextToken], start_ind: usize, end_ind: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+#[inline]
+pub fn values_len(tokens: &[TextToken], start_ind: usize, end_ind: usize) -> usize {
+    /* body omitted: interface retained */
+}
+
+type OpValue<'data, 'tokens, E> = (Option<Operator>, ValueReader<'data, 'tokens, E>);
+
+/// Iterator over values grouped by duplicate keys
+///
+/// See [FieldGroupsIter](crate::text::FieldGroupsIter) for a worked example
+pub struct GroupEntryIter<'data, 'tokens, 'parent, E> {
+    index: usize,
+    parent: &'parent GroupEntry<'data, 'tokens, E>,
+}
+
+impl<'data, 'tokens, 'parent, E> Iterator for GroupEntryIter<'data, 'tokens, 'parent, E>
+where
+    E: Clone,
+{
+    type Item = (Option<Operator>, ValueReader<'data, 'tokens, E>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Represents a group of values for duplicate keys
+///
+/// May contain one or many values
+///
+/// ```
+/// use jomini::TextTape;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tape = TextTape::from_slice(b"name=a core=b core=c")?;
+/// let reader = tape.windows1252_reader();
+/// let mut fields = reader.field_groups();
+/// let first_group = fields.next();
+/// let first_key = first_group.as_ref().map(|(key, _)| key.read_str());
+/// assert_eq!(first_key.as_deref(), Some("name"));
+/// let first_values_len = first_group.as_ref().map(|(_, group)| group.len());
+/// assert_eq!(first_values_len, Some(1));
+/// let first_values = first_group.map(|(_, group)| {
+///     group.values()
+///         .filter_map(|(_op, val)| val.read_string().ok())
+///         .collect()
+/// });
+/// assert_eq!(first_values, Some(vec![String::from("a")]));
+///
+/// let second_group = fields.next();
+/// let second_key = second_group.as_ref().map(|(key, _)| key.read_str());
+/// assert_eq!(second_key.as_deref(), Some("core"));
+/// let second_values = second_group.as_ref().map(|(_, group)| group.len());
+/// assert_eq!(second_values, Some(2));
+/// let second_values = second_group.map(|(_, group)| {
+///     group.values()
+///         .filter_map(|(_op, val)| val.read_string().ok())
+///         .collect()
+/// });
+/// assert_eq!(second_values, Some(vec![String::from("b"), String::from("c")]));
+/// # Ok(())
+/// # }
+/// ```
+pub enum GroupEntry<'data, 'tokens, E> {
+    /// Represents that the group is composed of only one value
+    ///
+    /// Most fields should only occur once, so this variant is optimized to
+    /// not require a memory allocation (unlike the `Multiple` variant).
+    One(OpValue<'data, 'tokens, E>),
+
+    /// Represents that the group is composed of several values
+    Multiple(Vec<OpValue<'data, 'tokens, E>>),
+}
+
+impl<'data, 'tokens, E> GroupEntry<'data, 'tokens, E> {
+    /// Returns an iterator that includes all the values
+    pub fn values<'parent>(&'parent self) -> GroupEntryIter<'data, 'tokens, 'parent, E> {
+        /* body omitted: interface retained */
+    }
+
+    /// A group can never be empty so this returns false
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of values in the group
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+/// All possible text reader variants
+#[derive(Debug, Clone)]
+pub enum Reader<'data, 'tokens, E> {
+    /// object reader
+    Object(ObjectReader<'data, 'tokens, E>),
+
+    /// array reader
+    Array(ArrayReader<'data, 'tokens, E>),
+
+    /// scalar reader
+    Scalar(ScalarReader<'data, E>),
+
+    /// value reader
+    Value(ValueReader<'data, 'tokens, E>),
+}
+
+impl<'data, 'tokens, E> Reader<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    /// Interpret value as a string
+    #[inline]
+    pub fn read_str(&self) -> Result<Cow<'data, str>, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret value as a string
+    #[inline]
+    pub fn read_string(&self) -> Result<String, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret value as a scalar
+    #[inline]
+    pub fn read_scalar(&self) -> Result<Scalar<'data>, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Iterator over fields of an object grouped by key
+///
+/// Since objects can have duplicated keys across fields, this iterator
+/// consolidates them such that all values with the same key are grouped
+/// together in the order that they appear in the object. Key order is
+/// also equivalent, except that already seen keys will be skipped, as
+/// those values have already been seen in an earlier group.
+///
+/// The process of grouping values together is more expensive than simply
+/// iterating the keys in order, so when possible prefer
+/// [`ObjectReader::fields()`](crate::text::ObjectReader::fields) over
+/// [`ObjectReader::field_groups()`](crate::text::ObjectReader::field_groups).
+///
+/// These groups can be easily iterated:
+///
+/// ```
+/// use jomini::TextTape;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tape = TextTape::from_slice(b"name=a core=b core=c")?;
+/// let reader = tape.windows1252_reader();
+/// for (key, group) in reader.field_groups() {
+///     match key.read_str().as_ref() {
+///         "name" => assert_eq!(group.len(), 1),
+///         "core" => assert_eq!(group.len(), 2),
+///         x => panic!("unexpected key: {}", x),
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// And picked apart:
+///
+/// ```
+/// use jomini::TextTape;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tape = TextTape::from_slice(b"name=a core=b core=c")?;
+/// let reader = tape.windows1252_reader();
+/// let mut fields = reader.field_groups();
+/// let first_group = fields.next();
+/// let first_key = first_group.as_ref().map(|(key, _)| key.read_str());
+/// assert_eq!(first_key.as_deref(), Some("name"));
+/// let first_values_len = first_group.as_ref().map(|(_, group)| group.len());
+/// assert_eq!(first_values_len, Some(1));
+/// let first_values = first_group.map(|(_, group)| {
+///     group.values()
+///         .filter_map(|(_op, val)| val.read_string().ok())
+///         .collect()
+/// });
+/// assert_eq!(first_values, Some(vec![String::from("a")]));
+///
+/// let second_group = fields.next();
+/// let second_key = second_group.as_ref().map(|(key, _)| key.read_str());
+/// assert_eq!(second_key.as_deref(), Some("core"));
+/// let second_values = second_group.as_ref().map(|(_, group)| group.len());
+/// assert_eq!(second_values, Some(2));
+/// let second_values = second_group.map(|(_, group)| {
+///     group.values()
+///         .filter_map(|(_op, val)| val.read_string().ok())
+///         .collect()
+/// });
+/// assert_eq!(second_values, Some(vec![String::from("b"), String::from("c")]));
+/// # Ok(())
+/// # }
+/// ```
+pub struct FieldGroupsIter<'data, 'tokens, E> {
+    key_indices: HashMap<&'data [u8], Vec<OpValue<'data, 'tokens, E>>, FnvBuildHasher>,
+    fields: FieldsIter<'data, 'tokens, E>,
+}
+
+impl<'data, 'tokens, E> FieldGroupsIter<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    fn new(reader: &ObjectReader<'data, 'tokens, E>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// See [the other `remainder` documentation](crate::text::FieldsIter::remainder)
+    pub fn remainder(&self) -> ArrayReader<'data, 'tokens, E> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'data, 'tokens, E> Iterator for FieldGroupsIter<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    type Item = KeyValues<'data, 'tokens, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Iterator over fields of an object in the order that they appear
+///
+/// Since objects can have duplicated keys across fields, this iterator
+/// may yield items that have duplicate keys.
+///
+/// Fields can be easily iterated:
+///
+/// ```
+/// use jomini::TextTape;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tape = TextTape::from_slice(b"name=a core=b core=c")?;
+/// let reader = tape.windows1252_reader();
+/// let (names, cores) = reader
+///     .fields()
+///     .fold((0, 0), |(names, cores), (key, _op, _value)| {
+///         match key.read_str().as_ref() {
+///             "name" => (names + 1, cores),
+///             "core" => (names, cores + 1),
+///             x => panic!("unexpected key: {}", x),
+///         }
+///     });
+/// assert_eq!((1, 2), (names, cores));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// And picked apart:
+///
+/// ```
+/// use jomini::TextTape;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tape = TextTape::from_slice(b"name=a core=b core=c")?;
+/// let reader = tape.windows1252_reader();
+/// let mut fields = reader.fields();
+/// let (first_key, _op, first_val) = fields.next().unwrap();
+/// assert_eq!(first_key.read_str(), "name");
+/// assert_eq!(first_val.read_str().ok().as_deref(), Some("a"));
+/// # Ok(())
+/// # }
+/// ```
+pub struct FieldsIter<'data, 'tokens, E> {
+    token_ind: usize,
+    end_ind: usize,
+    tokens: &'tokens [TextToken<'data>],
+    encoding: E,
+}
+
+impl<'data, 'tokens, E> FieldsIter<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    fn new(reader: &ObjectReader<'data, 'tokens, E>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the remaining values from an object if the container is an
+    /// object that transitions into an array.
+    pub fn remainder(&self) -> ArrayReader<'data, 'tokens, E> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'data, 'tokens, E> Iterator for FieldsIter<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    type Item = KeyValue<'data, 'tokens, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A reader for objects
+#[derive(Debug, Clone)]
+pub struct ObjectReader<'data, 'tokens, E> {
+    start_ind: usize,
+    end_ind: usize,
+    tokens: &'tokens [TextToken<'data>],
+    encoding: E,
+}
+
+impl<'data, 'tokens, E> ObjectReader<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    /// Create a new object reader from parsed data with encoded strings
+    pub fn new(tape: &'tokens TextTape<'data>, encoding: E) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the number of tokens contained within the object
+    ///
+    /// ```
+    /// use jomini::TextTape;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let tape = TextTape::from_slice(b"obj={1} foo=bar")?;
+    /// let reader = tape.windows1252_reader();
+    /// assert_eq!(reader.tokens_len(), 6);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn tokens_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Deserialize from the object reader
+    ///
+    /// ```
+    /// use jomini::TextTape;
+    /// use serde::Deserialize;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// #[derive(Debug, Clone, Deserialize, PartialEq)]
+    /// pub struct Obj {
+    ///   foo: String,
+    /// }
+    ///
+    /// let tape = TextTape::from_slice(b"obj={foo=bar}")?;
+    /// let reader = tape.windows1252_reader();
+    /// let mut fields = reader.fields();
+    /// let (_, _, obj_value) = fields.next().unwrap();
+    /// let obj_reader = obj_value.read_object().unwrap();
+    /// let result: Obj = obj_reader.deserialize().unwrap();
+    /// assert_eq!(result, Obj { foo: "bar".to_string() });
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "derive")]
+    pub fn deserialize<T>(&self) -> Result<T, crate::Error>
+    where
+        T: serde::Deserialize<'data>,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the number of key value pairs that the object contains.
+    pub fn fields_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Iterator over fields as they appear in the object
+    ///
+    /// See [FieldsIter](crate::text::FieldsIter) for a worked example
+    #[inline]
+    pub fn fields(&self) -> FieldsIter<'data, 'tokens, E> {
+        /* body omitted: interface retained */
+    }
+
+    /// Iterator over fields that are grouped by key
+    ///
+    /// See [FieldGroupsIter](crate::text::FieldGroupsIter) for a worked example
+    #[inline]
+    pub fn field_groups(&self) -> FieldGroupsIter<'data, 'tokens, E> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A text reader that wraps an underlying scalar value
+#[derive(Debug, Clone)]
+pub struct ScalarReader<'data, E> {
+    scalar: Scalar<'data>,
+    token: TextToken<'data>,
+    encoding: E,
+}
+
+impl<'data, E> ScalarReader<'data, E>
+where
+    E: Encoding,
+{
+    /// Decode the data with a given string encoding
+    #[inline]
+    pub fn read_str(&self) -> Cow<'data, str> {
+        /* body omitted: interface retained */
+    }
+
+    /// Decode the data with a given string encoding
+    #[inline]
+    pub fn read_string(&self) -> String {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the underlying scalar
+    #[inline]
+    pub fn read_scalar(&self) -> Scalar<'data> {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the token that the reader is abstracting
+    #[inline]
+    pub fn token(&self) -> &TextToken<'data> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A text reader for a text value
+#[derive(Debug, Clone)]
+pub struct ValueReader<'data, 'tokens, E> {
+    value_ind: usize,
+    tokens: &'tokens [TextToken<'data>],
+    encoding: E,
+}
+
+impl<'data, 'tokens, E> ValueReader<'data, 'tokens, E> {
+    /// Return the token that the reader is abstracting
+    #[inline]
+    pub fn token(&self) -> &TextToken<'data> {
+        /* body omitted: interface retained */
+    }
+
+    #[cfg(feature = "derive")]
+    pub(crate) fn next(&mut self) -> Option<&TextToken<'data>> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'data, 'tokens, E> Encoding for ValueReader<'data, 'tokens, E>
+where
+    E: Encoding,
+{
+    #[inline]
+    fn decode<'a>(&self, data: &'a [u8]) -> Cow<'a, str> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'data, 'tokens, E> ValueReader<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    fn raw_str(&self) -> Option<Cow<'data, str>> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret the current value as string
+    #[inline]
+    pub fn read_str(&self) -> Result<Cow<'data, str>, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret the current value as string
+    #[inline]
+    pub fn read_string(&self) -> Result<String, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret the current value as a scalar
+    #[inline]
+    pub fn read_scalar(&self) -> Result<Scalar<'data>, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret the current value as an object
+    #[inline]
+    pub fn read_object(&self) -> Result<ObjectReader<'data, 'tokens, E>, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Interpret the current value as an array
+    #[inline]
+    pub fn read_array(&self) -> Result<ArrayReader<'data, 'tokens, E>, DeserializeError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the number of tokens the value encompases
+    ///
+    /// ```
+    /// use jomini::TextTape;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let tape = TextTape::from_slice(b"obj={1 {foo=bar} 3}")?;
+    /// let reader = tape.windows1252_reader();
+    /// let mut fields = reader.fields();
+    /// let (_, _, first_value) = fields.next().unwrap();
+    /// assert_eq!(first_value.tokens_len(), 6);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn tokens_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+/// An iterator over the values of an array
+///
+/// ```
+/// use jomini::TextTape;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tape = TextTape::from_slice(b"cores={a b}")?;
+/// let reader = tape.windows1252_reader();
+///
+/// let mut all_cores = Vec::new();
+/// for (key, _op, value) in reader.fields() {
+///     assert_eq!(key.read_str(), "cores");
+///     let cores = value.read_array()?;
+///     assert_eq!(cores.len(), 2);
+///     for value in cores.values() {
+///         all_cores.push(value.read_string()?);
+///     }
+/// }
+/// assert_eq!(all_cores, vec![String::from("a"), String::from("b")]);
+/// # Ok(())
+/// # }
+/// ```
+pub struct ValuesIter<'data, 'tokens, E> {
+    token_ind: usize,
+    end_ind: usize,
+    tokens: &'tokens [TextToken<'data>],
+    encoding: E,
+}
+
+impl<'data, 'tokens, E> ValuesIter<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    fn new(reader: &ArrayReader<'data, 'tokens, E>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'data, 'tokens, E> Iterator for ValuesIter<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    type Item = ValueReader<'data, 'tokens, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        /* body omitted: interface retained */
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A text reader for sequences of values
+#[derive(Debug, Clone)]
+pub struct ArrayReader<'data, 'tokens, E> {
+    start_ind: usize,
+    end_ind: usize,
+    tokens: &'tokens [TextToken<'data>],
+    encoding: E,
+}
+
+impl<'data, 'tokens, E> ArrayReader<'data, 'tokens, E>
+where
+    E: Encoding + Clone,
+{
+    /// Iterator over values of an array
+    ///
+    /// See [ValuesIter](crate::text::ValuesIter) for a worked example
+    #[inline]
+    pub fn values(&self) -> ValuesIter<'data, 'tokens, E> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns if the array is empty
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the number of values in the array
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+
+    /// Return the number of tokens contained within the object
+    ///
+    /// ```
+    /// use jomini::TextTape;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let tape = TextTape::from_slice(b"obj={1 {foo=bar} 3}")?;
+    /// let reader = tape.windows1252_reader();
+    /// let mut fields = reader.fields();
+    /// let (_, _, first_value) = fields.next().unwrap();
+    /// let array = first_value.read_array()?;
+    /// assert_eq!(array.tokens_len(), 6);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn tokens_len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/text/fnv.rs">
+```rust
+//! An inlined version of rust-fnv crate
+use std::hash::{BuildHasherDefault, Hasher};
+
+pub struct FnvHasher(u64);
+
+impl Default for FnvHasher {
+    #[inline]
+    fn default() -> FnvHasher {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Hasher for FnvHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        /* body omitted: interface retained */
+    }
+
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A builder for default FNV hashers.
+pub type FnvBuildHasher = BuildHasherDefault<FnvHasher>;
+```
+</file>
+
 <file path="src/text/mod.rs">
 ```rust
 //! Types for parsing clausewitz plaintext input
@@ -5463,7 +7025,11 @@ impl TokenReader<()> {
     /// Read from a byte slice without memcpy's
     #[inline]
     pub fn from_slice(data: &[u8]) -> TokenReader<&'_ [u8]> {
-        /* body omitted: interface retained */
+        TokenReader {
+            reader: data,
+            buf: BufferWindow::from_slice(data),
+            utf8: Utf8Bom::Unknown,
+        }
     }
 }
 impl<R> TokenReader<R>
@@ -5779,6 +7345,187 @@ impl ReaderError {
     pub fn into_kind(self) -> ReaderErrorKind {
         /* body omitted: interface retained */
     }
+}
+```
+</file>
+
+<file path="src/text/tape.rs">
+```rust
+use crate::{
+    data::is_boundary,
+    text::{ObjectReader, Operator},
+    Utf8Encoding, Windows1252Encoding,
+};
+use crate::{Error, ErrorKind, Scalar};
+
+/// Represents a valid text value
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextToken<'a> {
+    /// Start of an array
+    Array {
+        /// The index of the `TextToken::End` for this array
+        end: usize,
+
+        /// If this array contains a `MixedContainer` token
+        mixed: bool,
+    },
+
+    /// Start of an object
+    ///
+    /// The value of a property typically immediately follows a key token. However,
+    /// this is not guaranteed so always check if the end has been reached before
+    /// trying to decode a value. There are two main situations where this is not
+    /// guaranteed:
+    ///
+    /// - A non-equal operator (eg: `a > b` will be parsed to 3 instead of 2 tokens)
+    /// - If an object switches to a mixed container that is both an array and object
+    Object {
+        /// Index of the `TextToken::End` that signifies this objects's termination
+        end: usize,
+
+        /// If this object contains a `MixedContainer` token
+        mixed: bool,
+    },
+
+    /// Denotes the start of where a homogenous object or array becomes
+    /// heterogenous.
+    MixedContainer,
+
+    /// Extracted unquoted scalar value
+    Unquoted(Scalar<'a>),
+
+    /// Extracted quoted scalar value
+    Quoted(Scalar<'a>),
+
+    /// A parameter scalar
+    ///
+    /// Only seen so far in EU4. From the patch notes:
+    ///
+    /// > Scripted triggers or effects now support conditional compilation on arguments provided to them.
+    /// > You can now check for if an argument is defined or not and make the script look entirely different based on that.
+    /// > Syntax is `[[var_name] code here ]` for if variable is defined
+    ///
+    /// ```ignore
+    /// generate_advisor = { [[scaled_skill] if = { } ] }
+    /// ```
+    Parameter(Scalar<'a>),
+
+    /// An undefined parameter, see Parameter variant for more info.
+    ///
+    /// Syntax for undefined variable:
+    ///
+    /// ```ignore
+    /// [[!var_name] code here ]
+    /// ```
+    UndefinedParameter(Scalar<'a>),
+
+    /// A present, but non-equal operator token
+    Operator(Operator),
+
+    /// Index of the start of this object
+    End(usize),
+
+    /// The header token of the subsequent scalar. For instance, given
+    ///
+    /// ```ignore
+    /// color = rgb { 100 200 50 }
+    /// ```
+    ///
+    /// `rgb` would be a the header followed by a 3 element array
+    Header(Scalar<'a>),
+}
+
+impl<'a> TextToken<'a> {
+    /// Returns the scalar if the token contains a scalar
+    ///
+    /// ```
+    /// use jomini::{Scalar, TextToken};
+    /// assert_eq!(TextToken::Unquoted(Scalar::new(b"abc")).as_scalar(), Some(Scalar::new(b"abc")));
+    /// assert_eq!(TextToken::Quoted(Scalar::new(b"abc")).as_scalar(), Some(Scalar::new(b"abc")));
+    /// assert_eq!(TextToken::Header(Scalar::new(b"rgb")).as_scalar(), Some(Scalar::new(b"rgb")));
+    /// assert_eq!((TextToken::Object { end: 2, mixed: false }).as_scalar(), None);
+    /// ```
+    pub fn as_scalar(&self) -> Option<Scalar<'a>> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Creates a parser that a writes to a text tape
+#[derive(Debug, Default)]
+pub struct TextTapeParser;
+
+impl TextTapeParser {
+    /// Create a text parser
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Parse the text format and return the data tape
+    pub fn parse_slice(self, data: &[u8]) -> Result<TextTape, Error> {
+        /* body omitted: interface retained */
+    }
+
+    /// Parse the text format into the given tape.
+    pub fn parse_slice_into_tape<'a>(
+        self,
+        data: &'a [u8],
+        tape: &mut TextTape<'a>,
+    ) -> Result<(), Error> {
+        /* body omitted: interface retained */
+    }
+}
+
+struct ParserState<'a, 'b> {
+    data: &'a [u8],
+    original_length: usize,
+    token_tape: &'b mut Vec<TextToken<'a>>,
+    utf8_bom: bool,
+}
+
+/// Houses the tape of tokens that is extracted from plaintext data
+#[derive(Debug, Default)]
+pub struct TextTape<'a> {
+    token_tape: Vec<TextToken<'a>>,
+    utf8_bom: bool,
+}
+
+impl<'a> TextTape<'a> {
+    /// Creates a windows 1252 object reader from the parsed tape
+    pub fn windows1252_reader(&self) -> ObjectReader<Windows1252Encoding> {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a utf-8 object reader from the parsed tape
+    pub fn utf8_reader(&self) -> ObjectReader<Utf8Encoding> {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum ParseState {
+    Key,
+    KeyValueSeparator,
+    ObjectValue,
+    ArrayValue,
+    ParseOpen,
+}
+
+/// I'm not smart enough to figure out the behavior of handling escape sequences when
+/// when scanning multi-bytes, so this fallback is for when I was to reset and
+/// process bytewise. It is much slower, but escaped strings should be rare enough
+/// that this shouldn't be an issue
+fn parse_quote_scalar_fallback(d: &[u8]) -> Result<(Scalar, &[u8]), Error> {
+    /* body omitted: interface retained */
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn parse_quote_scalar(d: &[u8]) -> Result<(Scalar, &[u8]), Error> {
+    /* body omitted: interface retained */
+}
+
+#[cfg(target_arch = "x86_64")]
+fn parse_quote_scalar(d: &[u8]) -> Result<(Scalar, &[u8]), Error> {
+    /* body omitted: interface retained */
 }
 ```
 </file>

@@ -11,11 +11,12 @@ pub extern "C" fn __unsat_poc_src_unix_rs_126_34_rule_432_dd63fb35e6() {
         .write(true)
         .create(true)
         .open(&path)
-        .unwrap();
-    file.set_len(4096).unwrap();
-    file.write_all(&[0u8; 1]).unwrap();
+        .expect("open temp file");
+    file.set_len(4096).expect("set_len");
+    file.write_all(&[0u8; 1]).expect("write");
 
-    let mmap = unsafe { crate::MmapOptions::new().len(1).map_mut(&file).unwrap() };
-    let _ = mmap.flush_range(1, 1);
+    let mut inner = MmapInner::map_mut(1, &file, 0).expect("map_mut");
+    let _ = inner.mut_ptr();
+    let _ = inner.flush(1, 0);
 }
 ```

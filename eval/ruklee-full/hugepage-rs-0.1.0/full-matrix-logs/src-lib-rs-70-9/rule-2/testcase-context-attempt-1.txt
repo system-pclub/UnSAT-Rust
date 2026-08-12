@@ -155,6 +155,7 @@ pub(crate) fn default_allocator() -> &'static HugePageAllocator {
 /// ```
 #[cfg(target_os = "linux")]
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN5allocE_src_lib_rs_54_14")]
 pub fn alloc(layout: Layout) -> *mut u8 {
     /* body omitted: interface retained */
 }
@@ -170,8 +171,12 @@ pub fn alloc(layout: Layout) -> *mut u8 {
 /// - layout must be the same layout that was used to allocate that block of memory.
 #[cfg(target_os = "linux")]
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN7deallocE_src_lib_rs_70_9")]
 pub fn dealloc(p: *mut u8, layout: Layout) {
     unsafe {
+        klee_ext_bind::bind_arg_ptr_value(1, p);
+        klee_ext_bind::bind_arg_u64(2, (layout).size() as u64);
+        klee_ext_bind::bind_arg_u64(3, (layout).align() as u64);
         klee_ext_bind::callsite!("src-lib-rs-70-9");
         let mut __klee_ret_src_lib_rs_70_9_dealloc = HUGEPAGE_ALLOCATOR
             .dealloc(p, layout);

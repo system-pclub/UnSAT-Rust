@@ -2,27 +2,11 @@
 #[cfg(feature = "unsat-poc-src-binary-reader-rs-103-30-rule-608-54db9f4601")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_binary_reader_rs_103_30_rule_608_54db9f4601() {
-    use std::io::{self, Read};
+    use crate::binary::TokenReader;
 
-    struct ShortRead {
-        data: &'static [u8],
-        pos: usize,
-    }
+    let data = [0u8; 1];
+    let mut reader = TokenReader::from_slice(&data[..]);
 
-    impl Read for ShortRead {
-        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-            if self.pos >= self.data.len() {
-                return Ok(0);
-            }
-            let n = out.len().min(self.data.len() - self.pos);
-            out[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
-            self.pos += n;
-            Ok(n)
-        }
-    }
-
-    let reader = ShortRead { data: b"A", pos: 0 };
-    let mut tr = crate::binary::TokenReader::new(reader);
-    let _ = tr.read_bytes(1);
+    let _ = reader.read_bytes(1);
 }
 ```

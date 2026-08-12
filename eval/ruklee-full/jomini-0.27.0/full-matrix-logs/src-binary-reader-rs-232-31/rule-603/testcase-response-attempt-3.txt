@@ -2,61 +2,11 @@
 #[cfg(feature = "unsat-poc-src-binary-reader-rs-232-31-rule-603-3197bf2d02")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_binary_reader_rs_232_31_rule_603_3197bf2d02() {
-    use std::io::Cursor;
+    use crate::binary::TokenReader;
 
-    struct NoResolve;
+    let backing = vec![0x04u8, 0x00].into_boxed_slice();
+    let mut reader = TokenReader::builder().buffer(backing).build(&b""[..]);
 
-    impl crate::binary::TokenResolver for NoResolve {
-        fn resolve(&self, _token: u16) -> Option<&str> {
-            None
-        }
-    }
-
-    #[derive(Debug, Default, Copy, Clone)]
-    struct F;
-
-    impl crate::Encoding for F {
-        fn decode<'a>(&self, data: &'a [u8]) -> std::borrow::Cow<'a, str> {
-            crate::Windows1252Encoding::decode(data)
-        }
-    }
-
-    impl crate::binary::BinaryFlavor for F {
-        fn visit_f32(&self, data: [u8; 4]) -> f32 {
-            f32::from_le_bytes(data)
-        }
-
-        fn visit_f64(&self, data: [u8; 8]) -> f64 {
-            f64::from_le_bytes(data)
-        }
-    }
-
-    let data = [0x2d, 0x28, 0x01, 0x00];
-    let reader = Cursor::new(&data[..]);
-    let mut tr = crate::binary::TokenReader::builder()
-        .buffer_len(8)
-        .build(reader);
-
-    let _ = tr.next();
-
-    let mut buf = vec![0u8; 4].into_boxed_slice();
-    let ptr = buf.as_mut_ptr();
-    let mut bw = crate::buffer::BufferWindowBuilder::default()
-        .buffer(buf)
-        .build();
-
-    bw.start = ptr;
-    bw.end = ptr.wrapping_add(1);
-
-    let mut tr2 = crate::binary::TokenReader::builder()
-        .buffer(bw.buf)
-        .build(Cursor::new(&data[..]));
-    tr2.buf = bw;
-
-    let _ = tr2.next();
-
-    let flavor = F;
-    let resolver = NoResolve;
-    let _ = flavor.deserialize_slice::<_, (), _>(&data[..], &resolver);
+    let _ = reader.next();
 }
 ```

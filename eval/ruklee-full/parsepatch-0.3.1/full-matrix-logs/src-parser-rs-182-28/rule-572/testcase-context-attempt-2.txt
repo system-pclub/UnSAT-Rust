@@ -1,0 +1,297 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+#[macro_use]
+extern crate log;
+
+pub mod parser;
+pub use self::parser::*;
+```
+</file>
+
+<file path="src/parser.rs">
+```rust
+use std::fmt::{self, Debug, Display, Formatter};
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+use std::result;
+#[derive(Debug)]
+pub enum ParsepatchError {
+    InvalidHunkHeader(usize),
+    NewModeExpected(usize),
+    NoFilename(usize),
+    IOError(String),
+    InvalidString(usize),
+}
+pub type Result<T> = result::Result<T, ParsepatchError>;
+impl Display for ParsepatchError {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// A type to handle lines in a diff
+pub trait Diff {
+    /// Set the file info
+    fn set_info(
+        &mut self,
+        old_name: &str,
+        new_name: &str,
+        op: FileOp,
+        binary_sizes: Option<Vec<BinaryHunk>>,
+        file_mode: Option<FileMode>,
+    );
+    /// Add a line in the diff
+    ///
+    /// If a line is added (+) then old_line is 0 and new_line is the line in the destination file.
+    ///
+    /// If a line is removed (-) then old_line is the line in the source file and new_line is 0.
+    ///
+    /// If a line is nothing ( ) then old_line is the line in the source file and new_line is the line in the destination file.
+    fn add_line(&mut self, old_line: u32, new_line: u32, line: &[u8]);
+    /// A new hunk is created
+    fn new_hunk(&mut self);
+    /// Close the diff: no more lines will be added
+    fn close(&mut self);
+}
+/// An enum containing the size of binary hunks
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BinaryHunk {
+    Literal(usize),
+    Delta(usize),
+}
+/// File mode change
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FileMode {
+    pub old: u32,
+    pub new: u32,
+}
+/// A type to handle patch
+pub trait Patch<D: Diff> {
+    /// Create a new diff where lines will be added
+    fn new_diff(&mut self) -> &mut D;
+    /// Close the patch
+    fn close(&mut self);
+}
+/// The different file operation
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FileOp {
+    /// The file is new with its mode
+    New(u32),
+    /// The file is deleted with its mode
+    Deleted(u32),
+    /// The file is renamed
+    Renamed,
+    /// The file is copied
+    Copied,
+    /// The file is touched
+    None,
+}
+impl FileOp {
+    pub fn is_new_or_deleted(self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+/// Type to read a patch
+pub struct PatchReader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+    line: usize,
+    last: Option<LineReader<'a>>,
+}
+pub struct LineReader<'a> {
+    pub buf: &'a [u8],
+    line: usize,
+}
+impl<'a> Debug for LineReader<'a> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> LineReader<'a> {
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_binary(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_rename_from(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_copy_from(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_new_file(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_triple_minus(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_triple_plus(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_index(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_deleted_file(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn get_line(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    fn get_file_op(&self) -> FileOp {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {
+        let buf = unsafe {
+            let __klee_arg0 = &self.buf;
+            let __klee_arg1 = 4..;
+            let __klee_len2 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
+            klee_ext_bind::callsite!("src-parser-rs-182-28");
+            let mut __klee_ret_src_parser_rs_182_28_get_unchecked = __klee_arg0
+                .get_unchecked(__klee_arg1);
+            __klee_ret_src_parser_rs_182_28_get_unchecked
+        };
+        let iter = &mut buf.iter();
+        let old_start = iter
+            .take_while(|&&c| c.is_ascii_digit())
+            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));
+        let c = *iter
+            .next()
+            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;
+        let old_lines = if c.is_ascii_digit() {
+            iter.take_while(|&&c| c.is_ascii_digit())
+                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))
+        } else {
+            1
+        };
+        if c != b'+' {
+            iter.find(|&&c| c == b'+');
+        }
+        let new_start = iter
+            .take_while(|&&c| c.is_ascii_digit())
+            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));
+        let c = *iter
+            .next()
+            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;
+        let new_lines = if c.is_ascii_digit() {
+            iter.take_while(|&&c| c.is_ascii_digit())
+                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))
+        } else {
+            1
+        };
+        Ok((old_start, old_lines, new_start, new_lines))
+    }
+    fn get_filename(buf: &[u8], line: usize) -> Result<&str> {
+        /* body omitted: interface retained */
+    }
+    fn get_file<'b>(slice: Option<&'b [u8]>, starter: &[u8]) -> &'b [u8] {
+        /* body omitted: interface retained */
+    }
+    fn parse_files(&self) -> Result<(&str, &str)> {
+        /* body omitted: interface retained */
+    }
+    fn parse_mode(&self, start: &'static str) -> u32 {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> PatchReader<'a> {
+    /// Read a patch from the given path
+    pub fn by_path<D: Diff, P: Patch<D>>(path: &PathBuf, patch: &mut P) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    /// Read a patch from the given buffer
+    pub fn by_buf<D: Diff, P: Patch<D>>(buf: &[u8], patch: &mut P) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn get_line(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    fn parse<D: Diff, P: Patch<D>>(&mut self, patch: &mut P) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_diff<D: Diff, P: Patch<D>>(
+        &mut self,
+        diff_line: &mut LineReader,
+        patch: &mut P,
+    ) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_minus<D: Diff, P: Patch<D>>(
+        &mut self,
+        line: &mut LineReader,
+        op: FileOp,
+        file_mode: Option<FileMode>,
+        patch: &mut P,
+    ) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_hunks<D: Diff>(
+        &mut self,
+        line: &mut LineReader,
+        diff: &mut D,
+    ) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_hunk<D: Diff>(
+        &mut self,
+        mut old_count: u32,
+        mut old_lines: u32,
+        mut new_count: u32,
+        mut new_lines: u32,
+        diff: &mut D,
+    ) {
+        /* body omitted: interface retained */
+    }
+    fn set_last(&mut self, line: LineReader<'a>) {
+        /* body omitted: interface retained */
+    }
+    fn next<F>(&mut self, filter: F, return_on_false: bool) -> Option<LineReader<'a>>
+    where
+        F: Fn(&LineReader) -> bool,
+    {
+        /* body omitted: interface retained */
+    }
+    fn skip_until_empty_line(&mut self) {
+        /* body omitted: interface retained */
+    }
+    fn parse_usize(buf: &[u8]) -> usize {
+        /* body omitted: interface retained */
+    }
+    fn skip_binary(&mut self) -> Vec<BinaryHunk> {
+        /* body omitted: interface retained */
+    }
+    fn useful(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn starter(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn diff(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn mv(_: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn hunk_at(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn old_mode(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn hunk_change(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

@@ -172,7 +172,80 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.buf",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "buf",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "_ZN6jomini6buffer12BufferWindow8fill_buf17hd9507212b7b6f3a2E.arg0.buf.data_ptr"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.buf",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "buf",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "_ZN6jomini6buffer12BufferWindow8fill_buf17hd9507212b7b6f3a2E.arg0.buf.length"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.end",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "end",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "_ZN6jomini6buffer12BufferWindow8fill_buf17hd9507212b7b6f3a2E.arg0.end"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.start",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "start",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "_ZN6jomini6buffer12BufferWindow8fill_buf17hd9507212b7b6f3a2E.arg0.start"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +297,10 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::BufferWindow` for `receiver` using fields visible from the injection module when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::fill_buf` directly
+1. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.buf` -> call target caller `buffer::BufferWindow::fill_buf`
+2. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.end` -> call target caller `buffer::BufferWindow::fill_buf`
+3. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.start` -> call target caller `buffer::BufferWindow::fill_buf`
+4. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::fill_buf` directly
 </candidate safe-call plans>
 
 
@@ -1526,11 +1602,7 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-The testcase compiled but did not reproduce the target violation.
-KLEE did not report the exact target callsite `src-buffer-rs-100-29`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.
-KLEE reached these callsite markers before missing the target (last markers first-order): `src-buffer-rs-57-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-buffer-rs-100-29` and reproduce the target counterexample there.
-The metadata caller `buffer::BufferWindow::fill_buf` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
-Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+generated testcase constructs non-public receiver field `buffer::BufferWindow.start_buf`; use safe constructors/mutators
 
 </previous attempt feedback>
 
@@ -6720,6 +6792,9 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         let ptr = unsafe {
             let __klee_arg0 = &self.start;
@@ -6733,6 +6808,9 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         unsafe {
             let __klee_arg1 = self.start;
@@ -6746,6 +6824,9 @@ impl BufferWindow {
         }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         unsafe {
             let __klee_arg3 = &self.end;
@@ -6761,6 +6842,9 @@ impl BufferWindow {
         self.prior_reads + self.consumed_data()
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         unsafe {
             let __klee_arg5 = &self.start;
@@ -6771,7 +6855,13 @@ impl BufferWindow {
             __klee_ret_src_buffer_rs_67_18_offset_from as usize
         }
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         debug_assert!(range.start >= self.start_buf);
         debug_assert!(range.end <= self.end);
@@ -8213,6 +8303,9 @@ impl<'a, T> VecAllocation<'a, T> {
                 value,
             );
             let __klee_arg2 = self.index + 1;
+            let __klee_vec_owner3 = &(self.vec) as *const _;
+            klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner3);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
             klee_ext_bind::callsite!("src-copyless-rs-19-13");
             let mut __klee_ret_src_copyless_rs_19_13_set_len = self
                 .vec
@@ -8549,6 +8642,9 @@ const fn trim_ascii_end(data: &[u8]) -> &[u8] {
     bytes
 }
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8encoding18decode_windows1252E_src_encoding_rs_136_22"
+)]
 pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {
     let bytes = trim_ascii_end(d);
     let mut eject = false;
@@ -8581,6 +8677,7 @@ fn windows_1252_create(d: &[u8], offset: usize) -> String {
     result
 }
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8encoding11decode_utf8E_src_encoding_rs_195_26")]
 pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {
     let d = trim_ascii_end(d);
     let mut chunk_iter = d.chunks_exact(8);

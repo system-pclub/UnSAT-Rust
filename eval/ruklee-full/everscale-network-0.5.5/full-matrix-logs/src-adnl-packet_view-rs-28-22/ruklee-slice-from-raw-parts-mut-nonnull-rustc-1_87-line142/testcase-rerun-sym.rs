@@ -6,14 +6,12 @@ pub extern "C" fn __unsat_poc_src_adnl_packet_view_rs_28_22_ruklee_slice_from_ra
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_000, "__unsat_rerun_sym_000");
     let mut __unsat_rerun_sym_001 = 22u8;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_001, "__unsat_rerun_sym_001");
-    let mut __unsat_rerun_sym_002 = 33u8;
+    let mut __unsat_rerun_sym_002 = 1;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_002, "__unsat_rerun_sym_002");
-    let mut __unsat_rerun_sym_003 = 2;
-    klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_003, "__unsat_rerun_sym_003");
-    let mut backing = [__unsat_rerun_sym_000, __unsat_rerun_sym_001, __unsat_rerun_sym_002];
-    let mut view = crate::adnl::packet_view::PacketView::from(&mut backing[..]);
+    let mut backing = vec![__unsat_rerun_sym_000, __unsat_rerun_sym_001];
+    let mut view = crate::adnl::packet_view::PacketView::from(backing.as_mut_slice());
 
-    view.remove_prefix(__unsat_rerun_sym_003);
+    view.remove_prefix(__unsat_rerun_sym_002);
 
     let _ = view.as_slice();
 }

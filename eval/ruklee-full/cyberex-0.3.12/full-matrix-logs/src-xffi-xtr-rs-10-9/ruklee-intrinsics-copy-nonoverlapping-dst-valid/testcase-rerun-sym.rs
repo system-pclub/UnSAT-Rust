@@ -7,7 +7,7 @@ pub extern "C" fn __unsat_poc_src_xffi_xtr_rs_10_9_ruklee_intrinsics_copy_nonove
     let mut __unsat_rerun_sym_001 = 2;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_001, "__unsat_rerun_sym_001");
     let s = "A";
-    let mut buf = [__unsat_rerun_sym_000; 1];
-    crate::xffi::xtr::string_to_buffer(s, buf.as_mut_ptr(), __unsat_rerun_sym_001);
+    let mut dst = [__unsat_rerun_sym_000; 1];
+    crate::xffi::xtr::string_to_buffer(s, dst.as_mut_ptr(), __unsat_rerun_sym_001);
 }
 

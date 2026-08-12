@@ -172,7 +172,44 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:utilities::VertexDataAdapter.position_offset",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "VertexDataAdapter"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "position_offset",
+        "kind": "public_field",
+        "root_type": "utilities::VertexDataAdapter"
+      }
+    ],
+    "symbol": "_ZN7meshopt9utilities17VertexDataAdapter7pos_ptr17h9814162683fbb68bE.arg0.position_offset"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:utilities::VertexDataAdapter.reader",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "VertexDataAdapter"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "reader",
+        "kind": "public_field",
+        "root_type": "utilities::VertexDataAdapter"
+      }
+    ],
+    "symbol": "_ZN7meshopt9utilities17VertexDataAdapter7pos_ptr17h9814162683fbb68bE.arg0.reader.inner.data_ptr"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +261,9 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `utilities::VertexDataAdapter` for `receiver` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr` directly
+1. construct `utilities::VertexDataAdapter` for `receiver` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> construct or obtain a `VertexDataAdapter` value -> set or populate public field `utilities::VertexDataAdapter.position_offset` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr`
+2. construct `utilities::VertexDataAdapter` for `receiver` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> construct or obtain a `VertexDataAdapter` value -> set or populate public field `utilities::VertexDataAdapter.reader` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr`
+3. construct `utilities::VertexDataAdapter` for `receiver` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr` directly
 </candidate safe-call plans>
 
 
@@ -421,99 +460,6 @@ Important:
   counterexample was not reproduced, generate a different safe testcase for the same
   target caller and target callsite.
 
-
-
-<previous attempt feedback>
-The previous testcase attempt failed. Fix the generated testcase using this
-compiler/tool feedback. Do not repeat the same mistake.
-
-Failed to compile '/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0':
-stdout: 
-stderr:    Compiling meshopt v0.3.0 (/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0)
-warning: unexpected `cfg` condition value: `cargo-clippy`
- --> src/ffi.rs:4:13
-  |
-4 | #![cfg_attr(feature = "cargo-clippy", allow(clippy::unreadable_literal))]
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: expected values for `feature` are: `bindgen`, `generate_bindings`, `unsat-poc-src-utilities-rs-188-34-rule-300-rustc-1-87-line880-6692cd8ea2`, and `unsat-poc-src-utilities-rs-188-34-rule-301-rustc-1-87-line880-672d9b7900`
-  = help: consider adding `cargo-clippy` as a feature in `Cargo.toml`
-  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
-  = note: `#[warn(unexpected_cfgs)]` on by default
-
-error[E0277]: `utilities::VertexDataAdapter<'_>` doesn't implement `Debug`
-    --> src/utilities.rs:250:73
-     |
-250  |     let adapter = crate::utilities::VertexDataAdapter::new(&data, 1, 1).unwrap_err();
-     |                                                                         ^^^^^^^^^^ `utilities::VertexDataAdapter<'_>` cannot be formatted using `{:?}`
-     |
-     = help: the trait `Debug` is not implemented for `utilities::VertexDataAdapter<'_>`
-     = note: add `#[derive(Debug)]` to `utilities::VertexDataAdapter<'_>` or manually `impl Debug for utilities::VertexDataAdapter<'_>`
-note: required by a bound in `std::result::Result::<T, E>::unwrap_err`
-    --> /home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:1200:12
-     |
-1198 |     pub fn unwrap_err(self) -> E
-     |            ---------- required by a bound in this associated function
-1199 |     where
-1200 |         T: fmt::Debug,
-     |            ^^^^^^^^^^ required by this bound in `Result::<T, E>::unwrap_err`
-help: consider annotating `utilities::VertexDataAdapter<'_>` with `#[derive(Debug)]`
-     |
-107  + #[derive(Debug)]
-108  | pub struct VertexDataAdapter<'a> {
-     |
-
-For more information about this error, try `rustc --explain E0277`.
-warning: `meshopt` (lib) generated 1 warning
-error: could not compile `meshopt` (lib) due to 1 previous error; 1 warning emitted
-
-
-command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-utilities-rs-188-34-rule-301-rustc-1-87-line880-672d9b7900', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
-returncode: 101
-
-[stdout]
-
-[stderr]
-   Compiling meshopt v0.3.0 (/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0)
-warning: unexpected `cfg` condition value: `cargo-clippy`
- --> src/ffi.rs:4:13
-  |
-4 | #![cfg_attr(feature = "cargo-clippy", allow(clippy::unreadable_literal))]
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: expected values for `feature` are: `bindgen`, `generate_bindings`, `unsat-poc-src-utilities-rs-188-34-rule-300-rustc-1-87-line880-6692cd8ea2`, and `unsat-poc-src-utilities-rs-188-34-rule-301-rustc-1-87-line880-672d9b7900`
-  = help: consider adding `cargo-clippy` as a feature in `Cargo.toml`
-  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
-  = note: `#[warn(unexpected_cfgs)]` on by default
-
-error[E0277]: `utilities::VertexDataAdapter<'_>` doesn't implement `Debug`
-    --> src/utilities.rs:250:73
-     |
-250  |     let adapter = crate::utilities::VertexDataAdapter::new(&data, 1, 1).unwrap_err();
-     |                                                                         ^^^^^^^^^^ `utilities::VertexDataAdapter<'_>` cannot be formatted using `{:?}`
-     |
-     = help: the trait `Debug` is not implemented for `utilities::VertexDataAdapter<'_>`
-     = note: add `#[derive(Debug)]` to `utilities::VertexDataAdapter<'_>` or manually `impl Debug for utilities::VertexDataAdapter<'_>`
-note: required by a bound in `std::result::Result::<T, E>::unwrap_err`
-    --> /home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:1200:12
-     |
-1198 |     pub fn unwrap_err(self) -> E
-     |            ---------- required by a bound in this associated function
-1199 |     where
-1200 |         T: fmt::Debug,
-     |            ^^^^^^^^^^ required by this bound in `Result::<T, E>::unwrap_err`
-help: consider annotating `utilities::VertexDataAdapter<'_>` with `#[derive(Debug)]`
-     |
-107  + #[derive(Debug)]
-108  | pub struct VertexDataAdapter<'a> {
-     |
-
-For more information about this error, try `rustc --explain E0277`.
-warning: `meshopt` (lib) generated 1 warning
-error: could not compile `meshopt` (lib) due to 1 previous error; 1 warning emitted
-
-
-</previous attempt feedback>
 
 
 <rust context mode="witness-guided-semantic-slice">

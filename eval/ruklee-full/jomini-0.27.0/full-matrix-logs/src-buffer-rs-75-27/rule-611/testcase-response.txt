@@ -2,16 +2,19 @@
 #[cfg(feature = "unsat-poc-src-buffer-rs-75-27-rule-611-5bb63ed423")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_buffer_rs_75_27_rule_611_5bb63ed423() {
-    let backing = vec![b'A', b'B', b'C', b'D'];
+    let backing = Box::new([b'a', b'b']);
+    let start = backing.as_ptr();
+    let end = start.wrapping_add(1);
+
     let window = BufferWindow {
-        buf: backing.clone().into_boxed_slice(),
-        start_buf: backing.as_ptr(),
-        start: backing.as_ptr(),
-        end: backing.as_ptr().wrapping_add(4),
+        buf: backing,
+        start_buf: start,
+        start,
+        end,
         prior_reads: 0,
     };
 
-    let range = window.start.wrapping_add(1)..window.start.wrapping_add(3);
+    let range = start..end;
     let _ = window.get(range);
 }
 ```

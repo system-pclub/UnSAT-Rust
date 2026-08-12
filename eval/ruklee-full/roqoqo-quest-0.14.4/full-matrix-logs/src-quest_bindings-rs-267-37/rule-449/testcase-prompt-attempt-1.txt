@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:quest_bindings::ComplexMatrixN.dimension",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "ComplexMatrixN"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "dimension",
+        "kind": "public_field",
+        "root_type": "quest_bindings::ComplexMatrixN"
+      }
+    ],
+    "symbol": "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_271_13.arg0.dimension"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +243,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `quest_bindings::ComplexMatrixN` for `receiver` using fields visible from the injection module when that better controls the target caller state: `complex_matrix: quest_sys::ComplexMatrixN`, `dimension: usize` -> or construct `quest_bindings::ComplexMatrixN` for `receiver` using constructor(s): `quest_bindings::ComplexMatrixN::new` -> call target caller `quest_bindings::ComplexMatrixN::set` directly
+1. construct `quest_bindings::ComplexMatrixN` for `receiver` using its genuinely public fields when that better controls the target caller state: `complex_matrix: quest_sys::ComplexMatrixN`, `dimension: usize` -> or construct `quest_bindings::ComplexMatrixN` for `receiver` using constructor(s): `quest_bindings::ComplexMatrixN::new` -> construct or obtain a `ComplexMatrixN` value -> set or populate public field `quest_bindings::ComplexMatrixN.dimension` -> call target caller `quest_bindings::ComplexMatrixN::set`
+2. construct `quest_bindings::ComplexMatrixN` for `receiver` using its genuinely public fields when that better controls the target caller state: `complex_matrix: quest_sys::ComplexMatrixN`, `dimension: usize` -> or construct `quest_bindings::ComplexMatrixN` for `receiver` using constructor(s): `quest_bindings::ComplexMatrixN::new` -> call target caller `quest_bindings::ComplexMatrixN::set` directly
 </candidate safe-call plans>
 
 
@@ -1200,17 +1220,50 @@ impl Qureg {
     /// Returns probability amplitudes for each state in the quantum register.
     ///
     /// Probability amplitudes give the probability that a quantum register collapses to the corresponding state after a measurement.
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg12probabilitesE_src_quest_bindings_rs_85_36"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg12probabilitesE_src_quest_bindings_rs_96_36"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg12probabilitesE_src_quest_bindings_rs_101_36"
+    )]
     pub fn probabilites(&self) -> Vec<f64> {
         /* body omitted: interface retained */
     }
     /// Returns the state_vector in the quantum register.
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg12state_vectorE_src_quest_bindings_rs_129_36"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg12state_vectorE_src_quest_bindings_rs_134_36"
+    )]
     pub fn state_vector(&self) -> Result<Vec<Complex64>, RoqoqoBackendError> {
         /* body omitted: interface retained */
     }
     /// Returns the density matrix in the quantum register in flattened form (row major).
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg34density_matrix_flattened_row_majorE_src_quest_bindings_rs_161_40"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg34density_matrix_flattened_row_majorE_src_quest_bindings_rs_166_40"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg34density_matrix_flattened_row_majorE_src_quest_bindings_rs_180_44"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg34density_matrix_flattened_row_majorE_src_quest_bindings_rs_185_44"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg34density_matrix_flattened_row_majorE_src_quest_bindings_rs_190_47"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings5Qureg34density_matrix_flattened_row_majorE_src_quest_bindings_rs_195_47"
+    )]
     pub fn density_matrix_flattened_row_major(
         &self,
     ) -> Result<Vec<Complex64>, RoqoqoBackendError> {
@@ -1219,7 +1272,10 @@ impl Qureg {
 }
 impl Drop for Qureg {
     fn drop(&mut self) {
-        /* body omitted: interface retained */
+        unsafe {
+            quest_sys::destroyQureg(self.quest_qureg, self.quest_env);
+            quest_sys::destroyQuESTEnv(self.quest_env);
+        }
     }
 }
 /// Wrapper around a QuEST C ComplexMatrixN
@@ -1251,7 +1307,31 @@ impl ComplexMatrixN {
     /// * `row` - The row value of the position in the matrix.
     /// * `column` - The column value of the position in the matrix.
     /// * `value` - The value that is set.
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_267_37"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_268_14"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_270_37"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_271_14"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_267_36"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_268_13"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_270_36"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN14quest_bindings14ComplexMatrixN3setE_src_quest_bindings_rs_271_13"
+    )]
     pub fn set(
         &mut self,
         row: usize,

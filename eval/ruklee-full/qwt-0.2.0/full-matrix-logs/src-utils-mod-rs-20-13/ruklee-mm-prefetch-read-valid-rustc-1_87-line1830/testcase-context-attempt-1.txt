@@ -1,0 +1,446 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+#![doc = include_str!("../README.md")]
+#![cfg_attr(
+    all(feature = "prefetch", target_arch = "aarch64"),
+    feature(stdarch_aarch64_prefetch)
+)]
+
+pub mod perf_and_test_utils;
+pub mod qvector;
+pub use qvector::QVector;
+pub use qvector::QVectorBuilder;
+
+pub mod bitvector;
+pub use bitvector::rs_narrow::RSNarrow;
+pub use bitvector::rs_wide::RSWide;
+pub use bitvector::BitVector;
+pub use bitvector::BitVectorMut;
+
+pub mod utils;
+
+pub use qvector::rs_qvector::RSQVector;
+pub use qvector::rs_qvector::RSQVector256;
+pub use qvector::rs_qvector::RSQVector512;
+
+pub mod quadwt;
+pub use quadwt::QWaveletTree;
+pub use quadwt::WTIndexable;
+
+pub mod space_usage;
+pub use space_usage::SpaceUsage;
+
+pub mod darray;
+pub use darray::DArray;
+
+/// Type alias for a Quad Wavelet Tree with block size of 256
+pub type QWT256<T> = QWaveletTree<T, RSQVector256>;
+/// Type alias for a Quad Wavelet Tree with block size of 512
+pub type QWT512<T> = QWaveletTree<T, RSQVector512>;
+/// Type alias for a Quad Wavelet Tree with block size of 256 with prefetching support enabled
+pub type QWT256Pfs<T> = QWaveletTree<T, RSQVector256, true>;
+/// Type alias for a Quad Wavelet Tree with block size of 512 with prefetching support enabled
+pub type QWT512Pfs<T> = QWaveletTree<T, RSQVector512, true>;
+
+
+use num_traits::Unsigned;
+
+/// A trait for the support `get` query over an `Unsigned` alphabet.
+pub trait AccessUnsigned {
+    type Item: Unsigned;
+
+    /// Returns the symbol at position `i`, or `None` if the index `i` is out of bounds.
+    fn get(&self, i: usize) -> Option<Self::Item>;
+
+    /// Returns the symbol at position `i`.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn get_unchecked(&self, i: usize) -> Self::Item;
+}
+
+/// A trait for the support of `rank` query over an `Unsigned` alphabet.
+pub trait RankUnsigned: AccessUnsigned {
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded.
+    fn rank(&self, symbol: Self::Item, i: usize) -> Option<usize>;
+
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded. The function does not check boundaries.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn rank_unchecked(&self, symbol: Self::Item, i: usize) -> usize;
+}
+
+/// A trait for the support of `select` query over an `Unsigned` alphabet.
+pub trait SelectUnsigned: AccessUnsigned {
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of
+    /// `symbol`.
+    /// We start counting from 0, so that `select(symbol, 0)` refers to the first
+    /// occurrence of `symbol`.
+    fn select(&self, symbol: Self::Item, i: usize) -> Option<usize>;
+
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of
+    /// `symbol`.
+    /// We start counting from 0, so that `select(symbol, 0)` refers to the first
+    /// occurrence of `symbol`.
+    ///
+    /// # Safety
+    /// Calling this method if the `i`th occurrence of `symbol` does not exist is undefined behavior.
+    unsafe fn select_unchecked(&self, symbol: Self::Item, i: usize) -> usize;
+}
+
+/// A trait for the support of `get` query over the binary alphabet.
+pub trait AccessBin {
+    /// Returns the bit at the given position `i`,
+    /// or [`None`] if ```i``` is out of bounds.
+    fn get(&self, i: usize) -> Option<bool>;
+
+    /// Returns the symbol at the given position `i`.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn get_unchecked(&self, i: usize) -> bool;
+}
+
+/// A trait for the support of `rank` query over the binary alphabet.
+pub trait RankBin {
+    /// Returns the number of zeros in the indexed sequence up to
+    /// position `i` excluded.
+    #[inline]
+    fn rank0(&self, i: usize) -> Option<usize> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the number of ones in the indexed sequence up to
+    /// position `i` excluded.
+    fn rank1(&self, i: usize) -> Option<usize>;
+
+    /// Returns the number of ones in the indexed sequence up to
+    /// position `i` excluded. `None` if the position is out of bound.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn rank1_unchecked(&self, i: usize) -> usize;
+
+    /// Returns the number of zeros in the indexed sequence up to
+    /// position `i` excluded.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    #[inline]
+    unsafe fn rank0_unchecked(&self, i: usize) -> usize {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A trait for the support of `select` query over the binary alphabet.
+pub trait SelectBin {
+    /// Returns the position of the `i+1`-th occurrence of a bit set to `1`.
+    /// Returns `None` if there is no such position.
+    fn select1(&self, i: usize) -> Option<usize>;
+
+    /// Returns the position of the `i+1`-th occurrence of a bit set to `1`.
+    ///
+    /// # Safety
+    /// This method doesn't check that such element exists
+    /// Calling this method with an i >= maximum rank1 is undefined behaviour.
+    unsafe fn select1_unchecked(&self, i: usize) -> usize;
+
+    /// Returns the position of the `i+1`-th occurrence of a bit set to `0`.
+    /// Returns `None` if there is no such position.
+    fn select0(&self, i: usize) -> Option<usize>;
+
+    /// Returns the position of the `i+1`-th occurrence of a bit set to  `0`.
+    ///
+    /// # Safety
+    /// This method doesnt check that such element exists
+    /// Calling this method with an `i >= maximum rank0` is undefined behaviour.
+    unsafe fn select0_unchecked(&self, i: usize) -> usize;
+}
+
+/// A trait for the support of `get` query over the alphabet [0..3].
+pub trait AccessQuad {
+    /// Returns the symbol at position `i`, `None` if the position is out of bound.
+    fn get(&self, i: usize) -> Option<u8>;
+
+    /// Returns the symbol at position `i`.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    unsafe fn get_unchecked(&self, i: usize) -> u8;
+}
+
+/// A trait for the support of `rank` query over the alphabet [0..3].
+pub trait RankQuad {
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded. `None` if the position is out of bound.
+    fn rank(&self, symbol: u8, i: usize) -> Option<usize>;
+
+    /// Returns the number of occurrences in the indexed sequence of `symbol` up to
+    /// position `i` excluded. The function does not check boundaries.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index or with a symbol larger than
+    /// 3 is undefined behavior.
+    unsafe fn rank_unchecked(&self, symbol: u8, i: usize) -> usize;
+}
+
+/// A trait for the support of `select` query over the alphabet [0..3].
+pub trait SelectQuad {
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of `symbol`
+    /// (0-indexed, mening the first occurrence is obtained using `i = 0`).
+    fn select(&self, symbol: u8, i: usize) -> Option<usize>;
+
+    /// Returns the position in the indexed sequence of the `i+1`th occurrence of `symbol`.
+    /// We start counting from 0, so that `select(symbol, 0)` refers to the first
+    /// occurrence of `symbol`.
+    ///
+    /// # Safety
+    /// Calling this method if the `i`th occurrence of `symbol` does not exist or with a symbol larger than 3 is undefined behavior.
+    unsafe fn select_unchecked(&self, symbol: u8, i: usize) -> usize;
+}
+
+/// A trait for the operations that a quad vector implementation needs
+/// to provide to be used in a Quad Wavelet Tree.
+pub trait WTSupport: AccessQuad + RankQuad + SelectQuad {
+    /// Returns the number of occurrences of `symbol` in the indexed sequence,
+    /// `None` if `symbol` is larger than 3, i.e., `symbol` is not valid.  
+    fn occs(&self, symbol: u8) -> Option<usize>;
+
+    /// Returns the number of occurrences of `symbol` in the indexed sequence.
+    ///
+    /// # Safety
+    /// Calling this method if the `symbol` is larger than 3 (i.e., `symbol` is not valid)
+    /// is undefined behavior.
+    unsafe fn occs_unchecked(&self, symbol: u8) -> usize;
+
+    /// Returns the number of occurrences of all the symbols smaller than the
+    /// input `symbol`, `None` if `symbol` is larger than 3,
+    /// i.e., `symbol` is not valid.  
+    fn occs_smaller(&self, symbol: u8) -> Option<usize>;
+
+    /// Returns the rank of `symbol` up to the block that contains the position
+    /// `i`.
+    ///
+    /// # Safety
+    /// Calling this method if the `symbol` is larger than 3 of
+    /// if the position `i` is out of bound is undefined behavior.
+    unsafe fn rank_block_unchecked(&self, symbol: u8, i: usize) -> usize;
+
+    /// Returns the number of occurrences of all the symbols smaller than the input
+    /// `symbol` in the indexed sequence.
+    ///
+    /// # Safety
+    /// Calling this method if the `symbol` is larger than 3 is undefined behavior.
+    unsafe fn occs_smaller_unchecked(&self, symbol: u8) -> usize;
+
+    /// Prefetches counter of superblock and blocks containing the position `pos`.
+    fn prefetch_info(&self, pos: usize);
+
+    /// Prefetches data containing the position `pos`.
+    fn prefetch_data(&self, pos: usize);
+}
+```
+</file>
+
+<file path="src/utils/mod.rs">
+```rust
+//! The module provides low-level utilities to perform
+//! bitwise operations, aligned allocation, and so on.
+use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use std::collections::{HashMap, HashSet};
+use std::ops::Shr;
+#[allow(non_snake_case)]
+#[inline(never)]
+pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {
+    let _p = data.as_ptr().wrapping_add(offset) as *const i8;
+    #[cfg(all(feature = "prefetch", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86")]
+        use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};
+        #[cfg(target_arch = "x86_64")]
+        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};
+        unsafe {
+            klee_ext_bind::callsite!("src-utils-mod-rs-20-13");
+            let mut __klee_ret_src_utils_mod_rs_20_13__mm_prefetch = _mm_prefetch(
+                _p,
+                _MM_HINT_NTA,
+            );
+        }
+    }
+    #[cfg(all(feature = "prefetch", target_arch = "aarch64"))]
+    {
+        use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};
+        unsafe {
+            _prefetch(_p, _PREFETCH_READ, _PREFETCH_LOCALITY0);
+        }
+    }
+}
+const K_SELECT_IN_BYTE: [u8; 2048] = [
+    8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0,
+    3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0,
+    2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0,
+    2, 0, 1, 0, 8, 8, 8, 1, 8, 2, 2, 1, 8, 3, 3, 1, 3, 2, 2, 1, 8, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1,
+    4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1,
+    6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1,
+    3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 8, 7, 7, 1, 7, 2, 2, 1,
+    7, 3, 3, 1, 3, 2, 2, 1, 7, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1, 7, 5, 5, 1,
+    5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1, 3, 2, 2, 1,
+    7, 6, 6, 1, 6, 2, 2, 1, 6, 3, 3, 1, 3, 2, 2, 1, 6, 4, 4, 1, 4, 2, 2, 1, 4, 3, 3, 1,
+    3, 2, 2, 1, 6, 5, 5, 1, 5, 2, 2, 1, 5, 3, 3, 1, 3, 2, 2, 1, 5, 4, 4, 1, 4, 2, 2, 1,
+    4, 3, 3, 1, 3, 2, 2, 1, 8, 8, 8, 8, 8, 8, 8, 2, 8, 8, 8, 3, 8, 3, 3, 2, 8, 8, 8, 4,
+    8, 4, 4, 2, 8, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 5, 8, 5, 5, 2, 8, 5, 5, 3, 5, 3, 3, 2,
+    8, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 6, 8, 6, 6, 2, 8, 6, 6, 3,
+    6, 3, 3, 2, 8, 6, 6, 4, 6, 4, 4, 2, 6, 4, 4, 3, 4, 3, 3, 2, 8, 6, 6, 5, 6, 5, 5, 2,
+    6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 7,
+    8, 7, 7, 2, 8, 7, 7, 3, 7, 3, 3, 2, 8, 7, 7, 4, 7, 4, 4, 2, 7, 4, 4, 3, 4, 3, 3, 2,
+    8, 7, 7, 5, 7, 5, 5, 2, 7, 5, 5, 3, 5, 3, 3, 2, 7, 5, 5, 4, 5, 4, 4, 2, 5, 4, 4, 3,
+    4, 3, 3, 2, 8, 7, 7, 6, 7, 6, 6, 2, 7, 6, 6, 3, 6, 3, 3, 2, 7, 6, 6, 4, 6, 4, 4, 2,
+    6, 4, 4, 3, 4, 3, 3, 2, 7, 6, 6, 5, 6, 5, 5, 2, 6, 5, 5, 3, 5, 3, 3, 2, 6, 5, 5, 4,
+    5, 4, 4, 2, 5, 4, 4, 3, 4, 3, 3, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 3,
+    8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 4, 8, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5,
+    8, 5, 5, 3, 8, 8, 8, 5, 8, 5, 5, 4, 8, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 3, 8, 8, 8, 6, 8, 6, 6, 4, 8, 6, 6, 4, 6, 4, 4, 3, 8, 8, 8, 6,
+    8, 6, 6, 5, 8, 6, 6, 5, 6, 5, 5, 3, 8, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 3, 8, 8, 8, 7, 8, 7, 7, 4, 8, 7, 7, 4,
+    7, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 3, 8, 7, 7, 5, 7, 5, 5, 4,
+    7, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 3, 8, 7, 7, 6,
+    7, 6, 6, 4, 7, 6, 6, 4, 6, 4, 4, 3, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 3,
+    7, 6, 6, 5, 6, 5, 5, 4, 6, 5, 5, 4, 5, 4, 4, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 8, 8, 8, 8, 5, 8, 8, 8, 5, 8, 5, 5, 4, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 4,
+    8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 6, 8, 6, 6, 5, 8, 6, 6, 5,
+    6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 7,
+    8, 7, 7, 5, 8, 7, 7, 5, 7, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 4, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6,
+    7, 6, 6, 5, 8, 7, 7, 6, 7, 6, 6, 5, 7, 6, 6, 5, 6, 5, 5, 4, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 5,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 6,
+    8, 8, 8, 6, 8, 6, 6, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 8, 8, 8, 8, 7,
+    8, 8, 8, 7, 8, 7, 7, 6, 8, 8, 8, 7, 8, 7, 7, 6, 8, 7, 7, 6, 7, 6, 6, 5, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 8, 8, 8, 8, 7, 8, 8, 8, 7, 8, 7, 7, 6,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 7,
+];
+/// Computes `select(1, k)` operation on a 64-bit word.
+///
+/// It computes the zero-based position of the (k+1)-th
+/// bit set in the word.
+///
+/// For example, if the word is ```(10101010)^4```, select for k = 0
+/// returns 1 and select for k=1 returns 3.
+///
+/// # Examples
+///
+/// ```
+/// use qwt::utils::select_in_word;
+///
+/// unsafe {
+///     let word = 2863311530; // word = (10101010)^4
+///     let res = select_in_word(word, 0);
+///     assert_eq!(res, 1_u32);
+///
+///     let res = select_in_word(word, 1);
+///     assert_eq!(res, 3_u32);
+/// }
+/// ```
+/// # Notes
+///
+/// The current implementation uses the broadword selection algorithm
+/// by Vigna \[1\], improved by Gog and Petri \[2\] and Vigna \[3\].
+/// Facebook's Folly implementation \[4\].
+/// - \[1\] Sebastiano Vigna. Broadword Implementation of Rank/Select Queries. WEA, 200
+/// - \[2\] Simon Gog, Matthias Petri. Optimized succinct data structures for massive data. Softw. Pract. Exper., 2014
+/// - \[3\] Sebastiano Vigna. MG4J 5.2.1. <http://mg4j.di.unimi.it/>
+/// - \[4\] Facebook Folly library: <https://github.com/facebook/folly>
+#[inline(always)]
+pub fn select_in_word(word: u64, k: u64) -> u32 {
+    /* body omitted: interface retained */
+}
+#[inline(always)]
+pub fn select_in_word_u128(word: u128, k: u64) -> u32 {
+    /* body omitted: interface retained */
+}
+/// Compute popcnt for a slice of N words.
+#[inline(always)]
+pub fn popcnt_wide<const N: usize>(data: &[u64]) -> usize {
+    /* body omitted: interface retained */
+}
+use std::mem;
+#[repr(C, align(64))]
+struct AlignToSixtyFour([u8; 64]);
+/// Returns a 64-byte aligned vector of T with at least the
+/// given capacity.
+///
+/// Todo: make this safe by checking invariants.
+///
+/// # Safety
+/// See Safety of [Vec::Vec::from_raw_parts](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.from_raw_parts).
+pub unsafe fn get_64byte_aligned_vector<T>(capacity: usize) -> Vec<T> {
+    /* body omitted: interface retained */
+}
+/// Computes the position of the most significant bit in v.
+pub fn msb<T>(v: T) -> u32
+where
+    T: PrimInt,
+{
+    /* body omitted: interface retained */
+}
+/// Remaps the alphabet of the input text with a new alphabet of consecutive symbols.
+/// New alphabet preserves the original relative order among symbols.
+/// Returns the alphabet size.
+pub fn text_remap(input: &mut [u8]) -> usize {
+    /* body omitted: interface retained */
+}
+/// Utility function to partition values in `sequence` by the two bits
+/// that we obtain by shifting `shift` bits to the right.
+/// This is used by the construction of WaveletTree.
+pub fn stable_partition_of_4<T>(sequence: &mut [T], shift: usize)
+where
+    T: Unsigned + PrimInt + Ord + Shr<usize> + AsPrimitive<u8>,
+    u8: AsPrimitive<T>,
+{
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

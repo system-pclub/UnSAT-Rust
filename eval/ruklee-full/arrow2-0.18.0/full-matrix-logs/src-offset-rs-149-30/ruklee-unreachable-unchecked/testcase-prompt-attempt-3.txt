@@ -174,23 +174,16 @@ target counterexample.
 <certainty call chain>
 [
   {
-    "certainty": "certain_symbol",
-    "evidence": "executed-field-symbol:offset::Offsets::<O>::new",
-    "steps": [
-      {
-        "detail": "DSL access path root",
-        "kind": "root",
-        "root_type": "Offsets"
-      },
-      {
-        "detail": "executed safe function materializes a controllable symbol",
-        "field": "0",
-        "function": "offset::Offsets::<O>::new",
-        "kind": "mutator",
-        "root_type": "offset::Offsets"
-      }
-    ],
-    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.receiver_control_state"
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.arg0.__0.cap"
+  },
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.arg0.__0.len"
   }
 ]
 </certainty call chain>
@@ -235,9 +228,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> construct or obtain a `Offsets` value -> call safe `offset::Offsets::<O>::new` to affect `0` -> call target caller `offset::Offsets::<O>::last`
-2. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> call safe `new` -> call target caller `offset::Offsets::<O>::last`
-3. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> call target caller `offset::Offsets::<O>::last` directly
+1. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new`, `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter` -> call target caller `offset::Offsets::<O>::last`
+2. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new`, `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter` -> call target caller `offset::Offsets::<O>::last` directly
 </candidate safe-call plans>
 
 
@@ -824,7 +816,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 2111:     type Error = Error;
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/datetime/mod.rs:1890-2016
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/chrono-0.4.45/src/datetime/mod.rs:1890-2016
 ```rust
 1890:     type Err = ParseError;
 1891: 
@@ -955,7 +947,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 2016: pub(crate) const UNIX_EPOCH_DAY: i64 = 719_163;
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/format/mod.rs:424-563
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/chrono-0.4.45/src/format/mod.rs:424-563
 ```rust
 424: pub struct ParseError(ParseErrorKind);
 425: 
@@ -5544,6 +5536,9 @@ impl<O: Offset> BinaryArray<O> {
         let (start, end) = self.offsets.start_end_unchecked(i);
         let __klee_arg0 = &self.values;
         let __klee_arg1 = start..end;
+        let __klee_len2 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
         klee_ext_bind::callsite!("src-array-binary-mod-rs-142-18");
         let mut __klee_ret_src_array_binary_mod_rs_142_18_get_unchecked = __klee_arg0
             .get_unchecked(__klee_arg1);
@@ -6455,6 +6450,9 @@ impl<O: Offset> MutableBinaryValuesArray<O> {
         let (start, end) = self.offsets.start_end(i);
         let __klee_arg0 = &self.values;
         let __klee_arg1 = start..end;
+        let __klee_len2 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
         klee_ext_bind::callsite!("src-array-binary-mutable_values-rs-161-18");
         let mut __klee_ret_src_array_binary_mutable_values_rs_161_18_get_unchecked = __klee_arg0
             .get_unchecked(__klee_arg1);
@@ -9893,6 +9891,9 @@ impl FixedSizeBinaryArray {
     /// # Panic
     /// Panics iff `i >= self.len()`.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array17fixed_size_binary20FixedSizeBinaryArray5valueE_src_array_fixed_size_binary_mod_rs_149_18_root"
+    )]
     pub fn value(&self, i: usize) -> &[u8] {
         assert!(i < self.len());
         unsafe {
@@ -9908,9 +9909,15 @@ impl FixedSizeBinaryArray {
     /// # Safety
     /// Assumes that the `i < self.len`.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array17fixed_size_binary20FixedSizeBinaryArray5valueE_src_array_fixed_size_binary_mod_rs_149_18"
+    )]
     pub unsafe fn value_unchecked(&self, i: usize) -> &[u8] {
         let __klee_arg0 = &self.values;
         let __klee_arg1 = i * self.size..(i + 1) * self.size;
+        let __klee_len2 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
         klee_ext_bind::callsite!("src-array-fixed_size_binary-mod-rs-149-18");
         let mut __klee_ret_src_array_fixed_size_binary_mod_rs_149_18_get_unchecked = __klee_arg0
             .get_unchecked(__klee_arg1);
@@ -9920,6 +9927,9 @@ impl FixedSizeBinaryArray {
     /// # Panics
     /// iff `i >= self.len()`
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array17fixed_size_binary20FixedSizeBinaryArray3getE_src_array_fixed_size_binary_mod_rs_169_27_root"
+    )]
     pub fn get(&self, i: usize) -> Option<&[u8]> {
         if !self.is_null(i) {
             unsafe {
@@ -16380,8 +16390,9 @@ impl<T: NativeType> PrimitiveArray<T> {
     #[inline(never)]
     pub unsafe fn value_unchecked(&self, i: usize) -> T {
         let __klee_arg0 = &self.values;
-        klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &i);
+        let __klee_len1 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+        klee_ext_bind::bind_arg_slice_index_value(1, &i, __klee_len1);
         klee_ext_bind::callsite!("src-array-primitive-mod-rs-208-27");
         let mut __klee_ret_src_array_primitive_mod_rs_208_27_get_unchecked = __klee_arg0
             .get_unchecked(i);
@@ -16983,8 +16994,9 @@ impl<T: NativeType> MutablePrimitiveArray<T> {
     /// Caller must ensure `index < self.len()`
     #[inline(never)]
     pub unsafe fn set_unchecked(&mut self, index: usize, value: Option<T>) {
-        klee_ext_bind::bind_arg_u64(1, (self.values).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &index);
+        let __klee_len1 = (self.values).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+        klee_ext_bind::bind_arg_slice_index_value(1, &index, __klee_len1);
         klee_ext_bind::callsite!("src-array-primitive-mutable-rs-315-18");
         let mut __klee_ret_src_array_primitive_mutable_rs_315_18_get_unchecked_mut = self
             .values
@@ -17371,6 +17383,9 @@ pub(crate) fn try_check_utf8<O: Offset, C: OffsetsContainer<O>>(
         };
         let starts = unsafe {
             let __klee_arg0 = ..=last;
+            let __klee_len1 = (offsets).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg0, __klee_len1);
             klee_ext_bind::callsite!("src-array-specification-rs-89-31");
             let mut __klee_ret_src_array_specification_rs_89_31_get_unchecked = offsets
                 .get_unchecked(__klee_arg0);
@@ -17380,8 +17395,9 @@ pub(crate) fn try_check_utf8<O: Offset, C: OffsetsContainer<O>>(
         for start in starts {
             let start = start.to_usize();
             let b = *unsafe {
-                klee_ext_bind::bind_arg_u64(1, (values).len() as u64);
-                klee_ext_bind::bind_arg_u64_value(2, &start);
+                let __klee_len2 = (values).len() as u64;
+                klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+                klee_ext_bind::bind_arg_slice_index_value(1, &start, __klee_len2);
                 klee_ext_bind::callsite!("src-array-specification-rs-96-31");
                 let mut __klee_ret_src_array_specification_rs_96_31_get_unchecked = values
                     .get_unchecked(start);
@@ -18721,6 +18737,9 @@ impl UnionArray {
     }
     /// Returns the index and slot of the field to select from `self.fields`.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array5union10UnionArray5indexE_src_array_union_mod_rs_295_18_root"
+    )]
     pub fn index(&self, index: usize) -> (usize, usize) {
         assert!(index < self.len());
         unsafe {
@@ -18735,12 +18754,16 @@ impl UnionArray {
     /// # Safety
     /// This function is safe iff `index < self.len`.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array5union10UnionArray5indexE_src_array_union_mod_rs_295_18"
+    )]
     pub unsafe fn index_unchecked(&self, index: usize) -> (usize, usize) {
         debug_assert!(index < self.len());
         let type_ = unsafe {
             let __klee_arg0 = &self.types;
-            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &index);
+            let __klee_len1 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+            klee_ext_bind::bind_arg_slice_index_value(1, &index, __klee_len1);
             klee_ext_bind::callsite!("src-array-union-mod-rs-295-18");
             let mut __klee_ret_src_array_union_mod_rs_295_18_get_unchecked = __klee_arg0
                 .get_unchecked(index);
@@ -18758,6 +18781,9 @@ impl UnionArray {
     /// # Panics
     /// iff `index >= self.len()`
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array5union10UnionArray5valueE_src_array_union_mod_rs_323_18_root"
+    )]
     pub fn value(&self, index: usize) -> Box<dyn Scalar> {
         assert!(index < self.len());
         unsafe {
@@ -18771,15 +18797,19 @@ impl UnionArray {
     /// # Safety
     /// This function is safe iff `i < self.len`.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN5array5union10UnionArray5valueE_src_array_union_mod_rs_323_18"
+    )]
     pub unsafe fn value_unchecked(&self, index: usize) -> Box<dyn Scalar> {
         debug_assert!(index < self.len());
         let (type_, index) = self.index_unchecked(index);
         debug_assert!(type_ < self.fields.len());
-        let __klee_arg1 = &self.fields;
-        klee_ext_bind::bind_arg_u64(1, (__klee_arg1).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &type_);
+        let __klee_arg2 = &self.fields;
+        let __klee_len3 = (__klee_arg2).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len3);
+        klee_ext_bind::bind_arg_slice_index_value(1, &type_, __klee_len3);
         klee_ext_bind::callsite!("src-array-union-mod-rs-323-18");
-        let mut __klee_ret_src_array_union_mod_rs_323_18_get_unchecked = __klee_arg1
+        let mut __klee_ret_src_array_union_mod_rs_323_18_get_unchecked = __klee_arg2
             .get_unchecked(type_);
         let field = __klee_ret_src_array_union_mod_rs_323_18_get_unchecked.as_ref();
         new_scalar(field, index)
@@ -19243,6 +19273,9 @@ impl<O: Offset> Utf8Array<O> {
         let (start, end) = self.offsets.start_end_unchecked(i);
         let __klee_arg0 = &self.values;
         let __klee_arg1 = start..end;
+        let __klee_len2 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
         klee_ext_bind::callsite!("src-array-utf8-mod-rs-158-18");
         let mut __klee_ret_src_array_utf8_mod_rs_158_18_get_unchecked = __klee_arg0
             .get_unchecked(__klee_arg1);
@@ -20394,6 +20427,9 @@ impl<O: Offset> MutableUtf8ValuesArray<O> {
         let (start, end) = self.offsets.start_end(i);
         let __klee_arg0 = &self.values;
         let __klee_arg1 = start..end;
+        let __klee_len2 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
         klee_ext_bind::callsite!("src-array-utf8-mutable_values-rs-197-18");
         let mut __klee_ret_src_array_utf8_mutable_values_rs_197_18_get_unchecked = __klee_arg0
             .get_unchecked(__klee_arg1);
@@ -20831,6 +20867,9 @@ pub unsafe fn from_chunk_iter_unchecked<T: BitChunk, I: Iterator<Item = T>>(
         dst.offset_from(buffer.as_ptr()) as usize, len,
         "Trusted iterator length was not accurately reported"
     );
+    let __klee_vec_owner2 = &(buffer) as *const _;
+    klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner2);
+    klee_ext_bind::bind_arg_u64_value(1, &len);
     klee_ext_bind::callsite!("src-bitmap-bitmap_ops-rs-42-14-set_len");
     let mut __klee_ret_src_bitmap_bitmap_ops_rs_42_14_set_len_set_len = buffer
         .set_len(len);
@@ -23602,9 +23641,13 @@ impl<T> Buffer<T> {
         unsafe {
             let __klee_arg0 = &self.data;
             let __klee_arg1 = self.offset..self.offset + self.length;
+            let __klee_len2 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
             klee_ext_bind::callsite!("src-buffer-immutable-rs-113-13");
-            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg1);
+            let __klee_len3 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len3);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len3);
             klee_ext_bind::callsite!("src-buffer-immutable-rs-114-18");
             let mut __klee_ret_src_buffer_immutable_rs_114_18_get_unchecked = __klee_arg0
                 .get_unchecked(__klee_arg1);
@@ -42619,6 +42662,9 @@ impl ArrowSchema {
     }
     /// returns the format of this schema.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN3ffi6schema9generated6formatE_src_ffi_schema_rs_151_18"
+    )]
     pub(crate) fn format(&self) -> &str {
         assert!(! self.format.is_null());
         unsafe {
@@ -42636,6 +42682,9 @@ impl ArrowSchema {
     ///
     /// Since this field is optional, `""` is returned if it is not set (as per the spec).
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN3ffi6schema9generated4nameE_src_ffi_schema_rs_164_18"
+    )]
     pub(crate) fn name(&self) -> &str {
         if self.name.is_null() {
             return "";
@@ -42651,7 +42700,13 @@ impl ArrowSchema {
             .to_str()
             .unwrap()
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN3ffi6schema9generated5childE_src_ffi_schema_rs_169_18_as_ref"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN3ffi6schema9generated5childE_src_ffi_schema_rs_169_18"
+    )]
     pub(crate) fn child(&self, index: usize) -> &'static Self {
         assert!(index < self.n_children as usize);
         unsafe {
@@ -42668,6 +42723,9 @@ impl ArrowSchema {
         }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN3ffi6schema9generated10dictionaryE_src_ffi_schema_rs_176_23"
+    )]
     pub(crate) fn dictionary(&self) -> Option<&'static Self> {
         if self.dictionary.is_null() {
             return None;
@@ -73467,19 +73525,21 @@ impl<O: Offset> Offsets<O> {
     #[inline(never)]
     pub unsafe fn start_end_unchecked(&self, index: usize) -> (usize, usize) {
         let __klee_arg0 = &self.0;
-        klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &index);
+        let __klee_len1 = (__klee_arg0).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+        klee_ext_bind::bind_arg_slice_index_value(1, &index, __klee_len1);
         klee_ext_bind::callsite!("src-offset-rs-160-18");
         let mut __klee_ret_src_offset_rs_160_18_get_unchecked = __klee_arg0
             .get_unchecked(index);
         let start = __klee_ret_src_offset_rs_160_18_get_unchecked.to_usize();
-        let __klee_arg1 = &self.0;
-        let __klee_arg2 = index + 1;
-        klee_ext_bind::bind_arg_u64(1, (__klee_arg1).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg2);
+        let __klee_arg2 = &self.0;
+        let __klee_arg3 = index + 1;
+        let __klee_len4 = (__klee_arg2).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len4);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg3, __klee_len4);
         klee_ext_bind::callsite!("src-offset-rs-160-18-get_unchecked");
-        let mut __klee_ret_src_offset_rs_160_18_get_unchecked_get_unchecked = __klee_arg1
-            .get_unchecked(__klee_arg2);
+        let mut __klee_ret_src_offset_rs_160_18_get_unchecked_get_unchecked = __klee_arg2
+            .get_unchecked(__klee_arg3);
         let end = __klee_ret_src_offset_rs_160_18_get_unchecked_get_unchecked.to_usize();
         (start, end)
     }
@@ -73730,20 +73790,22 @@ impl<O: Offset> OffsetsBuffer<O> {
     /// `index` must be `< self.len()`
     #[inline(never)]
     pub unsafe fn start_end_unchecked(&self, index: usize) -> (usize, usize) {
-        let __klee_arg3 = &self.0;
-        klee_ext_bind::bind_arg_u64(1, (__klee_arg3).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &index);
+        let __klee_arg5 = &self.0;
+        let __klee_len6 = (__klee_arg5).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len6);
+        klee_ext_bind::bind_arg_slice_index_value(1, &index, __klee_len6);
         klee_ext_bind::callsite!("src-offset-rs-429-18");
-        let mut __klee_ret_src_offset_rs_429_18_get_unchecked = __klee_arg3
+        let mut __klee_ret_src_offset_rs_429_18_get_unchecked = __klee_arg5
             .get_unchecked(index);
         let start = __klee_ret_src_offset_rs_429_18_get_unchecked.to_usize();
-        let __klee_arg4 = &self.0;
-        let __klee_arg5 = index + 1;
-        klee_ext_bind::bind_arg_u64(1, (__klee_arg4).len() as u64);
-        klee_ext_bind::bind_arg_u64_value(2, &__klee_arg5);
+        let __klee_arg7 = &self.0;
+        let __klee_arg8 = index + 1;
+        let __klee_len9 = (__klee_arg7).len() as u64;
+        klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len9);
+        klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg8, __klee_len9);
         klee_ext_bind::callsite!("src-offset-rs-429-18-get_unchecked");
-        let mut __klee_ret_src_offset_rs_429_18_get_unchecked_get_unchecked = __klee_arg4
-            .get_unchecked(__klee_arg5);
+        let mut __klee_ret_src_offset_rs_429_18_get_unchecked_get_unchecked = __klee_arg7
+            .get_unchecked(__klee_arg8);
         let end = __klee_ret_src_offset_rs_429_18_get_unchecked_get_unchecked.to_usize();
         (start, end)
     }

@@ -1,0 +1,868 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/adnl/handshake.rs">
+```rust
+use std::convert::TryInto;
+use std::sync::Arc;
+use aes::cipher::{StreamCipher, StreamCipherSeek};
+use everscale_crypto::ed25519;
+use super::encryption::*;
+use super::keystore::Key;
+use super::node_id::{NodeIdFull, NodeIdShort};
+use super::packet_view::*;
+use crate::util::FastHashMap;
+#[inline(always)]
+pub fn compute_handshake_prefix_len(version: Option<u16>) -> usize {
+    /* body omitted: interface retained */
+}
+/// Modifies `buffer` in-place to contain the handshake packet
+pub fn build_handshake_packet(
+    peer_id: &NodeIdShort,
+    peer_id_full: &NodeIdFull,
+    buffer: &mut Vec<u8>,
+    version: Option<u16>,
+) {
+    /* body omitted: interface retained */
+}
+/// Attempts to decode the buffer as an ADNL handshake packet. On a successful nonempty result,
+/// this buffer remains as decrypted packet data.
+///
+/// Expected packet structure (without version):
+///  - 0..=31 - short local node id
+///  - 32..=63 - sender pubkey
+///  - 64..=95 - checksum
+///  - 96..... - encrypted data
+///
+/// Expected packet structure (with version):
+///  - 0..=31 - short local node id
+///  - 32..=63 - sender pubkey
+///  - 64..=68 - XOR'ed ADNL version
+///  - 68..=100 - checksum
+///  - 100..... - encrypted data
+///
+/// **NOTE: even on failure buffer can be modified**
+#[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN4adnl9handshake22parse_handshake_packetE_src_adnl_handshake_rs_107_29"
+)]
+pub fn parse_handshake_packet(
+    keys: &FastHashMap<NodeIdShort, Arc<Key>>,
+    buffer: &mut PacketView<'_>,
+) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {
+    const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;
+    const DATA_START: usize = 96;
+    const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;
+    const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;
+    const EXT_DATA_START: usize = 100;
+    const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;
+    const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;
+    if buffer.len() < DATA_START {
+        return Err(HandshakeError::BadHandshakePacketLength);
+    }
+    let local_id = unsafe {
+        &*klee_ext_bind::raw_pointer_deref!(
+            "src-adnl-handshake-rs-107-29", (buffer.as_ptr() as * const NodeIdShort)
+        )
+    };
+    let local_key = match keys.get(local_id) {
+        Some(key) => key,
+        None => return Ok(None),
+    };
+    let shared_secret = match ed25519::PublicKey::from_bytes(
+        buffer[PUBLIC_KEY_RANGE].try_into().unwrap(),
+    ) {
+        Some(other_public_key) => {
+            local_key.secret_key().compute_shared_secret(&other_public_key)
+        }
+        None => return Err(HandshakeError::InvalidPublicKey),
+    };
+    if buffer.len() > EXT_DATA_START {
+        if let Some(version) = decode_version::<
+            EXT_DATA_START,
+        >((&buffer[..EXT_DATA_START]).try_into().unwrap()) {
+            let mut cipher = build_packet_cipher(
+                &shared_secret,
+                &buffer[EXT_CHECKSUM_RANGE].try_into().unwrap(),
+            );
+            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);
+            if compute_packet_data_hash(Some(version), &buffer[EXT_DATA_RANGE])
+                .as_slice() == &buffer[EXT_CHECKSUM_RANGE]
+            {
+                buffer.remove_prefix(EXT_DATA_START);
+                return Ok(Some((*local_id, Some(version))));
+            }
+            cipher.seek(0);
+            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);
+        }
+    }
+    build_packet_cipher(&shared_secret, &buffer[CHECKSUM_RANGE].try_into().unwrap())
+        .apply_keystream(&mut buffer[DATA_RANGE]);
+    if compute_packet_data_hash(None, &buffer[DATA_RANGE]).as_slice()
+        != &buffer[CHECKSUM_RANGE]
+    {
+        return Err(HandshakeError::BadHandshakePacketChecksum);
+    }
+    buffer.remove_prefix(DATA_START);
+    Ok(Some((*local_id, None)))
+}
+#[derive(thiserror::Error, Debug)]
+pub enum HandshakeError {
+    #[error("Bad handshake packet length")]
+    BadHandshakePacketLength,
+    #[error("Bad handshake packet checksum")]
+    BadHandshakePacketChecksum,
+    #[error("Invalid public key")]
+    InvalidPublicKey,
+}
+```
+</file>
+
+<file path="src/adnl/keystore.rs">
+```rust
+use std::collections::hash_map;
+use std::sync::Arc;
+
+use anyhow::Result;
+use everscale_crypto::ed25519;
+
+use super::node_id::{ComputeNodeIds, NodeIdFull, NodeIdShort};
+use crate::util::FastHashMap;
+
+/// Tagged keystore for ADNL keys
+#[derive(Default)]
+pub struct Keystore {
+    keys: FastHashMap<NodeIdShort, Arc<Key>>,
+    tags: FastHashMap<usize, NodeIdShort>,
+}
+
+impl Keystore {
+    pub fn builder() -> KeystoreBuilder {
+        /* body omitted: interface retained */
+    }
+
+    /// Searches key by its short id
+    pub fn key_by_id(&self, id: &NodeIdShort) -> Result<&Arc<Key>, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Searches key by its tag
+    pub fn key_by_tag(&self, tag: usize) -> Result<&Arc<Key>, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner keys table
+    #[inline(always)]
+    pub fn keys(&self) -> &FastHashMap<NodeIdShort, Arc<Key>> {
+        /* body omitted: interface retained */
+    }
+
+    /// Adds a new key with the specified tag
+    ///
+    /// NOTE: duplicate keys or tags will cause this method to fail
+    pub fn add_key(&mut self, key: [u8; 32], tag: usize) -> Result<NodeIdShort, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Default)]
+pub struct KeystoreBuilder {
+    keystore: Keystore,
+}
+
+impl KeystoreBuilder {
+    pub fn build(self) -> Keystore {
+        /* body omitted: interface retained */
+    }
+
+    /// Adds a new key with the specified tag
+    ///
+    /// NOTE: duplicate keys or tags will cause this method to fail
+    pub fn with_tagged_key(mut self, key: [u8; 32], tag: usize) -> Result<Self, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new keystore from tagged secret keys
+    pub fn with_tagged_keys<I>(mut self, keys: I) -> Result<Self, KeystoreError>
+    where
+        I: IntoIterator<Item = ([u8; 32], usize)>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+/// ADNL key with precomputed node IDs
+pub struct Key {
+    short_id: NodeIdShort,
+    full_id: NodeIdFull,
+    secret_key: ed25519::ExpandedSecretKey,
+}
+
+impl Key {
+    /// Constructs new key from the secret key bytes
+    pub fn from_bytes(secret_key: [u8; 32]) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns short key id
+    #[inline(always)]
+    pub fn id(&self) -> &NodeIdShort {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns full key id
+    #[inline(always)]
+    pub fn full_id(&self) -> &NodeIdFull {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner secret key (as expanded)
+    #[inline(always)]
+    pub fn secret_key(&self) -> &ed25519::ExpandedSecretKey {
+        /* body omitted: interface retained */
+    }
+
+    /// Signs serializable boxed data
+    #[inline(always)]
+    pub fn sign<T: tl_proto::TlWrite<Repr = tl_proto::Boxed>>(&self, data: T) -> [u8; 64] {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<ed25519::SecretKey> for Key {
+    fn from(secret_key: ed25519::SecretKey) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum KeystoreError {
+    #[error("Duplicated key tag {0}")]
+    DuplicatedKeyTag(usize),
+    #[error("Duplicated secret key {0}")]
+    DuplicatedKey(usize),
+    #[error("Key is not found: {0}")]
+    KeyIdNotFound(NodeIdShort),
+    #[error("Key tag not found: {0}")]
+    KeyTagNotFound(usize),
+    #[error("Unexpected key")]
+    UnexpectedKey,
+}
+```
+</file>
+
+<file path="src/adnl/mod.rs">
+```rust
+//! ## ADNL - Abstract Datagram Network Layer
+//!
+//! ADNL is a UDP-based data transfer protocol. It is a base layer for other protocols, used
+//! in Everscale. It provides no guarantees of reliability, so it should only be used for
+//! small data transfers. There is a support for multipart transfers, but the user must be
+//! prepared, that some parts of them may be lost and full transfer will be lost.
+//!
+//! #### Brief overview
+//!
+//! Each peer has its own keypair. In most cases it is a ed25519 keypair
+//! (see [`KeyPair`]). The public key of this keypair is also called
+//! a **full peer id** ([`NodeIdFull`]). The hash of the TL representation
+//! of its full id is a **short peer id** ([`NodeIdShort`]).
+//!
+//! Each peer remembers unix timestamp (in seconds) at the moment of initialization.
+//! It is called **reinit date** and used to describe peer's state "version".
+//! If other peers see that the reinit date of peer `A` has changed, they must treat
+//! peer `A` as a completely new peer.
+//!
+//! ADNL maintains a state for each peer it has communicated with. This state contains
+//! unique channel keypair, reinit date of the remote peer and sequence numbers of packets
+//! for both directions.
+//!
+//! Communication between peers is done by sending packets through UDP. Each packet length must be
+//! less than MTU (*1500 bytes*). Packets are encrypted with a shared secret key and have some basic
+//! integrity checks (checksum), ordering (sequence numbers, timings) and deduplication
+//! (short packets history). Packet can contain multiple ADNL messages ([`Message`]) and must
+//! address a specific peer by specifying its short or full peer id.
+//!
+//! #### Packet versions
+//!
+//! - **Handshake packet**: when peer `A` sends its first message to the peer `B` it wraps it into
+//!   a handshake packet. For each packet peer `A` generates new keypair.
+//!   It computes shared secret using `x25519(random_secret_key, peer_B_public_key)` and uses it
+//!   to encrypt data. When peer `B` receives this packet it computes shared secret using
+//!   `x25519(peer_B_secret_key, random_public_key)` and uses it to decrypt data. So handshake
+//!   packet contains peer `B` short id, public key of the random keypair, checksum and encrypted data.
+//!
+//! - **Channel packet**: after channel has been established, each peer will use a smaller packet
+//!   structure called channel packet. Instead of generating a new keypair for each packet it will
+//!   use shared secret from the channel to encrypt and decrypt data. Channel packet contains
+//!   channel id, checksum and encrypted data.
+//!
+//! #### Message types
+//!
+//! - **`Nop`** - an empty message that is only used by the other peer to update the state of our peer.
+//! - **`Custom`** - a one-way message that just contains a raw data. Mostly used by RLDP or other
+//!   protocols on top of ADNL.
+//! - **`Query`** - a request to the other peer which in most cases requires a response.
+//! - **`Answer`** - a response to the **`Query`** message.
+//! - **`CreateChannel`** - a special message with the info about newly created channel. Remote peer
+//!   should also create a channel and send a confirmation about this.
+//! - **`ConfirmChannel`** - channel confirmation to the **`CreateChannel`** message.
+//! - **`Part`** - special message that is used to split a large message across multiple packets.
+//!   After all message parts are received, the data is combined and deserialized into the original
+//!   message. Will mostly be used for large **`Custom`**, **`Query`** or **`Answer`** messages.
+//!
+//! #### Channels
+//!
+//! Communication using only handshake packets is quite inefficient, so there is a some kind of
+//! short-lived connections. When new remove peer is added, the channel keypair is also generated.
+//! With the first packet, peer `A` sends a **`CreateChannel`** message where it specifies channel
+//! public key from its side (and the date of its creation). Peer `B` replies with a **`ConfirmChannel`**
+//! message where it specifies same values and the channel public key from its side.
+//!
+//! Each peer can now create four shared secrets: two for encryption and two for decryption. Why two?
+//! Because there are two versions of channels - ordinary and priority. There is not a lot of difference
+//! between them, but some nodes could handle packet from the priority channel first.
+//!
+//! When remove peer is inactive for some time, and any query to it completes with timeout, the channel
+//! is regenerated.
+//!
+//! [`KeyPair`]: everscale_crypto::ed25519::KeyPair
+//! [`NodeIdFull`]: NodeIdFull
+//! [`NodeIdShort`]: NodeIdShort
+//! [`Message`]: crate::proto::adnl::Message
+
+use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs};
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use frunk_core::hlist::{HCons, HList, HNil, Selector};
+use frunk_core::indices::Here;
+
+pub use self::keystore::{Key, Keystore};
+pub use self::node::{Node, NodeMetrics, NodeOptions};
+pub use self::node_id::{ComputeNodeIds, NodeIdFull, NodeIdShort};
+pub use self::peer::{NewPeerContext, PeerFilter};
+pub use self::peers_set::PeersSet;
+
+use crate::subscriber::{MessageSubscriber, QuerySubscriber};
+use crate::util::{DeferredInitialization, NetworkBuilder};
+
+mod channel;
+mod encryption;
+mod handshake;
+mod keystore;
+mod node;
+mod node_id;
+mod packet_view;
+mod peer;
+mod peers_set;
+mod ping_subscriber;
+mod queries_cache;
+mod socket;
+mod transfer;
+
+pub(crate) type Deferred = Result<Arc<Node>>;
+
+impl DeferredInitialization for Deferred {
+    type Initialized = Arc<Node>;
+
+    fn initialize(self) -> Result<Self::Initialized> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NetworkBuilder<HNil, (Here, Here)> {
+    /// Creates a basic network layer that is an ADNL node
+    ///
+    /// See [`with_adnl_ext`] if you need a node with a peer filter
+    ///
+    /// [`with_adnl_ext`]: fn@crate::util::NetworkBuilder::with_adnl_ext
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, NetworkBuilder};
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl("127.0.0.1:10000", keystore, options).build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_adnl<T>(
+        addr: T,
+        keystore: Keystore,
+        options: NodeOptions,
+    ) -> NetworkBuilder<HCons<Deferred, HNil>, (Here, Here)>
+    where
+        T: ToSocketAddrs,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a basic network layer that is an ADNL node with additional filter
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::net::SocketAddrV4;
+    /// # use std::sync::Arc;
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, NetworkBuilder};
+    /// struct MyFilter;
+    ///
+    /// impl adnl::PeerFilter for MyFilter {
+    ///     fn check(
+    ///         &self,
+    ///         ctx: adnl::NewPeerContext,
+    ///         addr: SocketAddrV4,
+    ///         peer_id: &adnl::NodeIdShort,
+    ///     ) -> bool {
+    ///         // Allow only non-loopback IPs
+    ///         !addr.ip().is_loopback()
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let peer_filter = Arc::new(MyFilter);
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl_ext("127.0.0.1:10000", keystore, options, peer_filter)
+    ///         .build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_adnl_ext<T>(
+        addr: T,
+        keystore: Keystore,
+        options: NodeOptions,
+        peer_filter: Arc<dyn PeerFilter>,
+    ) -> NetworkBuilder<HCons<Deferred, HNil>, (Here, Here)>
+    where
+        T: ToSocketAddrs,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<L, A, R> NetworkBuilder<L, (A, R)>
+where
+    L: HList + Selector<Deferred, A>,
+{
+    /// Adds query subscriber if ADNL was successfully initialized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use std::borrow::Cow;
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, NetworkBuilder, QuerySubscriber, QueryConsumingResult, SubscriberContext};
+    /// struct Service;
+    ///
+    /// #[async_trait::async_trait]
+    /// impl QuerySubscriber for Service {
+    ///     async fn try_consume_query<'a>(
+    ///         &self,
+    ///         _ctx: SubscriberContext<'a>,
+    ///         _constructor: u32,
+    ///         _query: Cow<'a, [u8]>,
+    ///     ) -> Result<QueryConsumingResult<'a>> {
+    ///         Ok(QueryConsumingResult::Consumed(None))
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl("127.0.0.1:10000", keystore, options)
+    ///         .with_query_subscriber(Arc::new(Service))
+    ///         .build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_query_subscriber(self, subscriber: Arc<dyn QuerySubscriber>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Adds custom message subscriber if ADNL was successfully initialized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, MessageSubscriber, NetworkBuilder, SubscriberContext};
+    /// struct Service;
+    ///
+    /// #[async_trait::async_trait]
+    /// impl MessageSubscriber for Service {
+    ///     async fn try_consume_custom<'a>(
+    ///         &self,
+    ///         _ctx: SubscriberContext<'a>,
+    ///         _constructor: u32,
+    ///         _data: &'a [u8],
+    ///     ) -> Result<bool> {
+    ///         Ok(true)
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl("127.0.0.1:10000", keystore, options)
+    ///         .with_message_subscriber(Arc::new(Service))
+    ///         .build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_message_subscriber(self, subscriber: Arc<dyn MessageSubscriber>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+fn parse_socket_addr<T: ToSocketAddrs>(addr: T) -> Result<SocketAddrV4> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/adnl/node_id.rs">
+```rust
+use std::borrow::Borrow;
+use std::convert::TryFrom;
+
+use everscale_crypto::{ed25519, tl};
+use rand::Rng;
+
+/// Full ADNL node id.
+///
+/// See [`PublicKey::Ed25519`]
+///
+/// [`PublicKey::Ed25519`]: everscale_crypto::tl::PublicKey::Ed25519
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct NodeIdFull(ed25519::PublicKey);
+
+impl NodeIdFull {
+    /// Constructs full node id from a valid ED25519 public key
+    pub const fn new(public_key: ed25519::PublicKey) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner public key
+    #[inline(always)]
+    pub const fn public_key(&self) -> &ed25519::PublicKey {
+        /* body omitted: interface retained */
+    }
+
+    /// Represents public key as a TL structure
+    #[inline(always)]
+    pub fn as_tl(&self) -> tl::PublicKey {
+        /* body omitted: interface retained */
+    }
+
+    /// Verifies the signature of an arbitrary serializable data
+    pub fn verify<T: tl_proto::TlWrite<Repr = tl_proto::Boxed>>(
+        &self,
+        data: T,
+        other_signature: &[u8],
+    ) -> Result<(), NodeIdFullError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Hashes inner public key
+    pub fn compute_short_id(&self) -> NodeIdShort {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<ed25519::PublicKey> for NodeIdFull {
+    fn from(key: ed25519::PublicKey) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> TryFrom<tl::PublicKey<'a>> for NodeIdFull {
+    type Error = NodeIdFullError;
+
+    fn try_from(value: tl::PublicKey<'a>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum NodeIdFullError {
+    #[error("Unsupported public key")]
+    UnsupportedPublicKey,
+    #[error("Invalid public key")]
+    InvalidPublicKey,
+    #[error("Invalid signature")]
+    InvalidSignature,
+}
+
+/// Short ADNL node id.
+#[derive(Default, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[repr(transparent)]
+pub struct NodeIdShort([u8; 32]);
+
+impl NodeIdShort {
+    /// Constructs short node id from public key hash
+    #[inline(always)]
+    pub const fn new(hash: [u8; 32]) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Generates random short node id
+    pub fn random() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner bytes
+    #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8; 32] {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    pub fn is_zero(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for NodeIdShort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for NodeIdShort {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl PartialEq<[u8]> for NodeIdShort {
+    #[inline(always)]
+    fn eq(&self, other: &[u8]) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl PartialEq<[u8; 32]> for NodeIdShort {
+    #[inline(always)]
+    fn eq(&self, other: &[u8; 32]) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<NodeIdShort> for [u8; 32] {
+    #[inline(always)]
+    fn from(id: NodeIdShort) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<&NodeIdShort> for [u8; 32] {
+    #[inline(always)]
+    fn from(id: &NodeIdShort) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<[u8; 32]> for NodeIdShort {
+    #[inline(always)]
+    fn from(id: [u8; 32]) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Borrow<[u8; 32]> for NodeIdShort {
+    #[inline(always)]
+    fn borrow(&self) -> &[u8; 32] {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> Borrow<[u8; 32]> for &'a NodeIdShort {
+    #[inline(always)]
+    fn borrow(&self) -> &[u8; 32] {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Abstract trait to compute all node ids
+pub trait ComputeNodeIds {
+    fn compute_node_ids(&self) -> (NodeIdFull, NodeIdShort);
+}
+
+impl ComputeNodeIds for ed25519::SecretKey {
+    fn compute_node_ids(&self) -> (NodeIdFull, NodeIdShort) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl ComputeNodeIds for ed25519::PublicKey {
+    fn compute_node_ids(&self) -> (NodeIdFull, NodeIdShort) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/adnl/packet_view.rs">
+```rust
+use std::ops::{Index, IndexMut, Range, RangeFrom, RangeTo};
+pub struct PacketView<'a> {
+    bytes: &'a mut [u8],
+}
+impl<'a> PacketView<'a> {
+    #[inline(always)]
+    pub const fn as_ptr(&self) -> *const u8 {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn remove_prefix(&mut self, prefix_len: usize) {
+        /* body omitted: interface retained */
+    }
+}
+impl Index<RangeTo<usize>> for PacketView<'_> {
+    type Output = [u8];
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl Index<Range<usize>> for PacketView<'_> {
+    type Output = [u8];
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl IndexMut<Range<usize>> for PacketView<'_> {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl Index<RangeFrom<usize>> for PacketView<'_> {
+    type Output = [u8];
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl IndexMut<RangeFrom<usize>> for PacketView<'_> {
+    fn index_mut(&mut self, index: RangeFrom<usize>) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> From<&'a mut [u8]> for PacketView<'a> {
+    fn from(bytes: &'a mut [u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![allow(clippy::too_many_arguments)]
+
+//! Implementation of the network part of the Everscale blockchain.
+
+macro_rules! ok {
+    ($expr:expr) => {
+        match $expr {
+            Ok(val) => val,
+            Err(err) => return Err(err),
+        }
+    };
+}
+
+// Re-export TL-proto crate
+pub use everscale_crypto as crypto;
+pub use tl_proto as tl;
+
+pub use subscriber::{MessageSubscriber, QueryConsumingResult, QuerySubscriber, SubscriberContext};
+pub use util::NetworkBuilder;
+
+pub mod adnl;
+#[cfg(feature = "dht")]
+pub mod dht;
+pub mod overlay;
+pub mod proto;
+#[cfg(feature = "rldp")]
+pub mod rldp;
+mod subscriber;
+pub mod util;
+```
+</file>
+
+<file path="src/util/mod.rs">
+```rust
+//! # Basic primitives and helpers
+
+use std::collections::{HashMap, HashSet};
+
+pub use self::network_builder::{
+    DeferredInitialization, DeferredInitializationList, NetworkBuilder,
+};
+
+pub(crate) use self::address_list::*;
+pub(crate) use self::fast_rand::*;
+pub(crate) use self::packets_history::*;
+pub(crate) use self::updated_at::*;
+
+mod address_list;
+mod fast_rand;
+mod network_builder;
+mod packets_history;
+mod updated_at;
+
+pub(crate) type FastHashSet<K> = HashSet<K, FastHasherState>;
+pub(crate) type FastHashMap<K, V> = HashMap<K, V, FastHasherState>;
+pub(crate) type FastDashSet<K> = dashmap::DashSet<K, FastHasherState>;
+pub(crate) type FastDashMap<K, V> = dashmap::DashMap<K, V, FastHasherState>;
+pub(crate) type FastHasherState = ahash::RandomState;
+
+pub(crate) fn now() -> u32 {
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

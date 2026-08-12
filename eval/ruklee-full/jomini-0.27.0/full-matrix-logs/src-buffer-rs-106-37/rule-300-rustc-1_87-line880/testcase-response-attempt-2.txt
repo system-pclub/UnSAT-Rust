@@ -2,12 +2,20 @@
 #[cfg(feature = "unsat-poc-src-buffer-rs-106-37-rule-300-rustc-1-87-line880-cded49ad06")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_buffer_rs_106_37_rule_300_rustc_1_87_line880_cded49ad06() {
-    let data = vec![b'a', b'b', b'c'];
-    let mut window = BufferWindow::from_slice(&data);
+    let backing = vec![1u8, 2u8];
+    let mut window = BufferWindow {
+        buf: backing.into_boxed_slice(),
+        start_buf: std::ptr::null(),
+        start: std::ptr::null(),
+        end: std::ptr::null(),
+        prior_reads: 0,
+    };
 
-    window.advance(1);
+    let ptr = window.buf.as_ptr();
+    window.start = ptr;
+    window.end = ptr.wrapping_add(1);
 
-    let reader = std::io::Cursor::new(vec![b'x']);
+    let reader = Cursor::new(vec![9u8]);
     let _ = window.fill_buf(reader);
 }
 ```

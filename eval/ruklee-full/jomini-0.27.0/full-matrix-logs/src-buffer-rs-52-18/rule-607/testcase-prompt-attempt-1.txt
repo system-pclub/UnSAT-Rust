@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.start",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "start",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18.arg0.start"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +243,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::BufferWindow` for `receiver` using fields visible from the injection module when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::window` directly
+1. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.start` -> call target caller `buffer::BufferWindow::window`
+2. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::window` directly
 </candidate safe-call plans>
 
 
@@ -1530,10 +1550,16 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         unsafe {
             let __klee_arg1 = self.start;
@@ -1547,6 +1573,9 @@ impl BufferWindow {
         }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         /* body omitted: interface retained */
     }
@@ -1555,10 +1584,19 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         /* body omitted: interface retained */
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         /* body omitted: interface retained */
     }

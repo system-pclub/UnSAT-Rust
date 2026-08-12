@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-07-23T19:53:09.838460+00:00",
+  "updated_at": "2026-08-11T13:25:53.131717+00:00",
   "crate": "/workspaces/UnSAT-Rust/benchmark/ruklee/revm-interpreter-10.0.3",
   "injected_crate": "/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3",
   "metadata": "/workspaces/UnSAT-Rust/crates/revm-interpreter-10.0.3.json",
@@ -21,13 +21,13 @@
     "path": "rust/library/core/src/ptr/const_ptr.rs:374",
     "name": "const unsafe fn offset",
     "rule": "If the computed offset is non-zero, then the memory range between `self` and the result must not wrap around the edge of the address space.",
-    "dsl": "(!((get_arg(1) * get_field(get_type_at_func(0), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\"))"
+    "dsl": "offset_does_not_wrap(get_arg(0), get_arg(1), get_field(get_type_at_func(0), \"size\"), \"signed\")"
   },
   "result": {
-    "init_status": "violation",
-    "llm_status": "error",
-    "rerun_status": "callsite-not-reported",
-    "rerun_returncode": 0,
+    "init_status": "ok",
+    "llm_status": null,
+    "rerun_status": null,
+    "rerun_returncode": null,
     "rerun_reported_callsite": false,
     "rerun_dsl_sat": false,
     "rerun_has_certain_symbol": false,
@@ -35,125 +35,16 @@
   },
   "stages": {
     "init": {
-      "status": "violation",
+      "status": "ok",
       "returncode": 0,
       "timed_out": false,
-      "duration_sec": 9.331,
+      "duration_sec": 8.443,
       "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/klee.log",
       "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/klee-out",
       "certainty_chain": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/klee-control-chains.json",
-      "has_certain_symbol": true
+      "has_certain_symbol": false
     },
-    "llm": {
-      "status": "error",
-      "artifact_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290",
-      "source_path": "src/instructions/contract.rs",
-      "source_line": 488,
-      "prompt": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/testcase-prompt.txt",
-      "response": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/testcase-response.txt",
-      "context_stats": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/testcase-context-stats.json",
-      "context_policy": "slice",
-      "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/testcase-build.log",
-      "attempts": [
-        {
-          "attempt": 1,
-          "context_mode": "slice",
-          "source_path": "src/instructions/contract.rs",
-          "source_line": 488,
-          "status": "rerun-miss",
-          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/testcase-build-attempt-1.log",
-          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/rerun-ir/revm_interpreter.ll",
-          "rerun": {
-            "status": "callsite-not-reported",
-            "returncode": 0,
-            "timed_out": false,
-            "reported_callsite": false,
-            "dsl_sat": false,
-            "has_certain_symbol": false,
-            "full_rerun_passed": false,
-            "external_calls": [
-              "getrandom"
-            ],
-            "observed_callsites": [
-              {
-                "site": "src-instructions-contract-rs-205-5",
-                "target": "src-instructions-contract-rs-82-48"
-              },
-              {
-                "site": "src-instructions-contract-rs-205-5",
-                "target": "src-instructions-contract-rs-82-48"
-              },
-              {
-                "site": "src-instructions-contract-rs-205-5",
-                "target": "src-instructions-contract-rs-82-48"
-              },
-              {
-                "site": "src-instructions-contract-rs-205-5",
-                "target": "src-instructions-contract-rs-82-48"
-              }
-            ],
-            "saw_rust_panic": true,
-            "duration_sec": 15.851,
-            "mode": "rerun"
-          },
-          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/klee-rerun-attempt-1.log",
-          "feedback": "The testcase compiled but did not reproduce the target violation.\nKLEE did not report the exact target callsite `src-instructions-contract-rs-82-48`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-instructions-contract-rs-82-48` and reproduce the target counterexample there.\nKLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.\nKLEE stopped before the target at external function(s): `getrandom`. Avoid constructors/wrappers/destructors that call these symbols; build the target caller receiver/arguments from fields visible in the injection module when possible.\nThe metadata caller `instructions::contract::eofcreate` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test."
-        },
-        {
-          "attempt": 2,
-          "context_mode": "slice",
-          "status": "error",
-          "error": "bad escape \\x at position 631 (line 18, column 11)",
-          "feedback": "bad escape \\x at position 631 (line 18, column 11)\n\n<still required semantic retry feedback from the last KLEE rerun>\nThe testcase compiled but did not reproduce the target violation.\nKLEE did not report the exact target callsite `src-instructions-contract-rs-82-48`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-instructions-contract-rs-82-48` and reproduce the target counterexample there.\nKLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.\nKLEE stopped before the target at external function(s): `getrandom`. Avoid constructors/wrappers/destructors that call these symbols; build the target caller receiver/arguments from fields visible in the injection module when possible.\nThe metadata caller `instructions::contract::eofcreate` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.\n</still required semantic retry feedback from the last KLEE rerun>"
-        },
-        {
-          "attempt": 3,
-          "context_mode": "full",
-          "status": "error",
-          "error": "bad escape \\x at position 382 (line 10, column 11)",
-          "feedback": "bad escape \\x at position 382 (line 10, column 11)\n\n<still required semantic retry feedback from the last KLEE rerun>\nThe testcase compiled but did not reproduce the target violation.\nKLEE did not report the exact target callsite `src-instructions-contract-rs-82-48`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5` -> `src-instructions-contract-rs-205-5`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-instructions-contract-rs-82-48` and reproduce the target counterexample there.\nKLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.\nKLEE stopped before the target at external function(s): `getrandom`. Avoid constructors/wrappers/destructors that call these symbols; build the target caller receiver/arguments from fields visible in the injection module when possible.\nThe metadata caller `instructions::contract::eofcreate` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.\n</still required semantic retry feedback from the last KLEE rerun>"
-        }
-      ],
-      "rerun_sym": {
-        "status": "error",
-        "mode": "rerun-sym",
-        "error": "bad escape \\x at position 1296 (line 26, column 42)"
-      }
-    },
-    "rerun": {
-      "status": "callsite-not-reported",
-      "returncode": 0,
-      "timed_out": false,
-      "reported_callsite": false,
-      "dsl_sat": false,
-      "has_certain_symbol": false,
-      "full_rerun_passed": false,
-      "external_calls": [
-        "getrandom"
-      ],
-      "observed_callsites": [
-        {
-          "site": "src-instructions-contract-rs-205-5",
-          "target": "src-instructions-contract-rs-82-48"
-        },
-        {
-          "site": "src-instructions-contract-rs-205-5",
-          "target": "src-instructions-contract-rs-82-48"
-        },
-        {
-          "site": "src-instructions-contract-rs-205-5",
-          "target": "src-instructions-contract-rs-82-48"
-        },
-        {
-          "site": "src-instructions-contract-rs-205-5",
-          "target": "src-instructions-contract-rs-82-48"
-        }
-      ],
-      "saw_rust_panic": true,
-      "duration_sec": 15.851,
-      "mode": "rerun",
-      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/klee-rerun.log",
-      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/revm-interpreter-10.0.3/full-matrix-logs/src-instructions-contract-rs-82-48/rule-290/klee-rerun"
-    }
+    "llm": {},
+    "rerun": {}
   }
 }

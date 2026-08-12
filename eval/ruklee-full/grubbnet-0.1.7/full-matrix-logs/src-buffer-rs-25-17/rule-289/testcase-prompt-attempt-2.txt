@@ -224,7 +224,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::NetworkBuffer` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
+1. construct `buffer::NetworkBuffer` for `receiver` using its genuinely public fields when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
 </candidate safe-call plans>
 
 
@@ -310,25 +310,67 @@ compiler/tool feedback. Do not repeat the same mistake.
 
 Failed to compile '/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7':
 stdout: 
-stderr:    Compiling grubbnet v0.1.7 (/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7)
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
-  --> src/buffer.rs:69:21
+stderr:    Compiling compiler_builtins v0.1.152
+   Compiling core v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling libc v0.2.171
+   Compiling std v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling serde v1.0.228
+   Compiling rustc-std-workspace-core v1.99.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling cfg-if v1.0.0
+   Compiling rustc-demangle v0.1.24
+   Compiling unwind v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+   Compiling rustc-std-workspace-alloc v1.99.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling panic_abort v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+   Compiling panic_unwind v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling std_detect v0.1.5 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/stdarch/crates/std_detect)
+   Compiling hashbrown v0.15.2
+   Compiling proc_macro v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+   Compiling log v0.4.33
+   Compiling byteorder v1.5.0
+   Compiling klee-ext-bind v0.1.0 (/workspaces/UnSAT-Rust/tools/klee-ext-bind)
+   Compiling mio v0.8.11
+   Compiling bincode v1.3.3
+   Compiling grubbnet v0.1.7 (/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7)
+warning: unused attribute
+  --> src/buffer.rs:15:5
    |
-69 |         data: [0u8; buffer::MAX_BUFFER_SIZE],
+15 | /     #[unsafe(
+16 | |         export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_25_17"
+17 | |     )]
+   | |______^ help: remove this attribute
+   |
+note: attribute also specified here
+  --> src/buffer.rs:19:5
+   |
+19 | /     #[unsafe(
+20 | |         export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_24_13"
+21 | |     )]
+   | |______^
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: `#[warn(unused_attributes)]` on by default
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
+  --> src/buffer.rs:55:21
+   |
+55 |         data: [0u8; buffer::MAX_BUFFER_SIZE],
    |                     ^^^^^^ use of unresolved module or unlinked crate `buffer`
    |
    = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
 
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
-  --> src/buffer.rs:68:19
+  --> src/buffer.rs:54:19
    |
-68 |     let mut buf = buffer::NetworkBuffer {
+54 |     let mut buf = buffer::NetworkBuffer {
    |                   ^^^^^^ use of unresolved module or unlinked crate `buffer`
    |
    = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
 
 For more information about this error, try `rustc --explain E0433`.
-error: could not compile `grubbnet` (lib) due to 2 previous errors
+warning: `grubbnet` (lib) generated 1 warning
+error: could not compile `grubbnet` (lib) due to 2 previous errors; 1 warning emitted
 
 
 command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-buffer-rs-25-17-rule-289-33338729f6', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
@@ -337,25 +379,67 @@ returncode: 101
 [stdout]
 
 [stderr]
+   Compiling compiler_builtins v0.1.152
+   Compiling core v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling libc v0.2.171
+   Compiling std v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling serde v1.0.228
+   Compiling rustc-std-workspace-core v1.99.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling cfg-if v1.0.0
+   Compiling rustc-demangle v0.1.24
+   Compiling unwind v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+   Compiling rustc-std-workspace-alloc v1.99.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling panic_abort v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+   Compiling panic_unwind v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling std_detect v0.1.5 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/stdarch/crates/std_detect)
+   Compiling hashbrown v0.15.2
+   Compiling proc_macro v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+   Compiling log v0.4.33
+   Compiling byteorder v1.5.0
+   Compiling klee-ext-bind v0.1.0 (/workspaces/UnSAT-Rust/tools/klee-ext-bind)
+   Compiling mio v0.8.11
+   Compiling bincode v1.3.3
    Compiling grubbnet v0.1.7 (/workspaces/UnSAT-Rust/crates_inj/grubbnet-0.1.7)
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
-  --> src/buffer.rs:69:21
+warning: unused attribute
+  --> src/buffer.rs:15:5
    |
-69 |         data: [0u8; buffer::MAX_BUFFER_SIZE],
+15 | /     #[unsafe(
+16 | |         export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_25_17"
+17 | |     )]
+   | |______^ help: remove this attribute
+   |
+note: attribute also specified here
+  --> src/buffer.rs:19:5
+   |
+19 | /     #[unsafe(
+20 | |         export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_24_13"
+21 | |     )]
+   | |______^
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: `#[warn(unused_attributes)]` on by default
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
+  --> src/buffer.rs:55:21
+   |
+55 |         data: [0u8; buffer::MAX_BUFFER_SIZE],
    |                     ^^^^^^ use of unresolved module or unlinked crate `buffer`
    |
    = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
 
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `buffer`
-  --> src/buffer.rs:68:19
+  --> src/buffer.rs:54:19
    |
-68 |     let mut buf = buffer::NetworkBuffer {
+54 |     let mut buf = buffer::NetworkBuffer {
    |                   ^^^^^^ use of unresolved module or unlinked crate `buffer`
    |
    = help: if you wanted to use a crate named `buffer`, use `cargo add buffer` to add it to your `Cargo.toml`
 
 For more information about this error, try `rustc --explain E0433`.
-error: could not compile `grubbnet` (lib) due to 2 previous errors
+warning: `grubbnet` (lib) generated 1 warning
+error: could not compile `grubbnet` (lib) due to 2 previous errors; 1 warning emitted
 
 
 </previous attempt feedback>
@@ -381,7 +465,13 @@ impl NetworkBuffer {
         /* body omitted: interface retained */
     }
     /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_25_17"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_24_13"
+    )]
     pub fn drain(&mut self, count: usize) {
         unsafe {
             use std::ptr;

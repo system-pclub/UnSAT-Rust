@@ -1,0 +1,2176 @@
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/backtest/data/mod.rs">
+```rust
+mod npy;
+mod reader;
+use std::{
+    marker::PhantomData, mem::size_of, ops::{Index, IndexMut},
+    ptr::null_mut, rc::Rc, slice::SliceIndex,
+};
+pub use npy::{read_npy_file, read_npz_file, write_npy, Field, NpyDTyped, NpyHeader};
+pub use reader::{
+    Cache, DataPreprocess, DataSource, FeedLatencyAdjustment, Reader, ReaderBuilder,
+};
+use crate::utils::{AlignedArray, CACHE_LINE_SIZE};
+/// Marker trait for C representation plain old data.
+///
+/// # Safety
+/// This marker trait should be implemented only if the struct has a C representation and contains
+/// only plain old data.
+pub unsafe trait POD: Sized {}
+/// Provides access to an array of structs from the buffer.
+#[derive(Clone, Debug)]
+pub struct Data<D>
+where
+    D: POD + Clone,
+{
+    ptr: Rc<DataPtr>,
+    offset: usize,
+    _d_marker: PhantomData<D>,
+}
+impl<D> Data<D>
+where
+    D: POD + Clone,
+{
+    /// Returns the length of the array.
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Returns `true` if the `Data` is empty.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    /// Constructs an empty `Data`.
+    pub fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Constructs `Data` from [`DataPtr`] with the specified offset.
+    ///
+    /// # Safety
+    /// The underlying memory layout must match the layout of type `D` and be aligned from the
+    /// offset.
+    pub unsafe fn from_data_ptr(ptr: DataPtr, offset: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns a reference to an element, without doing bounds checking.
+    ///
+    /// # Safety
+    /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting
+    /// reference is not used.
+    #[inline(always)]
+    pub unsafe fn get_unchecked(&self, index: usize) -> &D {
+        /* body omitted: interface retained */
+    }
+    /// Returns `true` if the two `Data` point to the same data.
+    pub fn data_eq(&self, other: &Self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+impl<D> Index<usize> for Data<D>
+where
+    D: POD + Clone,
+{
+    type Output = D;
+    #[inline(always)]
+    fn index(&self, index: usize) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<D> IndexMut<usize> for Data<D>
+where
+    D: POD + Clone,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+#[derive(Debug)]
+pub struct DataPtr {
+    ptr: *mut [u8],
+    managed: bool,
+}
+impl DataPtr {
+    pub fn new(size: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Constructs a `DataPtr` from a fat pointer.
+    ///
+    /// Unlike other methods that construct an instance from a raw pointer, the raw pointer is not
+    /// owned by the resulting `DataPtr`. Memory should still be managed by the caller.
+    ///
+    /// # Safety
+    /// The fat pointer must remain valid for the lifetime of the resulting `DataPtr`.
+    pub unsafe fn from_ptr(ptr: *mut [u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[allow(clippy::len_without_is_empty)]
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN8backtest4data7DataPtr2atE_src_backtest_data_mod_rs_162_18"
+    )]
+    pub fn at(&self, index: usize) -> *const u8 {
+        let ptr = self.ptr as *const u8;
+        unsafe {
+            klee_ext_bind::bind_arg_ptr_value(0, ptr);
+            klee_ext_bind::bind_arg_u64_value(1, &index);
+            klee_ext_bind::callsite!("src-backtest-data-mod-rs-162-18");
+            let mut __klee_ret_src_backtest_data_mod_rs_162_18_add = ptr.add(index);
+            __klee_ret_src_backtest_data_mod_rs_162_18_add
+        }
+    }
+}
+impl Default for DataPtr {
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<Idx> Index<Idx> for DataPtr
+where
+    Idx: SliceIndex<[u8]>,
+{
+    type Output = Idx::Output;
+    #[inline]
+    fn index(&self, index: Idx) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<Idx> IndexMut<Idx> for DataPtr
+where
+    Idx: SliceIndex<[u8]>,
+{
+    #[inline]
+    fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl Drop for DataPtr {
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/backtest/data/npy/mod.rs">
+```rust
+use std::{fs::File, io::{Error, ErrorKind, Read, Write}};
+use crate::{
+    backtest::data::{npy::parser::Value, Data, DataPtr, POD},
+    utils::CACHE_LINE_SIZE,
+};
+mod parser;
+/// Trait
+pub trait NpyDTyped: POD {
+    fn descr() -> DType;
+}
+pub type DType = Vec<Field>;
+/// Representation of a Numpy file header.
+#[derive(PartialEq, Eq, Debug)]
+pub struct NpyHeader {
+    pub descr: DType,
+    pub fortran_order: bool,
+    pub shape: Vec<usize>,
+}
+/// Representation of a field in a Numpy structured array.
+#[derive(PartialEq, Eq, Debug)]
+pub struct Field {
+    pub name: String,
+    pub ty: String,
+}
+impl NpyHeader {
+    pub fn descr(&self) -> String {
+        /* body omitted: interface retained */
+    }
+    pub fn fortran_order(&self) -> String {
+        /* body omitted: interface retained */
+    }
+    pub fn shape(&self) -> String {
+        /* body omitted: interface retained */
+    }
+    pub fn from_header(header: &str) -> std::io::Result<Self> {
+        /* body omitted: interface retained */
+    }
+    fn to_string_padding(&self) -> String {
+        /* body omitted: interface retained */
+    }
+}
+#[allow(dead_code)]
+#[derive(Debug)]
+struct FieldCheckResult {
+    expected: String,
+    found: String,
+}
+fn check_field_consistency(
+    expected_types: &DType,
+    found_types: &DType,
+) -> Result<Vec<FieldCheckResult>, String> {
+    /* body omitted: interface retained */
+}
+pub fn read_npy<R: Read, D: NpyDTyped + Clone>(
+    reader: &mut R,
+    size: usize,
+) -> std::io::Result<Data<D>> {
+    /* body omitted: interface retained */
+}
+/// Reads a structured array `numpy` file. Currently, it doesn't check if the data structure is the
+/// same as what the file contains. Users should be cautious about this.
+pub fn read_npy_file<D: NpyDTyped + Clone>(filepath: &str) -> std::io::Result<Data<D>> {
+    /* body omitted: interface retained */
+}
+/// Reads a structured array `numpy` zip archived file. Currently, it doesn't check if the data
+/// structure is the same as what the file contains. Users should be cautious about this.
+pub fn read_npz_file<D: NpyDTyped + Clone>(
+    filepath: &str,
+    name: &str,
+) -> std::io::Result<Data<D>> {
+    /* body omitted: interface retained */
+}
+pub fn write_npy<W: Write, T: NpyDTyped>(
+    write: &mut W,
+    data: &[T],
+) -> std::io::Result<()> {
+    /* body omitted: interface retained */
+}
+fn vec_as_bytes<T>(vec: &[T]) -> &[u8] {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/backtest/data/reader.rs">
+```rust
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    io::{Error as IoError, ErrorKind},
+    rc::Rc,
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Arc,
+    },
+    thread,
+};
+
+use uuid::Uuid;
+
+use crate::{
+    backtest::{
+        data::{
+            npy::{read_npy_file, read_npz_file, NpyDTyped},
+            Data,
+            POD,
+        },
+        BacktestError,
+    },
+    types::Event,
+};
+
+/// Data source for the [`Reader`].
+#[derive(Clone, Debug)]
+pub enum DataSource<D>
+where
+    D: POD + Clone,
+{
+    /// Data needs to be loaded from the specified file. This should be a `numpy` file.
+    ///
+    /// It will be loaded when needed and released
+    /// when no [Processor](`crate::backtest::proc::Processor`) is reading the data.
+    File(String),
+    /// Data is loaded and set by the user.
+    Data(Data<D>),
+}
+
+#[derive(Debug)]
+struct CachedData<D>
+where
+    D: POD + Clone,
+{
+    count: usize,
+    ready: bool,
+    data: Data<D>,
+}
+
+impl<D> CachedData<D>
+where
+    D: POD + Clone,
+{
+    pub fn new(data: Data<D>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub fn empty() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub fn set(&mut self, data: Data<D>) {
+        /* body omitted: interface retained */
+    }
+
+    pub fn checkout(&mut self) -> Data<D> {
+        /* body omitted: interface retained */
+    }
+
+    pub fn turn_in(&mut self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Provides a data cache that allows both the local processor and exchange processor to access the
+/// same or different data based on their timestamps without the need for reloading.
+#[derive(Clone, Debug)]
+pub struct Cache<D>(Rc<RefCell<HashMap<String, CachedData<D>>>>)
+where
+    D: POD + Clone;
+
+impl<D> Cache<D>
+where
+    D: POD + Clone,
+{
+    /// Constructs an instance of `Cache`.
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Inserts a key-value pair into the `Cache`.
+    pub fn insert(&mut self, key: String, data: Data<D>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Prepares cached data by inserting a key-value pair with empty data into the `Cache`.
+    /// This placeholder will be replaced when the actual data is ready.
+    pub fn prepare(&mut self, key: String) {
+        /* body omitted: interface retained */
+    }
+
+    /// Removes the [`Data`] if all retrieved [`Data`] are released.
+    pub fn remove(&mut self, data: Data<D>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the `Cache` contains the [`Data`] for the specified key.
+    pub fn contains(&self, key: &str) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the [`Data`] corresponding to the key.
+    pub fn get(&mut self, key: &str) -> Data<D> {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets the [`Data`] for the specified key and marks it as ready.
+    pub fn set(&mut self, key: &str, data: Data<D>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns `true` if the [`Data`] for the specified key is ready.
+    pub fn is_ready(&self, key: &str) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<D> Default for Cache<D>
+where
+    D: POD + Clone,
+{
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Directly implementing `Send` for `Data` may lead to unsafe sharing between threads. To mitigate
+/// this risk, `DataSend` is used to wrap `Data`, which implements the `Send` marker trait. This
+/// transfer ownership between threads while requiring careful consideration.
+struct DataSend<D>(Data<D>)
+where
+    D: NpyDTyped + Clone;
+
+impl<D> DataSend<D>
+where
+    D: NpyDTyped + Clone,
+{
+    pub fn unwrap(self) -> Data<D> {
+        /* body omitted: interface retained */
+    }
+}
+unsafe impl<D> Send for DataSend<D> where D: NpyDTyped + Clone {}
+
+struct LoadDataResult<D>
+where
+    D: NpyDTyped + Clone,
+{
+    key: String,
+    result: Result<DataSend<D>, IoError>,
+}
+
+impl<D> LoadDataResult<D>
+where
+    D: NpyDTyped + Clone,
+{
+    pub fn ok(key: String, data: Data<D>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    pub fn err(key: String, error: IoError) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// A builder for constructing [`Reader`].
+pub struct ReaderBuilder<D>
+where
+    D: NpyDTyped + POD + Clone,
+{
+    data_key_list: Vec<String>,
+    cache: Cache<D>,
+    temporary_data: HashMap<String, Data<D>>,
+    parallel_load: bool,
+    preprocessor: Option<Arc<Box<dyn DataPreprocess<D> + Sync + Send + 'static>>>,
+}
+
+impl<D> Default for ReaderBuilder<D>
+where
+    D: NpyDTyped + POD + Clone,
+{
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<D> ReaderBuilder<D>
+where
+    D: NpyDTyped + POD + Clone,
+{
+    /// Constructs a `ReaderBuilder`.
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets whether to load the next data in parallel. This allows [`Reader`] to not only load the
+    /// next data but also preload subsequent data, ensuring it is ready in advance.
+    ///
+    /// Loading is performed by spawning a separate thread.
+    ///
+    /// The default value is `true`.
+    pub fn parallel_load(self, parallel_load: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets a [`DataPreprocess`].
+    pub fn preprocessor<Preprocessor>(self, preprocessor: Preprocessor) -> Self
+    where
+        Preprocessor: DataPreprocess<D> + Sync + Send + 'static,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Sets the data to be read by [`Reader`]. The items in the `data` vector should be arranged in
+    /// the chronological order.
+    pub fn data(self, data: Vec<DataSource<D>>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Builds a [`Reader`].
+    pub fn build(self) -> Result<Reader<D>, IoError> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Provides `Data` reading based on the given sequence of data through `Cache`.
+#[derive(Clone)]
+pub struct Reader<D>
+where
+    D: NpyDTyped + Clone,
+{
+    data_key_list: Vec<String>,
+    cache: Cache<D>,
+    data_num: usize,
+    tx: Sender<LoadDataResult<D>>,
+    rx: Rc<Receiver<LoadDataResult<D>>>,
+    parallel_load: bool,
+    preprocessor: Option<Arc<Box<dyn DataPreprocess<D> + Sync + Send + 'static>>>,
+}
+
+impl<D> Reader<D>
+where
+    D: NpyDTyped + Clone + 'static,
+{
+    /// Returns a [`ReaderBuilder`].
+    pub fn builder() -> ReaderBuilder<D> {
+        /* body omitted: interface retained */
+    }
+
+    /// Releases this [`Data`] from the `Cache`. The `Cache` will delete the [`Data`] if there are
+    /// no readers accessing it.
+    pub fn release(&mut self, data: Data<D>) {
+        /* body omitted: interface retained */
+    }
+
+    /// Retrieves the next [`Data`] based on the order of your additions.
+    pub fn next_data(&mut self) -> Result<Data<D>, BacktestError> {
+        /* body omitted: interface retained */
+    }
+
+    fn load_data(&mut self, key: &str) -> Result<(), BacktestError> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// `DataPreprocess` offers a function to preprocess data before it is fed into the backtesting.
+/// This feature is primarily introduced to adjust timestamps, making it particularly useful when
+/// backtesting the market from a location different from where your order latency was originally
+/// collected.
+///
+/// For example, if you're backtesting an arbitrage strategy between Binance Futures and ByBit,
+/// and your order latency data was collected in a colocated AWS region, you may need to adjust
+/// for the geographical difference. If your strategy is running with a base in Tokyo
+/// (where Binance Futures is located), you would need to account for the latency between
+/// Singapore (where ByBit is located) and Tokyo by applying an appropriate offset.
+pub trait DataPreprocess<D>
+where
+    D: POD + Clone,
+{
+    fn preprocess(&self, data: &mut Data<D>) -> Result<(), IoError>;
+}
+
+/// Pre-processes the feed data to adjust for latency. `local_ts` is offset by the specified latency
+/// offset.
+#[derive(Clone)]
+pub struct FeedLatencyAdjustment {
+    latency_offset: i64,
+}
+
+impl FeedLatencyAdjustment {
+    /// Constructs a `FeedLatencyAdjustment`.
+    pub fn new(latency_offset: i64) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl DataPreprocess<Event> for FeedLatencyAdjustment {
+    fn preprocess(&self, data: &mut Data<Event>) -> Result<(), IoError> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/backtest/mod.rs">
+```rust
+use std::{collections::HashMap, io::Error as IoError, marker::PhantomData};
+pub use data::DataSource;
+use data::Reader;
+use models::FeeModel;
+use thiserror::Error;
+pub use crate::backtest::{
+    models::L3QueueModel, proc::{L3Local, L3NoPartialFillExchange},
+};
+use crate::{
+    backtest::{
+        assettype::AssetType, data::FeedLatencyAdjustment,
+        evs::{EventIntentKind, EventSet},
+        models::{LatencyModel, QueueModel},
+        order::OrderBus,
+        proc::{
+            Local, LocalProcessor, NoPartialFillExchange, PartialFillExchange, Processor,
+        },
+        state::State,
+    },
+    depth::{HashMapMarketDepth, L2MarketDepth, L3MarketDepth, MarketDepth},
+    prelude::{
+        Bot, OrdType, Order, OrderId, OrderRequest, Side, StateValues, TimeInForce,
+        WaitOrderResponse, UNTIL_END_OF_DATA,
+    },
+    types::{BuildError, Event},
+};
+/// Provides asset types.
+pub mod assettype;
+pub mod models;
+/// OrderBus implementation
+pub mod order;
+/// Local and exchange models
+pub mod proc;
+/// Trading state.
+pub mod state;
+/// Recorder for a bot's trading statistics.
+pub mod recorder;
+pub mod data;
+mod evs;
+/// Errors that can occur during backtesting.
+#[derive(Error, Debug)]
+pub enum BacktestError {
+    #[error("Order related to a given order id already exists")]
+    OrderIdExist,
+    #[error("Order request is in process")]
+    OrderRequestInProcess,
+    #[error("Order not found")]
+    OrderNotFound,
+    #[error("order request is invalid")]
+    InvalidOrderRequest,
+    #[error("order status is invalid to proceed the request")]
+    InvalidOrderStatus,
+    #[error("end of data")]
+    EndOfData,
+    #[error("data error: {0:?}")]
+    DataError(#[from] IoError),
+}
+/// Backtesting Asset
+pub struct Asset<L: ?Sized, E: ?Sized> {
+    pub local: Box<L>,
+    pub exch: Box<E>,
+}
+impl<L, E> Asset<L, E> {
+    /// Constructs an instance of `Asset`. Use this method if a custom local processor or an
+    /// exchange processor is needed.
+    pub fn new(local: L, exch: E) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Returns an `L2AssetBuilder`.
+    pub fn l2_builder<LM, AT, QM, MD, FM>() -> L2AssetBuilder<LM, AT, QM, MD, FM>
+    where
+        AT: AssetType + Clone + 'static,
+        MD: MarketDepth + L2MarketDepth + 'static,
+        QM: QueueModel<MD> + 'static,
+        LM: LatencyModel + Clone + 'static,
+        FM: FeeModel + Clone + 'static,
+    {
+        /* body omitted: interface retained */
+    }
+    /// Returns an `L3AssetBuilder`.
+    pub fn l3_builder<LM, AT, QM, MD, FM>() -> L3AssetBuilder<LM, AT, QM, MD, FM>
+    where
+        AT: AssetType + Clone + 'static,
+        MD: MarketDepth + L3MarketDepth + 'static,
+        QM: L3QueueModel<MD> + 'static,
+        LM: LatencyModel + Clone + 'static,
+        FM: FeeModel + Clone + 'static,
+        BacktestError: From<<MD as L3MarketDepth>::Error>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+/// Exchange model kind.
+pub enum ExchangeKind {
+    /// Uses [NoPartialFillExchange](`NoPartialFillExchange`).
+    NoPartialFillExchange,
+    /// Uses [PartialFillExchange](`PartialFillExchange`).
+    PartialFillExchange,
+}
+/// A level-2 asset builder.
+pub struct L2AssetBuilder<LM, AT, QM, MD, FM> {
+    latency_model: Option<LM>,
+    asset_type: Option<AT>,
+    data: Vec<DataSource<Event>>,
+    parallel_load: bool,
+    latency_offset: i64,
+    fee_model: Option<FM>,
+    exch_kind: ExchangeKind,
+    last_trades_cap: usize,
+    queue_model: Option<QM>,
+    depth_builder: Option<Box<dyn Fn() -> MD>>,
+}
+impl<LM, AT, QM, MD, FM> L2AssetBuilder<LM, AT, QM, MD, FM>
+where
+    AT: AssetType + Clone + 'static,
+    MD: MarketDepth + L2MarketDepth + 'static,
+    QM: QueueModel<MD> + 'static,
+    LM: LatencyModel + Clone + 'static,
+    FM: FeeModel + Clone + 'static,
+{
+    /// Constructs an `L2AssetBuilder`.
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets the feed data.
+    pub fn data(self, data: Vec<DataSource<Event>>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets whether to load the next data in parallel with backtesting. This can speed up the
+    /// backtest by reducing data loading time, but it also increases memory usage.
+    /// The default value is `true`.
+    pub fn parallel_load(self, parallel_load: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets the latency offset to adjust the feed latency by the specified amount. This is
+    /// particularly useful in cross-exchange backtesting, where the feed data is collected from a
+    /// different site than the one where the strategy is intended to run.
+    pub fn latency_offset(self, latency_offset: i64) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a latency model.
+    pub fn latency_model(self, latency_model: LM) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets an asset type.
+    pub fn asset_type(self, asset_type: AT) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a fee model.
+    pub fn fee_model(self, fee_model: FM) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets an exchange model. The default value is [`NoPartialFillExchange`].
+    pub fn exchange(self, exch_kind: ExchangeKind) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets the initial capacity of the vector storing the last market trades.
+    /// The default value is `0`, indicating that no last trades are stored.
+    pub fn last_trades_capacity(self, capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a queue model.
+    pub fn queue_model(self, queue_model: QM) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a market depth builder.
+    pub fn depth<Builder>(self, builder: Builder) -> Self
+    where
+        Builder: Fn() -> MD + 'static,
+    {
+        /* body omitted: interface retained */
+    }
+    /// Builds an `Asset`.
+    pub fn build(
+        self,
+    ) -> Result<Asset<dyn LocalProcessor<MD>, dyn Processor>, BuildError> {
+        /* body omitted: interface retained */
+    }
+}
+impl<LM, AT, QM, MD, FM> Default for L2AssetBuilder<LM, AT, QM, MD, FM>
+where
+    AT: AssetType + Clone + 'static,
+    MD: MarketDepth + L2MarketDepth + 'static,
+    QM: QueueModel<MD> + 'static,
+    LM: LatencyModel + Clone + 'static,
+    FM: FeeModel + Clone + 'static,
+{
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+/// A level-3 asset builder.
+pub struct L3AssetBuilder<LM, AT, QM, MD, FM> {
+    latency_model: Option<LM>,
+    asset_type: Option<AT>,
+    data: Vec<DataSource<Event>>,
+    parallel_load: bool,
+    latency_offset: i64,
+    fee_model: Option<FM>,
+    exch_kind: ExchangeKind,
+    last_trades_cap: usize,
+    queue_model: Option<QM>,
+    depth_builder: Option<Box<dyn Fn() -> MD>>,
+}
+impl<LM, AT, QM, MD, FM> L3AssetBuilder<LM, AT, QM, MD, FM>
+where
+    AT: AssetType + Clone + 'static,
+    MD: MarketDepth + L3MarketDepth + 'static,
+    QM: L3QueueModel<MD> + 'static,
+    LM: LatencyModel + Clone + 'static,
+    FM: FeeModel + Clone + 'static,
+    BacktestError: From<<MD as L3MarketDepth>::Error>,
+{
+    /// Constructs an `L3AssetBuilder`.
+    pub fn new() -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets the feed data.
+    pub fn data(self, data: Vec<DataSource<Event>>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets whether to load the next data in parallel with backtesting. This can speed up the
+    /// backtest by reducing data loading time, but it also increases memory usage.
+    /// The default value is `true`.
+    pub fn parallel_load(self, parallel_load: bool) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets the latency offset to adjust the feed latency by the specified amount. This is
+    /// particularly useful in cross-exchange backtesting, where the feed data is collected from a
+    /// different site than the one where the strategy is intended to run.
+    pub fn latency_offset(self, latency_offset: i64) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a latency model.
+    pub fn latency_model(self, latency_model: LM) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets an asset type.
+    pub fn asset_type(self, asset_type: AT) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a fee model.
+    pub fn fee_model(self, fee_model: FM) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets an exchange model. The default value is [`NoPartialFillExchange`].
+    pub fn exchange(self, exch_kind: ExchangeKind) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets the initial capacity of the vector storing the last market trades.
+    /// The default value is `0`, indicating that no last trades are stored.
+    pub fn last_trades_capacity(self, capacity: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a queue model.
+    pub fn queue_model(self, queue_model: QM) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Sets a market depth builder.
+    pub fn depth<Builder>(self, builder: Builder) -> Self
+    where
+        Builder: Fn() -> MD + 'static,
+    {
+        /* body omitted: interface retained */
+    }
+    /// Builds an `Asset`.
+    pub fn build(
+        self,
+    ) -> Result<Asset<dyn LocalProcessor<MD>, dyn Processor>, BuildError> {
+        /* body omitted: interface retained */
+    }
+}
+impl<LM, AT, QM, MD, FM> Default for L3AssetBuilder<LM, AT, QM, MD, FM>
+where
+    AT: AssetType + Clone + 'static,
+    MD: MarketDepth + L3MarketDepth + 'static,
+    QM: L3QueueModel<MD> + 'static,
+    LM: LatencyModel + Clone + 'static,
+    FM: FeeModel + Clone + 'static,
+    BacktestError: From<<MD as L3MarketDepth>::Error>,
+{
+    fn default() -> Self {
+        /* body omitted: interface retained */
+    }
+}
+/// [`Backtest`] builder.
+pub struct BacktestBuilder<MD> {
+    local: Vec<Box<dyn LocalProcessor<MD>>>,
+    exch: Vec<Box<dyn Processor>>,
+}
+impl<MD> BacktestBuilder<MD> {
+    /// Adds [`Asset`], which will undergo simulation within the backtester.
+    pub fn add_asset(self, asset: Asset<dyn LocalProcessor<MD>, dyn Processor>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Builds [`Backtest`].
+    pub fn build(self) -> Result<Backtest<MD>, BuildError> {
+        /* body omitted: interface retained */
+    }
+}
+/// This backtester provides multi-asset and multi-exchange model backtesting, allowing you to
+/// configure different setups such as queue models or asset types for each asset. However, this may
+/// result in slightly slower performance compared to [`Backtest`].
+pub struct Backtest<MD> {
+    cur_ts: i64,
+    evs: EventSet,
+    local: Vec<Box<dyn LocalProcessor<MD>>>,
+    exch: Vec<Box<dyn Processor>>,
+}
+impl<MD> Backtest<MD>
+where
+    MD: MarketDepth,
+{
+    pub fn builder() -> BacktestBuilder<MD> {
+        /* body omitted: interface retained */
+    }
+    pub fn new(
+        local: Vec<Box<dyn LocalProcessor<MD>>>,
+        exch: Vec<Box<dyn Processor>>,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn initialize_evs(&mut self) -> Result<(), BacktestError> {
+        /* body omitted: interface retained */
+    }
+    pub fn goto_end(&mut self) -> Result<bool, BacktestError> {
+        /* body omitted: interface retained */
+    }
+    fn goto<const WAIT_NEXT_FEED: bool>(
+        &mut self,
+        timestamp: i64,
+        wait_order_response: WaitOrderResponse,
+    ) -> Result<bool, BacktestError> {
+        /* body omitted: interface retained */
+    }
+}
+impl<MD> Bot<MD> for Backtest<MD>
+where
+    MD: MarketDepth,
+{
+    type Error = BacktestError;
+    #[inline]
+    fn current_timestamp(&self) -> i64 {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn num_assets(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn position(&self, asset_no: usize) -> f64 {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn state_values(&self, asset_no: usize) -> &StateValues {
+        /* body omitted: interface retained */
+    }
+    fn depth(&self, asset_no: usize) -> &MD {
+        /* body omitted: interface retained */
+    }
+    fn last_trades(&self, asset_no: usize) -> &[Event] {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn clear_last_trades(&mut self, asset_no: Option<usize>) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn orders(&self, asset_no: usize) -> &HashMap<u64, Order> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn submit_buy_order(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        price: f64,
+        qty: f64,
+        time_in_force: TimeInForce,
+        order_type: OrdType,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn submit_sell_order(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        price: f64,
+        qty: f64,
+        time_in_force: TimeInForce,
+        order_type: OrdType,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    fn submit_order(
+        &mut self,
+        asset_no: usize,
+        order: OrderRequest,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn cancel(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn clear_inactive_orders(&mut self, asset_no: Option<usize>) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn wait_order_response(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        timeout: i64,
+    ) -> Result<bool, BacktestError> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn wait_next_feed(
+        &mut self,
+        include_order_resp: bool,
+        timeout: i64,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn elapse(&mut self, duration: i64) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn elapse_bt(&mut self, duration: i64) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn close(&mut self) -> Result<(), Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn feed_latency(&self, asset_no: usize) -> Option<(i64, i64)> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn order_latency(&self, asset_no: usize) -> Option<(i64, i64, i64)> {
+        /* body omitted: interface retained */
+    }
+}
+/// `MultiAssetSingleExchangeBacktest` builder.
+pub struct MultiAssetSingleExchangeBacktestBuilder<Local, Exchange> {
+    local: Vec<Local>,
+    exch: Vec<Exchange>,
+}
+impl<Local, Exchange> MultiAssetSingleExchangeBacktestBuilder<Local, Exchange>
+where
+    Local: LocalProcessor<HashMapMarketDepth> + 'static,
+    Exchange: Processor + 'static,
+{
+    /// Adds [`Asset`], which will undergo simulation within the backtester.
+    pub fn add_asset(self, asset: Asset<Local, Exchange>) -> Self {
+        /* body omitted: interface retained */
+    }
+    /// Builds [`MultiAssetSingleExchangeBacktest`].
+    pub fn build(
+        self,
+    ) -> Result<
+        MultiAssetSingleExchangeBacktest<HashMapMarketDepth, Local, Exchange>,
+        BuildError,
+    > {
+        /* body omitted: interface retained */
+    }
+}
+/// This backtester provides multi-asset and single-exchange model backtesting, meaning all assets
+/// have the same setups for models such as asset type or queue model. However, this can be slightly
+/// faster than [`Backtest`]. If you need to configure different models for each asset, use
+/// [`Backtest`].
+pub struct MultiAssetSingleExchangeBacktest<MD, Local, Exchange> {
+    cur_ts: i64,
+    evs: EventSet,
+    local: Vec<Local>,
+    exch: Vec<Exchange>,
+    _md_marker: PhantomData<MD>,
+}
+impl<MD, Local, Exchange> MultiAssetSingleExchangeBacktest<MD, Local, Exchange>
+where
+    MD: MarketDepth,
+    Local: LocalProcessor<MD>,
+    Exchange: Processor,
+{
+    pub fn builder() -> MultiAssetSingleExchangeBacktestBuilder<Local, Exchange> {
+        /* body omitted: interface retained */
+    }
+    pub fn new(local: Vec<Local>, exch: Vec<Exchange>) -> Self {
+        /* body omitted: interface retained */
+    }
+    fn initialize_evs(&mut self) -> Result<(), BacktestError> {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn goto<const WAIT_NEXT_FEED: bool>(
+        &mut self,
+        timestamp: i64,
+        wait_order_response: WaitOrderResponse,
+    ) -> Result<bool, BacktestError> {
+        /* body omitted: interface retained */
+    }
+}
+impl<MD, Local, Exchange> Bot<MD>
+for MultiAssetSingleExchangeBacktest<MD, Local, Exchange>
+where
+    MD: MarketDepth,
+    Local: LocalProcessor<MD>,
+    Exchange: Processor,
+{
+    type Error = BacktestError;
+    #[inline]
+    fn current_timestamp(&self) -> i64 {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn num_assets(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn position(&self, asset_no: usize) -> f64 {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn state_values(&self, asset_no: usize) -> &StateValues {
+        /* body omitted: interface retained */
+    }
+    fn depth(&self, asset_no: usize) -> &MD {
+        /* body omitted: interface retained */
+    }
+    fn last_trades(&self, asset_no: usize) -> &[Event] {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn clear_last_trades(&mut self, asset_no: Option<usize>) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn orders(&self, asset_no: usize) -> &HashMap<OrderId, Order> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn submit_buy_order(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        price: f64,
+        qty: f64,
+        time_in_force: TimeInForce,
+        order_type: OrdType,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn submit_sell_order(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        price: f64,
+        qty: f64,
+        time_in_force: TimeInForce,
+        order_type: OrdType,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    fn submit_order(
+        &mut self,
+        asset_no: usize,
+        order: OrderRequest,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn cancel(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        wait: bool,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn clear_inactive_orders(&mut self, asset_no: Option<usize>) {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn wait_order_response(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        timeout: i64,
+    ) -> Result<bool, BacktestError> {
+        /* body omitted: interface retained */
+    }
+    fn wait_next_feed(
+        &mut self,
+        include_order_resp: bool,
+        timeout: i64,
+    ) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn elapse(&mut self, duration: i64) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn elapse_bt(&mut self, duration: i64) -> Result<bool, Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn close(&mut self) -> Result<(), Self::Error> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn feed_latency(&self, asset_no: usize) -> Option<(i64, i64)> {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    fn order_latency(&self, asset_no: usize) -> Option<(i64, i64, i64)> {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
+//! # HftBacktest
+//!
+//! This Rust framework is designed for developing and running high-frequency trading and
+//! market-making strategies. It focuses on accounting for both feed and order latencies, as well as
+//! the order queue position for order fill simulation. The framework aims to provide more accurate
+//! market replay-based backtesting, based on full order book and trade tick feed data. You can also
+//! run the live bot using the same algo code.
+//!
+//! ## Key Features
+//! - Complete tick-by-tick simulation with a variable time interval.
+//! - Full order book reconstruction based on L2 feeds(Market-By-Price) and L3 feeds(Market-By-Order).
+//! - Backtest accounting for both feed and order latency, using provided models or your own custom model.
+//! - Order fill simulation that takes into account the order queue position, using provided models or your own custom model.
+//! - Backtesting of multi-asset and multi-exchange models
+//! - Deployment of a live trading bot using the same algo code
+//!
+//!
+//! ## Feature flags
+//!
+//! Currently, `default` enables `backtest`, `live`, `binancefutures`, `bybit` features.
+//!
+//! - `backtest`: Enables backtesting features.
+//! - `live`: Enables a live trading bot.
+//! - `binancefutures`: Enables Binance Futures USDM connector for a live trading bot.
+//! - `bybit`: Enables Bybit linear USDM futures connector for a live trading bot.
+//! - `unstable_l3`: Enables Level3 Market-By-Order backtesting.
+//! - `unstable_fuse`: Enables the market depth fusion feature, which aggregates different market
+//!                    depth streams to provide the finest granularity and the most frequent,
+//!                    up-to-date market depth information
+//!
+
+/// Provides backtesting features.
+#[cfg(any(feature = "backtest", doc))]
+pub mod backtest;
+
+/// Provides exchange connectors.
+#[cfg(feature = "live")]
+pub mod connector;
+
+/// Provides market depth implementations.
+pub mod depth;
+
+/// Provides live trading bot features.
+#[cfg(feature = "live")]
+pub mod live;
+
+/// Defines HftBacktest types.
+pub mod types;
+
+/// Provides common types.
+pub mod prelude;
+
+/// Provides utilities.
+mod utils;
+```
+</file>
+
+<file path="src/types.rs">
+```rust
+use std::{
+    any::Any,
+    collections::HashMap,
+    fmt::{Debug, Formatter},
+};
+
+use anyhow::Error;
+use bincode::{
+    de::{BorrowDecoder, Decoder},
+    enc::Encoder,
+    error::{DecodeError, EncodeError},
+    BorrowDecode,
+    Decode,
+    Encode,
+};
+use dyn_clone::DynClone;
+use hftbacktest_derive::NpyDTyped;
+use thiserror::Error;
+
+use crate::{backtest::data::POD, depth::MarketDepth};
+
+#[derive(Clone, Debug, Decode, Encode)]
+pub enum Value {
+    String(String),
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    List(Vec<Value>),
+    Map(HashMap<String, Value>),
+    Empty,
+}
+
+impl Value {
+    pub fn get_str(&self) -> Option<&str> {
+        /* body omitted: interface retained */
+    }
+
+    pub fn get_int(&self) -> Option<i64> {
+        /* body omitted: interface retained */
+    }
+
+    pub fn get_float(&self) -> Option<f64> {
+        /* body omitted: interface retained */
+    }
+
+    pub fn get_bool(&self) -> Option<bool> {
+        /* body omitted: interface retained */
+    }
+
+    pub fn get_list(&self) -> Option<&Vec<Value>> {
+        /* body omitted: interface retained */
+    }
+
+    pub fn get_map(&self) -> Option<&HashMap<String, Value>> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<anyhow::Error> for Value {
+    fn from(value: Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[cfg(feature = "use_reqwest")]
+impl From<reqwest::Error> for Value {
+    fn from(value: reqwest::Error) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Error conveyed through [`LiveEvent`].
+#[derive(Clone, Debug, Decode, Encode)]
+pub struct LiveError {
+    pub kind: ErrorKind,
+    pub value: Value,
+}
+
+impl LiveError {
+    /// Constructs an instance of `LiveError`.
+    pub fn new(kind: ErrorKind) -> LiveError {
+        /* body omitted: interface retained */
+    }
+
+    /// Constructs an instance of `LiveError` with a value that contains detailed error information.
+    pub fn with(kind: ErrorKind, value: Value) -> LiveError {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns a reference to the value that contains detailed error information.
+    pub fn value(&self) -> &Value {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Error type assigned to [`LiveError`].
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Decode, Encode)]
+pub enum ErrorKind {
+    ConnectionInterrupted,
+    CriticalConnectionError,
+    OrderError,
+    Custom(i64),
+}
+
+/// Events occurring in a live bot sent by a [`Connector`](`crate::connector::Connector`).
+#[derive(Clone, Debug, Decode, Encode)]
+pub enum LiveEvent {
+    FeedBatch { asset_no: usize, events: Vec<Event> },
+    Feed { asset_no: usize, event: Event },
+    Order { asset_no: usize, order: Order },
+    Position { asset_no: usize, qty: f64 },
+    Error(LiveError),
+}
+
+/// Indicates a buy, with specific meaning that can vary depending on the situation. For example,
+/// when combined with a depth event, it means a bid-side event, while when combined with a trade
+/// event, it means that the trade initiator is a buyer.
+pub const BUY_EVENT: u64 = 1 << 29;
+
+/// Indicates a sell, with specific meaning that can vary depending on the situation. For example,
+/// when combined with a depth event, it means an ask-side event, while when combined with a trade
+/// event, it means that the trade initiator is a seller.
+pub const SELL_EVENT: u64 = 1 << 28;
+
+/// Indicates that the market depth is changed.
+pub const DEPTH_EVENT: u64 = 1;
+
+/// Indicates that a trade occurs in the market.
+pub const TRADE_EVENT: u64 = 2;
+
+/// Indicates that the market depth is cleared.
+pub const DEPTH_CLEAR_EVENT: u64 = 3;
+
+/// Indicates that the market depth snapshot is received.
+pub const DEPTH_SNAPSHOT_EVENT: u64 = 4;
+
+/// Indicates that the best bid and best ask update event is received.
+pub const DEPTH_BBO_EVENT: u64 = 5;
+
+/// Indicates that an order has been added to the order book.
+pub const ADD_ORDER_EVENT: u64 = 10;
+
+/// Indicates that an order in the order book has been canceled.
+pub const CANCEL_ORDER_EVENT: u64 = 11;
+
+/// Indicates that an order in the order book has been modified.
+pub const MODIFY_ORDER_EVENT: u64 = 12;
+
+/// Indicates that an order in the order book has been filled.
+pub const FILL_EVENT: u64 = 13;
+
+/// Indicates that it is a valid event to be handled by the exchange processor at the exchange
+/// timestamp.
+pub const EXCH_EVENT: u64 = 1 << 31;
+
+/// Indicates that it is a valid event to be handled by the local processor at the local timestamp.
+pub const LOCAL_EVENT: u64 = 1 << 30;
+
+/// Represents a combination of [`DEPTH_CLEAR_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_DEPTH_CLEAR_EVENT: u64 = DEPTH_CLEAR_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_CLEAR_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_DEPTH_CLEAR_EVENT: u64 = DEPTH_CLEAR_EVENT | EXCH_EVENT;
+
+/// Represents a combination of a [`DEPTH_EVENT`], [`BUY_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_BID_DEPTH_EVENT: u64 = DEPTH_EVENT | BUY_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_EVENT`], [`SELL_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_ASK_DEPTH_EVENT: u64 = DEPTH_EVENT | SELL_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_CLEAR_EVENT`], [`BUY_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_BID_DEPTH_CLEAR_EVENT: u64 = DEPTH_CLEAR_EVENT | BUY_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_CLEAR_EVENT`], [`SELL_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_ASK_DEPTH_CLEAR_EVENT: u64 = DEPTH_CLEAR_EVENT | SELL_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_SNAPSHOT_EVENT`], [`BUY_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_BID_DEPTH_SNAPSHOT_EVENT: u64 = DEPTH_SNAPSHOT_EVENT | BUY_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_SNAPSHOT_EVENT`], [`SELL_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_ASK_DEPTH_SNAPSHOT_EVENT: u64 = DEPTH_SNAPSHOT_EVENT | SELL_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_BBO_EVENT`], [`BUY_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_BID_DEPTH_BBO_EVENT: u64 = DEPTH_BBO_EVENT | BUY_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`DEPTH_BBO_EVENT`], [`SELL_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_ASK_DEPTH_BBO_EVENT: u64 = DEPTH_BBO_EVENT | SELL_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`TRADE_EVENT`], and [`LOCAL_EVENT`].
+pub const LOCAL_TRADE_EVENT: u64 = TRADE_EVENT | LOCAL_EVENT;
+
+/// Represents a combination of [`LOCAL_TRADE_EVENT`] and [`BUY_EVENT`].
+pub const LOCAL_BUY_TRADE_EVENT: u64 = LOCAL_TRADE_EVENT | BUY_EVENT;
+
+/// Represents a combination of [`LOCAL_TRADE_EVENT`] and [`SELL_EVENT`].
+pub const LOCAL_SELL_TRADE_EVENT: u64 = LOCAL_TRADE_EVENT | SELL_EVENT;
+
+/// Represents a combination of [`DEPTH_EVENT`], [`BUY_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_BID_DEPTH_EVENT: u64 = DEPTH_EVENT | BUY_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_EVENT`], [`SELL_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_ASK_DEPTH_EVENT: u64 = DEPTH_EVENT | SELL_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_CLEAR_EVENT`], [`BUY_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_BID_DEPTH_CLEAR_EVENT: u64 = DEPTH_CLEAR_EVENT | BUY_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_CLEAR_EVENT`], [`SELL_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_ASK_DEPTH_CLEAR_EVENT: u64 = DEPTH_CLEAR_EVENT | SELL_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_SNAPSHOT_EVENT`], [`BUY_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_BID_DEPTH_SNAPSHOT_EVENT: u64 = DEPTH_SNAPSHOT_EVENT | BUY_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_SNAPSHOT_EVENT`], [`SELL_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_ASK_DEPTH_SNAPSHOT_EVENT: u64 = DEPTH_SNAPSHOT_EVENT | SELL_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_BBO_EVENT`], [`BUY_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_BID_DEPTH_BBO_EVENT: u64 = DEPTH_BBO_EVENT | BUY_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`DEPTH_BBO_EVENT`], [`SELL_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_ASK_DEPTH_BBO_EVENT: u64 = DEPTH_BBO_EVENT | SELL_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`TRADE_EVENT`], and [`EXCH_EVENT`].
+pub const EXCH_TRADE_EVENT: u64 = TRADE_EVENT | EXCH_EVENT;
+
+/// Represents a combination of [`EXCH_TRADE_EVENT`] and [`BUY_EVENT`].
+pub const EXCH_BUY_TRADE_EVENT: u64 = EXCH_TRADE_EVENT | BUY_EVENT;
+
+/// Represents a combination of [`EXCH_TRADE_EVENT`] and [`SELL_EVENT`].
+pub const EXCH_SELL_TRADE_EVENT: u64 = EXCH_TRADE_EVENT | SELL_EVENT;
+
+/// Represents a combination of [`LOCAL_EVENT`] and [`ADD_ORDER_EVENT`].
+pub const LOCAL_ADD_ORDER_EVENT: u64 = LOCAL_EVENT | ADD_ORDER_EVENT;
+
+/// Represents a combination of [`BUY_EVENT`] and [`LOCAL_ADD_ORDER_EVENT`].
+pub const LOCAL_BID_ADD_ORDER_EVENT: u64 = BUY_EVENT | LOCAL_ADD_ORDER_EVENT;
+
+/// Represents a combination of [`SELL_EVENT`] and [`LOCAL_ADD_ORDER_EVENT`].
+pub const LOCAL_ASK_ADD_ORDER_EVENT: u64 = SELL_EVENT | LOCAL_ADD_ORDER_EVENT;
+
+/// Represents a combination of [`LOCAL_EVENT`] and [`CANCEL_ORDER_EVENT`].
+pub const LOCAL_CANCEL_ORDER_EVENT: u64 = LOCAL_EVENT | CANCEL_ORDER_EVENT;
+
+/// Represents a combination of [`LOCAL_EVENT`] and [`MODIFY_ORDER_EVENT`].
+pub const LOCAL_MODIFY_ORDER_EVENT: u64 = LOCAL_EVENT | MODIFY_ORDER_EVENT;
+
+/// Represents a combination of [`LOCAL_EVENT`] and [`FILL_EVENT`].
+pub const LOCAL_FILL_EVENT: u64 = LOCAL_EVENT | FILL_EVENT;
+
+/// Represents a combination of [`EXCH_EVENT`] and [`ADD_ORDER_EVENT`].
+pub const EXCH_ADD_ORDER_EVENT: u64 = EXCH_EVENT | ADD_ORDER_EVENT;
+
+/// Represents a combination of [`BUY_EVENT`] and [`EXCH_ADD_ORDER_EVENT`].
+pub const EXCH_BID_ADD_ORDER_EVENT: u64 = BUY_EVENT | EXCH_ADD_ORDER_EVENT;
+
+/// Represents a combination of [`SELL_EVENT`] and [`EXCH_ADD_ORDER_EVENT`].
+pub const EXCH_ASK_ADD_ORDER_EVENT: u64 = SELL_EVENT | EXCH_ADD_ORDER_EVENT;
+
+/// Represents a combination of [`EXCH_EVENT`] and [`CANCEL_ORDER_EVENT`].
+pub const EXCH_CANCEL_ORDER_EVENT: u64 = EXCH_EVENT | CANCEL_ORDER_EVENT;
+
+/// Represents a combination of [`EXCH_EVENT`] and [`MODIFY_ORDER_EVENT`].
+pub const EXCH_MODIFY_ORDER_EVENT: u64 = EXCH_EVENT | MODIFY_ORDER_EVENT;
+
+/// Represents a combination of [`EXCH_EVENT`] and [`FILL_EVENT`].
+pub const EXCH_FILL_EVENT: u64 = EXCH_EVENT | FILL_EVENT;
+
+/// Indicates that one should continue until the end of the data.
+pub const UNTIL_END_OF_DATA: i64 = i64::MAX;
+
+pub type OrderId = u64;
+
+#[derive(PartialEq, Debug)]
+pub enum WaitOrderResponse {
+    None,
+    Any,
+    Specified { asset_no: usize, order_id: OrderId },
+}
+
+/// Feed event data.
+#[repr(C, align(64))]
+#[derive(Clone, PartialEq, Debug, NpyDTyped, Decode, Encode)]
+pub struct Event {
+    /// Event flag
+    pub ev: u64,
+    /// Exchange timestamp, which is the time at which the event occurs on the exchange.
+    pub exch_ts: i64,
+    /// Local timestamp, which is the time at which the event is received by the local.
+    pub local_ts: i64,
+    /// Price
+    pub px: f64,
+    /// Quantity
+    pub qty: f64,
+    /// Order ID is only for the L3 Market-By-Order feed.
+    pub order_id: u64,
+    /// Reserved for an additional i64 value
+    pub ival: i64,
+    /// Reserved for an additional f64 value
+    pub fval: f64,
+}
+
+unsafe impl POD for Event {}
+
+impl Event {
+    /// Checks if this `Event` corresponds to the given event.
+    #[inline(always)]
+    pub fn is(&self, event: u64) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Represents a side, which can refer to either the side of an order or the initiator's side in a
+/// trade event, with the meaning varying depending on the context.
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Decode, Encode)]
+#[repr(i8)]
+pub enum Side {
+    /// In the market depth event, this indicates the bid side; in the market trade event, it
+    /// indicates that the trade initiator is a buyer.
+    Buy = 1,
+    /// In the market depth event, this indicates the ask side; in the market trade event, it
+    /// indicates that the trade initiator is a seller.
+    Sell = -1,
+    /// No side provided.
+    None = 0,
+    /// This occurs when the [`Connector`](`crate::connector::Connector`) receives a side value that
+    /// does not have a corresponding enum value.
+    Unsupported = 127,
+}
+
+impl AsRef<f64> for Side {
+    fn as_ref(&self) -> &f64 {
+        /* body omitted: interface retained */
+    }
+}
+
+impl AsRef<str> for Side {
+    fn as_ref(&self) -> &'static str {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Order status
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Decode, Encode)]
+#[repr(u8)]
+pub enum Status {
+    None = 0,
+    New = 1,
+    Expired = 2,
+    Filled = 3,
+    Canceled = 4,
+    PartiallyFilled = 5,
+    Rejected = 6,
+    /// This occurs when the [`Connector`](`crate::connector::Connector`) receives an order status
+    /// value that does not have a corresponding enum value.
+    Unsupported = 255,
+}
+
+/// Time In Force
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Decode, Encode)]
+#[repr(u8)]
+pub enum TimeInForce {
+    /// Good 'Til Canceled
+    GTC = 0,
+    /// Post-only
+    GTX = 1,
+    /// Fill or Kill
+    FOK = 2,
+    /// Immediate or Cancel
+    IOC = 3,
+    /// This occurs when the [`Connector`](`crate::connector::Connector`) receives a time-in-force
+    /// value that does not have a corresponding enum value.
+    Unsupported = 255,
+}
+
+impl AsRef<str> for TimeInForce {
+    fn as_ref(&self) -> &'static str {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Order type
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Decode, Encode)]
+#[repr(u8)]
+pub enum OrdType {
+    Limit = 0,
+    Market = 1,
+    Unsupported = 255,
+}
+
+impl AsRef<str> for OrdType {
+    fn as_ref(&self) -> &'static str {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Provides cloning of `Box<dyn Any>`, which is utilized in [Order] for the additional data used in
+/// [`QueueModel`](`crate::backtest::models::QueueModel`).
+///
+/// **Usage:**
+/// ```
+/// impl AnyClone for QueuePos {
+///     fn as_any(&self) -> &dyn Any {
+///         self
+///     }
+///
+///     fn as_any_mut(&mut self) -> &mut dyn Any {
+///         self
+///     }
+/// }
+/// ```
+pub trait AnyClone: DynClone {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+dyn_clone::clone_trait_object!(AnyClone);
+
+impl AnyClone for () {
+    fn as_any(&self) -> &dyn Any {
+        /* body omitted: interface retained */
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Order
+#[derive(Clone)]
+#[repr(C)]
+pub struct Order {
+    /// Order quantity
+    pub qty: f64,
+    /// The quantity of this order that has not yet been executed. It represents the remaining
+    /// quantity that is still open or active in the market after any partial fills.
+    pub leaves_qty: f64,
+    /// Executed quantity, only available when this order is executed.
+    pub exec_qty: f64,
+    /// Executed price in ticks (`executed_price / tick_size`), only available when this order is
+    /// executed.
+    pub exec_price_tick: i64,
+    /// Order price in ticks (`price / tick_size`).
+    pub price_tick: i64,
+    /// The tick size of the asset associated with this order.
+    pub tick_size: f64,
+    /// The time at which the exchange processes this order, ideally when the matching engine
+    /// processes the order, will be set if the value is available.
+    pub exch_timestamp: i64,
+    /// The time at which the local receives this order or sent this order to the exchange.
+    pub local_timestamp: i64,
+    pub order_id: u64,
+    /// Additional data used for [`QueueModel`](`crate::backtest::models::QueueModel`).
+    /// This is only available in backtesting, and the type `Q` is set to `()` in a live bot.
+    pub q: Box<dyn AnyClone + Send>,
+    /// Whether the order is executed as a maker, only available when this order is executed.
+    pub maker: bool,
+    pub order_type: OrdType,
+    /// Request status:
+    ///   * [`Status::New`]: Request to open a new order.
+    ///   * [`Status::Canceled`]: Request to cancel an opened order.
+    pub req: Status,
+    pub status: Status,
+    pub side: Side,
+    pub time_in_force: TimeInForce,
+}
+
+impl Order {
+    /// Constructs an instance of `Order`.
+    pub fn new(
+        order_id: u64,
+        price_tick: i64,
+        tick_size: f64,
+        qty: f64,
+        side: Side,
+        order_type: OrdType,
+        time_in_force: TimeInForce,
+    ) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the order price.
+    pub fn price(&self) -> f64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns the executed price, only available when this order is executed.
+    pub fn exec_price(&self) -> f64 {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether this order is cancelable.
+    pub fn cancellable(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether this order is active in the market.
+    pub fn active(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns whether this order has an ongoing request.
+    pub fn pending(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+
+    /// Updates this order with the given order. This is used only by the processor in backtesting
+    /// or by a bot in live trading.
+    pub fn update(&mut self, order: &Order) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Debug for Order {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Decode for Order {
+    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'de> BorrowDecode<'de> for Order {
+    fn borrow_decode<D: BorrowDecoder<'de>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Encode for Order {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        /* body omitted: interface retained */
+    }
+}
+
+/// An asynchronous request to [`Connector`](`crate::connector::Connector`).
+#[derive(Clone, Debug)]
+pub enum Request {
+    /// An order request, a tuple consisting of an asset number and an [`Order`].
+    Order { asset_no: usize, order: Order },
+}
+
+/// Provides state values.
+///
+/// **Note:** In a live bot, currently only `position` value is delivered correctly, and other
+/// values are invalid.
+#[repr(C)]
+#[derive(PartialEq, Clone, Debug, Default)]
+pub struct StateValues {
+    pub position: f64,
+    /// Backtest only
+    pub balance: f64,
+    /// Backtest only
+    pub fee: f64,
+    // todo: currently, they are cumulative values, but they need to be values within the record
+    //       interval.
+    /// Backtest only
+    pub num_trades: i64,
+    /// Backtest only
+    pub trading_volume: f64,
+    /// Backtest only
+    pub trading_value: f64,
+}
+
+/// Provides errors that can occur in builders.
+#[derive(Error, Debug)]
+pub enum BuildError {
+    #[error("`{0}` is required")]
+    BuilderIncomplete(&'static str),
+    #[error("{0}")]
+    InvalidArgument(&'static str),
+    #[error("`{0}/{1}` already exists")]
+    Duplicate(String, String),
+    #[error("`{0}` is not found")]
+    ConnectorNotFound(String),
+    #[error("{0:?}")]
+    Error(#[from] anyhow::Error),
+}
+
+/// Used to submit an order in a live bot.
+#[derive(Decode, Encode)]
+pub struct OrderRequest {
+    pub order_id: u64,
+    pub price: f64,
+    pub qty: f64,
+    pub side: Side,
+    pub time_in_force: TimeInForce,
+    pub order_type: OrdType,
+}
+
+/// Provides a bot interface for backtesting and live trading.
+pub trait Bot<MD>
+where
+    MD: MarketDepth,
+{
+    type Error;
+
+    /// In backtesting, this timestamp reflects the time at which the backtesting is conducted
+    /// within the provided data. In a live bot, it's literally the current local timestamp.
+    fn current_timestamp(&self) -> i64;
+
+    /// Returns the number of assets.
+    fn num_assets(&self) -> usize;
+
+    /// Returns the position you currently hold.
+    ///
+    /// * `asset_no` - Asset number from which the position will be retrieved.
+    fn position(&self, asset_no: usize) -> f64;
+
+    /// Returns the state's values such as balance, fee, and so on.
+    fn state_values(&self, asset_no: usize) -> &StateValues;
+
+    /// Returns the [`MarketDepth`].
+    ///
+    /// * `asset_no` - Asset number from which the market depth will be retrieved.
+    fn depth(&self, asset_no: usize) -> &MD;
+
+    /// Returns the last market trades.
+    ///
+    /// * `asset_no` - Asset number from which the last market trades will be retrieved.
+    fn last_trades(&self, asset_no: usize) -> &[Event];
+
+    /// Clears the last market trades from the buffer.
+    ///
+    /// * `asset_no` - Asset number at which this command will be executed. If `None`, all last
+    ///                trades in any assets will be cleared.
+    fn clear_last_trades(&mut self, asset_no: Option<usize>);
+
+    /// Returns a hash map of order IDs and their corresponding [`Order`]s.
+    ///
+    /// * `asset_no` - Asset number from which orders will be retrieved.
+    fn orders(&self, asset_no: usize) -> &HashMap<OrderId, Order>;
+
+    /// Places a buy order.
+    ///
+    /// * `asset_no` - Asset number at which this command will be executed.
+    /// * `order_id` - The unique order ID; there should not be any existing order with the same ID
+    ///                on both local and exchange sides.
+    /// * `price` - Order price.
+    /// * `qty` - Quantity to buy.
+    /// * `time_in_force` - Available [`TimeInForce`] options vary depending on the exchange model.
+    ///                     See to the exchange model for details.
+    ///
+    ///  * `order_type` - Available [`OrdType`] options vary depending on the exchange model. See to
+    ///                   the exchange model for details.
+    ///
+    ///  * `wait` - If true, wait until the order placement response is received.
+    #[allow(clippy::too_many_arguments)]
+    fn submit_buy_order(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        price: f64,
+        qty: f64,
+        time_in_force: TimeInForce,
+        order_type: OrdType,
+        wait: bool,
+    ) -> Result<bool, Self::Error>;
+
+    /// Places a sell order.
+    ///
+    /// * `asset_no` - Asset number at which this command will be executed.
+    /// * `order_id` - The unique order ID; there should not be any existing order with the same ID
+    ///                on both local and exchange sides.
+    /// * `price` - Order price.
+    /// * `qty` - Quantity to buy.
+    /// * `time_in_force` - Available [`TimeInForce`] options vary depending on the exchange model.
+    ///                     See to the exchange model for details.
+    ///
+    ///  * `order_type` - Available [`OrdType`] options vary depending on the exchange model. See to
+    ///                   the exchange model for details.
+    ///
+    ///  * `wait` - If true, wait until the order placement response is received.
+    #[allow(clippy::too_many_arguments)]
+    fn submit_sell_order(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        price: f64,
+        qty: f64,
+        time_in_force: TimeInForce,
+        order_type: OrdType,
+        wait: bool,
+    ) -> Result<bool, Self::Error>;
+
+    /// Places an order.
+    fn submit_order(
+        &mut self,
+        asset_no: usize,
+        order: OrderRequest,
+        wait: bool,
+    ) -> Result<bool, Self::Error>;
+
+    /// Cancels the specified order.
+    ///
+    /// * `asset_no` - Asset number at which this command will be executed.
+    /// * `order_id` - Order ID to cancel.
+    /// * `wait` - If true, wait until the order placement response is received.
+    fn cancel(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        wait: bool,
+    ) -> Result<bool, Self::Error>;
+
+    /// Clears inactive orders from the local orders whose status is neither [`Status::New`] nor
+    /// [`Status::PartiallyFilled`].
+    fn clear_inactive_orders(&mut self, asset_no: Option<usize>);
+
+    /// Waits for the response of the order with the given order ID until timeout.
+    fn wait_order_response(
+        &mut self,
+        asset_no: usize,
+        order_id: OrderId,
+        timeout: i64,
+    ) -> Result<bool, Self::Error>;
+
+    /// Wait until the next feed is received, or until timeout.
+    fn wait_next_feed(
+        &mut self,
+        include_order_resp: bool,
+        timeout: i64,
+    ) -> Result<bool, Self::Error>;
+
+    /// Elapses the specified duration.
+    ///
+    /// Args:
+    /// * `duration` - Duration to elapse. Nanoseconds is the default unit. However, unit should be
+    ///                the same as the data's timestamp unit.
+    ///
+    /// Returns:
+    ///   `Ok(true)` if the method reaches the specified timestamp within the data. If the end of
+    ///   the data is reached before the specified timestamp, it returns `Ok(false)`.
+    fn elapse(&mut self, duration: i64) -> Result<bool, Self::Error>;
+
+    /// Elapses time only in backtesting. In live mode, it is ignored.
+    ///
+    /// The [elapse()](Self::elapse()) method exclusively manages time during backtesting, meaning
+    /// that factors such as computing time are not properly accounted for. So, this method can be
+    /// utilized to simulate such processing times.
+    ///
+    /// Args:
+    /// * `duration` - Duration to elapse. Nanoseconds is the default unit. However, unit should be
+    ///                the same as the data's timestamp unit.
+    ///
+    /// Returns:
+    ///   `Ok(true)` if the method reaches the specified timestamp within the data. If the end of
+    ///   the data is reached before the specified timestamp, it returns `Ok(false)`.
+    fn elapse_bt(&mut self, duration: i64) -> Result<bool, Self::Error>;
+
+    /// Closes this backtester or bot.
+    fn close(&mut self) -> Result<(), Self::Error>;
+
+    /// Returns the last feed's exchange timestamp and local receipt timestamp.
+    fn feed_latency(&self, asset_no: usize) -> Option<(i64, i64)>;
+
+    /// Returns the last order's request timestamp, exchange timestamp, and response receipt
+    /// timestamp.
+    fn order_latency(&self, asset_no: usize) -> Option<(i64, i64, i64)>;
+}
+
+/// Provides bot statistics and [`StateValues`] recording features for backtesting result analysis
+/// or live bot logging.
+pub trait Recorder {
+    type Error;
+
+    /// Records the current [`StateValues`].
+    fn record<MD, I>(&mut self, hbt: &mut I) -> Result<(), Self::Error>
+    where
+        I: Bot<MD>,
+        MD: MarketDepth;
+}
+```
+</file>
+
+<file path="src/utils/aligned.rs">
+```rust
+use std::{
+    alloc, borrow::{Borrow, BorrowMut},
+    fmt, fmt::{Debug, Formatter, Pointer},
+    mem::{forget, size_of},
+    ops::{Deref, DerefMut, Index, IndexMut},
+    ptr::{slice_from_raw_parts_mut, NonNull},
+    slice::SliceIndex,
+};
+pub const CACHE_LINE_SIZE: usize = 64;
+pub struct AlignedArray<T, const ALIGNMENT: usize> {
+    ptr: NonNull<[T]>,
+    len: usize,
+}
+impl<T, const ALIGNMENT: usize> Drop for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn drop(&mut self) {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> AlignedArray<T, ALIGNMENT> {
+    /// Dictated by the requirements of
+    /// [`alloc::Layout`](https://doc.rust-lang.org/alloc/alloc/struct.Layout.html).
+    /// "`size`, when rounded up to the nearest multiple of `align`, must not overflow `isize`
+    /// (i.e. the rounded value must be less than or equal to `isize::MAX`)".
+    pub const MAX_CAPACITY: usize = isize::MAX as usize - (ALIGNMENT - 1);
+    #[inline(never)]
+    pub fn new(len: usize) -> Self {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn as_mut_ptr(&mut self) -> *mut [T] {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        /* body omitted: interface retained */
+    }
+    #[inline]
+    pub fn as_ptr(&self) -> *const [T] {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn as_slice(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+    #[allow(clippy::len_without_is_empty)]
+    #[inline]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    /// Consumes the ``AlignedArray``, returning a wrapped fat pointer, similar to ``Box::into_raw``.
+    pub fn into_raw(mut self) -> *mut [T] {
+        /* body omitted: interface retained */
+    }
+    /// Constructs an AlignedArray from a fat pointer, similar to ``Box::from_raw``, but with
+    /// the specified alignment.
+    ///
+    /// # Safety
+    /// This function is unsafe because improper use may lead to memory problems. For example, a
+    /// double-free may occur if the function is called twice on the same fat pointer.
+    ///
+    /// The fat pointer must originate from [`AlignedArray::into_raw`].
+    pub unsafe fn from_raw(ptr: *mut [T]) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> AsMut<[T]> for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> AsRef<[T]> for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn as_ref(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> Borrow<[T]> for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn borrow(&self) -> &[T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> BorrowMut<[T]> for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut [T] {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> Debug for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> Deref for AlignedArray<T, ALIGNMENT> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize> DerefMut for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize, Idx: SliceIndex<[T]>> Index<Idx>
+for AlignedArray<T, ALIGNMENT> {
+    type Output = <Idx as SliceIndex<[T]>>::Output;
+    #[inline]
+    fn index(&self, index: Idx) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<T, const ALIGNMENT: usize, Idx: SliceIndex<[T]>> IndexMut<Idx>
+for AlignedArray<T, ALIGNMENT> {
+    #[inline]
+    fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

@@ -2,8 +2,23 @@
 #[cfg(feature = "unsat-poc-src-utilities-rs-188-34-rule-300-rustc-1-87-line880-6692cd8ea2")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_utilities_rs_188_34_rule_300_rustc_1_87_line880_6692cd8ea2() {
-    let backing: Vec<u8> = vec![0u8; 8];
-    let adapter = crate::utilities::VertexDataAdapter::new(&backing, 8, 1).unwrap();
-    let _ = adapter.pos_ptr();
+    let prefix_bytes: &'static [u8] = Box::leak(vec![0u8; 16].into_boxed_slice());
+    let target_bytes: &'static [u8] = Box::leak(vec![1u8; 1].into_boxed_slice());
+
+    let prefix_adapter = VertexDataAdapter {
+        reader: Cursor::new(prefix_bytes),
+        vertex_count: 2,
+        vertex_stride: 8,
+        position_offset: 1,
+    };
+    let _ = prefix_adapter.pos_ptr();
+
+    let target_adapter = VertexDataAdapter {
+        reader: Cursor::new(target_bytes),
+        vertex_count: 1,
+        vertex_stride: 1,
+        position_offset: usize::MAX,
+    };
+    let _ = target_adapter.pos_ptr();
 }
 ```

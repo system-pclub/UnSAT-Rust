@@ -224,7 +224,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::NetworkBuffer` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
+1. construct `buffer::NetworkBuffer` for `receiver` using its genuinely public fields when that better controls the target caller state: `data: [u8; MAX_BUFFER_SIZE]`, `offset: usize` -> or construct `buffer::NetworkBuffer` for `receiver` using constructor(s): `buffer::NetworkBuffer::new` -> call target caller `buffer::NetworkBuffer::drain` directly
 </candidate safe-call plans>
 
 
@@ -323,7 +323,13 @@ impl NetworkBuffer {
         /* body omitted: interface retained */
     }
     /// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_25_17"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer13NetworkBuffer5drainE_src_buffer_rs_24_13"
+    )]
     pub fn drain(&mut self, count: usize) {
         unsafe {
             use std::ptr;

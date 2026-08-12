@@ -28,7 +28,7 @@ pub extern "C" fn __unsat_poc_src_delaunay_triangle_rs_13_14_rule_574_87408aa44b
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_011, "__unsat_rerun_sym_011");
     let mut __unsat_rerun_sym_012 = 12;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_012, "__unsat_rerun_sym_012");
-    let mut __unsat_rerun_sym_013 = 1;
+    let mut __unsat_rerun_sym_013 = 2;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_013, "__unsat_rerun_sym_013");
     let a = DVertex::new(__unsat_rerun_sym_000, i_overlay::i_float::point::IntPoint::new(__unsat_rerun_sym_001, __unsat_rerun_sym_002));
     let b = DVertex::new(__unsat_rerun_sym_003, i_overlay::i_float::point::IntPoint::new(__unsat_rerun_sym_004, __unsat_rerun_sym_005));

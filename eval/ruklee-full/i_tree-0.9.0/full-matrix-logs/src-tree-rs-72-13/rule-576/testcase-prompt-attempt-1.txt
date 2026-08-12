@@ -172,7 +172,80 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:tree::Tree.store",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "Tree"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "store",
+        "kind": "public_field",
+        "root_type": "tree::Tree"
+      }
+    ],
+    "symbol": "_ZN6i_tree4tree13Tree$LT$T$GT$8mut_node17hff77a5aa3ca2c205E.arg0.store.buffer.cap"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:tree::Tree.store",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "Tree"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "store",
+        "kind": "public_field",
+        "root_type": "tree::Tree"
+      }
+    ],
+    "symbol": "_ZN6i_tree4tree13Tree$LT$T$GT$8mut_node17hff77a5aa3ca2c205E.arg0.store.buffer.len"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:tree::Tree.store",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "Tree"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "store",
+        "kind": "public_field",
+        "root_type": "tree::Tree"
+      }
+    ],
+    "symbol": "_ZN6i_tree4tree13Tree$LT$T$GT$8mut_node17hff77a5aa3ca2c205E.arg0.store.unused.cap"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:tree::Tree.store",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "Tree"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "store",
+        "kind": "public_field",
+        "root_type": "tree::Tree"
+      }
+    ],
+    "symbol": "_ZN6i_tree4tree13Tree$LT$T$GT$8mut_node17hff77a5aa3ca2c205E.arg0.store.unused.len"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -234,7 +307,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `tree::Tree` for `receiver` using fields visible from the injection module when that better controls the target caller state: `store`, `root` -> or construct `tree::Tree` for `receiver` using constructor(s): `tree::Tree::<T>::new`, `array::<impl tree::Tree<T>>::with_sorted_array` -> call target caller `tree::Tree::<T>::mut_node` directly
+1. construct `tree::Tree` for `receiver` using its genuinely public fields when that better controls the target caller state: `store`, `root` -> or construct `tree::Tree` for `receiver` using constructor(s): `tree::Tree::<T>::new`, `array::<impl tree::Tree<T>>::with_sorted_array` -> construct or obtain a `Tree` value -> set or populate public field `tree::Tree.store` -> call target caller `tree::Tree::<T>::mut_node`
+2. construct `tree::Tree` for `receiver` using its genuinely public fields when that better controls the target caller state: `store`, `root` -> or construct `tree::Tree` for `receiver` using constructor(s): `tree::Tree::<T>::new`, `array::<impl tree::Tree<T>>::with_sorted_array` -> call target caller `tree::Tree::<T>::mut_node` directly
 </candidate safe-call plans>
 
 
@@ -436,14 +510,15 @@ impl<T: Clone + PartialEq + Eq + PartialOrd + Ord> Tree<T> {
     #[inline(never)]
     pub fn mut_node(&mut self, index: u32) -> &mut Node<T> {
         unsafe {
-            let __klee_arg3 = index as usize;
-            klee_ext_bind::bind_arg_u64(1, (self.store.buffer).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg3);
+            let __klee_arg4 = index as usize;
+            let __klee_len5 = (self.store.buffer).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len5);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg4, __klee_len5);
             klee_ext_bind::callsite!("src-tree-rs-72-13");
             let mut __klee_ret_src_tree_rs_72_13_get_unchecked_mut = self
                 .store
                 .buffer
-                .get_unchecked_mut(__klee_arg3);
+                .get_unchecked_mut(__klee_arg4);
             __klee_ret_src_tree_rs_72_13_get_unchecked_mut
         }
     }

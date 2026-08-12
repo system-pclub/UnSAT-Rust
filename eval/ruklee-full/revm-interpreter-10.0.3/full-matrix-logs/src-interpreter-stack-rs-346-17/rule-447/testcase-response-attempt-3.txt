@@ -2,30 +2,71 @@
 #[cfg(feature = "unsat-poc-src-interpreter-stack-rs-346-17-rule-447-485609ff7e")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_interpreter_stack_rs_346_17_rule_447_485609ff7e() {
-    use crate::{DummyHost, Interpreter};
-    use revm_primitives::{Bytecode, Bytes};
+    use crate::{DummyHost, Interpreter, Contract, Gas, InstructionResult};
+    use crate::primitives::{Bytecode, Bytes, Address, U256};
 
-    let mut interp = Interpreter::new(
-        crate::Contract::new(
-            Bytes::new(),
-            Bytecode::LegacyRaw(Bytes::from([0x00])),
-            None,
-            revm_primitives::Address::ZERO,
-            None,
-            revm_primitives::Address::ZERO,
-            revm_primitives::U256::ZERO,
-        ),
-        10_000,
-        false,
+    let mut stack = crate::Stack::new();
+    let mut backing = vec![0u8; 33];
+    backing[0] = 0x11;
+    backing[1] = 0x22;
+    backing[2] = 0x33;
+    backing[3] = 0x44;
+    backing[4] = 0x55;
+    backing[5] = 0x66;
+    backing[6] = 0x77;
+    backing[7] = 0x88;
+    backing[8] = 0x99;
+    backing[9] = 0xaa;
+    backing[10] = 0xbb;
+    backing[11] = 0xcc;
+    backing[12] = 0xdd;
+    backing[13] = 0xee;
+    backing[14] = 0xff;
+    backing[15] = 0x10;
+    backing[16] = 0x20;
+    backing[17] = 0x30;
+    backing[18] = 0x40;
+    backing[19] = 0x50;
+    backing[20] = 0x60;
+    backing[21] = 0x70;
+    backing[22] = 0x80;
+    backing[23] = 0x90;
+    backing[24] = 0xa0;
+    backing[25] = 0xb0;
+    backing[26] = 0xc0;
+    backing[27] = 0xd0;
+    backing[28] = 0xe0;
+    backing[29] = 0xf0;
+    backing[30] = 0x01;
+    backing[31] = 0x02;
+    backing[32] = 0x03;
+
+    let slice = &backing[..33];
+    let _ = stack.push_slice(slice);
+
+    let contract = Contract::new(
+        Bytes::new(),
+        Bytecode::LegacyRaw(Bytes::from([0x00])),
+        None,
+        Address::ZERO,
+        None,
+        Address::ZERO,
+        U256::ZERO,
     );
-
+    let mut interp = Interpreter::new(contract, 1_000_000, false);
+    interp.stack = stack;
     let mut host = DummyHost::default();
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&[1u8; 33]);
-    data.extend_from_slice(&[2u8; 33]);
-    data.extend_from_slice(&[3u8; 33]);
+    let _ = interp.stack.push(U256::from(0xdead_beefu64));
+    let _ = interp.stack.push(U256::from(0xabad1deau64));
+    let _ = interp.stack.push(U256::from(0x1234_5678u64));
+    let _ = interp.stack.push(U256::from(0x9abc_def0u64));
+    let _ = interp.stack.push(U256::from(0x1111_2222u64));
 
-    interp.stack.push_slice(&data).unwrap();
+    let _ = interp.stack.push_slice(&backing[..1]);
+
+    let _ = interp.gas.record_cost(0);
+    let _ = InstructionResult::Continue;
+    let _ = &mut host;
 }
 ```

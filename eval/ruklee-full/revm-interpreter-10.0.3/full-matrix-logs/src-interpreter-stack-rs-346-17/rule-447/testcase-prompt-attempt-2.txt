@@ -3,6 +3,14 @@ target counterexample.
 
 
 
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 138040808816640; get_arg(1) = 5; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `dst`; this failed observation had `dst = 138040808816640`.
+- At the selected target expression, `get_arg(1)` is source expression `i`; this failed observation had `i = 5`.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
 	Requirements:
 	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
 	  operations. If the crate uses Rust 2024 and the compiler requires it, the
@@ -1177,109 +1185,17 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-Failed to compile '/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3':
-stdout: 
-stderr:    Compiling revm-interpreter v10.0.3 (/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3)
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `interpreter`
-    --> src/interpreter/stack.rs:1053:21
-     |
-1053 |     let mut stack = interpreter::stack::Stack::new();
-     |                     ^^^^^^^^^^^ use of unresolved module or unlinked crate `interpreter`
-     |
-     = help: if you wanted to use a crate named `interpreter`, use `cargo add interpreter` to add it to your `Cargo.toml`
-help: consider importing this struct through its public re-export
-     |
-1    + use crate::Stack;
-     |
-help: if you import `Stack`, refer to it directly
-     |
-1053 -     let mut stack = interpreter::stack::Stack::new();
-1053 +     let mut stack = Stack::new();
-     |
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-interpreter-stack-rs-346-17`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-interpreter-stack-rs-316-21` -> `src-interpreter-stack-rs-316-21-write` -> `src-interpreter-stack-rs-316-21` -> `src-interpreter-stack-rs-316-21-write` -> `src-interpreter-stack-rs-337-17` -> `src-interpreter-stack-rs-337-17-write` -> `src-interpreter-stack-rs-346-17` -> `src-interpreter-stack-rs-346-17-write_bytes`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-interpreter-stack-rs-346-17` and reproduce the target counterexample there.
+The metadata caller `interpreter::stack::Stack::push_slice` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
-warning: extern crate `alloc` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use alloc as _;` to the crate root
-note: the lint level is defined here
- --> src/lib.rs:4:29
-  |
-4 | #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-  |                             ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: extern crate `compiler_builtins` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use compiler_builtins as _;` to the crate root
-
-warning: extern crate `panic_abort` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_abort as _;` to the crate root
-
-warning: extern crate `panic_unwind` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_unwind as _;` to the crate root
-
-warning: extern crate `proc_macro` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use proc_macro as _;` to the crate root
-
-For more information about this error, try `rustc --explain E0433`.
-warning: `revm-interpreter` (lib) generated 5 warnings
-error: could not compile `revm-interpreter` (lib) due to 1 previous error; 5 warnings emitted
-
-
-command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-interpreter-stack-rs-346-17-rule-447-485609ff7e', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
-returncode: 101
-
-[stdout]
-
-[stderr]
-   Compiling revm-interpreter v10.0.3 (/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3)
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `interpreter`
-    --> src/interpreter/stack.rs:1053:21
-     |
-1053 |     let mut stack = interpreter::stack::Stack::new();
-     |                     ^^^^^^^^^^^ use of unresolved module or unlinked crate `interpreter`
-     |
-     = help: if you wanted to use a crate named `interpreter`, use `cargo add interpreter` to add it to your `Cargo.toml`
-help: consider importing this struct through its public re-export
-     |
-1    + use crate::Stack;
-     |
-help: if you import `Stack`, refer to it directly
-     |
-1053 -     let mut stack = interpreter::stack::Stack::new();
-1053 +     let mut stack = Stack::new();
-     |
-
-warning: extern crate `alloc` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use alloc as _;` to the crate root
-note: the lint level is defined here
- --> src/lib.rs:4:29
-  |
-4 | #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-  |                             ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: extern crate `compiler_builtins` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use compiler_builtins as _;` to the crate root
-
-warning: extern crate `panic_abort` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_abort as _;` to the crate root
-
-warning: extern crate `panic_unwind` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_unwind as _;` to the crate root
-
-warning: extern crate `proc_macro` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use proc_macro as _;` to the crate root
-
-For more information about this error, try `rustc --explain E0433`.
-warning: `revm-interpreter` (lib) generated 5 warnings
-error: could not compile `revm-interpreter` (lib) due to 1 previous error; 5 warnings emitted
-
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 138040808816640; get_arg(1) = 5; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `dst`; this failed observation had `dst = 138040808816640`.
+  At the selected target expression, `get_arg(1)` is source expression `i`; this failed observation had `i = 5`.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 
 </previous attempt feedback>
 
@@ -1854,6 +1770,9 @@ impl Stack {
     ///
     /// The caller is responsible for checking the length of the stack.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN12instructions8contract26pop_extcall_target_addressE_src_instructions_contract_rs_205_5"
+    )]
     pub unsafe fn pop_unsafe(&mut self) -> U256 {
         /* body omitted: interface retained */
     }
@@ -1947,7 +1866,19 @@ impl Stack {
     ///
     /// Panics if `n` is 0.
     #[cfg_attr(debug_assertions, track_caller)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_241_27"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_242_42"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_242_17"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_243_17"
+    )]
     pub fn dup(&mut self, n: usize) -> Result<(), InstructionResult> {
         /* body omitted: interface retained */
     }
@@ -1969,13 +1900,86 @@ impl Stack {
     ///
     /// Panics if `m` is zero.
     #[cfg_attr(debug_assertions, track_caller)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_282_23"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_44"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_56"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_13"
+    )]
     pub fn exchange(&mut self, n: usize, m: usize) -> Result<(), InstructionResult> {
-        /* body omitted: interface retained */
+        assume!(m > 0, "overlapping exchange");
+        let len = self.data.len();
+        let n_m_index = n + m;
+        if n_m_index >= len {
+            return Err(InstructionResult::StackUnderflow);
+        }
+        unsafe {
+            let __klee_arg4 = self.data.as_mut_ptr();
+            let __klee_arg5 = len - 1;
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg4);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg5);
+            klee_ext_bind::callsite!("src-interpreter-stack-rs-282-23");
+            let mut __klee_ret_src_interpreter_stack_rs_282_23_add = __klee_arg4
+                .add(__klee_arg5);
+            let top = __klee_ret_src_interpreter_stack_rs_282_23_add;
+            klee_ext_bind::bind_arg_ptr_value(0, top);
+            klee_ext_bind::bind_arg_u64_value(1, &n);
+            klee_ext_bind::callsite!("src-interpreter-stack-rs-283-44");
+            let mut __klee_ret_src_interpreter_stack_rs_283_44_sub = top.sub(n);
+            klee_ext_bind::bind_arg_ptr_value(0, top);
+            klee_ext_bind::bind_arg_u64_value(1, &n_m_index);
+            klee_ext_bind::callsite!("src-interpreter-stack-rs-283-56");
+            let mut __klee_ret_src_interpreter_stack_rs_283_56_sub = top.sub(n_m_index);
+            let __klee_arg6 = 1;
+            klee_ext_bind::callsite!("src-interpreter-stack-rs-283-13");
+            let mut __klee_ret_src_interpreter_stack_rs_283_13_swap_nonoverlapping = core::ptr::swap_nonoverlapping(
+                __klee_ret_src_interpreter_stack_rs_283_44_sub,
+                __klee_ret_src_interpreter_stack_rs_283_56_sub,
+                __klee_arg6,
+            );
+        }
+        Ok(())
     }
     /// Pushes an arbitrary length slice of bytes onto the stack, padding the last word with zeros
     /// if necessary.
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_304_23"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_305_13"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_316_21_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_316_21"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_329_17_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_329_17"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_337_17_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_337_17"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_346_17_write_bytes"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_346_17"
+    )]
     pub fn push_slice(&mut self, slice: &[u8]) -> Result<(), InstructionResult> {
         if slice.is_empty() {
             return Ok(());
@@ -1986,14 +1990,17 @@ impl Stack {
             return Err(InstructionResult::StackOverflow);
         }
         unsafe {
-            let __klee_arg6 = self.data.as_mut_ptr();
-            let __klee_arg7 = self.data.len();
-            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg6);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg7);
+            let __klee_arg7 = self.data.as_mut_ptr();
+            let __klee_arg8 = self.data.len();
+            klee_ext_bind::bind_arg_ptr_value(0, __klee_arg7);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg8);
             klee_ext_bind::callsite!("src-interpreter-stack-rs-304-23");
-            let mut __klee_ret_src_interpreter_stack_rs_304_23_add = __klee_arg6
-                .add(__klee_arg7);
+            let mut __klee_ret_src_interpreter_stack_rs_304_23_add = __klee_arg7
+                .add(__klee_arg8);
             let dst = __klee_ret_src_interpreter_stack_rs_304_23_add.cast::<u64>();
+            let __klee_vec_owner9 = &(self.data) as *const _;
+            klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner9);
+            klee_ext_bind::bind_arg_u64_value(1, &new_len);
             klee_ext_bind::callsite!("src-interpreter-stack-rs-305-13");
             let mut __klee_ret_src_interpreter_stack_rs_305_13_set_len = self
                 .data
@@ -2007,11 +2014,11 @@ impl Stack {
                     klee_ext_bind::bind_arg_u64_value(1, &i);
                     klee_ext_bind::callsite!("src-interpreter-stack-rs-316-21");
                     let mut __klee_ret_src_interpreter_stack_rs_316_21_add = dst.add(i);
-                    let __klee_arg8 = __klee_ret_src_interpreter_stack_rs_316_21_add;
-                    let __klee_arg9 = u64::from_be_bytes(l.try_into().unwrap());
+                    let __klee_arg10 = __klee_ret_src_interpreter_stack_rs_316_21_add;
+                    let __klee_arg11 = u64::from_be_bytes(l.try_into().unwrap());
                     klee_ext_bind::callsite!("src-interpreter-stack-rs-316-21-write");
-                    let mut __klee_ret_src_interpreter_stack_rs_316_21_write_write = __klee_arg8
-                        .write(__klee_arg9);
+                    let mut __klee_ret_src_interpreter_stack_rs_316_21_write_write = __klee_arg10
+                        .write(__klee_arg11);
                     i += 1;
                 }
             }
@@ -2025,11 +2032,11 @@ impl Stack {
                 klee_ext_bind::bind_arg_u64_value(1, &i);
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-329-17");
                 let mut __klee_ret_src_interpreter_stack_rs_329_17_add = dst.add(i);
-                let __klee_arg10 = __klee_ret_src_interpreter_stack_rs_329_17_add;
-                let __klee_arg11 = u64::from_be_bytes(l.try_into().unwrap());
+                let __klee_arg12 = __klee_ret_src_interpreter_stack_rs_329_17_add;
+                let __klee_arg13 = u64::from_be_bytes(l.try_into().unwrap());
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-329-17-write");
-                let mut __klee_ret_src_interpreter_stack_rs_329_17_write_write = __klee_arg10
-                    .write(__klee_arg11);
+                let mut __klee_ret_src_interpreter_stack_rs_329_17_write_write = __klee_arg12
+                    .write(__klee_arg13);
                 i += 1;
             }
             if !partial_last_limb.is_empty() {
@@ -2039,11 +2046,11 @@ impl Stack {
                 klee_ext_bind::bind_arg_u64_value(1, &i);
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-337-17");
                 let mut __klee_ret_src_interpreter_stack_rs_337_17_add = dst.add(i);
-                let __klee_arg12 = __klee_ret_src_interpreter_stack_rs_337_17_add;
-                let __klee_arg13 = u64::from_be_bytes(tmp);
+                let __klee_arg14 = __klee_ret_src_interpreter_stack_rs_337_17_add;
+                let __klee_arg15 = u64::from_be_bytes(tmp);
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-337-17-write");
-                let mut __klee_ret_src_interpreter_stack_rs_337_17_write_write = __klee_arg12
-                    .write(__klee_arg13);
+                let mut __klee_ret_src_interpreter_stack_rs_337_17_write_write = __klee_arg14
+                    .write(__klee_arg15);
                 i += 1;
             }
             debug_assert_eq!((i + 3) / 4, n_words, "wrote too much");
@@ -2053,12 +2060,12 @@ impl Stack {
                 klee_ext_bind::bind_arg_u64_value(1, &i);
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-346-17");
                 let mut __klee_ret_src_interpreter_stack_rs_346_17_add = dst.add(i);
-                let __klee_arg14 = __klee_ret_src_interpreter_stack_rs_346_17_add;
-                let __klee_arg15 = 0;
-                let __klee_arg16 = 4 - m;
+                let __klee_arg16 = __klee_ret_src_interpreter_stack_rs_346_17_add;
+                let __klee_arg17 = 0;
+                let __klee_arg18 = 4 - m;
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-346-17-write_bytes");
-                let mut __klee_ret_src_interpreter_stack_rs_346_17_write_bytes_write_bytes = __klee_arg14
-                    .write_bytes(__klee_arg15, __klee_arg16);
+                let mut __klee_ret_src_interpreter_stack_rs_346_17_write_bytes_write_bytes = __klee_arg16
+                    .write_bytes(__klee_arg17, __klee_arg18);
             }
         }
         Ok(())

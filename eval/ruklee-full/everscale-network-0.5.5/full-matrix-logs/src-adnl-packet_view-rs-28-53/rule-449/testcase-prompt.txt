@@ -5,9 +5,14 @@ target counterexample.
 
 <high priority retry constraints>
 These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 133700289298432; get_arg(1) = 2; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 133700289298432`.
+- - Observation 1: get_arg(0) = 126788808212480; get_arg(1) = 2; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 126788808212480`.
 - At the selected target expression, `get_arg(1)` is source expression `prefix_len`; this failed observation had `prefix_len = 2`.
+- - Observation 2: get_arg(0) = 126720088735744; get_arg(1) = 0; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 126720088735744`.
+- At the selected target expression, `get_arg(1)` is source expression `prefix_len`; this failed observation had `prefix_len = 0`.
+- HARD RETRY CONSTRAINT: `prefix_len` must not be `0` in the next generated testcase at this exact target call. If this source expression is a target-caller parameter, the target-caller invocation must pass a non-zero concrete value for that parameter; do not call it with literal `0` or with a variable initialized to `0`.
+- In the next testcase, make source expression `prefix_len` non-zero at the same target callsite. If it is a caller argument or visible receiver field, set that caller input/field directly rather than reaching the target through a wrapper that fixes it back to zero. For pointer arithmetic targets such as `add`/`offset`, zero offset/count often makes the safety relation trivially true; try a concrete small non-zero value such as `1`.
 - If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 </high priority retry constraints>
 
@@ -434,7 +439,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 2573:         where
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/frunk_core-0.4.4/src/labelled.rs:398-537
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/frunk_core-0.4.4/src/labelled.rs:398-537
 ```rust
 398: pub struct Field<Name, Type> {
 399:     name_type_holder: PhantomData<Name>,
@@ -578,7 +583,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 537:     /// use frunk::labelled::chars::*;
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/io/copy.rs:46-58
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/io/copy.rs:46-58
 ```rust
 46:     pub struct Copy<'a, R, W: ?Sized> {
 47:         #[pin]
@@ -595,7 +600,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 58: }
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/io/copy_buf.rs:46-78
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/io/copy_buf.rs:46-78
 ```rust
 46:     pub struct CopyBuf<'a, R, W: ?Sized> {
 47:         #[pin]
@@ -632,7 +637,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 78: }
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/future/ready.rs:9-82
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/future/ready.rs:9-82
 ```rust
  9: pub struct Ready<T>(Option<T>);
 10: 
@@ -710,7 +715,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 82: }
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/io/buf_reader.rs:33-172
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/io/buf_reader.rs:33-172
 ```rust
  33:     pub struct BufReader<R> {
  34:         #[pin]
@@ -854,7 +859,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 172: 
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/compat/compat03as01.rs:151-268
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/compat/compat03as01.rs:151-268
 ```rust
 151: struct Current(task01::Task);
 152: 
@@ -976,7 +981,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 268: }
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/stream/futures_unordered/task.rs:10-149
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/stream/futures_unordered/task.rs:10-149
 ```rust
  10: pub(super) struct Task<Fut> {
  11:     // The future
@@ -1575,15 +1580,20 @@ compiler/tool feedback. Do not repeat the same mistake.
 
 The testcase compiled but did not reproduce the target violation.
 KLEE reached `src-adnl-packet_view-rs-28-53`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
-KLEE reached these callsite markers before missing the target (last markers first-order): `src-adnl-packet_view-rs-28-53` -> `src-adnl-packet_view-rs-28-22`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-adnl-packet_view-rs-28-53` and reproduce the target counterexample there.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-adnl-packet_view-rs-28-53` -> `src-adnl-packet_view-rs-28-22` -> `src-adnl-packet_view-rs-28-53` -> `src-adnl-packet_view-rs-28-22`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-adnl-packet_view-rs-28-53` and reproduce the target counterexample there.
 KLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.
 The metadata caller `adnl::packet_view::PacketView::<'a>::remove_prefix` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 133700289298432; get_arg(1) = 2; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 133700289298432`.
+- Observation 1: get_arg(0) = 126788808212480; get_arg(1) = 2; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 126788808212480`.
   At the selected target expression, `get_arg(1)` is source expression `prefix_len`; this failed observation had `prefix_len = 2`.
+- Observation 2: get_arg(0) = 126720088735744; get_arg(1) = 0; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 126720088735744`.
+  At the selected target expression, `get_arg(1)` is source expression `prefix_len`; this failed observation had `prefix_len = 0`.
+  HARD RETRY CONSTRAINT: `prefix_len` must not be `0` in the next generated testcase at this exact target call. If this source expression is a target-caller parameter, the target-caller invocation must pass a non-zero concrete value for that parameter; do not call it with literal `0` or with a variable initialized to `0`.
+  In the next testcase, make source expression `prefix_len` non-zero at the same target callsite. If it is a caller argument or visible receiver field, set that caller input/field directly rather than reaching the target through a wrapper that fixes it back to zero. For pointer arithmetic targets such as `add`/`offset`, zero offset/count often makes the safety relation trivially true; try a concrete small non-zero value such as `1`.
 If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 
 </previous attempt feedback>
@@ -2080,6 +2090,9 @@ pub fn build_handshake_packet(
 ///
 /// **NOTE: even on failure buffer can be modified**
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN4adnl9handshake22parse_handshake_packetE_src_adnl_handshake_rs_107_29"
+)]
 pub fn parse_handshake_packet(
     keys: &FastHashMap<NodeIdShort, Arc<Key>>,
     buffer: &mut PacketView<'_>,

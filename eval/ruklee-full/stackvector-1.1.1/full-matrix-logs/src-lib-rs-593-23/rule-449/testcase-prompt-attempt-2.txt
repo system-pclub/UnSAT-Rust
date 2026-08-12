@@ -5,8 +5,8 @@ target counterexample.
 
 <high priority retry constraints>
 These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 125727697534984; get_arg(1) = 0; get_arg(2) = 1; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `start`; this failed observation had `start = 125727697534984`.
+- - Observation 1: get_arg(0) = 123984613998600; get_arg(1) = 0; get_arg(2) = 1; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `start`; this failed observation had `start = 123984613998600`.
 - At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 0`.
 - HARD RETRY CONSTRAINT: `index` must not be `0` in the next generated testcase at this exact target call. If this source expression is a target-caller parameter, the target-caller invocation must pass a non-zero concrete value for that parameter; do not call it with literal `0` or with a variable initialized to `0`.
 - In the next testcase, make source expression `index` non-zero at the same target callsite. If it is a caller argument or visible receiver field, set that caller input/field directly rather than reaching the target through a wrapper that fixes it back to zero. For pointer arithmetic targets such as `add`/`offset`, zero offset/count often makes the safety relation trivially true; try a concrete small non-zero value such as `1`.
@@ -182,7 +182,26 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:StackVec.length",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "StackVec"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "length",
+        "kind": "public_field",
+        "root_type": "StackVec"
+      }
+    ],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg0.length"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -237,7 +256,8 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::insert_many` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct or obtain a `StackVec` value -> set or populate public field `StackVec.length` -> call target caller `StackVec::<A>::insert_many`
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::insert_many` directly
 </candidate safe-call plans>
 
 
@@ -549,8 +569,8 @@ The metadata caller `StackVec::<A>::insert_many` is a safe function that contain
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 125727697534984; get_arg(1) = 0; get_arg(2) = 1; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `start`; this failed observation had `start = 125727697534984`.
+- Observation 1: get_arg(0) = 123984613998600; get_arg(1) = 0; get_arg(2) = 1; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `start`; this failed observation had `start = 123984613998600`.
   At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 0`.
   HARD RETRY CONSTRAINT: `index` must not be `0` in the next generated testcase at this exact target call. If this source expression is a target-caller parameter, the target-caller invocation must pass a non-zero concrete value for that parameter; do not call it with literal `0` or with a variable initialized to `0`.
   In the next testcase, make source expression `index` non-zero at the same target callsite. If it is a caller argument or visible receiver field, set that caller input/field directly rather than reaching the target through a wrapper that fixes it back to zero. For pointer arithmetic targets such as `add`/`offset`, zero offset/count often makes the safety relation trivially true; try a concrete small non-zero value such as `1`.
@@ -1026,13 +1046,13 @@ impl<A: Array> StackVec<A> {
             klee_ext_bind::callsite!("src-lib-rs-593-23");
             let mut __klee_ret_src_lib_rs_593_23_add = start.add(index);
             let ptr = __klee_ret_src_lib_rs_593_23_add;
-            let __klee_arg12 = ptr.padd(lower_size_bound);
-            let __klee_arg13 = old_len - index;
+            let __klee_arg13 = ptr.padd(lower_size_bound);
+            let __klee_arg14 = old_len - index;
             klee_ext_bind::callsite!("src-lib-rs-596-13");
             let mut __klee_ret_src_lib_rs_596_13_copy = ptr::copy(
                 ptr,
-                __klee_arg12,
                 __klee_arg13,
+                __klee_arg14,
             );
             self.set_len(0);
             let mut guard = DropOnPanic {
@@ -1064,12 +1084,12 @@ impl<A: Array> StackVec<A> {
                 klee_ext_bind::bind_arg_u64_value(1, &num_added);
                 klee_ext_bind::callsite!("src-lib-rs-621-21");
                 let mut __klee_ret_src_lib_rs_621_21_add = ptr.add(num_added);
-                let __klee_arg14 = old_len - index;
+                let __klee_arg15 = old_len - index;
                 klee_ext_bind::callsite!("src-lib-rs-619-17");
                 let mut __klee_ret_src_lib_rs_619_17_copy = ptr::copy(
                     __klee_ret_src_lib_rs_620_21_add,
                     __klee_ret_src_lib_rs_621_21_add,
-                    __klee_arg14,
+                    __klee_arg15,
                 );
             }
             self.set_len(old_len + num_added);

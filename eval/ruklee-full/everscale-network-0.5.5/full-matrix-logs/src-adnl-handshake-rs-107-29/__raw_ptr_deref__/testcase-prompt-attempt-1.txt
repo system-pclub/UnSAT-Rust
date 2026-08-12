@@ -1,0 +1,1971 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-adnl-handshake-rs-107-29-raw-ptr-deref-102c91dc5f`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_adnl_handshake_rs_107_29_raw_ptr_deref_102c91dc5f`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-adnl-handshake-rs-107-29-raw-ptr-deref-102c91dc5f")]`.
+- Define `pub extern "C" fn __unsat_poc_src_adnl_handshake_rs_107_29_raw_ptr_deref_102c91dc5f()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-adnl-handshake-rs-107-29-raw-ptr-deref-102c91dc5f")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_adnl_handshake_rs_107_29_raw_ptr_deref_102c91dc5f() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "adnl::handshake::parse_handshake_packet",
+    "path": "src/adnl/handshake.rs",
+    "line_start": 68,
+    "line_end": 88,
+    "body_end": 166,
+    "require_template": false,
+    "is_unsafe": false,
+    "return_ty": "std::result::Result<std::option::Option<(adnl::node_id::NodeIdShort, std::option::Option<u16>)>, adnl::handshake::HandshakeError>"
+  },
+  "callee": {
+    "name": "core::ptr::__raw_ptr_deref__",
+    "path": "core::ptr",
+    "line_start": 0,
+    "line_end": 0,
+    "body_end": 0,
+    "require_template": false,
+    "is_unsafe": true,
+    "symbol_match_hint": "raw_pointer_deref"
+  },
+  "callsite": {
+    "line": 107,
+    "col": 29,
+    "path": "src/adnl/handshake.rs",
+    "id": "src-adnl-handshake-rs-107-29"
+  }
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `adnl::keystore::Key` for `keys` using constructor(s): `adnl::keystore::Key::from_bytes` -> construct `adnl::node_id::NodeIdShort` for `keys` using constructor(s): `adnl::node_id::NodeIdShort::new`, `adnl::node_id::NodeIdShort::random` -> construct `overlay::overlay_id::IdShort` for `keys` using constructor(s): `overlay::overlay_id::IdShort::new` -> construct `proto::dht::Key` for `keys` using its genuinely public fields when that better controls the target caller state: `id: &'tl [u8; 32]`, `name: &'tl [u8]`, `idx: u32` -> call target caller `adnl::handshake::parse_handshake_packet` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `adnl::handshake::parse_handshake_packet`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::convert::TryInto;
+use std::sync::Arc;
+use aes::cipher::{StreamCipher, StreamCipherSeek};
+use everscale_crypto::ed25519;
+use super::encryption::*;
+use super::keystore::Key;
+use super::node_id::{NodeIdFull, NodeIdShort};
+use super::packet_view::*;
+use crate::util::FastHashMap;
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `aes::...`, `everscale_crypto::...`, `rand::...`, `thiserror::...`.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/adnl/handshake.rs:107
+```rust
+ 99:     const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;
+100: 
+101:     if buffer.len() < DATA_START {
+102:         return Err(HandshakeError::BadHandshakePacketLength);
+103:     }
+104: 
+105:     // SAFETY: NodeIdShort is 32 (<= 96) bytes and has the same layout as `[u8; 32]`
+106:     // due to `#[repr(transparent)]`
+107:     let local_id = unsafe { &*(buffer.as_ptr() as *const NodeIdShort) };
+108: 
+109:     // Get local id
+110:     let local_key = match keys.get(local_id) {
+111:         Some(key) => key,
+112:         // No local keys found
+113:         None => return Ok(None),
+114:     };
+115: 
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/adnl/handshake.rs:85-107
+```rust
+ 85: pub fn parse_handshake_packet(
+ 86:     keys: &FastHashMap<NodeIdShort, Arc<Key>>,
+ 87:     buffer: &mut PacketView<'_>,
+ 88: ) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {
+ 89:     const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;
+ 90: 
+ 91:     // Ordinary data ranges
+ 92:     const DATA_START: usize = 96;
+ 93:     const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;
+ 94:     const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;
+ 95: 
+ 96:     // Data ranges for packets with ADNL version
+ 97:     const EXT_DATA_START: usize = 100;
+ 98:     const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;
+ 99:     const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;
+100: 
+101:     if buffer.len() < DATA_START {
+102:         return Err(HandshakeError::BadHandshakePacketLength);
+103:     }
+104: 
+105:     // SAFETY: NodeIdShort is 32 (<= 96) bytes and has the same layout as `[u8; 32]`
+106:     // due to `#[repr(transparent)]`
+107:     let local_id = unsafe { &*(buffer.as_ptr() as *const NodeIdShort) };
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/libc-0.2.175/src/psp.rs:2277-2416
+```rust
+2277:     pub struct Key {
+2278:         pub key_type: KeyType,
+2279:         pub name: [u8; 256usize],
+2280:         pub name_len: u32,
+2281:         pub unk2: u32,
+2282:         pub unk3: u32,
+2283:     }
+2284: 
+2285:     pub struct UtilityMsgDialogParams {
+2286:         pub base: UtilityDialogCommon,
+2287:         pub unknown: i32,
+2288:         pub mode: UtilityMsgDialogMode,
+2289:         pub error_value: u32,
+2290:         pub message: [u8; 512usize],
+2291:         pub options: i32,
+2292:         pub button_pressed: UtilityMsgDialogPressed,
+2293:     }
+2294: 
+2295:     pub union UtilityNetData {
+2296:         pub as_uint: u32,
+2297:         pub as_string: [u8; 128usize],
+2298:     }
+2299: 
+2300:     pub struct UtilitySavedataSFOParam {
+2301:         pub title: [u8; 128usize],
+2302:         pub savedata_title: [u8; 128usize],
+2303:         pub detail: [u8; 1024usize],
+2304:         pub parental_level: u8,
+2305:         pub unknown: [u8; 3usize],
+2306:     }
+2307: 
+2308:     pub struct SceUtilitySavedataParam {
+2309:         pub base: UtilityDialogCommon,
+2310:         pub mode: UtilitySavedataMode,
+2311:         pub unknown1: i32,
+2312:         pub overwrite: i32,
+2313:         pub game_name: [u8; 13usize],
+2314:         pub reserved: [u8; 3usize],
+2315:         pub save_name: [u8; 20usize],
+2316:         pub save_name_list: *mut [u8; 20usize],
+2317:         pub file_name: [u8; 13usize],
+2318:         pub reserved1: [u8; 3usize],
+2319:         pub data_buf: *mut c_void,
+2320:         pub data_buf_size: usize,
+2321:         pub data_size: usize,
+2322:         pub sfo_param: UtilitySavedataSFOParam,
+2323:         pub icon0_file_data: UtilitySavedataFileData,
+2324:         pub icon1_file_data: UtilitySavedataFileData,
+2325:         pub pic1_file_data: UtilitySavedataFileData,
+2326:         pub snd0_file_data: UtilitySavedataFileData,
+2327:         pub new_data: *mut UtilitySavedataListSaveNewData,
+2328:         pub focus: UtilitySavedataFocus,
+2329:         pub unknown2: [i32; 4usize],
+2330:         pub key: [u8; 16],
+2331:         pub unknown3: [u8; 20],
+2332:     }
+2333: 
+2334:     pub struct SceNetAdhocctlPeerInfo {
+2335:         pub next: *mut SceNetAdhocctlPeerInfo,
+2336:         pub nickname: [u8; 128usize],
+2337:         pub mac: [u8; 6usize],
+2338:         pub unknown: [u8; 6usize],
+2339:         pub timestamp: u32,
+2340:     }
+2341: 
+2342:     pub struct SceNetAdhocctlParams {
+2343:         pub channel: i32,
+2344:         pub name: [u8; 8usize],
+2345:         pub bssid: [u8; 6usize],
+2346:         pub nickname: [u8; 128usize],
+2347:     }
+2348: 
+2349:     pub union SceNetApctlInfo {
+2350:         pub name: [u8; 64usize],
+2351:         pub bssid: [u8; 6usize],
+2352:         pub ssid: [u8; 32usize],
+2353:         pub ssid_length: u32,
+2354:         pub security_type: u32,
+2355:         pub strength: u8,
+2356:         pub channel: u8,
+2357:         pub power_save: u8,
+2358:         pub ip: [u8; 16usize],
+2359:         pub sub_net_mask: [u8; 16usize],
+2360:         pub gateway: [u8; 16usize],
+2361:         pub primary_dns: [u8; 16usize],
+2362:         pub secondary_dns: [u8; 16usize],
+2363:         pub use_proxy: u32,
+2364:         pub proxy_url: [u8; 128usize],
+2365:         pub proxy_port: u16,
+2366:         pub eap_type: u32,
+2367:         pub start_browser: u32,
+2368:         pub wifisp: u32,
+2369:     }
+2370: }
+2371: 
+2372: pub const INT_MIN: c_int = -2147483648;
+2373: pub const INT_MAX: c_int = 2147483647;
+2374: 
+2375: pub const AUDIO_VOLUME_MAX: u32 = 0x8000;
+2376: pub const AUDIO_CHANNEL_MAX: u32 = 8;
+2377: pub const AUDIO_NEXT_CHANNEL: i32 = -1;
+2378: pub const AUDIO_SAMPLE_MIN: u32 = 64;
+2379: pub const AUDIO_SAMPLE_MAX: u32 = 65472;
+2380: 
+2381: pub const PSP_CTRL_SELECT: i32 = 0x000001;
+2382: pub const PSP_CTRL_START: i32 = 0x000008;
+2383: pub const PSP_CTRL_UP: i32 = 0x000010;
+2384: pub const PSP_CTRL_RIGHT: i32 = 0x000020;
+2385: pub const PSP_CTRL_DOWN: i32 = 0x000040;
+2386: pub const PSP_CTRL_LEFT: i32 = 0x000080;
+2387: pub const PSP_CTRL_LTRIGGER: i32 = 0x000100;
+2388: pub const PSP_CTRL_RTRIGGER: i32 = 0x000200;
+2389: pub const PSP_CTRL_TRIANGLE: i32 = 0x001000;
+2390: pub const PSP_CTRL_CIRCLE: i32 = 0x002000;
+2391: pub const PSP_CTRL_CROSS: i32 = 0x004000;
+2392: pub const PSP_CTRL_SQUARE: i32 = 0x008000;
+2393: pub const PSP_CTRL_HOME: i32 = 0x010000;
+2394: pub const PSP_CTRL_HOLD: i32 = 0x020000;
+2395: pub const PSP_CTRL_NOTE: i32 = 0x800000;
+2396: pub const PSP_CTRL_SCREEN: i32 = 0x400000;
+2397: pub const PSP_CTRL_VOLUP: i32 = 0x100000;
+2398: pub const PSP_CTRL_VOLDOWN: i32 = 0x200000;
+2399: pub const PSP_CTRL_WLAN_UP: i32 = 0x040000;
+2400: pub const PSP_CTRL_REMOTE: i32 = 0x080000;
+2401: pub const PSP_CTRL_DISC: i32 = 0x1000000;
+2402: pub const PSP_CTRL_MS: i32 = 0x2000000;
+2403: 
+2404: pub const USB_CAM_PID: i32 = 0x282;
+2405: pub const USB_BUS_DRIVER_NAME: &str = "USBBusDriver";
+2406: pub const USB_CAM_DRIVER_NAME: &str = "USBCamDriver";
+2407: pub const USB_CAM_MIC_DRIVER_NAME: &str = "USBCamMicDriver";
+2408: pub const USB_STOR_DRIVER_NAME: &str = "USBStor_Driver";
+2409: 
+2410: pub const ACTIVATED: i32 = 0x200;
+2411: pub const CONNECTED: i32 = 0x020;
+2412: pub const ESTABLISHED: i32 = 0x002;
+2413: 
+2414: pub const USB_CAM_FLIP: i32 = 1;
+2415: pub const USB_CAM_MIRROR: i32 = 0x100;
+2416: 
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.219/src/de/impls.rs:2613-2752
+```rust
+2613: //     struct RangeFrom<Idx> {
+2614: //         start: Idx,
+2615: //     }
+2616: impl<'de, Idx> Deserialize<'de> for RangeFrom<Idx>
+2617: where
+2618:     Idx: Deserialize<'de>,
+2619: {
+2620:     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2621:     where
+2622:         D: Deserializer<'de>,
+2623:     {
+2624:         let start = tri!(deserializer.deserialize_struct(
+2625:             "RangeFrom",
+2626:             range_from::FIELDS,
+2627:             range_from::RangeFromVisitor {
+2628:                 expecting: "struct RangeFrom",
+2629:                 phantom: PhantomData,
+2630:             },
+2631:         ));
+2632:         Ok(start..)
+2633:     }
+2634: }
+2635: 
+2636: mod range_from {
+2637:     use crate::lib::*;
+2638: 
+2639:     use crate::de::{Deserialize, Deserializer, Error, MapAccess, SeqAccess, Visitor};
+2640: 
+2641:     pub const FIELDS: &[&str] = &["start"];
+2642: 
+2643:     // If this were outside of the serde crate, it would just use:
+2644:     //
+2645:     //    #[derive(Deserialize)]
+2646:     //    #[serde(field_identifier, rename_all = "lowercase")]
+2647:     enum Field {
+2648:         Start,
+2649:     }
+2650: 
+2651:     impl<'de> Deserialize<'de> for Field {
+2652:         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+2653:         where
+2654:             D: Deserializer<'de>,
+2655:         {
+2656:             struct FieldVisitor;
+2657: 
+2658:             impl<'de> Visitor<'de> for FieldVisitor {
+2659:                 type Value = Field;
+2660: 
+2661:                 fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+2662:                     formatter.write_str("`start`")
+2663:                 }
+2664: 
+2665:                 fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+2666:                 where
+2667:                     E: Error,
+2668:                 {
+2669:                     match value {
+2670:                         "start" => Ok(Field::Start),
+2671:                         _ => Err(Error::unknown_field(value, FIELDS)),
+2672:                     }
+2673:                 }
+2674: 
+2675:                 fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+2676:                 where
+2677:                     E: Error,
+2678:                 {
+2679:                     match value {
+2680:                         b"start" => Ok(Field::Start),
+2681:                         _ => {
+2682:                             let value = crate::__private::from_utf8_lossy(value);
+2683:                             Err(Error::unknown_field(&*value, FIELDS))
+2684:                         }
+2685:                     }
+2686:                 }
+2687:             }
+2688: 
+2689:             deserializer.deserialize_identifier(FieldVisitor)
+2690:         }
+2691:     }
+2692: 
+2693:     pub struct RangeFromVisitor<Idx> {
+2694:         pub expecting: &'static str,
+2695:         pub phantom: PhantomData<Idx>,
+2696:     }
+2697: 
+2698:     impl<'de, Idx> Visitor<'de> for RangeFromVisitor<Idx>
+2699:     where
+2700:         Idx: Deserialize<'de>,
+2701:     {
+2702:         type Value = Idx;
+2703: 
+2704:         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+2705:             formatter.write_str(self.expecting)
+2706:         }
+2707: 
+2708:         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+2709:         where
+2710:             A: SeqAccess<'de>,
+2711:         {
+2712:             let start: Idx = match tri!(seq.next_element()) {
+2713:                 Some(value) => value,
+2714:                 None => {
+2715:                     return Err(Error::invalid_length(0, &self));
+2716:                 }
+2717:             };
+2718:             Ok(start)
+2719:         }
+2720: 
+2721:         fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+2722:         where
+2723:             A: MapAccess<'de>,
+2724:         {
+2725:             let mut start: Option<Idx> = None;
+2726:             while let Some(key) = tri!(map.next_key()) {
+2727:                 match key {
+2728:                     Field::Start => {
+2729:                         if start.is_some() {
+2730:                             return Err(<A::Error as Error>::duplicate_field("start"));
+2731:                         }
+2732:                         start = Some(tri!(map.next_value()));
+2733:                     }
+2734:                 }
+2735:             }
+2736:             let start = match start {
+2737:                 Some(start) => start,
+2738:                 None => return Err(<A::Error as Error>::missing_field("start")),
+2739:             };
+2740:             Ok(start)
+2741:         }
+2742:     }
+2743: }
+2744: 
+2745: ////////////////////////////////////////////////////////////////////////////////
+2746: 
+2747: // Similar to:
+2748: //
+2749: //     #[derive(Deserialize)]
+2750: //     #[serde(deny_unknown_fields)]
+2751: //     struct RangeTo<Idx> {
+2752: //         end: Idx,
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/frunk_core-0.4.4/src/labelled.rs:398-537
+```rust
+398: pub struct Field<Name, Type> {
+399:     name_type_holder: PhantomData<Name>,
+400:     pub name: &'static str,
+401:     pub value: Type,
+402: }
+403: 
+404: /// A version of Field that doesn't have a type-level label, just a
+405: /// value-level one
+406: #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+407: #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+408: pub struct ValueField<Type> {
+409:     pub name: &'static str,
+410:     pub value: Type,
+411: }
+412: 
+413: impl<Name, Type> fmt::Debug for Field<Name, Type>
+414: where
+415:     Type: fmt::Debug,
+416: {
+417:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+418:         f.debug_struct("Field")
+419:             // show name without quotes
+420:             .field("name", &DebugAsDisplay(&self.name))
+421:             .field("value", &self.value)
+422:             .finish()
+423:     }
+424: }
+425: 
+426: impl<Type> fmt::Debug for ValueField<Type>
+427: where
+428:     Type: fmt::Debug,
+429: {
+430:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+431:         f.debug_struct("ValueField")
+432:             // show name without quotes
+433:             .field("name", &DebugAsDisplay(&self.name))
+434:             .field("value", &self.value)
+435:             .finish()
+436:     }
+437: }
+438: 
+439: /// Utility type that implements Debug in terms of Display.
+440: struct DebugAsDisplay<T>(T);
+441: 
+442: impl<T: fmt::Display> fmt::Debug for DebugAsDisplay<T> {
+443:     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+444:         fmt::Display::fmt(&self.0, f)
+445:     }
+446: }
+447: 
+448: /// Returns a new Field for a given value and custom name.
+449: ///
+450: /// If you don't want to provide a custom name and want to rely on the type you provide
+451: /// to build a name, then please use the field! macro.
+452: ///
+453: /// # Examples
+454: ///
+455: /// ```
+456: /// use frunk::labelled::chars::*;
+457: /// use frunk::labelled::field_with_name;
+458: ///
+459: /// let l = field_with_name::<(n,a,m,e),_>("name", "joe");
+460: /// assert_eq!(l.value, "joe");
+461: /// assert_eq!(l.name, "name");
+462: /// ```
+463: pub fn field_with_name<Label, Value>(name: &'static str, value: Value) -> Field<Label, Value> {
+464:     Field {
+465:         name_type_holder: PhantomData,
+466:         name,
+467:         value,
+468:     }
+469: }
+470: 
+471: /// Trait for turning a Field HList into an un-labelled HList
+472: pub trait IntoUnlabelled {
+473:     type Output;
+474: 
+475:     /// Turns the current HList into an unlabelled one.
+476:     ///
+477:     /// Effectively extracts the values held inside the individual Field
+478:     ///
+479:     /// # Examples
+480:     ///
+481:     /// ```
+482:     /// # fn main() {
+483:     /// use frunk::labelled::chars::*;
+484:     /// use frunk::labelled::IntoUnlabelled;
+485:     /// use frunk_core::{field, hlist};
+486:     ///
+487:     /// let labelled_hlist = hlist![
+488:     ///     field!((n, a, m, e), "joe"),
+489:     ///     field!((a, g, e), 3)
+490:     /// ];
+491:     ///
+492:     /// let unlabelled = labelled_hlist.into_unlabelled();
+493:     ///
+494:     /// assert_eq!(unlabelled, hlist!["joe", 3])
+495:     /// # }
+496:     /// ```
+497:     fn into_unlabelled(self) -> Self::Output;
+498: }
+499: 
+500: /// Implementation for HNil
+501: impl IntoUnlabelled for HNil {
+502:     type Output = HNil;
+503:     fn into_unlabelled(self) -> Self::Output {
+504:         self
+505:     }
+506: }
+507: 
+508: /// Implementation when we have a non-empty HCons holding a label in its head
+509: impl<Label, Value, Tail> IntoUnlabelled for HCons<Field<Label, Value>, Tail>
+510: where
+511:     Tail: IntoUnlabelled,
+512: {
+513:     type Output = HCons<Value, <Tail as IntoUnlabelled>::Output>;
+514: 
+515:     fn into_unlabelled(self) -> Self::Output {
+516:         HCons {
+517:             head: self.head.value,
+518:             tail: self.tail.into_unlabelled(),
+519:         }
+520:     }
+521: }
+522: 
+523: /// A trait that strips type-level strings from the labels
+524: pub trait IntoValueLabelled {
+525:     type Output;
+526: 
+527:     /// Turns the current HList into a value-labelled one.
+528:     ///
+529:     /// Effectively extracts the names and values held inside the individual Fields
+530:     /// and puts them into ValueFields, which do not have type-level names.
+531:     ///
+532:     /// # Examples
+533:     ///
+534:     /// ```
+535:     /// # fn main() {
+536:     /// use frunk::labelled::{ValueField, IntoValueLabelled};
+537:     /// use frunk::labelled::chars::*;
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.31/src/io/copy.rs:46-58
+```rust
+46:     pub struct Copy<'a, R, W: ?Sized> {
+47:         #[pin]
+48:         inner: CopyBuf<'a, BufReader<R>, W>,
+49:     }
+50: }
+51: 
+52: impl<R: AsyncRead, W: AsyncWrite + Unpin + ?Sized> Future for Copy<'_, R, W> {
+53:     type Output = io::Result<u64>;
+54: 
+55:     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+56:         self.project().inner.poll(cx)
+57:     }
+58: }
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/io/util/copy.rs:74-153
+```rust
+ 74: 
+ 75:     pub(super) fn poll_copy<R, W>(
+ 76:         &mut self,
+ 77:         cx: &mut Context<'_>,
+ 78:         mut reader: Pin<&mut R>,
+ 79:         mut writer: Pin<&mut W>,
+ 80:     ) -> Poll<io::Result<u64>>
+ 81:     where
+ 82:         R: AsyncRead + ?Sized,
+ 83:         W: AsyncWrite + ?Sized,
+ 84:     {
+ 85:         ready!(crate::trace::trace_leaf(cx));
+ 86:         #[cfg(any(
+ 87:             feature = "fs",
+ 88:             feature = "io-std",
+ 89:             feature = "net",
+ 90:             feature = "process",
+ 91:             feature = "rt",
+ 92:             feature = "signal",
+ 93:             feature = "sync",
+ 94:             feature = "time",
+ 95:         ))]
+ 96:         // Keep track of task budget
+ 97:         let coop = ready!(crate::task::coop::poll_proceed(cx));
+ 98:         loop {
+ 99:             // If there is some space left in our buffer, then we try to read some
+100:             // data to continue, thus maximizing the chances of a large write.
+101:             if self.cap < self.buf.len() && !self.read_done {
+102:                 match self.poll_fill_buf(cx, reader.as_mut()) {
+103:                     Poll::Ready(Ok(())) => {
+104:                         #[cfg(any(
+105:                             feature = "fs",
+106:                             feature = "io-std",
+107:                             feature = "net",
+108:                             feature = "process",
+109:                             feature = "rt",
+110:                             feature = "signal",
+111:                             feature = "sync",
+112:                             feature = "time",
+113:                         ))]
+114:                         coop.made_progress();
+115:                     }
+116:                     Poll::Ready(Err(err)) => {
+117:                         #[cfg(any(
+118:                             feature = "fs",
+119:                             feature = "io-std",
+120:                             feature = "net",
+121:                             feature = "process",
+122:                             feature = "rt",
+123:                             feature = "signal",
+124:                             feature = "sync",
+125:                             feature = "time",
+126:                         ))]
+127:                         coop.made_progress();
+128:                         return Poll::Ready(Err(err));
+129:                     }
+130:                     Poll::Pending => {
+131:                         // Ignore pending reads when our buffer is not empty, because
+132:                         // we can try to write data immediately.
+133:                         if self.pos == self.cap {
+134:                             // Try flushing when the reader has no progress to avoid deadlock
+135:                             // when the reader depends on buffered writer.
+136:                             if self.need_flush {
+137:                                 ready!(writer.as_mut().poll_flush(cx))?;
+138:                                 #[cfg(any(
+139:                                     feature = "fs",
+140:                                     feature = "io-std",
+141:                                     feature = "net",
+142:                                     feature = "process",
+143:                                     feature = "rt",
+144:                                     feature = "signal",
+145:                                     feature = "sync",
+146:                                     feature = "time",
+147:                                 ))]
+148:                                 coop.made_progress();
+149:                                 self.need_flush = false;
+150:                             }
+151: 
+152:                             return Poll::Pending;
+153:                         }
+```
+
+src/udp/frame.rs:137-167
+```rust
+137: 
+138:     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+139:         if self.flushed {
+140:             return Poll::Ready(Ok(()));
+141:         }
+142: 
+143:         let Self {
+144:             ref socket,
+145:             ref mut out_addr,
+146:             ref mut wr,
+147:             ..
+148:         } = *self;
+149: 
+150:         let n = ready!(socket.borrow().poll_send_to(cx, wr, *out_addr))?;
+151: 
+152:         let wrote_all = n == self.wr.len();
+153:         self.wr.clear();
+154:         self.flushed = true;
+155: 
+156:         let res = if wrote_all {
+157:             Ok(())
+158:         } else {
+159:             Err(io::Error::new(
+160:                 io::ErrorKind::Other,
+161:                 "failed to write entire datagram to socket",
+162:             )
+163:             .into())
+164:         };
+165: 
+166:         Poll::Ready(res)
+167:     }
+```
+
+src/adnl/channel.rs:356-412
+```rust
+356: 
+357:     #[test]
+358:     fn test_encrypt_decrypt() {
+359:         let peer1_key = ed25519::SecretKey::generate(&mut rand::thread_rng());
+360:         let (_, peer1_id) = peer1_key.compute_node_ids();
+361:         let peer1_channel_key = ed25519::KeyPair::generate(&mut rand::thread_rng());
+362: 
+363:         let peer2_key = ed25519::SecretKey::generate(&mut rand::thread_rng());
+364:         let (_, peer2_id) = peer2_key.compute_node_ids();
+365:         let peer2_channel_key = ed25519::KeyPair::generate(&mut rand::thread_rng());
+366: 
+367:         let channel12 = Channel::new(
+368:             peer1_id,
+369:             peer2_id,
+370:             &peer1_channel_key,
+371:             peer2_channel_key.public_key,
+372:             now(),
+373:             ChannelCreationContext::CreateChannel,
+374:         );
+375: 
+376:         let channel21 = Channel::new(
+377:             peer2_id,
+378:             peer1_id,
+379:             &peer2_channel_key,
+380:             peer1_channel_key.public_key,
+381:             now(),
+382:             ChannelCreationContext::CreateChannel,
+383:         );
+384: 
+385:         let message = b"Hello world!";
+386: 
+387:         for version in [None, Some(0)] {
+388:             // Send 1 to 2
+389:             {
+390:                 let mut packet = message.to_vec();
+391:                 channel12.encrypt(&mut packet, false, version);
+392: 
+393:                 let mut received_packet = PacketView::from(packet.as_mut_slice());
+394:                 let parsed_version = channel21.decrypt(&mut received_packet, false).unwrap();
+395:                 assert_eq!(parsed_version, version);
+396: 
+397:                 assert_eq!(received_packet.as_slice(), message);
+398:             }
+399: 
+400:             // Send 2 to 1
+401:             {
+402:                 let mut packet = message.to_vec();
+403:                 channel21.encrypt(&mut packet, true, version);
+404: 
+405:                 let mut received_packet = PacketView::from(packet.as_mut_slice());
+406:                 let parsed_version = channel12.decrypt(&mut received_packet, true).unwrap();
+407:                 assert_eq!(parsed_version, version);
+408: 
+409:                 assert_eq!(received_packet.as_slice(), message);
+410:             }
+411:         }
+412:     }
+```
+
+src/future/try_select.rs:38-51
+```rust
+38: /// fn try_join<A, B, E>(a: A, b: B) -> impl TryFuture<Ok=(A::Ok, B::Ok), Error=E>
+39: ///      where A: TryFuture<Error = E> + Unpin + 'static,
+40: ///            B: TryFuture<Error = E> + Unpin + 'static,
+41: ///            E: 'static,
+42: /// {
+43: ///     future::try_select(a, b).then(|res| -> Box<dyn Future<Output = Result<_, _>> + Unpin> {
+44: ///         match res {
+45: ///             Ok(Either::Left((x, b))) => Box::new(b.map_ok(move |y| (x, y))),
+46: ///             Ok(Either::Right((y, a))) => Box::new(a.map_ok(move |x| (x, y))),
+47: ///             Err(Either::Left((e, _))) => Box::new(future::err(e)),
+48: ///             Err(Either::Right((e, _))) => Box::new(future::err(e)),
+49: ///         }
+50: ///     })
+51: /// }
+```
+
+src/io/buf_writer.rs:53-80
+```rust
+53: 
+54:     pub(super) fn flush_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+55:         let mut this = self.project();
+56: 
+57:         let len = this.buf.len();
+58:         let mut ret = Ok(());
+59:         while *this.written < len {
+60:             match ready!(this.inner.as_mut().poll_write(cx, &this.buf[*this.written..])) {
+61:                 Ok(0) => {
+62:                     ret = Err(io::Error::new(
+63:                         io::ErrorKind::WriteZero,
+64:                         "failed to write the buffered data",
+65:                     ));
+66:                     break;
+67:                 }
+68:                 Ok(n) => *this.written += n,
+69:                 Err(e) => {
+70:                     ret = Err(e);
+71:                     break;
+72:                 }
+73:             }
+74:         }
+75:         if *this.written > 0 {
+76:             this.buf.drain(..*this.written);
+77:         }
+78:         *this.written = 0;
+79:         Poll::Ready(ret)
+80:     }
+```
+
+src/io/util/buf_writer.rs:57-84
+```rust
+57: 
+58:     fn flush_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+59:         let mut me = self.project();
+60: 
+61:         let len = me.buf.len();
+62:         let mut ret = Ok(());
+63:         while *me.written < len {
+64:             match ready!(me.inner.as_mut().poll_write(cx, &me.buf[*me.written..])) {
+65:                 Ok(0) => {
+66:                     ret = Err(io::Error::new(
+67:                         io::ErrorKind::WriteZero,
+68:                         "failed to write the buffered data",
+69:                     ));
+70:                     break;
+71:                 }
+72:                 Ok(n) => *me.written += n,
+73:                 Err(e) => {
+74:                     ret = Err(e);
+75:                     break;
+76:                 }
+77:             }
+78:         }
+79:         if *me.written > 0 {
+80:             me.buf.drain(..*me.written);
+81:         }
+82:         *me.written = 0;
+83:         Poll::Ready(ret)
+84:     }
+```
+
+src/time/timeout.rs:195-227
+```rust
+195: 
+196:     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+197:         let me = self.project();
+198: 
+199:         let had_budget_before = coop::has_budget_remaining();
+200: 
+201:         // First, try polling the future
+202:         if let Poll::Ready(v) = me.value.poll(cx) {
+203:             return Poll::Ready(Ok(v));
+204:         }
+205: 
+206:         let has_budget_now = coop::has_budget_remaining();
+207: 
+208:         let delay = me.delay;
+209: 
+210:         let poll_delay = || -> Poll<Self::Output> {
+211:             match delay.poll(cx) {
+212:                 Poll::Ready(()) => Poll::Ready(Err(Elapsed::new())),
+213:                 Poll::Pending => Poll::Pending,
+214:             }
+215:         };
+216: 
+217:         if let (true, false) = (had_budget_before, has_budget_now) {
+218:             // if it is the underlying future that exhausted the budget, we poll
+219:             // the `delay` with an unconstrained one. This prevents pathological
+220:             // cases where the underlying future always exhausts the budget and
+221:             // we never get a chance to evaluate whether the timeout was hit or
+222:             // not.
+223:             coop::with_unconstrained(poll_delay)
+224:         } else {
+225:             poll_delay()
+226:         }
+227:     }
+```
+
+src/codec/framed_impl.rs:276-303
+```rust
+276: 
+277:     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+278:         use crate::util::poll_write_buf;
+279:         trace!("flushing framed transport");
+280:         let mut pinned = self.project();
+281: 
+282:         while !pinned.state.borrow_mut().buffer.is_empty() {
+283:             let WriteFrame { buffer, .. } = pinned.state.borrow_mut();
+284:             trace!(remaining = buffer.len(), "writing;");
+285: 
+286:             let n = ready!(poll_write_buf(pinned.inner.as_mut(), cx, buffer))?;
+287: 
+288:             if n == 0 {
+289:                 return Poll::Ready(Err(io::Error::new(
+290:                     io::ErrorKind::WriteZero,
+291:                     "failed to \
+292:                      write frame to transport",
+293:                 )
+294:                 .into()));
+295:             }
+296:         }
+297: 
+298:         // Try flushing the underlying IO
+299:         ready!(pinned.inner.poll_flush(cx))?;
+300: 
+301:         trace!("framed transport flushed");
+302:         Poll::Ready(Ok(()))
+303:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-adnl-handshake-rs-107-29
+
+Rule id: __raw_ptr_deref__
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/adnl/handshake.rs">
+```rust
+use std::convert::TryInto;
+use std::sync::Arc;
+use aes::cipher::{StreamCipher, StreamCipherSeek};
+use everscale_crypto::ed25519;
+use super::encryption::*;
+use super::keystore::Key;
+use super::node_id::{NodeIdFull, NodeIdShort};
+use super::packet_view::*;
+use crate::util::FastHashMap;
+#[inline(always)]
+pub fn compute_handshake_prefix_len(version: Option<u16>) -> usize {
+    /* body omitted: interface retained */
+}
+/// Modifies `buffer` in-place to contain the handshake packet
+pub fn build_handshake_packet(
+    peer_id: &NodeIdShort,
+    peer_id_full: &NodeIdFull,
+    buffer: &mut Vec<u8>,
+    version: Option<u16>,
+) {
+    /* body omitted: interface retained */
+}
+/// Attempts to decode the buffer as an ADNL handshake packet. On a successful nonempty result,
+/// this buffer remains as decrypted packet data.
+///
+/// Expected packet structure (without version):
+///  - 0..=31 - short local node id
+///  - 32..=63 - sender pubkey
+///  - 64..=95 - checksum
+///  - 96..... - encrypted data
+///
+/// Expected packet structure (with version):
+///  - 0..=31 - short local node id
+///  - 32..=63 - sender pubkey
+///  - 64..=68 - XOR'ed ADNL version
+///  - 68..=100 - checksum
+///  - 100..... - encrypted data
+///
+/// **NOTE: even on failure buffer can be modified**
+#[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN4adnl9handshake22parse_handshake_packetE_src_adnl_handshake_rs_107_29"
+)]
+pub fn parse_handshake_packet(
+    keys: &FastHashMap<NodeIdShort, Arc<Key>>,
+    buffer: &mut PacketView<'_>,
+) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {
+    const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;
+    const DATA_START: usize = 96;
+    const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;
+    const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;
+    const EXT_DATA_START: usize = 100;
+    const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;
+    const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;
+    if buffer.len() < DATA_START {
+        return Err(HandshakeError::BadHandshakePacketLength);
+    }
+    let local_id = unsafe {
+        &*klee_ext_bind::raw_pointer_deref!(
+            "src-adnl-handshake-rs-107-29", (buffer.as_ptr() as * const NodeIdShort)
+        )
+    };
+    let local_key = match keys.get(local_id) {
+        Some(key) => key,
+        None => return Ok(None),
+    };
+    let shared_secret = match ed25519::PublicKey::from_bytes(
+        buffer[PUBLIC_KEY_RANGE].try_into().unwrap(),
+    ) {
+        Some(other_public_key) => {
+            local_key.secret_key().compute_shared_secret(&other_public_key)
+        }
+        None => return Err(HandshakeError::InvalidPublicKey),
+    };
+    if buffer.len() > EXT_DATA_START {
+        if let Some(version) = decode_version::<
+            EXT_DATA_START,
+        >((&buffer[..EXT_DATA_START]).try_into().unwrap()) {
+            let mut cipher = build_packet_cipher(
+                &shared_secret,
+                &buffer[EXT_CHECKSUM_RANGE].try_into().unwrap(),
+            );
+            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);
+            if compute_packet_data_hash(Some(version), &buffer[EXT_DATA_RANGE])
+                .as_slice() == &buffer[EXT_CHECKSUM_RANGE]
+            {
+                buffer.remove_prefix(EXT_DATA_START);
+                return Ok(Some((*local_id, Some(version))));
+            }
+            cipher.seek(0);
+            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);
+        }
+    }
+    build_packet_cipher(&shared_secret, &buffer[CHECKSUM_RANGE].try_into().unwrap())
+        .apply_keystream(&mut buffer[DATA_RANGE]);
+    if compute_packet_data_hash(None, &buffer[DATA_RANGE]).as_slice()
+        != &buffer[CHECKSUM_RANGE]
+    {
+        return Err(HandshakeError::BadHandshakePacketChecksum);
+    }
+    buffer.remove_prefix(DATA_START);
+    Ok(Some((*local_id, None)))
+}
+#[derive(thiserror::Error, Debug)]
+pub enum HandshakeError {
+    #[error("Bad handshake packet length")]
+    BadHandshakePacketLength,
+    #[error("Bad handshake packet checksum")]
+    BadHandshakePacketChecksum,
+    #[error("Invalid public key")]
+    InvalidPublicKey,
+}
+```
+</file>
+
+<file path="src/adnl/keystore.rs">
+```rust
+use std::collections::hash_map;
+use std::sync::Arc;
+
+use anyhow::Result;
+use everscale_crypto::ed25519;
+
+use super::node_id::{ComputeNodeIds, NodeIdFull, NodeIdShort};
+use crate::util::FastHashMap;
+
+/// Tagged keystore for ADNL keys
+#[derive(Default)]
+pub struct Keystore {
+    keys: FastHashMap<NodeIdShort, Arc<Key>>,
+    tags: FastHashMap<usize, NodeIdShort>,
+}
+
+impl Keystore {
+    pub fn builder() -> KeystoreBuilder {
+        /* body omitted: interface retained */
+    }
+
+    /// Searches key by its short id
+    pub fn key_by_id(&self, id: &NodeIdShort) -> Result<&Arc<Key>, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Searches key by its tag
+    pub fn key_by_tag(&self, tag: usize) -> Result<&Arc<Key>, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner keys table
+    #[inline(always)]
+    pub fn keys(&self) -> &FastHashMap<NodeIdShort, Arc<Key>> {
+        /* body omitted: interface retained */
+    }
+
+    /// Adds a new key with the specified tag
+    ///
+    /// NOTE: duplicate keys or tags will cause this method to fail
+    pub fn add_key(&mut self, key: [u8; 32], tag: usize) -> Result<NodeIdShort, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Default)]
+pub struct KeystoreBuilder {
+    keystore: Keystore,
+}
+
+impl KeystoreBuilder {
+    pub fn build(self) -> Keystore {
+        /* body omitted: interface retained */
+    }
+
+    /// Adds a new key with the specified tag
+    ///
+    /// NOTE: duplicate keys or tags will cause this method to fail
+    pub fn with_tagged_key(mut self, key: [u8; 32], tag: usize) -> Result<Self, KeystoreError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a new keystore from tagged secret keys
+    pub fn with_tagged_keys<I>(mut self, keys: I) -> Result<Self, KeystoreError>
+    where
+        I: IntoIterator<Item = ([u8; 32], usize)>,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+/// ADNL key with precomputed node IDs
+pub struct Key {
+    short_id: NodeIdShort,
+    full_id: NodeIdFull,
+    secret_key: ed25519::ExpandedSecretKey,
+}
+
+impl Key {
+    /// Constructs new key from the secret key bytes
+    pub fn from_bytes(secret_key: [u8; 32]) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns short key id
+    #[inline(always)]
+    pub fn id(&self) -> &NodeIdShort {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns full key id
+    #[inline(always)]
+    pub fn full_id(&self) -> &NodeIdFull {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner secret key (as expanded)
+    #[inline(always)]
+    pub fn secret_key(&self) -> &ed25519::ExpandedSecretKey {
+        /* body omitted: interface retained */
+    }
+
+    /// Signs serializable boxed data
+    #[inline(always)]
+    pub fn sign<T: tl_proto::TlWrite<Repr = tl_proto::Boxed>>(&self, data: T) -> [u8; 64] {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<ed25519::SecretKey> for Key {
+    fn from(secret_key: ed25519::SecretKey) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum KeystoreError {
+    #[error("Duplicated key tag {0}")]
+    DuplicatedKeyTag(usize),
+    #[error("Duplicated secret key {0}")]
+    DuplicatedKey(usize),
+    #[error("Key is not found: {0}")]
+    KeyIdNotFound(NodeIdShort),
+    #[error("Key tag not found: {0}")]
+    KeyTagNotFound(usize),
+    #[error("Unexpected key")]
+    UnexpectedKey,
+}
+```
+</file>
+
+<file path="src/adnl/mod.rs">
+```rust
+//! ## ADNL - Abstract Datagram Network Layer
+//!
+//! ADNL is a UDP-based data transfer protocol. It is a base layer for other protocols, used
+//! in Everscale. It provides no guarantees of reliability, so it should only be used for
+//! small data transfers. There is a support for multipart transfers, but the user must be
+//! prepared, that some parts of them may be lost and full transfer will be lost.
+//!
+//! #### Brief overview
+//!
+//! Each peer has its own keypair. In most cases it is a ed25519 keypair
+//! (see [`KeyPair`]). The public key of this keypair is also called
+//! a **full peer id** ([`NodeIdFull`]). The hash of the TL representation
+//! of its full id is a **short peer id** ([`NodeIdShort`]).
+//!
+//! Each peer remembers unix timestamp (in seconds) at the moment of initialization.
+//! It is called **reinit date** and used to describe peer's state "version".
+//! If other peers see that the reinit date of peer `A` has changed, they must treat
+//! peer `A` as a completely new peer.
+//!
+//! ADNL maintains a state for each peer it has communicated with. This state contains
+//! unique channel keypair, reinit date of the remote peer and sequence numbers of packets
+//! for both directions.
+//!
+//! Communication between peers is done by sending packets through UDP. Each packet length must be
+//! less than MTU (*1500 bytes*). Packets are encrypted with a shared secret key and have some basic
+//! integrity checks (checksum), ordering (sequence numbers, timings) and deduplication
+//! (short packets history). Packet can contain multiple ADNL messages ([`Message`]) and must
+//! address a specific peer by specifying its short or full peer id.
+//!
+//! #### Packet versions
+//!
+//! - **Handshake packet**: when peer `A` sends its first message to the peer `B` it wraps it into
+//!   a handshake packet. For each packet peer `A` generates new keypair.
+//!   It computes shared secret using `x25519(random_secret_key, peer_B_public_key)` and uses it
+//!   to encrypt data. When peer `B` receives this packet it computes shared secret using
+//!   `x25519(peer_B_secret_key, random_public_key)` and uses it to decrypt data. So handshake
+//!   packet contains peer `B` short id, public key of the random keypair, checksum and encrypted data.
+//!
+//! - **Channel packet**: after channel has been established, each peer will use a smaller packet
+//!   structure called channel packet. Instead of generating a new keypair for each packet it will
+//!   use shared secret from the channel to encrypt and decrypt data. Channel packet contains
+//!   channel id, checksum and encrypted data.
+//!
+//! #### Message types
+//!
+//! - **`Nop`** - an empty message that is only used by the other peer to update the state of our peer.
+//! - **`Custom`** - a one-way message that just contains a raw data. Mostly used by RLDP or other
+//!   protocols on top of ADNL.
+//! - **`Query`** - a request to the other peer which in most cases requires a response.
+//! - **`Answer`** - a response to the **`Query`** message.
+//! - **`CreateChannel`** - a special message with the info about newly created channel. Remote peer
+//!   should also create a channel and send a confirmation about this.
+//! - **`ConfirmChannel`** - channel confirmation to the **`CreateChannel`** message.
+//! - **`Part`** - special message that is used to split a large message across multiple packets.
+//!   After all message parts are received, the data is combined and deserialized into the original
+//!   message. Will mostly be used for large **`Custom`**, **`Query`** or **`Answer`** messages.
+//!
+//! #### Channels
+//!
+//! Communication using only handshake packets is quite inefficient, so there is a some kind of
+//! short-lived connections. When new remove peer is added, the channel keypair is also generated.
+//! With the first packet, peer `A` sends a **`CreateChannel`** message where it specifies channel
+//! public key from its side (and the date of its creation). Peer `B` replies with a **`ConfirmChannel`**
+//! message where it specifies same values and the channel public key from its side.
+//!
+//! Each peer can now create four shared secrets: two for encryption and two for decryption. Why two?
+//! Because there are two versions of channels - ordinary and priority. There is not a lot of difference
+//! between them, but some nodes could handle packet from the priority channel first.
+//!
+//! When remove peer is inactive for some time, and any query to it completes with timeout, the channel
+//! is regenerated.
+//!
+//! [`KeyPair`]: everscale_crypto::ed25519::KeyPair
+//! [`NodeIdFull`]: NodeIdFull
+//! [`NodeIdShort`]: NodeIdShort
+//! [`Message`]: crate::proto::adnl::Message
+
+use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs};
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use frunk_core::hlist::{HCons, HList, HNil, Selector};
+use frunk_core::indices::Here;
+
+pub use self::keystore::{Key, Keystore};
+pub use self::node::{Node, NodeMetrics, NodeOptions};
+pub use self::node_id::{ComputeNodeIds, NodeIdFull, NodeIdShort};
+pub use self::peer::{NewPeerContext, PeerFilter};
+pub use self::peers_set::PeersSet;
+
+use crate::subscriber::{MessageSubscriber, QuerySubscriber};
+use crate::util::{DeferredInitialization, NetworkBuilder};
+
+mod channel;
+mod encryption;
+mod handshake;
+mod keystore;
+mod node;
+mod node_id;
+mod packet_view;
+mod peer;
+mod peers_set;
+mod ping_subscriber;
+mod queries_cache;
+mod socket;
+mod transfer;
+
+pub(crate) type Deferred = Result<Arc<Node>>;
+
+impl DeferredInitialization for Deferred {
+    type Initialized = Arc<Node>;
+
+    fn initialize(self) -> Result<Self::Initialized> {
+        /* body omitted: interface retained */
+    }
+}
+
+impl NetworkBuilder<HNil, (Here, Here)> {
+    /// Creates a basic network layer that is an ADNL node
+    ///
+    /// See [`with_adnl_ext`] if you need a node with a peer filter
+    ///
+    /// [`with_adnl_ext`]: fn@crate::util::NetworkBuilder::with_adnl_ext
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, NetworkBuilder};
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl("127.0.0.1:10000", keystore, options).build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_adnl<T>(
+        addr: T,
+        keystore: Keystore,
+        options: NodeOptions,
+    ) -> NetworkBuilder<HCons<Deferred, HNil>, (Here, Here)>
+    where
+        T: ToSocketAddrs,
+    {
+        /* body omitted: interface retained */
+    }
+
+    /// Creates a basic network layer that is an ADNL node with additional filter
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::net::SocketAddrV4;
+    /// # use std::sync::Arc;
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, NetworkBuilder};
+    /// struct MyFilter;
+    ///
+    /// impl adnl::PeerFilter for MyFilter {
+    ///     fn check(
+    ///         &self,
+    ///         ctx: adnl::NewPeerContext,
+    ///         addr: SocketAddrV4,
+    ///         peer_id: &adnl::NodeIdShort,
+    ///     ) -> bool {
+    ///         // Allow only non-loopback IPs
+    ///         !addr.ip().is_loopback()
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let peer_filter = Arc::new(MyFilter);
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl_ext("127.0.0.1:10000", keystore, options, peer_filter)
+    ///         .build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_adnl_ext<T>(
+        addr: T,
+        keystore: Keystore,
+        options: NodeOptions,
+        peer_filter: Arc<dyn PeerFilter>,
+    ) -> NetworkBuilder<HCons<Deferred, HNil>, (Here, Here)>
+    where
+        T: ToSocketAddrs,
+    {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<L, A, R> NetworkBuilder<L, (A, R)>
+where
+    L: HList + Selector<Deferred, A>,
+{
+    /// Adds query subscriber if ADNL was successfully initialized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use std::borrow::Cow;
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, NetworkBuilder, QuerySubscriber, QueryConsumingResult, SubscriberContext};
+    /// struct Service;
+    ///
+    /// #[async_trait::async_trait]
+    /// impl QuerySubscriber for Service {
+    ///     async fn try_consume_query<'a>(
+    ///         &self,
+    ///         _ctx: SubscriberContext<'a>,
+    ///         _constructor: u32,
+    ///         _query: Cow<'a, [u8]>,
+    ///     ) -> Result<QueryConsumingResult<'a>> {
+    ///         Ok(QueryConsumingResult::Consumed(None))
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl("127.0.0.1:10000", keystore, options)
+    ///         .with_query_subscriber(Arc::new(Service))
+    ///         .build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_query_subscriber(self, subscriber: Arc<dyn QuerySubscriber>) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Adds custom message subscriber if ADNL was successfully initialized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use anyhow::Result;
+    /// # use everscale_network::{adnl, MessageSubscriber, NetworkBuilder, SubscriberContext};
+    /// struct Service;
+    ///
+    /// #[async_trait::async_trait]
+    /// impl MessageSubscriber for Service {
+    ///     async fn try_consume_custom<'a>(
+    ///         &self,
+    ///         _ctx: SubscriberContext<'a>,
+    ///         _constructor: u32,
+    ///         _data: &'a [u8],
+    ///     ) -> Result<bool> {
+    ///         Ok(true)
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let keystore = adnl::Keystore::builder()
+    ///         .with_tagged_key([0; 32], 0)?
+    ///         .build();
+    ///
+    ///     let options = adnl::NodeOptions::default();
+    ///
+    ///     let adnl = NetworkBuilder::with_adnl("127.0.0.1:10000", keystore, options)
+    ///         .with_message_subscriber(Arc::new(Service))
+    ///         .build()?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_message_subscriber(self, subscriber: Arc<dyn MessageSubscriber>) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+fn parse_socket_addr<T: ToSocketAddrs>(addr: T) -> Result<SocketAddrV4> {
+    /* body omitted: interface retained */
+}
+```
+</file>
+
+<file path="src/adnl/node_id.rs">
+```rust
+use std::borrow::Borrow;
+use std::convert::TryFrom;
+
+use everscale_crypto::{ed25519, tl};
+use rand::Rng;
+
+/// Full ADNL node id.
+///
+/// See [`PublicKey::Ed25519`]
+///
+/// [`PublicKey::Ed25519`]: everscale_crypto::tl::PublicKey::Ed25519
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct NodeIdFull(ed25519::PublicKey);
+
+impl NodeIdFull {
+    /// Constructs full node id from a valid ED25519 public key
+    pub const fn new(public_key: ed25519::PublicKey) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner public key
+    #[inline(always)]
+    pub const fn public_key(&self) -> &ed25519::PublicKey {
+        /* body omitted: interface retained */
+    }
+
+    /// Represents public key as a TL structure
+    #[inline(always)]
+    pub fn as_tl(&self) -> tl::PublicKey {
+        /* body omitted: interface retained */
+    }
+
+    /// Verifies the signature of an arbitrary serializable data
+    pub fn verify<T: tl_proto::TlWrite<Repr = tl_proto::Boxed>>(
+        &self,
+        data: T,
+        other_signature: &[u8],
+    ) -> Result<(), NodeIdFullError> {
+        /* body omitted: interface retained */
+    }
+
+    /// Hashes inner public key
+    pub fn compute_short_id(&self) -> NodeIdShort {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<ed25519::PublicKey> for NodeIdFull {
+    fn from(key: ed25519::PublicKey) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> TryFrom<tl::PublicKey<'a>> for NodeIdFull {
+    type Error = NodeIdFullError;
+
+    fn try_from(value: tl::PublicKey<'a>) -> Result<Self, Self::Error> {
+        /* body omitted: interface retained */
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum NodeIdFullError {
+    #[error("Unsupported public key")]
+    UnsupportedPublicKey,
+    #[error("Invalid public key")]
+    InvalidPublicKey,
+    #[error("Invalid signature")]
+    InvalidSignature,
+}
+
+/// Short ADNL node id.
+#[derive(Default, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[repr(transparent)]
+pub struct NodeIdShort([u8; 32]);
+
+impl NodeIdShort {
+    /// Constructs short node id from public key hash
+    #[inline(always)]
+    pub const fn new(hash: [u8; 32]) -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Generates random short node id
+    pub fn random() -> Self {
+        /* body omitted: interface retained */
+    }
+
+    /// Returns inner bytes
+    #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8; 32] {
+        /* body omitted: interface retained */
+    }
+
+    #[inline(always)]
+    pub fn is_zero(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Display for NodeIdShort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl std::fmt::Debug for NodeIdShort {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+
+impl PartialEq<[u8]> for NodeIdShort {
+    #[inline(always)]
+    fn eq(&self, other: &[u8]) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl PartialEq<[u8; 32]> for NodeIdShort {
+    #[inline(always)]
+    fn eq(&self, other: &[u8; 32]) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<NodeIdShort> for [u8; 32] {
+    #[inline(always)]
+    fn from(id: NodeIdShort) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<&NodeIdShort> for [u8; 32] {
+    #[inline(always)]
+    fn from(id: &NodeIdShort) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl From<[u8; 32]> for NodeIdShort {
+    #[inline(always)]
+    fn from(id: [u8; 32]) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+
+impl Borrow<[u8; 32]> for NodeIdShort {
+    #[inline(always)]
+    fn borrow(&self) -> &[u8; 32] {
+        /* body omitted: interface retained */
+    }
+}
+
+impl<'a> Borrow<[u8; 32]> for &'a NodeIdShort {
+    #[inline(always)]
+    fn borrow(&self) -> &[u8; 32] {
+        /* body omitted: interface retained */
+    }
+}
+
+/// Abstract trait to compute all node ids
+pub trait ComputeNodeIds {
+    fn compute_node_ids(&self) -> (NodeIdFull, NodeIdShort);
+}
+
+impl ComputeNodeIds for ed25519::SecretKey {
+    fn compute_node_ids(&self) -> (NodeIdFull, NodeIdShort) {
+        /* body omitted: interface retained */
+    }
+}
+
+impl ComputeNodeIds for ed25519::PublicKey {
+    fn compute_node_ids(&self) -> (NodeIdFull, NodeIdShort) {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/adnl/packet_view.rs">
+```rust
+use std::ops::{Index, IndexMut, Range, RangeFrom, RangeTo};
+pub struct PacketView<'a> {
+    bytes: &'a mut [u8],
+}
+impl<'a> PacketView<'a> {
+    #[inline(always)]
+    pub const fn as_ptr(&self) -> *const u8 {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub const fn as_slice(&self) -> &[u8] {
+        /* body omitted: interface retained */
+    }
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn remove_prefix(&mut self, prefix_len: usize) {
+        /* body omitted: interface retained */
+    }
+}
+impl Index<RangeTo<usize>> for PacketView<'_> {
+    type Output = [u8];
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl Index<Range<usize>> for PacketView<'_> {
+    type Output = [u8];
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl IndexMut<Range<usize>> for PacketView<'_> {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl Index<RangeFrom<usize>> for PacketView<'_> {
+    type Output = [u8];
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl IndexMut<RangeFrom<usize>> for PacketView<'_> {
+    fn index_mut(&mut self, index: RangeFrom<usize>) -> &mut Self::Output {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> From<&'a mut [u8]> for PacketView<'a> {
+    fn from(bytes: &'a mut [u8]) -> Self {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+#![allow(clippy::too_many_arguments)]
+
+//! Implementation of the network part of the Everscale blockchain.
+
+macro_rules! ok {
+    ($expr:expr) => {
+        match $expr {
+            Ok(val) => val,
+            Err(err) => return Err(err),
+        }
+    };
+}
+
+// Re-export TL-proto crate
+pub use everscale_crypto as crypto;
+pub use tl_proto as tl;
+
+pub use subscriber::{MessageSubscriber, QueryConsumingResult, QuerySubscriber, SubscriberContext};
+pub use util::NetworkBuilder;
+
+pub mod adnl;
+#[cfg(feature = "dht")]
+pub mod dht;
+pub mod overlay;
+pub mod proto;
+#[cfg(feature = "rldp")]
+pub mod rldp;
+mod subscriber;
+pub mod util;
+```
+</file>
+
+<file path="src/util/mod.rs">
+```rust
+//! # Basic primitives and helpers
+
+use std::collections::{HashMap, HashSet};
+
+pub use self::network_builder::{
+    DeferredInitialization, DeferredInitializationList, NetworkBuilder,
+};
+
+pub(crate) use self::address_list::*;
+pub(crate) use self::fast_rand::*;
+pub(crate) use self::packets_history::*;
+pub(crate) use self::updated_at::*;
+
+mod address_list;
+mod fast_rand;
+mod network_builder;
+mod packets_history;
+mod updated_at;
+
+pub(crate) type FastHashSet<K> = HashSet<K, FastHasherState>;
+pub(crate) type FastHashMap<K, V> = HashMap<K, V, FastHasherState>;
+pub(crate) type FastDashSet<K> = dashmap::DashSet<K, FastHasherState>;
+pub(crate) type FastDashMap<K, V> = dashmap::DashMap<K, V, FastHasherState>;
+pub(crate) type FastHasherState = ahash::RandomState;
+
+pub(crate) fn now() -> u32 {
+    /* body omitted: interface retained */
+}
+```
+</file>
+</rust context>

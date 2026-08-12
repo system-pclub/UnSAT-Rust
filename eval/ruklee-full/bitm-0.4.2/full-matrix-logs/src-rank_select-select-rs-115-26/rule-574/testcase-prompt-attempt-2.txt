@@ -335,9 +335,9 @@ Failed to compile '/workspaces/UnSAT-Rust/crates_inj/bitm-0.4.2':
 stdout: 
 stderr:    Compiling bitm v0.4.2 (/workspaces/UnSAT-Rust/crates_inj/bitm-0.4.2)
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `rank_select`
-   --> src/rank_select/select.rs:980:13
+   --> src/rank_select/select.rs:988:13
     |
-980 |     let _ = rank_select::select::select64(0, 0);
+988 |     let _ = rank_select::select::select64(0, 0);
     |             ^^^^^^^^^^^ use of unresolved module or unlinked crate `rank_select`
     |
     = help: if you wanted to use a crate named `rank_select`, use `cargo add rank_select` to add it to your `Cargo.toml`
@@ -354,9 +354,9 @@ returncode: 101
 [stderr]
    Compiling bitm v0.4.2 (/workspaces/UnSAT-Rust/crates_inj/bitm-0.4.2)
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `rank_select`
-   --> src/rank_select/select.rs:980:13
+   --> src/rank_select/select.rs:988:13
     |
-980 |     let _ = rank_select::select::select64(0, 0);
+988 |     let _ = rank_select::select::select64(0, 0);
     |             ^^^^^^^^^^^ use of unresolved module or unlinked crate `rank_select`
     |
     = help: if you wanted to use a crate named `rank_select`, use `cargo add rank_select` to add it to your `Cargo.toml`
@@ -781,6 +781,9 @@ pub trait Select0ForRank101111 {
 ///
 /// The implementation is based on the one contained in folly library by Meta.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN11rank_select6select8select64E_src_rank_select_select_rs_115_26"
+)]
 pub fn select64(n: u64, rank: u8) -> u8 {
     #[cfg(
         all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "bmi2")
@@ -811,8 +814,9 @@ pub fn select64(n: u64, rank: u8) -> u8 {
         place
             + unsafe {
                 let __klee_arg0 = (((n >> place) & 0xFF) | (byte_rank << 8)) as usize;
-                klee_ext_bind::bind_arg_u64(1, (SELECT_U8).len() as u64);
-                klee_ext_bind::bind_arg_u64_value(2, &__klee_arg0);
+                let __klee_len1 = (SELECT_U8).len() as u64;
+                klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+                klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg0, __klee_len1);
                 klee_ext_bind::callsite!("src-rank_select-select-rs-115-26");
                 let mut __klee_ret_src_rank_select_select_rs_115_26_get_unchecked = SELECT_U8
                     .get_unchecked(__klee_arg0);

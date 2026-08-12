@@ -226,7 +226,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `interpreter::Interpreter` for `interpreter` using fields visible from the injection module when that better controls the target caller state: `instruction_pointer: *const u8`, `gas: gas::Gas`, `contract: interpreter::contract::Contract`, `instruction_result: instruction_result::InstructionResult`, `bytecode: revm_primitives::Bytes` -> or construct `interpreter::Interpreter` for `interpreter` using constructor(s): `interpreter::Interpreter::new` -> call target caller `instructions::stack::push` directly
+1. construct `interpreter::Interpreter` for `interpreter` using its genuinely public fields when that better controls the target caller state: `instruction_pointer: *const u8`, `gas: gas::Gas`, `contract: interpreter::contract::Contract`, `instruction_result: instruction_result::InstructionResult`, `bytecode: revm_primitives::Bytes` -> or construct `interpreter::Interpreter` for `interpreter` using constructor(s): `interpreter::Interpreter::new` -> call target caller `instructions::stack::push` directly
 </candidate safe-call plans>
 
 
@@ -800,209 +800,6 @@ Important:
   counterexample was not reproduced, generate a different safe testcase for the same
   target caller and target callsite.
 
-
-
-<previous attempt feedback>
-The previous testcase attempt failed. Fix the generated testcase using this
-compiler/tool feedback. Do not repeat the same mistake.
-
-Failed to compile '/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3':
-stdout: 
-stderr:    Compiling revm-interpreter v10.0.3 (/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3)
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `instructions`
-   --> src/instructions/stack.rs:572:5
-    |
-572 |     instructions::stack::push::<1, _>(&mut interpreter, &mut host);
-    |     ^^^^^^^^^^^^ use of unresolved module or unlinked crate `instructions`
-    |
-    = help: if you wanted to use a crate named `instructions`, use `cargo add instructions` to add it to your `Cargo.toml`
-
-error[E0433]: failed to resolve: use of undeclared type `Contract`
-   --> src/instructions/stack.rs:555:20
-    |
-555 |     let contract = Contract::new(
-    |                    ^^^^^^^^ use of undeclared type `Contract`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::Contract;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `Stack`
-   --> src/instructions/stack.rs:567:25
-    |
-567 |     interpreter.stack = Stack::new();
-    |                         ^^^^^ use of undeclared type `Stack`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::Stack;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `Gas`
-   --> src/instructions/stack.rs:568:23
-    |
-568 |     interpreter.gas = Gas::new(10_000);
-    |                       ^^^ use of undeclared type `Gas`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::Gas;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `InstructionResult`
-   --> src/instructions/stack.rs:569:38
-    |
-569 |     interpreter.instruction_result = InstructionResult::Continue;
-    |                                      ^^^^^^^^^^^^^^^^^ use of undeclared type `InstructionResult`
-    |
-help: consider importing this enum through its public re-export
-    |
-1   + use crate::InstructionResult;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `DummyHost`
-   --> src/instructions/stack.rs:571:20
-    |
-571 |     let mut host = DummyHost::default();
-    |                    ^^^^^^^^^ use of undeclared type `DummyHost`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::DummyHost;
-    |
-
-warning: extern crate `alloc` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use alloc as _;` to the crate root
-note: the lint level is defined here
- --> src/lib.rs:4:29
-  |
-4 | #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-  |                             ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: extern crate `compiler_builtins` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use compiler_builtins as _;` to the crate root
-
-warning: extern crate `panic_abort` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_abort as _;` to the crate root
-
-warning: extern crate `panic_unwind` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_unwind as _;` to the crate root
-
-warning: extern crate `proc_macro` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use proc_macro as _;` to the crate root
-
-For more information about this error, try `rustc --explain E0433`.
-warning: `revm-interpreter` (lib) generated 5 warnings
-error: could not compile `revm-interpreter` (lib) due to 6 previous errors; 5 warnings emitted
-
-
-command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-instructions-stack-rs-37-48-rule-302-rustc-1-87-line880-a753f3d5a7', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
-returncode: 101
-
-[stdout]
-
-[stderr]
-   Compiling revm-interpreter v10.0.3 (/workspaces/UnSAT-Rust/crates_inj/revm-interpreter-10.0.3)
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `instructions`
-   --> src/instructions/stack.rs:572:5
-    |
-572 |     instructions::stack::push::<1, _>(&mut interpreter, &mut host);
-    |     ^^^^^^^^^^^^ use of unresolved module or unlinked crate `instructions`
-    |
-    = help: if you wanted to use a crate named `instructions`, use `cargo add instructions` to add it to your `Cargo.toml`
-
-error[E0433]: failed to resolve: use of undeclared type `Contract`
-   --> src/instructions/stack.rs:555:20
-    |
-555 |     let contract = Contract::new(
-    |                    ^^^^^^^^ use of undeclared type `Contract`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::Contract;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `Stack`
-   --> src/instructions/stack.rs:567:25
-    |
-567 |     interpreter.stack = Stack::new();
-    |                         ^^^^^ use of undeclared type `Stack`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::Stack;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `Gas`
-   --> src/instructions/stack.rs:568:23
-    |
-568 |     interpreter.gas = Gas::new(10_000);
-    |                       ^^^ use of undeclared type `Gas`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::Gas;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `InstructionResult`
-   --> src/instructions/stack.rs:569:38
-    |
-569 |     interpreter.instruction_result = InstructionResult::Continue;
-    |                                      ^^^^^^^^^^^^^^^^^ use of undeclared type `InstructionResult`
-    |
-help: consider importing this enum through its public re-export
-    |
-1   + use crate::InstructionResult;
-    |
-
-error[E0433]: failed to resolve: use of undeclared type `DummyHost`
-   --> src/instructions/stack.rs:571:20
-    |
-571 |     let mut host = DummyHost::default();
-    |                    ^^^^^^^^^ use of undeclared type `DummyHost`
-    |
-help: consider importing this struct through its public re-export
-    |
-1   + use crate::DummyHost;
-    |
-
-warning: extern crate `alloc` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use alloc as _;` to the crate root
-note: the lint level is defined here
- --> src/lib.rs:4:29
-  |
-4 | #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-  |                             ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: extern crate `compiler_builtins` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use compiler_builtins as _;` to the crate root
-
-warning: extern crate `panic_abort` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_abort as _;` to the crate root
-
-warning: extern crate `panic_unwind` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use panic_unwind as _;` to the crate root
-
-warning: extern crate `proc_macro` is unused in crate `revm_interpreter`
-  |
-  = help: remove the dependency or add `use proc_macro as _;` to the crate root
-
-For more information about this error, try `rustc --explain E0433`.
-warning: `revm-interpreter` (lib) generated 5 warnings
-error: could not compile `revm-interpreter` (lib) due to 6 previous errors; 5 warnings emitted
-
-
-</previous attempt feedback>
 
 
 <rust context mode="witness-guided-semantic-slice">
@@ -2023,6 +1820,9 @@ impl SharedMemory {
     }
     /// Prepares the shared memory for returning to the previous context.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22"
+    )]
     pub fn free_context(&mut self) {
         /* body omitted: interface retained */
     }
@@ -2151,6 +1951,9 @@ impl SharedMemory {
     /// Panics if memory is out of bounds.
     #[cfg_attr(debug_assertions, track_caller)]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory8set_dataE_src_interpreter_shared_memory_rs_271_29"
+    )]
     pub fn set_data(
         &mut self,
         memory_offset: usize,
@@ -2171,12 +1974,21 @@ impl SharedMemory {
         /* body omitted: interface retained */
     }
     /// Returns a reference to the memory of the current context, the active memory.
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory14context_memoryE_src_interpreter_shared_memory_rs_297_13"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory14context_memoryE_src_interpreter_shared_memory_rs_298_18"
+    )]
     pub fn context_memory(&self) -> &[u8] {
         /* body omitted: interface retained */
     }
     /// Returns a mutable reference to the memory of the current context.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory18context_memory_mutE_src_interpreter_shared_memory_rs_307_18"
+    )]
     pub fn context_memory_mut(&mut self) -> &mut [u8] {
         /* body omitted: interface retained */
     }
@@ -2261,6 +2073,9 @@ impl Stack {
     ///
     /// The caller is responsible for checking the length of the stack.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN12instructions8contract26pop_extcall_target_addressE_src_instructions_contract_rs_205_5"
+    )]
     pub unsafe fn pop_unsafe(&mut self) -> U256 {
         /* body omitted: interface retained */
     }
@@ -2359,7 +2174,19 @@ impl Stack {
     ///
     /// Panics if `n` is 0.
     #[cfg_attr(debug_assertions, track_caller)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_241_27"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_242_42"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_242_17"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_243_17"
+    )]
     pub fn dup(&mut self, n: usize) -> Result<(), InstructionResult> {
         /* body omitted: interface retained */
     }
@@ -2381,13 +2208,55 @@ impl Stack {
     ///
     /// Panics if `m` is zero.
     #[cfg_attr(debug_assertions, track_caller)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_282_23"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_44"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_56"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_13"
+    )]
     pub fn exchange(&mut self, n: usize, m: usize) -> Result<(), InstructionResult> {
         /* body omitted: interface retained */
     }
     /// Pushes an arbitrary length slice of bytes onto the stack, padding the last word with zeros
     /// if necessary.
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_304_23"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_305_13"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_316_21_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_316_21"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_329_17_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_329_17"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_337_17_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_337_17"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_346_17_write_bytes"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_346_17"
+    )]
     pub fn push_slice(&mut self, slice: &[u8]) -> Result<(), InstructionResult> {
         /* body omitted: interface retained */
     }
@@ -2499,6 +2368,9 @@ impl Interpreter {
     /// Test related helper
     /// Load EOF code into interpreter. PC is assumed to be correctly set
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter11Interpreter13load_eof_codeE_src_interpreter_rs_135_45"
+    )]
     pub(crate) fn load_eof_code(&mut self, idx: usize, pc: usize) {
         /* body omitted: interface retained */
     }
@@ -2564,6 +2436,9 @@ impl Interpreter {
     }
     /// Returns the opcode at the current instruction pointer.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter11Interpreter14current_opcodeE_src_interpreter_rs_311_18"
+    )]
     pub fn current_opcode(&self) -> u8 {
         /* body omitted: interface retained */
     }
@@ -2589,6 +2464,9 @@ impl Interpreter {
     }
     /// Returns the current program counter.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter11Interpreter15program_counterE_src_interpreter_rs_343_18"
+    )]
     pub fn program_counter(&self) -> usize {
         /* body omitted: interface retained */
     }

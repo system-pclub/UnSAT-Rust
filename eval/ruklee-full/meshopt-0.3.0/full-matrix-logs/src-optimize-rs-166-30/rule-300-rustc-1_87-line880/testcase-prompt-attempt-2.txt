@@ -218,7 +218,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `packing::Vertex` for `vertices` using fields visible from the injection module when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `optimize::optimize_overdraw_in_place` directly
+1. construct `packing::Vertex` for `vertices` using its genuinely public fields when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `optimize::optimize_overdraw_in_place` directly
 </candidate safe-call plans>
 
 
@@ -400,9 +400,9 @@ warning: unexpected `cfg` condition value: `cargo-clippy`
   = note: `#[warn(unexpected_cfgs)]` on by default
 
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `optimize`
-   --> src/optimize.rs:229:5
+   --> src/optimize.rs:232:5
     |
-229 |     optimize::optimize_overdraw_in_place(&mut indices, &vertices, 1.0);
+232 |     optimize::optimize_overdraw_in_place(&mut indices, &vertices, 1.0);
     |     ^^^^^^^^ use of unresolved module or unlinked crate `optimize`
     |
     = help: if you wanted to use a crate named `optimize`, use `cargo add optimize` to add it to your `Cargo.toml`
@@ -431,9 +431,9 @@ warning: unexpected `cfg` condition value: `cargo-clippy`
   = note: `#[warn(unexpected_cfgs)]` on by default
 
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `optimize`
-   --> src/optimize.rs:229:5
+   --> src/optimize.rs:232:5
     |
-229 |     optimize::optimize_overdraw_in_place(&mut indices, &vertices, 1.0);
+232 |     optimize::optimize_overdraw_in_place(&mut indices, &vertices, 1.0);
     |     ^^^^^^^^ use of unresolved module or unlinked crate `optimize`
     |
     = help: if you wanted to use a crate named `optimize`, use `cargo add optimize` to add it to your `Cargo.toml`
@@ -751,6 +751,9 @@ pub fn optimize_vertex_fetch_remap(indices: &[u32], vertex_count: usize) -> Vec<
 /// `threshold` indicates how much the overdraw optimizer can degrade vertex cache
 /// efficiency (1.05 = up to 5%) to reduce overdraw more efficiently.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8optimize26optimize_overdraw_in_placeE_src_optimize_rs_166_30"
+)]
 pub fn optimize_overdraw_in_place(
     indices: &mut [u32],
     vertices: &VertexDataAdapter<'_>,

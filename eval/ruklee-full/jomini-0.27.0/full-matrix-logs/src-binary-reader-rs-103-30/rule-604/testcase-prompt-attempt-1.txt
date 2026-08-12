@@ -175,7 +175,7 @@ target counterexample.
 [
   {
     "certainty": "certain_symbol",
-    "evidence": "executed-field-symbol:binary::reader::TokenReader::<R>::new",
+    "evidence": "executed-field-symbol:binary::reader::TokenReader::<()>::from_slice",
     "steps": [
       {
         "detail": "DSL access path root",
@@ -185,7 +185,26 @@ target counterexample.
       {
         "detail": "executed safe function materializes a controllable symbol",
         "field": "buf",
-        "function": "binary::reader::TokenReader::<R>::new",
+        "function": "binary::reader::TokenReader::<()>::from_slice",
+        "kind": "mutator",
+        "root_type": "binary::reader::TokenReader"
+      }
+    ],
+    "symbol": "_ZN6jomini6binary6reader20TokenReader$LT$R$GT$10read_bytes17hc3c3d1cf3b6b7bacE.arg1.buf.end"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:binary::reader::TokenReader::<()>::from_slice",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "TokenReader"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "buf",
+        "function": "binary::reader::TokenReader::<()>::from_slice",
         "kind": "mutator",
         "root_type": "binary::reader::TokenReader"
       }
@@ -244,9 +263,9 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct or obtain a `TokenReader` value -> call safe `binary::reader::TokenReader::<R>::new` to affect `buf` -> call target caller `binary::reader::TokenReader::<R>::read_bytes`
-2. call safe `new` -> call target caller `binary::reader::TokenReader::<R>::read_bytes`
-3. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `binary::reader::TokenReader::<R>::read_bytes` directly
+1. construct `binary::reader::TokenReader` for `receiver` using constructor(s): `binary::reader::TokenReader::<R>::new` -> construct or obtain a `TokenReader` value -> call safe `binary::reader::TokenReader::<()>::from_slice` to affect `buf` -> call target caller `binary::reader::TokenReader::<R>::read_bytes`
+2. construct `binary::reader::TokenReader` for `receiver` using constructor(s): `binary::reader::TokenReader::<R>::new` -> call safe `from_slice` -> call target caller `binary::reader::TokenReader::<R>::read_bytes`
+3. construct `binary::reader::TokenReader` for `receiver` using constructor(s): `binary::reader::TokenReader::<R>::new` -> call target caller `binary::reader::TokenReader::<R>::read_bytes` directly
 </candidate safe-call plans>
 
 
@@ -1661,7 +1680,7 @@ struct BinaryReaderMap<'a: 'a, 'res, RES: 'a, F, R> {
 
 impl<'a, 'res, RES: 'a, F, R> BinaryReaderMap<'a, 'res, RES, F, R> {
     fn new(de: *const &'a mut BinaryReaderDeserializer<'res, RES, F, R>, root: bool) -> Self {
-        BinaryReaderMap { de, root }
+        /* body omitted: interface retained */
     }
 }
 
@@ -1933,7 +1952,7 @@ struct BinaryReaderSeq<'a: 'a, 'res, RES: 'a, F, R> {
 
 impl<'a, 'de: 'a, 'res: 'de, RES: 'a, F, R> BinaryReaderSeq<'a, 'res, RES, F, R> {
     fn new(de: *const &'a mut BinaryReaderDeserializer<'res, RES, F, R>) -> Self {
-        BinaryReaderSeq { de, hit_end: false }
+        /* body omitted: interface retained */
     }
 }
 
@@ -1957,7 +1976,7 @@ struct BinaryReaderEnum<'a, 'res, RES: 'a, F, R> {
 
 impl<'a, 'res, RES: 'a, F, R> BinaryReaderEnum<'a, 'res, RES, F, R> {
     fn new(de: *const &'a mut BinaryReaderDeserializer<'res, RES, F, R>, token: Token<'a>) -> Self {
-        BinaryReaderEnum { de, token }
+        /* body omitted: interface retained */
     }
 }
 
@@ -2071,7 +2090,7 @@ struct OndemandMap<'a, 'de: 'a, 'res: 'de, RES: 'a, F> {
 
 impl<'a, 'de: 'a, 'res: 'de, RES: 'a, F> OndemandMap<'a, 'de, 'res, RES, F> {
     fn new(de: &'a mut OndemandBinaryDeserializer<'de, 'res, RES, F>, root: bool) -> Self {
-        OndemandMap { de, root }
+        /* body omitted: interface retained */
     }
 }
 
@@ -2316,7 +2335,7 @@ struct OndemandSeq<'a, 'de: 'a, 'res: 'de, RES: 'a, F> {
 
 impl<'a, 'de: 'a, 'res: 'de, RES: 'a, F> OndemandSeq<'a, 'de, 'res, RES, F> {
     fn new(de: &'a mut OndemandBinaryDeserializer<'de, 'res, RES, F>) -> Self {
-        OndemandSeq { de, hit_end: false }
+        /* body omitted: interface retained */
     }
 }
 
@@ -2340,7 +2359,7 @@ struct OndemandEnum<'a, 'de: 'a, 'res: 'de, RES: 'a, F> {
 
 impl<'a, 'de: 'a, 'res: 'de, RES: 'a, F> OndemandEnum<'a, 'de, 'res, RES, F> {
     fn new(de: &'a mut OndemandBinaryDeserializer<'de, 'res, RES, F>, token: LexemeId) -> Self {
-        OndemandEnum { de, token }
+        /* body omitted: interface retained */
     }
 }
 
@@ -2523,7 +2542,16 @@ where
     where
         RES: TokenResolver,
     {
-        /* body omitted: interface retained */
+        let config = BinaryConfig {
+            resolver,
+            failed_resolve_strategy: self.failed_resolve_strategy,
+            flavor: self.flavor,
+        };
+
+        OndemandBinaryDeserializer {
+            parser: Lexer::new(data),
+            config,
+        }
     }
 
     /// Deserialize value from slice
@@ -2648,13 +2676,7 @@ impl<'c, 'a, 'de, 'res: 'de, RES, E> BinaryMap<'c, 'a, 'de, 'res, RES, E> {
         tape_idx: usize,
         end_idx: usize,
     ) -> Self {
-        BinaryMap {
-            config,
-            tokens,
-            tape_idx,
-            end_idx,
-            value_ind: 0,
-        }
+        /* body omitted: interface retained */
     }
 }
 
@@ -3055,7 +3077,7 @@ impl LexemeId {
     /// Construct a new [LexemeId] from a 16bit value
     #[inline]
     pub const fn new(x: u16) -> Self {
-        LexemeId(x)
+        /* body omitted: interface retained */
     }
 
     /// Identifies if the given ID does not match of the predefined [LexemeId]
@@ -3338,10 +3360,7 @@ impl<'a> Lexer<'a> {
     /// Creates a new lexer over the given data
     #[inline]
     pub fn new(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            original_length: data.len(),
-        }
+        /* body omitted: interface retained */
     }
 
     /// Returns the remaining data that has not yet been processed.
@@ -3764,7 +3783,10 @@ impl TokenReader<()> {
     /// Read from a byte slice without memcpy's
     #[inline]
     pub fn from_slice(data: &[u8]) -> TokenReader<&'_ [u8]> {
-        /* body omitted: interface retained */
+        TokenReader {
+            reader: data,
+            buf: BufferWindow::from_slice(data),
+        }
     }
 }
 impl<R> TokenReader<R>
@@ -3774,7 +3796,7 @@ where
     /// Convenience method for constructing the default token reader
     #[inline]
     pub fn new(reader: R) -> Self {
-        TokenReader::builder().build(reader)
+        /* body omitted: interface retained */
     }
     /// Returns the byte position of the data stream that has been processed.
     ///
@@ -4447,12 +4469,12 @@ pub struct BinaryTape<'a> {
 impl<'a> BinaryTape<'a> {
     /// Creates an empty tape
     pub fn new() -> Self {
-        BinaryTape::default()
+        /* body omitted: interface retained */
     }
 
     /// Convenience method for creating a binary parser and parsing the given input
     pub fn from_slice(data: &[u8]) -> Result<BinaryTape<'_>, Error> {
-        /* body omitted: interface retained */
+        BinaryTapeParser.parse_slice(data)
     }
 
     /// Return the parsed tokens
@@ -4489,14 +4511,23 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         /* body omitted: interface retained */
     }
@@ -4505,10 +4536,19 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         /* body omitted: interface retained */
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         /* body omitted: interface retained */
     }
@@ -5740,6 +5780,9 @@ const fn trim_ascii_end(data: &[u8]) -> &[u8] {
     /* body omitted: interface retained */
 }
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8encoding18decode_windows1252E_src_encoding_rs_136_22"
+)]
 pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {
     /* body omitted: interface retained */
 }
@@ -5748,6 +5791,7 @@ fn windows_1252_create(d: &[u8], offset: usize) -> String {
     /* body omitted: interface retained */
 }
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8encoding11decode_utf8E_src_encoding_rs_195_26")]
 pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {
     /* body omitted: interface retained */
 }
@@ -8650,7 +8694,11 @@ impl TokenReader<()> {
     /// Read from a byte slice without memcpy's
     #[inline]
     pub fn from_slice(data: &[u8]) -> TokenReader<&'_ [u8]> {
-        /* body omitted: interface retained */
+        TokenReader {
+            reader: data,
+            buf: BufferWindow::from_slice(data),
+            utf8: Utf8Bom::Unknown,
+        }
     }
 }
 impl<R> TokenReader<R>
@@ -8660,7 +8708,7 @@ where
     /// Create a new text reader
     #[inline]
     pub fn new(reader: R) -> Self {
-        TokenReader::builder().build(reader)
+        /* body omitted: interface retained */
     }
     /// Returns the byte position of the data stream that has been processed.
     ///

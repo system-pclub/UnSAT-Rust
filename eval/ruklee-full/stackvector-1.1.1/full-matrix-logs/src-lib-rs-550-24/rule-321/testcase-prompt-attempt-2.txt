@@ -5,8 +5,8 @@ target counterexample.
 
 <high priority retry constraints>
 These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 122408971272200; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 122408971272200`.
+- - Observation 1: get_arg(0) = 128628601913352; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 128628601913352`.
 - If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 </high priority retry constraints>
 
@@ -179,7 +179,26 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:StackVec.length",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "StackVec"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "length",
+        "kind": "public_field",
+        "root_type": "StackVec"
+      }
+    ],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$6remove17h1c97bac7b765c4cdE.arg0.length"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -234,7 +253,8 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::remove` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct or obtain a `StackVec` value -> set or populate public field `StackVec.length` -> call target caller `StackVec::<A>::remove`
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::remove` directly
 </candidate safe-call plans>
 
 
@@ -347,8 +367,8 @@ The metadata caller `StackVec::<A>::remove` is a safe function that contains the
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 122408971272200; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 122408971272200`.
+- Observation 1: get_arg(0) = 128628601913352; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 128628601913352`.
 If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 
 </previous attempt feedback>
@@ -793,17 +813,17 @@ impl<A: Array> StackVec<A> {
             klee_ext_bind::callsite!("src-lib-rs-550-24");
             let mut __klee_ret_src_lib_rs_550_24_read = ptr::read(ptr);
             let item = __klee_ret_src_lib_rs_550_24_read;
-            let __klee_arg8 = 1;
+            let __klee_arg9 = 1;
             klee_ext_bind::bind_arg_ptr_value(0, ptr);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg8);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg9);
             klee_ext_bind::callsite!("src-lib-rs-551-23");
-            let mut __klee_ret_src_lib_rs_551_23_offset = ptr.offset(__klee_arg8);
-            let __klee_arg9 = self.length - index;
+            let mut __klee_ret_src_lib_rs_551_23_offset = ptr.offset(__klee_arg9);
+            let __klee_arg10 = self.length - index;
             klee_ext_bind::callsite!("src-lib-rs-551-13");
             let mut __klee_ret_src_lib_rs_551_13_copy = ptr::copy(
                 __klee_ret_src_lib_rs_551_23_offset,
                 ptr,
-                __klee_arg9,
+                __klee_arg10,
             );
             item
         }
@@ -816,17 +836,17 @@ impl<A: Array> StackVec<A> {
         assert!(index < self.len() && self.len() < self.capacity());
         unsafe {
             let ptr = self.as_mut_ptr().padd(index);
-            let __klee_arg10 = 1;
+            let __klee_arg11 = 1;
             klee_ext_bind::bind_arg_ptr_value(0, ptr);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg10);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg11);
             klee_ext_bind::callsite!("src-lib-rs-563-28");
-            let mut __klee_ret_src_lib_rs_563_28_offset = ptr.offset(__klee_arg10);
-            let __klee_arg11 = self.length - index;
+            let mut __klee_ret_src_lib_rs_563_28_offset = ptr.offset(__klee_arg11);
+            let __klee_arg12 = self.length - index;
             klee_ext_bind::callsite!("src-lib-rs-563-13");
             let mut __klee_ret_src_lib_rs_563_13_copy = ptr::copy(
                 ptr,
                 __klee_ret_src_lib_rs_563_28_offset,
-                __klee_arg11,
+                __klee_arg12,
             );
             klee_ext_bind::callsite!("src-lib-rs-564-13");
             let mut __klee_ret_src_lib_rs_564_13_write = ptr::write(ptr, element);

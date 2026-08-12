@@ -174,23 +174,16 @@ target counterexample.
 <certainty call chain>
 [
   {
-    "certainty": "certain_symbol",
-    "evidence": "executed-field-symbol:offset::Offsets::<O>::new",
-    "steps": [
-      {
-        "detail": "DSL access path root",
-        "kind": "root",
-        "root_type": "Offsets"
-      },
-      {
-        "detail": "executed safe function materializes a controllable symbol",
-        "field": "0",
-        "function": "offset::Offsets::<O>::new",
-        "kind": "mutator",
-        "root_type": "offset::Offsets"
-      }
-    ],
-    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.receiver_control_state"
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.arg0.__0.cap"
+  },
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN6arrow26offset16Offsets$LT$O$GT$4last17hb63a5ba3f08e806cE.arg0.__0.len"
   }
 ]
 </certainty call chain>
@@ -235,9 +228,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> construct or obtain a `Offsets` value -> call safe `offset::Offsets::<O>::new` to affect `0` -> call target caller `offset::Offsets::<O>::last`
-2. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> call safe `new` -> call target caller `offset::Offsets::<O>::last`
-3. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter`, `offset::Offsets::<O>::with_capacity` -> call target caller `offset::Offsets::<O>::last` directly
+1. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new`, `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter` -> call target caller `offset::Offsets::<O>::last`
+2. construct `offset::Offsets` for `receiver` using constructor(s): `offset::Offsets::<O>::new`, `offset::Offsets::<O>::new_zeroed`, `offset::Offsets::<O>::try_from_iter` -> call target caller `offset::Offsets::<O>::last` directly
 </candidate safe-call plans>
 
 
@@ -824,7 +816,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 2111:     type Error = Error;
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/datetime/mod.rs:1890-2016
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/chrono-0.4.45/src/datetime/mod.rs:1890-2016
 ```rust
 1890:     type Err = ParseError;
 1891: 
@@ -955,7 +947,7 @@ Relevant public type definitions from registry dependencies. These are source fa
 2016: pub(crate) const UNIX_EPOCH_DAY: i64 = 719_163;
 ```
 
-/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/format/mod.rs:424-563
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/chrono-0.4.45/src/format/mod.rs:424-563
 ```rust
 424: pub struct ParseError(ParseErrorKind);
 425: 
@@ -1637,238 +1629,10 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-/lib/rustlib/src/rust/library/panic_unwind)
-   Compiling hashbrown v0.15.2
-   Compiling std_detect v0.1.5 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/stdarch/crates/std_detect)
-   Compiling proc_macro v0.0.0 (/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
-   Compiling cfg-if v1.0.4
-   Compiling once_cell v1.21.4
-   Compiling dyn-clone v1.0.20
-   Compiling hash_hasher v2.0.4
-   Compiling simdutf8 v0.1.5
-   Compiling ethnum v1.5.3
-   Compiling foreign_vec v0.1.0
-   Compiling bytemuck v1.25.0
-   Compiling klee-ext-bind v0.1.0 (/workspaces/UnSAT-Rust/tools/klee-ext-bind)
-   Compiling either v1.16.0
-   Compiling chrono v0.4.45
-   Compiling hashbrown v0.14.5
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `offset`
-   --> src/offset.rs:502:41
-    |
-502 |     let offsets: offset::Offsets<i32> = offset::Offsets::new();
-    |                                         ^^^^^^ use of unresolved module or unlinked crate `offset`
-    |
-    = help: if you wanted to use a crate named `offset`, use `cargo add offset` to add it to your `Cargo.toml`
-
-warning: unexpected `cfg` condition value: `nightly_build`
-  --> src/lib.rs:15:13
-   |
-15 | #![cfg_attr(feature = "nightly_build", feature(build_hasher_simple_hash_one))]
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: expected values for `feature` are: `arrow`, `arrow-array`, `arrow-buffer`, `arrow-data`, `arrow-format`, `arrow-schema`, `async-stream`, `avro-schema`, `base64`, `benchmarks`, `chrono-tz`, `comfy-table`, `compute`, `compute_aggregate`, `compute_arithmetics`, `compute_arithmetics_decimal`, `compute_bitwise`, `compute_boolean`, `compute_boolean_kleene`, `compute_cast`, `compute_comparison`, `compute_concatenate`, `compute_contains`, `compute_filter`, `compute_hash`, `compute_if_then_else`, `compute_length`, `compute_like`, `compute_limit`, `compute_merge_sort`, `compute_nullif`, `compute_partition`, `compute_regex_match`, `compute_sort`, and `compute_substring` and 63 more
-   = help: consider adding `nightly_build` as a feature in `Cargo.toml`
-   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
-   = note: `#[warn(unexpected_cfgs)]` on by default
-
-warning: unused import: `iterator::*`
-  --> src/array/boolean/mod.rs:22:9
-   |
-22 | pub use iterator::*;
-   |         ^^^^^^^^^^^
-   |
-   = note: `#[warn(unused_imports)]` on by default
-
-warning: unused import: `iterator::*`
-  --> src/array/fixed_size_list/mod.rs:14:9
-   |
-14 | pub use iterator::*;
-   |         ^^^^^^^^^^^
-
-warning: unused import: `iterator::*`
-  --> src/array/map/mod.rs:15:9
-   |
-15 | pub use iterator::*;
-   |         ^^^^^^^^^^^
-
-warning: unused import: `iterator::*`
-  --> src/array/primitive/mod.rs:17:9
-   |
-17 | pub use iterator::*;
-   |         ^^^^^^^^^^^
-
-warning: unreachable statement
-  --> src/array/dictionary/mod.rs:42:9
-   |
-41 | ...   let mut __klee_ret_src_array_dictionary_mod_rs_389_30_unreachable_unchecked = unreachable_unchecked();
-   |                                                                                     ----------------------- any code following this expression is unreachable
-42 | ...   let mut __klee_ret_src_array_dictionary_mod_rs_371_18_unreachable_unchecked = __klee_ret_src_array_dictionary_mod_rs_389_30_unreachable_unchecked;
-   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
-   |
-   = note: `#[warn(unreachable_code)]` on by default
-
-warning: unreachable expression
-   --> src/offset.rs:131:21
-    |
-130 |                     let mut __klee_ret_src_offset_rs_149_30_unreachable_unchecked = unreachable_unchecked();
-    |                                                                                     ----------------------- any code following this expression is unreachable
-131 |                     __klee_ret_src_offset_rs_149_30_unreachable_unchecked
-    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable expression
-
-warning: unreachable expression
-   --> src/offset.rs:381:21
-    |
-380 |                     let mut __klee_ret_src_offset_rs_409_30_unreachable_unchecked = unreachable_unchecked();
-    |                                                                                     ----------------------- any code following this expression is unreachable
-381 |                     __klee_ret_src_offset_rs_409_30_unreachable_unchecked
-    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable expression
-
-warning: unreachable expression
-   --> src/offset.rs:395:21
-    |
-394 |                     let mut __klee_ret_src_offset_rs_418_30_unreachable_unchecked = unreachable_unchecked();
-    |                                                                                     ----------------------- any code following this expression is unreachable
-395 |                     __klee_ret_src_offset_rs_418_30_unreachable_unchecked
-    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable expression
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-  --> src/temporal_conversions.rs:41:20
-   |
-41 |     NaiveDateTime::from_timestamp_opt(v as i64 * SECONDS_IN_DAY, 0)
-   |                    ^^^^^^^^^^^^^^^^^^
-   |
-   = note: `#[warn(deprecated)]` on by default
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-  --> src/temporal_conversions.rs:59:20
-   |
-59 |     NaiveDateTime::from_timestamp_opt(
-   |                    ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:160:20
-    |
-160 |     NaiveDateTime::from_timestamp_opt(seconds, 0)
-    |                    ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:173:24
-    |
-173 |         NaiveDateTime::from_timestamp_opt(
-    |                        ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:183:28
-    |
-183 |             NaiveDateTime::from_timestamp_opt(secs_rem.0, 0)
-    |                            ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:187:28
-    |
-187 |             NaiveDateTime::from_timestamp_opt(
-    |                            ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:205:24
-    |
-205 |         NaiveDateTime::from_timestamp_opt(
-    |                        ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:215:28
-    |
-215 |             NaiveDateTime::from_timestamp_opt(secs_rem.0, 0)
-    |                            ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:219:28
-    |
-219 |             NaiveDateTime::from_timestamp_opt(
-    |                            ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:237:24
-    |
-237 |         NaiveDateTime::from_timestamp_opt(
-    |                        ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:247:28
-    |
-247 |             NaiveDateTime::from_timestamp_opt(secs_rem.0, 0)
-    |                            ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated associated function `chrono::NaiveDateTime::from_timestamp_opt`: use `DateTime::from_timestamp` instead
-   --> src/temporal_conversions.rs:251:28
-    |
-251 |             NaiveDateTime::from_timestamp_opt(
-    |                            ^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp`: use `.and_utc().timestamp()` instead
-   --> src/temporal_conversions.rs:390:35
-    |
-390 |             TimeUnit::Second => x.timestamp(),
-    |                                   ^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_millis`: use `.and_utc().timestamp_millis()` instead
-   --> src/temporal_conversions.rs:391:40
-    |
-391 |             TimeUnit::Millisecond => x.timestamp_millis(),
-    |                                        ^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_micros`: use `.and_utc().timestamp_micros()` instead
-   --> src/temporal_conversions.rs:392:40
-    |
-392 |             TimeUnit::Microsecond => x.timestamp_micros(),
-    |                                        ^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_nanos_opt`: use `.and_utc().timestamp_nanos_opt()` instead
-   --> src/temporal_conversions.rs:393:39
-    |
-393 |             TimeUnit::Nanosecond => x.timestamp_nanos_opt().unwrap(),
-    |                                       ^^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_millis`: use `.and_utc().timestamp_millis()` instead
-   --> src/temporal_conversions.rs:516:45
-    |
-516 |         TimeUnit::Second => new_datetime_tz.timestamp_millis() / 1000,
-    |                                             ^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_millis`: use `.and_utc().timestamp_millis()` instead
-   --> src/temporal_conversions.rs:517:50
-    |
-517 |         TimeUnit::Millisecond => new_datetime_tz.timestamp_millis(),
-    |                                                  ^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_nanos_opt`: use `.and_utc().timestamp_nanos_opt()` instead
-   --> src/temporal_conversions.rs:518:50
-    |
-518 |         TimeUnit::Microsecond => new_datetime_tz.timestamp_nanos_opt().unwrap() / 1000,
-    |                                                  ^^^^^^^^^^^^^^^^^^^
-
-warning: use of deprecated method `chrono::NaiveDateTime::timestamp_nanos_opt`: use `.and_utc().timestamp_nanos_opt()` instead
-   --> src/temporal_conversions.rs:519:49
-    |
-519 |         TimeUnit::Nanosecond => new_datetime_tz.timestamp_nanos_opt().unwrap(),
-    |                                                 ^^^^^^^^^^^^^^^^^^^
-
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `offset`
-   --> src/offset.rs:502:18
-    |
-502 |     let offsets: offset::Offsets<i32> = offset::Offsets::new();
-    |                  ^^^^^^
-    |                  |
-    |                  use of unresolved module or unlinked crate `offset`
-    |                  help: a trait with a similar name exists (notice the capitalization): `Offset`
-    |
-    = help: if you wanted to use a crate named `offset`, use `cargo add offset` to add it to your `Cargo.toml`
-
-For more information about this error, try `rustc --explain E0433`.
-warning: `arrow2` (lib) generated 29 warnings
-error: could not compile `arrow2` (lib) due to 2 previous errors; 29 warnings emitted
-
+The testcase compiled but did not reproduce the target violation.
+KLEE did not report the exact target callsite `src-offset-rs-149-30`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.
+The metadata caller `offset::Offsets::<O>::last` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 </previous attempt feedback>
 
@@ -2312,7 +2076,7 @@ impl<O: Offset> Offsets<O> {
     /// Returns an empty [`Offsets`] (i.e. with a single element, the zero)
     #[inline]
     pub fn new() -> Self {
-        Self(vec![O::zero()])
+        /* body omitted: interface retained */
     }
     /// Returns an [`Offsets`] whose all lengths are zero.
     #[inline]
@@ -2497,7 +2261,7 @@ impl<O: Offset> OffsetsBuffer<O> {
     /// Returns an empty [`OffsetsBuffer`] (i.e. with a single element, the zero)
     #[inline]
     pub fn new() -> Self {
-        Self(vec![O::zero()].into())
+        /* body omitted: interface retained */
     }
     /// Copy-on-write API to convert [`OffsetsBuffer`] into [`Offsets`].
     #[inline]

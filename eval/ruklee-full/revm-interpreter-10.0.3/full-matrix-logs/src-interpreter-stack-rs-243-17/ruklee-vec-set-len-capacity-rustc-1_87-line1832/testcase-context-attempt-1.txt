@@ -997,6 +997,9 @@ impl SharedMemory {
     }
     /// Prepares the shared memory for returning to the previous context.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22"
+    )]
     pub fn free_context(&mut self) {
         /* body omitted: interface retained */
     }
@@ -1125,6 +1128,9 @@ impl SharedMemory {
     /// Panics if memory is out of bounds.
     #[cfg_attr(debug_assertions, track_caller)]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory8set_dataE_src_interpreter_shared_memory_rs_271_29"
+    )]
     pub fn set_data(
         &mut self,
         memory_offset: usize,
@@ -1145,12 +1151,21 @@ impl SharedMemory {
         /* body omitted: interface retained */
     }
     /// Returns a reference to the memory of the current context, the active memory.
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory14context_memoryE_src_interpreter_shared_memory_rs_297_13"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory14context_memoryE_src_interpreter_shared_memory_rs_298_18"
+    )]
     pub fn context_memory(&self) -> &[u8] {
         /* body omitted: interface retained */
     }
     /// Returns a mutable reference to the memory of the current context.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter13shared_memory12SharedMemory18context_memory_mutE_src_interpreter_shared_memory_rs_307_18"
+    )]
     pub fn context_memory_mut(&mut self) -> &mut [u8] {
         /* body omitted: interface retained */
     }
@@ -1216,7 +1231,7 @@ impl Stack {
     /// Returns a mutable reference to the underlying data buffer.
     #[inline]
     pub fn data_mut(&mut self) -> &mut Vec<U256> {
-        /* body omitted: interface retained */
+        &mut self.data
     }
     /// Consumes the stack and returns the underlying data buffer.
     #[inline]
@@ -1235,6 +1250,9 @@ impl Stack {
     ///
     /// The caller is responsible for checking the length of the stack.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN12instructions8contract26pop_extcall_target_addressE_src_instructions_contract_rs_205_5"
+    )]
     pub unsafe fn pop_unsafe(&mut self) -> U256 {
         /* body omitted: interface retained */
     }
@@ -1313,7 +1331,12 @@ impl Stack {
     /// unchanged.
     #[inline]
     pub fn push(&mut self, value: U256) -> Result<(), InstructionResult> {
-        /* body omitted: interface retained */
+        assume!(self.data.capacity() == STACK_LIMIT);
+        if self.data.len() == STACK_LIMIT {
+            return Err(InstructionResult::StackOverflow);
+        }
+        self.data.push(value);
+        Ok(())
     }
     /// Peek a value at given index for the stack, where the top of
     /// the stack is at index `0`. If the index is too large,
@@ -1328,7 +1351,19 @@ impl Stack {
     ///
     /// Panics if `n` is 0.
     #[cfg_attr(debug_assertions, track_caller)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_241_27"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_242_42"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_242_17"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack3dupE_src_interpreter_stack_rs_243_17"
+    )]
     pub fn dup(&mut self, n: usize) -> Result<(), InstructionResult> {
         assume!(n > 0, "attempted to dup 0");
         let len = self.data.len();
@@ -1357,6 +1392,9 @@ impl Stack {
                     __klee_arg1,
                 );
                 let __klee_arg2 = len + 1;
+                let __klee_vec_owner3 = &(self.data) as *const _;
+                klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner3);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
                 klee_ext_bind::callsite!("src-interpreter-stack-rs-243-17");
                 let mut __klee_ret_src_interpreter_stack_rs_243_17_set_len = self
                     .data
@@ -1383,13 +1421,55 @@ impl Stack {
     ///
     /// Panics if `m` is zero.
     #[cfg_attr(debug_assertions, track_caller)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_282_23"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_44"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_56"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack8exchangeE_src_interpreter_stack_rs_283_13"
+    )]
     pub fn exchange(&mut self, n: usize, m: usize) -> Result<(), InstructionResult> {
         /* body omitted: interface retained */
     }
     /// Pushes an arbitrary length slice of bytes onto the stack, padding the last word with zeros
     /// if necessary.
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_304_23"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_305_13"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_316_21_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_316_21"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_329_17_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_329_17"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_337_17_write"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_337_17"
+    )]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_346_17_write_bytes"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter5stack5Stack10push_sliceE_src_interpreter_stack_rs_346_17"
+    )]
     pub fn push_slice(&mut self, slice: &[u8]) -> Result<(), InstructionResult> {
         /* body omitted: interface retained */
     }
@@ -1501,6 +1581,9 @@ impl Interpreter {
     /// Test related helper
     /// Load EOF code into interpreter. PC is assumed to be correctly set
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter11Interpreter13load_eof_codeE_src_interpreter_rs_135_45"
+    )]
     pub(crate) fn load_eof_code(&mut self, idx: usize, pc: usize) {
         /* body omitted: interface retained */
     }
@@ -1566,6 +1649,9 @@ impl Interpreter {
     }
     /// Returns the opcode at the current instruction pointer.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter11Interpreter14current_opcodeE_src_interpreter_rs_311_18"
+    )]
     pub fn current_opcode(&self) -> u8 {
         /* body omitted: interface retained */
     }
@@ -1591,6 +1677,9 @@ impl Interpreter {
     }
     /// Returns the current program counter.
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN11interpreter11Interpreter15program_counterE_src_interpreter_rs_343_18"
+    )]
     pub fn program_counter(&self) -> usize {
         /* body omitted: interface retained */
     }

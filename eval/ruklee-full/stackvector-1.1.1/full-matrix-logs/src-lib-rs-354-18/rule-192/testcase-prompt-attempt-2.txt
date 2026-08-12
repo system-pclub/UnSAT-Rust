@@ -172,7 +172,20 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$18from_vec_unchecked17hd476e227894c32c5E.arg1.cap"
+  },
+  {
+    "certainty": "uncertain_symbol",
+    "evidence": "",
+    "steps": [],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$18from_vec_unchecked17hd476e227894c32c5E.arg1.len"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -232,8 +245,9 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct receiver and parameters for actual safe function `pub fn from_buf(buf: A)` -> preserve prefix helper lookups/branches before the target (for example, values used by `opposite`, `neighbor`, indexing, or condition helpers must be present/valid until the inner target call) -> make the bound target-call relation form the counterexample at the target, not merely at the root wrapper -> call safe actual-containing function `from_buf(...)` directly
-2. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::from_vec` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct receiver and parameters for actual safe function `pub fn from_buf(buf: A)` -> preserve prefix helper lookups/branches before the target (for example, values used by `opposite`, `neighbor`, indexing, or condition helpers must be present/valid until the inner target call) -> make the bound target-call relation form the counterexample at the target, not merely at the root wrapper -> call safe actual-containing function `from_buf(...)` directly
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::from_vec`
+3. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::from_vec` directly
 </candidate safe-call plans>
 
 
@@ -319,6 +333,24 @@ src/lib.rs:359-360
 ```rust
 359:     pub unsafe fn from_vec_unchecked(mut vec: Vec<A::Item>) -> StackVec<A> {
 360:         let mut data: A = mem::uninitialized();
+```
+
+Instrumented bound-argument map from autoinj. This is the authoritative mapping for target argument `get_arg(N)`: `bind_arg_*(N, expr)` means `get_arg(N)` is `expr`, and `bind_arg_*_value(N, &tmp)` means `get_arg(N)` is the current value of `tmp`. Generate the counterexample for these bound expressions, not just for Rust positional arguments:
+src/lib.rs:314
+```rust
+308:         }
+309:     }
+310:     /// Construct a new `StackVec` from a `Vec<A::Item>` without bounds checking.
+311:     #[allow(deprecated)]
+312:     #[inline(never)]
+313:     pub unsafe fn from_vec_unchecked(mut vec: Vec<A::Item>) -> StackVec<A> {
+314:         klee_ext_bind::callsite!("src-lib-rs-354-18");
+315:         let mut __klee_ret_src_lib_rs_354_18_uninitialized = mem::uninitialized();
+316:         let mut data: A = __klee_ret_src_lib_rs_354_18_uninitialized;
+317:         let len = vec.len();
+318:         let __klee_arg0 = 0;
+319:         let __klee_vec_owner1 = &(vec) as *const _;
+320:         klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner1);
 ```
 
 Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
@@ -839,7 +871,10 @@ impl<A: Array> StackVec<A> {
     /// ```
     #[inline]
     pub fn from_buf(buf: A) -> StackVec<A> {
-        /* body omitted: interface retained */
+        StackVec {
+            length: A::size(),
+            data: mem::MaybeUninit::new(buf),
+        }
     }
     /// Constructs a new `StackVec` on the stack from an `A` without
     /// copying elements. Also sets the length, which must be less or

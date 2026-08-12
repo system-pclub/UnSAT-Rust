@@ -13,17 +13,15 @@ pub extern "C" fn __unsat_poc_src_unix_rs_126_34_rule_433_e944602416() {
         .truncate(true)
         .open(&path)
         .expect("open temp file");
-    file.set_len(4096).expect("set_len");
-    file.write_all(&[0u8; 4096]).expect("seed file");
+    file.set_len(1).expect("set_len");
+    file.write_all(&[0u8]).expect("write");
 
-    let mut mmap = crate::MmapOptions::new()
+    let mut mmap = MmapOptions::new()
         .len(1)
         .map_mut(&file)
         .expect("map_mut");
 
-    mmap.inner.ptr = mmap.inner.ptr.wrapping_add(1);
-    mmap.inner.len = 1;
-
-    let _ = mmap.flush_range(1, 0);
+    mmap.inner.ptr = ptr::null_mut();
+    mmap.inner.flush(1, 0).ok();
 }
 ```

@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:StackVec.length",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "StackVec"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "length",
+        "kind": "public_field",
+        "root_type": "StackVec"
+      }
+    ],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$17insert_from_slice17h55345d91124642c8E.arg0.length"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -227,7 +246,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::insert_from_slice` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct or obtain a `StackVec` value -> set or populate public field `StackVec.length` -> call target caller `StackVec::<A>::insert_from_slice`
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::insert_from_slice` directly
 </candidate safe-call plans>
 
 
@@ -839,13 +859,13 @@ where
             data: unsafe {
                 let mut data: mem::MaybeUninit<A> = mem::MaybeUninit::uninit();
                 let ptr = data.as_mut_ptr() as *mut A::Item;
-                let __klee_arg19 = slice.as_ptr();
-                let __klee_arg20 = slice.len();
+                let __klee_arg20 = slice.as_ptr();
+                let __klee_arg21 = slice.len();
                 klee_ext_bind::callsite!("src-lib-rs-737-17");
                 let mut __klee_ret_src_lib_rs_737_17_copy_nonoverlapping = ptr::copy_nonoverlapping(
-                    __klee_arg19,
-                    ptr,
                     __klee_arg20,
+                    ptr,
+                    __klee_arg21,
                 );
                 data
             },
@@ -862,20 +882,20 @@ where
             let len = self.len();
             let slice_ptr = slice.as_ptr();
             let ptr = self.as_mut_ptr().padd(index);
-            let __klee_arg21 = ptr.padd(slice.len());
-            let __klee_arg22 = len - index;
+            let __klee_arg22 = ptr.padd(slice.len());
+            let __klee_arg23 = len - index;
             klee_ext_bind::callsite!("src-lib-rs-753-13");
             let mut __klee_ret_src_lib_rs_753_13_copy = ptr::copy(
                 ptr,
-                __klee_arg21,
                 __klee_arg22,
+                __klee_arg23,
             );
-            let __klee_arg23 = slice.len();
+            let __klee_arg24 = slice.len();
             klee_ext_bind::callsite!("src-lib-rs-754-13");
             let mut __klee_ret_src_lib_rs_754_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
                 slice_ptr,
                 ptr,
-                __klee_arg23,
+                __klee_arg24,
             );
             self.set_len(len + slice.len());
         }

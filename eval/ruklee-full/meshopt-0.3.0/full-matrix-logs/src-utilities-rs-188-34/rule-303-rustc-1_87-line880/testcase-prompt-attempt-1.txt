@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:utilities::VertexDataAdapter.position_offset",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "VertexDataAdapter"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "position_offset",
+        "kind": "public_field",
+        "root_type": "utilities::VertexDataAdapter"
+      }
+    ],
+    "symbol": "_ZN7meshopt9utilities17VertexDataAdapter7pos_ptr17h9814162683fbb68bE.arg0.position_offset"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +243,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `utilities::VertexDataAdapter` for `receiver` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr` directly
+1. construct `utilities::VertexDataAdapter` for `receiver` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> construct or obtain a `VertexDataAdapter` value -> set or populate public field `utilities::VertexDataAdapter.position_offset` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr`
+2. construct `utilities::VertexDataAdapter` for `receiver` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `receiver` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `utilities::VertexDataAdapter::<'a>::pos_ptr` directly
 </candidate safe-call plans>
 
 

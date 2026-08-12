@@ -1,0 +1,657 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-parser-rs-182-28-rule-574-9b8263a128`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_parser_rs_182_28_rule_574_9b8263a128`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-parser-rs-182-28-rule-574-9b8263a128")]`.
+- Define `pub extern "C" fn __unsat_poc_src_parser_rs_182_28_rule_574_9b8263a128()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-parser-rs-182-28-rule-574-9b8263a128")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_parser_rs_182_28_rule_574_9b8263a128() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:parser::LineReader.buf",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "LineReader"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "buf",
+        "kind": "public_field",
+        "root_type": "parser::LineReader"
+      }
+    ],
+    "symbol": "_ZN10parsepatch6parser10LineReader13parse_numbers17h992f0eb0b364ab88E.arg1.buf.length"
+  }
+]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": {
+    "name": "parser::LineReader",
+    "path": "src/parser.rs",
+    "line_start": 114,
+    "body_end": 114,
+    "is_public": true
+  },
+  "caller": {
+    "name": "parser::LineReader::<'a>::parse_numbers",
+    "path": "src/parser.rs",
+    "line_start": 180,
+    "line_end": 180,
+    "body_end": 219,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "std::result::Result<(u32, u32, u32, u32), parser::ParsepatchError>"
+  },
+  "callee": {
+    "name": "core::slice::<impl [T]>::get_unchecked",
+    "path": "rust/library/core/src/slice/mod.rs",
+    "line_start": 625,
+    "line_end": 657,
+    "body_end": 657,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "&<I as std::slice::SliceIndex<[T]>>::Output"
+  },
+  "callsite": {
+    "line": 182,
+    "col": 28,
+    "path": "src/parser.rs",
+    "id": "src-parser-rs-182-28"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "u8",
+      "layout_control": "fixed"
+    },
+    {
+      "index": 1,
+      "name": "I",
+      "owner": "function",
+      "instantiated_ty": "std::ops::RangeFrom<usize>",
+      "layout_control": "fixed"
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct `parser::LineReader` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: &'a [u8]` -> construct or obtain a `LineReader` value -> set or populate public field `parser::LineReader.buf` -> call target caller `parser::LineReader::<'a>::parse_numbers`
+2. construct `parser::LineReader` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: &'a [u8]` -> call target caller `parser::LineReader::<'a>::parse_numbers` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `parser::LineReader::<'a>::parse_numbers`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use std::fmt::{self, Debug, Display, Formatter};
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+use std::result;
+```
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/parser.rs:182
+```rust
+174:             FileOp::Copied
+175:         } else {
+176:             FileOp::None
+177:         }
+178:     }
+179: 
+180:     pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {
+181:         // we know that line is beginning with "@@ -"
+182:         let buf = unsafe { self.buf.get_unchecked(4..) };
+183: 
+184:         // NUMS_PAT = re.compile(r'^@@ -([0-9]+),?([0-9]+)? \+([0-9]+),?([0-9]+)? @@')
+185:         let iter = &mut buf.iter();
+186:         let old_start = iter
+187:             .take_while(|&&c| c.is_ascii_digit())
+188:             .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));
+189: 
+190:         let c = *iter
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/parser.rs:180-182
+```rust
+180:     pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {
+181:         // we know that line is beginning with "@@ -"
+182:         let buf = unsafe { self.buf.get_unchecked(4..) };
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/kv/value.rs:1061-1079
+```rust
+1061: 
+1062:     pub fn visit<'v>(
+1063:         inner: &Inner<'v>,
+1064:         mut visitor: impl VisitValue<'v>,
+1065:     ) -> Result<(), crate::kv::Error> {
+1066:         match inner {
+1067:             Inner::None => visitor.visit_null(),
+1068:             Inner::Bool(v) => visitor.visit_bool(*v),
+1069:             Inner::Str(v) => visitor.visit_borrowed_str(*v),
+1070:             Inner::Char(v) => visitor.visit_char(*v),
+1071:             Inner::I64(v) => visitor.visit_i64(*v),
+1072:             Inner::U64(v) => visitor.visit_u64(*v),
+1073:             Inner::F64(v) => visitor.visit_f64(*v),
+1074:             Inner::I128(v) => visitor.visit_i128(*v),
+1075:             Inner::U128(v) => visitor.visit_u128(*v),
+1076:             Inner::Debug(v) => visitor.visit_any(Value::from_dyn_debug(*v)),
+1077:             Inner::Display(v) => visitor.visit_any(Value::from_dyn_display(*v)),
+1078:         }
+1079:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-parser-rs-182-28
+
+Rule id: rule-574
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<rust context mode="witness-guided-semantic-slice">
+<context policy>
+Function bodies marked `body omitted: interface retained` are intentionally elided. 
+All type shapes and function signatures remain available. Bodies are retained for 
+the target callsite and the KLEE certainty-chain operations.
+</context policy>
+
+<file path="src/lib.rs">
+```rust
+#[macro_use]
+extern crate log;
+
+pub mod parser;
+pub use self::parser::*;
+```
+</file>
+
+<file path="src/parser.rs">
+```rust
+use std::fmt::{self, Debug, Display, Formatter};
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+use std::result;
+#[derive(Debug)]
+pub enum ParsepatchError {
+    InvalidHunkHeader(usize),
+    NewModeExpected(usize),
+    NoFilename(usize),
+    IOError(String),
+    InvalidString(usize),
+}
+pub type Result<T> = result::Result<T, ParsepatchError>;
+impl Display for ParsepatchError {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
+        /* body omitted: interface retained */
+    }
+}
+/// A type to handle lines in a diff
+pub trait Diff {
+    /// Set the file info
+    fn set_info(
+        &mut self,
+        old_name: &str,
+        new_name: &str,
+        op: FileOp,
+        binary_sizes: Option<Vec<BinaryHunk>>,
+        file_mode: Option<FileMode>,
+    );
+    /// Add a line in the diff
+    ///
+    /// If a line is added (+) then old_line is 0 and new_line is the line in the destination file.
+    ///
+    /// If a line is removed (-) then old_line is the line in the source file and new_line is 0.
+    ///
+    /// If a line is nothing ( ) then old_line is the line in the source file and new_line is the line in the destination file.
+    fn add_line(&mut self, old_line: u32, new_line: u32, line: &[u8]);
+    /// A new hunk is created
+    fn new_hunk(&mut self);
+    /// Close the diff: no more lines will be added
+    fn close(&mut self);
+}
+/// An enum containing the size of binary hunks
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BinaryHunk {
+    Literal(usize),
+    Delta(usize),
+}
+/// File mode change
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FileMode {
+    pub old: u32,
+    pub new: u32,
+}
+/// A type to handle patch
+pub trait Patch<D: Diff> {
+    /// Create a new diff where lines will be added
+    fn new_diff(&mut self) -> &mut D;
+    /// Close the patch
+    fn close(&mut self);
+}
+/// The different file operation
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FileOp {
+    /// The file is new with its mode
+    New(u32),
+    /// The file is deleted with its mode
+    Deleted(u32),
+    /// The file is renamed
+    Renamed,
+    /// The file is copied
+    Copied,
+    /// The file is touched
+    None,
+}
+impl FileOp {
+    pub fn is_new_or_deleted(self) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+/// Type to read a patch
+pub struct PatchReader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+    line: usize,
+    last: Option<LineReader<'a>>,
+}
+pub struct LineReader<'a> {
+    pub buf: &'a [u8],
+    line: usize,
+}
+impl<'a> Debug for LineReader<'a> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> LineReader<'a> {
+    fn is_empty(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_binary(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_rename_from(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_copy_from(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_new_file(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_triple_minus(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_triple_plus(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_index(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn is_deleted_file(&self) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn get_line(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    fn get_file_op(&self) -> FileOp {
+        /* body omitted: interface retained */
+    }
+    #[inline(never)]
+    pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {
+        let buf = unsafe {
+            let __klee_arg0 = &self.buf;
+            let __klee_arg1 = 4..;
+            let __klee_len2 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
+            klee_ext_bind::callsite!("src-parser-rs-182-28");
+            let mut __klee_ret_src_parser_rs_182_28_get_unchecked = __klee_arg0
+                .get_unchecked(__klee_arg1);
+            __klee_ret_src_parser_rs_182_28_get_unchecked
+        };
+        let iter = &mut buf.iter();
+        let old_start = iter
+            .take_while(|&&c| c.is_ascii_digit())
+            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));
+        let c = *iter
+            .next()
+            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;
+        let old_lines = if c.is_ascii_digit() {
+            iter.take_while(|&&c| c.is_ascii_digit())
+                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))
+        } else {
+            1
+        };
+        if c != b'+' {
+            iter.find(|&&c| c == b'+');
+        }
+        let new_start = iter
+            .take_while(|&&c| c.is_ascii_digit())
+            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));
+        let c = *iter
+            .next()
+            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;
+        let new_lines = if c.is_ascii_digit() {
+            iter.take_while(|&&c| c.is_ascii_digit())
+                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))
+        } else {
+            1
+        };
+        Ok((old_start, old_lines, new_start, new_lines))
+    }
+    fn get_filename(buf: &[u8], line: usize) -> Result<&str> {
+        /* body omitted: interface retained */
+    }
+    fn get_file<'b>(slice: Option<&'b [u8]>, starter: &[u8]) -> &'b [u8] {
+        /* body omitted: interface retained */
+    }
+    fn parse_files(&self) -> Result<(&str, &str)> {
+        /* body omitted: interface retained */
+    }
+    fn parse_mode(&self, start: &'static str) -> u32 {
+        /* body omitted: interface retained */
+    }
+}
+impl<'a> PatchReader<'a> {
+    /// Read a patch from the given path
+    pub fn by_path<D: Diff, P: Patch<D>>(path: &PathBuf, patch: &mut P) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    /// Read a patch from the given buffer
+    pub fn by_buf<D: Diff, P: Patch<D>>(buf: &[u8], patch: &mut P) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn get_line(&self) -> usize {
+        /* body omitted: interface retained */
+    }
+    fn parse<D: Diff, P: Patch<D>>(&mut self, patch: &mut P) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_diff<D: Diff, P: Patch<D>>(
+        &mut self,
+        diff_line: &mut LineReader,
+        patch: &mut P,
+    ) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_minus<D: Diff, P: Patch<D>>(
+        &mut self,
+        line: &mut LineReader,
+        op: FileOp,
+        file_mode: Option<FileMode>,
+        patch: &mut P,
+    ) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_hunks<D: Diff>(
+        &mut self,
+        line: &mut LineReader,
+        diff: &mut D,
+    ) -> Result<()> {
+        /* body omitted: interface retained */
+    }
+    fn parse_hunk<D: Diff>(
+        &mut self,
+        mut old_count: u32,
+        mut old_lines: u32,
+        mut new_count: u32,
+        mut new_lines: u32,
+        diff: &mut D,
+    ) {
+        /* body omitted: interface retained */
+    }
+    fn set_last(&mut self, line: LineReader<'a>) {
+        /* body omitted: interface retained */
+    }
+    fn next<F>(&mut self, filter: F, return_on_false: bool) -> Option<LineReader<'a>>
+    where
+        F: Fn(&LineReader) -> bool,
+    {
+        /* body omitted: interface retained */
+    }
+    fn skip_until_empty_line(&mut self) {
+        /* body omitted: interface retained */
+    }
+    fn parse_usize(buf: &[u8]) -> usize {
+        /* body omitted: interface retained */
+    }
+    fn skip_binary(&mut self) -> Vec<BinaryHunk> {
+        /* body omitted: interface retained */
+    }
+    fn useful(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn starter(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn diff(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn mv(_: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn hunk_at(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn old_mode(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+    fn hunk_change(line: &LineReader) -> bool {
+        /* body omitted: interface retained */
+    }
+}
+```
+</file>
+</rust context>

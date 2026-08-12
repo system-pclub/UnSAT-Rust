@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:StackVec.length",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "StackVec"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "length",
+        "kind": "public_field",
+        "root_type": "StackVec"
+      }
+    ],
+    "symbol": "_ZN11stackvector17StackVec$LT$A$GT$8truncate17h5b83d462f9741a26E.arg0.length"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -227,7 +246,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `StackVec` for `receiver` using fields visible from the injection module when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::truncate` directly
+1. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> construct or obtain a `StackVec` value -> set or populate public field `StackVec.length` -> call target caller `StackVec::<A>::truncate`
+2. construct `StackVec` for `receiver` using its genuinely public fields when that better controls the target caller state: `data`, `length` -> or construct `StackVec` for `receiver` using constructor(s): `StackVec::<A>::new`, `StackVec::<A>::from_vec`, `StackVec::<A>::from_buf` -> call target caller `StackVec::<A>::truncate` directly
 </candidate safe-call plans>
 
 
@@ -683,14 +703,17 @@ impl<A: Array> StackVec<A> {
         let mut data: A = __klee_ret_src_lib_rs_354_18_uninitialized;
         let len = vec.len();
         let __klee_arg0 = 0;
+        let __klee_vec_owner1 = &(vec) as *const _;
+        klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner1);
+        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg0);
         klee_ext_bind::callsite!("src-lib-rs-354-18-set_len");
         let mut __klee_ret_src_lib_rs_354_18_set_len_set_len = vec.set_len(__klee_arg0);
-        let __klee_arg1 = vec.as_ptr();
-        let __klee_arg2 = data.ptr_mut();
+        let __klee_arg2 = vec.as_ptr();
+        let __klee_arg3 = data.ptr_mut();
         klee_ext_bind::callsite!("src-lib-rs-354-18-copy_nonoverlapping");
         let mut __klee_ret_src_lib_rs_354_18_copy_nonoverlapping_copy_nonoverlapping = ptr::copy_nonoverlapping(
-            __klee_arg1,
             __klee_arg2,
+            __klee_arg3,
             len,
         );
         StackVec {
@@ -782,12 +805,12 @@ impl<A: Array> StackVec<A> {
     #[inline(never)]
     pub fn drain(&mut self) -> Drain<A::Item> {
         unsafe {
-            let __klee_arg3 = self.as_mut_ptr();
-            let __klee_arg4 = self.len();
+            let __klee_arg4 = self.as_mut_ptr();
+            let __klee_arg5 = self.len();
             klee_ext_bind::callsite!("src-lib-rs-461-25");
             let mut __klee_ret_src_lib_rs_461_25_from_raw_parts_mut = slice::from_raw_parts_mut(
-                __klee_arg3,
                 __klee_arg4,
+                __klee_arg5,
             );
             let slice = __klee_ret_src_lib_rs_461_25_from_raw_parts_mut;
             self.set_len(0);
@@ -799,9 +822,9 @@ impl<A: Array> StackVec<A> {
     pub fn push(&mut self, value: A::Item) {
         assert!(self.len() < self.capacity());
         unsafe {
-            let __klee_arg5 = self.as_mut_ptr().padd(self.length);
+            let __klee_arg6 = self.as_mut_ptr().padd(self.length);
             klee_ext_bind::callsite!("src-lib-rs-475-13");
-            let mut __klee_ret_src_lib_rs_475_13_write = ptr::write(__klee_arg5, value);
+            let mut __klee_ret_src_lib_rs_475_13_write = ptr::write(__klee_arg6, value);
             self.length += 1;
         }
     }
@@ -813,9 +836,9 @@ impl<A: Array> StackVec<A> {
                 None
             } else {
                 self.length -= 1;
-                let __klee_arg6 = self.as_mut_ptr().padd(self.length);
+                let __klee_arg7 = self.as_mut_ptr().padd(self.length);
                 klee_ext_bind::callsite!("src-lib-rs-488-22");
-                let mut __klee_ret_src_lib_rs_488_22_read = ptr::read(__klee_arg6);
+                let mut __klee_ret_src_lib_rs_488_22_read = ptr::read(__klee_arg7);
                 Some(__klee_ret_src_lib_rs_488_22_read)
             }
         }
@@ -830,10 +853,10 @@ impl<A: Array> StackVec<A> {
         unsafe {
             while len < self.length {
                 self.length -= 1;
-                let __klee_arg7 = self.as_mut_ptr().padd(self.length);
+                let __klee_arg8 = self.as_mut_ptr().padd(self.length);
                 klee_ext_bind::callsite!("src-lib-rs-502-17");
                 let mut __klee_ret_src_lib_rs_502_17_drop_in_place = ptr::drop_in_place(
-                    __klee_arg7,
+                    __klee_arg8,
                 );
             }
         }
@@ -881,17 +904,17 @@ impl<A: Array> StackVec<A> {
             klee_ext_bind::callsite!("src-lib-rs-550-24");
             let mut __klee_ret_src_lib_rs_550_24_read = ptr::read(ptr);
             let item = __klee_ret_src_lib_rs_550_24_read;
-            let __klee_arg8 = 1;
+            let __klee_arg9 = 1;
             klee_ext_bind::bind_arg_ptr_value(0, ptr);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg8);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg9);
             klee_ext_bind::callsite!("src-lib-rs-551-23");
-            let mut __klee_ret_src_lib_rs_551_23_offset = ptr.offset(__klee_arg8);
-            let __klee_arg9 = self.length - index;
+            let mut __klee_ret_src_lib_rs_551_23_offset = ptr.offset(__klee_arg9);
+            let __klee_arg10 = self.length - index;
             klee_ext_bind::callsite!("src-lib-rs-551-13");
             let mut __klee_ret_src_lib_rs_551_13_copy = ptr::copy(
                 __klee_ret_src_lib_rs_551_23_offset,
                 ptr,
-                __klee_arg9,
+                __klee_arg10,
             );
             item
         }
@@ -904,17 +927,17 @@ impl<A: Array> StackVec<A> {
         assert!(index < self.len() && self.len() < self.capacity());
         unsafe {
             let ptr = self.as_mut_ptr().padd(index);
-            let __klee_arg10 = 1;
+            let __klee_arg11 = 1;
             klee_ext_bind::bind_arg_ptr_value(0, ptr);
-            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg10);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg11);
             klee_ext_bind::callsite!("src-lib-rs-563-28");
-            let mut __klee_ret_src_lib_rs_563_28_offset = ptr.offset(__klee_arg10);
-            let __klee_arg11 = self.length - index;
+            let mut __klee_ret_src_lib_rs_563_28_offset = ptr.offset(__klee_arg11);
+            let __klee_arg12 = self.length - index;
             klee_ext_bind::callsite!("src-lib-rs-563-13");
             let mut __klee_ret_src_lib_rs_563_13_copy = ptr::copy(
                 ptr,
                 __klee_ret_src_lib_rs_563_28_offset,
-                __klee_arg11,
+                __klee_arg12,
             );
             klee_ext_bind::callsite!("src-lib-rs-564-13");
             let mut __klee_ret_src_lib_rs_564_13_write = ptr::write(ptr, element);
@@ -947,13 +970,13 @@ impl<A: Array> StackVec<A> {
             klee_ext_bind::callsite!("src-lib-rs-593-23");
             let mut __klee_ret_src_lib_rs_593_23_add = start.add(index);
             let ptr = __klee_ret_src_lib_rs_593_23_add;
-            let __klee_arg12 = ptr.padd(lower_size_bound);
-            let __klee_arg13 = old_len - index;
+            let __klee_arg13 = ptr.padd(lower_size_bound);
+            let __klee_arg14 = old_len - index;
             klee_ext_bind::callsite!("src-lib-rs-596-13");
             let mut __klee_ret_src_lib_rs_596_13_copy = ptr::copy(
                 ptr,
-                __klee_arg12,
                 __klee_arg13,
+                __klee_arg14,
             );
             self.set_len(0);
             let mut guard = DropOnPanic {
@@ -985,12 +1008,12 @@ impl<A: Array> StackVec<A> {
                 klee_ext_bind::bind_arg_u64_value(1, &num_added);
                 klee_ext_bind::callsite!("src-lib-rs-621-21");
                 let mut __klee_ret_src_lib_rs_621_21_add = ptr.add(num_added);
-                let __klee_arg14 = old_len - index;
+                let __klee_arg15 = old_len - index;
                 klee_ext_bind::callsite!("src-lib-rs-619-17");
                 let mut __klee_ret_src_lib_rs_619_17_copy = ptr::copy(
                     __klee_ret_src_lib_rs_620_21_add,
                     __klee_ret_src_lib_rs_621_21_add,
-                    __klee_arg14,
+                    __klee_arg15,
                 );
             }
             self.set_len(old_len + num_added);
@@ -1013,9 +1036,9 @@ impl<A: Array> StackVec<A> {
         } else {
             unsafe {
                 let this = mem::ManuallyDrop::new(self);
-                let __klee_arg15 = this.as_ptr() as *const A;
+                let __klee_arg16 = this.as_ptr() as *const A;
                 klee_ext_bind::callsite!("src-lib-rs-649-29");
-                let mut __klee_ret_src_lib_rs_649_29_read = ptr::read(__klee_arg15);
+                let mut __klee_ret_src_lib_rs_649_29_read = ptr::read(__klee_arg16);
                 let array = __klee_ret_src_lib_rs_649_29_read;
                 Ok(array)
             }
@@ -1059,26 +1082,26 @@ impl<A: Array> StackVec<A> {
         let mut w: usize = 1;
         unsafe {
             for r in 1..len {
-                let __klee_arg16 = r as isize;
-                klee_ext_bind::bind_arg_ptr_value(0, ptr);
-                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg16);
-                klee_ext_bind::callsite!("src-lib-rs-698-27");
-                let mut __klee_ret_src_lib_rs_698_27_offset = ptr.offset(__klee_arg16);
-                let p_r = __klee_ret_src_lib_rs_698_27_offset;
-                let __klee_arg17 = (w - 1) as isize;
+                let __klee_arg17 = r as isize;
                 klee_ext_bind::bind_arg_ptr_value(0, ptr);
                 klee_ext_bind::bind_arg_u64_value(1, &__klee_arg17);
+                klee_ext_bind::callsite!("src-lib-rs-698-27");
+                let mut __klee_ret_src_lib_rs_698_27_offset = ptr.offset(__klee_arg17);
+                let p_r = __klee_ret_src_lib_rs_698_27_offset;
+                let __klee_arg18 = (w - 1) as isize;
+                klee_ext_bind::bind_arg_ptr_value(0, ptr);
+                klee_ext_bind::bind_arg_u64_value(1, &__klee_arg18);
                 klee_ext_bind::callsite!("src-lib-rs-699-29");
-                let mut __klee_ret_src_lib_rs_699_29_offset = ptr.offset(__klee_arg17);
+                let mut __klee_ret_src_lib_rs_699_29_offset = ptr.offset(__klee_arg18);
                 let p_wm1 = __klee_ret_src_lib_rs_699_29_offset;
                 if !same_bucket(&mut *p_r, &mut *p_wm1) {
                     if r != w {
-                        let __klee_arg18 = 1;
+                        let __klee_arg19 = 1;
                         klee_ext_bind::bind_arg_ptr_value(0, p_wm1);
-                        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg18);
+                        klee_ext_bind::bind_arg_u64_value(1, &__klee_arg19);
                         klee_ext_bind::callsite!("src-lib-rs-702-35");
                         let mut __klee_ret_src_lib_rs_702_35_offset = p_wm1
-                            .offset(__klee_arg18);
+                            .offset(__klee_arg19);
                         let p_w = __klee_ret_src_lib_rs_702_35_offset;
                         mem::swap(&mut *p_r, &mut *p_w);
                     }
@@ -1112,13 +1135,13 @@ where
             data: unsafe {
                 let mut data: mem::MaybeUninit<A> = mem::MaybeUninit::uninit();
                 let ptr = data.as_mut_ptr() as *mut A::Item;
-                let __klee_arg19 = slice.as_ptr();
-                let __klee_arg20 = slice.len();
+                let __klee_arg20 = slice.as_ptr();
+                let __klee_arg21 = slice.len();
                 klee_ext_bind::callsite!("src-lib-rs-737-17");
                 let mut __klee_ret_src_lib_rs_737_17_copy_nonoverlapping = ptr::copy_nonoverlapping(
-                    __klee_arg19,
-                    ptr,
                     __klee_arg20,
+                    ptr,
+                    __klee_arg21,
                 );
                 data
             },
@@ -1135,20 +1158,20 @@ where
             let len = self.len();
             let slice_ptr = slice.as_ptr();
             let ptr = self.as_mut_ptr().padd(index);
-            let __klee_arg21 = ptr.padd(slice.len());
-            let __klee_arg22 = len - index;
+            let __klee_arg22 = ptr.padd(slice.len());
+            let __klee_arg23 = len - index;
             klee_ext_bind::callsite!("src-lib-rs-753-13");
             let mut __klee_ret_src_lib_rs_753_13_copy = ptr::copy(
                 ptr,
-                __klee_arg21,
                 __klee_arg22,
+                __klee_arg23,
             );
-            let __klee_arg23 = slice.len();
+            let __klee_arg24 = slice.len();
             klee_ext_bind::callsite!("src-lib-rs-754-13");
             let mut __klee_ret_src_lib_rs_754_13_copy_nonoverlapping = ptr::copy_nonoverlapping(
                 slice_ptr,
                 ptr,
-                __klee_arg23,
+                __klee_arg24,
             );
             self.set_len(len + slice.len());
         }
@@ -1200,11 +1223,11 @@ where
                 klee_ext_bind::bind_arg_u64_value(1, &i);
                 klee_ext_bind::callsite!("src-lib-rs-803-28");
                 let mut __klee_ret_src_lib_rs_803_28_offset = ptr.offset(i);
-                let __klee_arg24 = elem.clone();
+                let __klee_arg25 = elem.clone();
                 klee_ext_bind::callsite!("src-lib-rs-803-17");
                 let mut __klee_ret_src_lib_rs_803_17_write = ptr::write(
                     __klee_ret_src_lib_rs_803_28_offset,
-                    __klee_arg24,
+                    __klee_arg25,
                 );
                 local_len.increment_len(1);
             }

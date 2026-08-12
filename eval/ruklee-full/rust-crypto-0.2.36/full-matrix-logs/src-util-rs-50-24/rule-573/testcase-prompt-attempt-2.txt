@@ -5,10 +5,9 @@ target counterexample.
 
 <high priority retry constraints>
 These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 126095561064448; get_arg(1) = 1; get_arg(2) = 0; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `lhs`; this failed observation had `lhs = 126095561064448`.
+- - Observation 1: get_arg(0) = 137860183228416; get_arg(1) = 1; get_arg(2) = 0; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `lhs`; this failed observation had `lhs = 137860183228416`.
 - At the selected target expression, `get_arg(1)` is source expression `0`; this failed observation had `0 = 1`.
-- The rule is `get_arg(2) < get_arg(1)`. This failed observation had `get_arg(2) = 0` and `get_arg(1) = 1`; the next testcase must reach the same target but make `get_arg(2) >= get_arg(1)` true at the actual unsafe call.
 - If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 </high priority retry constraints>
 
@@ -344,10 +343,9 @@ The metadata caller `util::fixed_time_eq` is a safe function that contains the t
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 126095561064448; get_arg(1) = 1; get_arg(2) = 0; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `lhs`; this failed observation had `lhs = 126095561064448`.
+- Observation 1: get_arg(0) = 137860183228416; get_arg(1) = 1; get_arg(2) = 0; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `lhs`; this failed observation had `lhs = 137860183228416`.
   At the selected target expression, `get_arg(1)` is source expression `0`; this failed observation had `0 = 1`.
-  The rule is `get_arg(2) < get_arg(1)`. This failed observation had `get_arg(2) = 0` and `get_arg(1) = 1`; the next testcase must reach the same target but make `get_arg(2) >= get_arg(1)` true at the actual unsafe call.
 If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 
 </previous attempt feedback>
@@ -451,7 +449,9 @@ pub fn secure_memset(dst: &mut [u8], val: u8) {
 }
 /// Compare two vectors using a fixed number of operations. If the two vectors are not of equal
 /// length, the function returns false immediately.
+#[unsafe(export_name = "__klee_target_ZN4util13fixed_time_eqE_src_util_rs_50_24")]
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN4util13fixed_time_eqE_src_util_rs_51_24")]
 pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {
     if lhs.len() != rhs.len() {
         false
@@ -459,18 +459,20 @@ pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {
         let count = lhs.len() as libc::size_t;
         unsafe {
             let __klee_arg0 = 0;
-            klee_ext_bind::bind_arg_u64(1, (lhs).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg0);
+            let __klee_len1 = (lhs).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg0, __klee_len1);
             klee_ext_bind::callsite!("src-util-rs-50-24");
             let mut __klee_ret_src_util_rs_50_24_get_unchecked = lhs
                 .get_unchecked(__klee_arg0);
             let lhsp = __klee_ret_src_util_rs_50_24_get_unchecked;
-            let __klee_arg1 = 0;
-            klee_ext_bind::bind_arg_u64(1, (rhs).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &__klee_arg1);
+            let __klee_arg2 = 0;
+            let __klee_len3 = (rhs).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len3);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg2, __klee_len3);
             klee_ext_bind::callsite!("src-util-rs-51-24");
             let mut __klee_ret_src_util_rs_51_24_get_unchecked = rhs
-                .get_unchecked(__klee_arg1);
+                .get_unchecked(__klee_arg2);
             let rhsp = __klee_ret_src_util_rs_51_24_get_unchecked;
             rust_crypto_util_fixed_time_eq_asm(lhsp, rhsp, count) == 0
         }

@@ -4,20 +4,16 @@
 pub extern "C" fn __unsat_poc_src_buffer_rs_106_37_rule_302_rustc_1_87_line880_ef3ea00b22() {
     use std::io::Cursor;
 
-    let backing = vec![0u8; 2].into_boxed_slice();
+    let backing = vec![b'a', b'b', b'c', b'd'];
     let mut window = BufferWindow {
-        buf: backing,
-        start_buf: std::ptr::null(),
-        start: std::ptr::null(),
-        end: std::ptr::null(),
+        buf: vec![0u8; 8].into_boxed_slice(),
+        start_buf: backing.as_ptr(),
+        start: backing.as_ptr(),
+        end: backing.as_ptr().wrapping_add(1),
         prior_reads: 0,
     };
 
-    let data = [b'A', b'B', b'C'];
-    window.start_buf = data.as_ptr();
-    window.start = data.as_ptr();
-    window.end = data.as_ptr().wrapping_add(1);
-
-    let _ = window.fill_buf(Cursor::new(&data[..]));
+    let reader = Cursor::new(vec![b'X']);
+    let _ = window.fill_buf(reader);
 }
 ```

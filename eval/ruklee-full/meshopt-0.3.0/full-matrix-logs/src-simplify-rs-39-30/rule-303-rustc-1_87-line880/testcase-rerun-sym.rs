@@ -15,6 +15,6 @@ pub extern "C" fn __unsat_poc_src_simplify_rs_39_30_rule_303_rustc_1_87_line880_
     let vertex_bytes = [__unsat_rerun_sym_000; 12];
     let vertices = VertexDataAdapter::new(&vertex_bytes, __unsat_rerun_sym_001, __unsat_rerun_sym_002).unwrap();
     let indices: [u32; 0] = [];
-    let _ = simplify(&indices, &vertices, __unsat_rerun_sym_003, __unsat_rerun_sym_004, SimplifyOptions::empty(), None);
+    let _ = simplify(&indices, &vertices, __unsat_rerun_sym_003, __unsat_rerun_sym_004, SimplifyOptions::None, None);
 }
 

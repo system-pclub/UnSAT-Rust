@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.start",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "start",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28.arg0.start"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +243,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::BufferWindow` for `receiver` using fields visible from the injection module when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::advance` directly
+1. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.start` -> call target caller `buffer::BufferWindow::advance`
+2. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::advance` directly
 </candidate safe-call plans>
 
 
@@ -1495,45 +1515,20 @@ compiler/tool feedback. Do not repeat the same mistake.
 Failed to compile '/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0':
 stdout: 
 stderr:    Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
-warning: elided lifetime has a name
-   --> src/text/de.rs:817:33
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
     |
-813 | impl<'a, 'b> TextDeserializer<'a, 'b, Windows1252Encoding> {
-    |      -- lifetime `'a` declared here
-...
-817 |     ) -> Result<TextDeserializer<Windows1252Encoding>, Error> {
-    |                                 ^ this elided lifetime gets resolved as `'a`
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
     |
-    = note: `#[warn(elided_named_lifetimes)]` on by default
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
 
-warning: elided lifetime has a name
-   --> src/text/de.rs:842:70
-    |
-840 | impl<'a, 'b> TextDeserializer<'a, 'b, Utf8Encoding> {
-    |      -- lifetime `'a` declared here
-841 |     /// Convenience method for parsing the given text data and deserializing as utf8 encoded.
-842 |     pub fn from_utf8_slice(data: &'a [u8]) -> Result<TextDeserializer<Utf8Encoding>, Error> {
-    |                                                                      ^ this elided lifetime gets resolved as `'a`
-
-error[E0308]: mismatched types
-   --> src/buffer.rs:224:47
-    |
-224 |     let mut window = BufferWindow::from_slice(&data);
-    |                      ------------------------ ^^^^^ expected `&[u8]`, found `&Box<[u8; 2]>`
-    |                      |
-    |                      arguments to this function are incorrect
-    |
-    = note: expected reference `&[u8]`
-               found reference `&Box<[u8; 2]>`
-note: associated function defined here
-   --> src/buffer.rs:17:12
-    |
-17  |     pub fn from_slice(data: &[u8]) -> Self {
-    |            ^^^^^^^^^^ -----------
-
-For more information about this error, try `rustc --explain E0308`.
-warning: `jomini` (lib) generated 2 warnings
-error: could not compile `jomini` (lib) due to 1 previous error; 2 warnings emitted
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
 
 
 command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-buffer-rs-45-28-rule-300-rustc-1-87-line880-9ad4bc0c35', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
@@ -1543,45 +1538,20 @@ returncode: 101
 
 [stderr]
    Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
-warning: elided lifetime has a name
-   --> src/text/de.rs:817:33
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
     |
-813 | impl<'a, 'b> TextDeserializer<'a, 'b, Windows1252Encoding> {
-    |      -- lifetime `'a` declared here
-...
-817 |     ) -> Result<TextDeserializer<Windows1252Encoding>, Error> {
-    |                                 ^ this elided lifetime gets resolved as `'a`
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
     |
-    = note: `#[warn(elided_named_lifetimes)]` on by default
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
 
-warning: elided lifetime has a name
-   --> src/text/de.rs:842:70
-    |
-840 | impl<'a, 'b> TextDeserializer<'a, 'b, Utf8Encoding> {
-    |      -- lifetime `'a` declared here
-841 |     /// Convenience method for parsing the given text data and deserializing as utf8 encoded.
-842 |     pub fn from_utf8_slice(data: &'a [u8]) -> Result<TextDeserializer<Utf8Encoding>, Error> {
-    |                                                                      ^ this elided lifetime gets resolved as `'a`
-
-error[E0308]: mismatched types
-   --> src/buffer.rs:224:47
-    |
-224 |     let mut window = BufferWindow::from_slice(&data);
-    |                      ------------------------ ^^^^^ expected `&[u8]`, found `&Box<[u8; 2]>`
-    |                      |
-    |                      arguments to this function are incorrect
-    |
-    = note: expected reference `&[u8]`
-               found reference `&Box<[u8; 2]>`
-note: associated function defined here
-   --> src/buffer.rs:17:12
-    |
-17  |     pub fn from_slice(data: &[u8]) -> Self {
-    |            ^^^^^^^^^^ -----------
-
-For more information about this error, try `rustc --explain E0308`.
-warning: `jomini` (lib) generated 2 warnings
-error: could not compile `jomini` (lib) due to 1 previous error; 2 warnings emitted
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
 
 
 </previous attempt feedback>
@@ -1620,6 +1590,9 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         let ptr = unsafe {
             let __klee_arg0 = &self.start;
@@ -1633,19 +1606,16 @@ impl BufferWindow {
         self.start = ptr;
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
-        unsafe {
-            let __klee_arg1 = self.start;
-            let __klee_arg2 = self.window_len();
-            klee_ext_bind::callsite!("src-buffer-rs-52-18");
-            let mut __klee_ret_src_buffer_rs_52_18_from_raw_parts = std::slice::from_raw_parts(
-                __klee_arg1,
-                __klee_arg2,
-            );
-            __klee_ret_src_buffer_rs_52_18_from_raw_parts
-        }
+        /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         /* body omitted: interface retained */
     }
@@ -1654,10 +1624,19 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         /* body omitted: interface retained */
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         /* body omitted: interface retained */
     }

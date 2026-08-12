@@ -172,7 +172,45 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:buffer::BufferWindow.end",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "end",
+        "kind": "public_field",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27.arg0.end"
+  },
+  {
+    "certainty": "certain_symbol",
+    "evidence": "executed-field-symbol:buffer::BufferWindow::from_slice",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "BufferWindow"
+      },
+      {
+        "detail": "executed safe function materializes a controllable symbol",
+        "field": "start_buf",
+        "function": "buffer::BufferWindow::from_slice",
+        "kind": "mutator",
+        "root_type": "buffer::BufferWindow"
+      }
+    ],
+    "symbol": "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27.arg0.start_buf"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,7 +262,10 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `buffer::BufferWindow` for `receiver` using fields visible from the injection module when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> or construct `buffer::BufferWindow` for `receiver` using constructor(s): `buffer::BufferWindow::from_slice` -> call target caller `buffer::BufferWindow::get` directly
+1. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> construct or obtain a `BufferWindow` value -> set or populate public field `buffer::BufferWindow.end` -> call target caller `buffer::BufferWindow::get`
+2. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> construct or obtain a `BufferWindow` value -> call safe `buffer::BufferWindow::from_slice` to affect `start_buf` -> call target caller `buffer::BufferWindow::get`
+3. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> call safe `from_slice` -> call target caller `buffer::BufferWindow::get`
+4. construct `buffer::BufferWindow` for `receiver` using its genuinely public fields when that better controls the target caller state: `buf: std::boxed::Box<[u8]>`, `start: *const u8`, `end: *const u8`, `prior_reads: usize` -> call target caller `buffer::BufferWindow::get` directly
 </candidate safe-call plans>
 
 
@@ -1500,89 +1541,7 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-Failed to compile '/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0':
-stdout: 
-stderr:    Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
-warning: elided lifetime has a name
-   --> src/text/de.rs:817:33
-    |
-813 | impl<'a, 'b> TextDeserializer<'a, 'b, Windows1252Encoding> {
-    |      -- lifetime `'a` declared here
-...
-817 |     ) -> Result<TextDeserializer<Windows1252Encoding>, Error> {
-    |                                 ^ this elided lifetime gets resolved as `'a`
-    |
-    = note: `#[warn(elided_named_lifetimes)]` on by default
-
-warning: elided lifetime has a name
-   --> src/text/de.rs:842:70
-    |
-840 | impl<'a, 'b> TextDeserializer<'a, 'b, Utf8Encoding> {
-    |      -- lifetime `'a` declared here
-841 |     /// Convenience method for parsing the given text data and deserializing as utf8 encoded.
-842 |     pub fn from_utf8_slice(data: &'a [u8]) -> Result<TextDeserializer<Utf8Encoding>, Error> {
-    |                                                                      ^ this elided lifetime gets resolved as `'a`
-
-error[E0277]: the trait bound `Box<[u8]>: From<Box<[u8; 2]>>` is not satisfied
-   --> src/buffer.rs:799:19
-    |
-799 |         buf: data.into(),
-    |                   ^^^^ the trait `From<Box<[u8; 2]>>` is not implemented for `Box<[u8]>`
-    |
-    = note: required for `Box<[u8; 2]>` to implement `Into<Box<[u8]>>`
-help: consider dereferencing here
-    |
-799 |         buf: (*data).into(),
-    |              ++    +
-
-For more information about this error, try `rustc --explain E0277`.
-warning: `jomini` (lib) generated 2 warnings
-error: could not compile `jomini` (lib) due to 1 previous error; 2 warnings emitted
-
-
-command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-buffer-rs-75-27-rule-611-5bb63ed423', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
-returncode: 101
-
-[stdout]
-
-[stderr]
-   Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
-warning: elided lifetime has a name
-   --> src/text/de.rs:817:33
-    |
-813 | impl<'a, 'b> TextDeserializer<'a, 'b, Windows1252Encoding> {
-    |      -- lifetime `'a` declared here
-...
-817 |     ) -> Result<TextDeserializer<Windows1252Encoding>, Error> {
-    |                                 ^ this elided lifetime gets resolved as `'a`
-    |
-    = note: `#[warn(elided_named_lifetimes)]` on by default
-
-warning: elided lifetime has a name
-   --> src/text/de.rs:842:70
-    |
-840 | impl<'a, 'b> TextDeserializer<'a, 'b, Utf8Encoding> {
-    |      -- lifetime `'a` declared here
-841 |     /// Convenience method for parsing the given text data and deserializing as utf8 encoded.
-842 |     pub fn from_utf8_slice(data: &'a [u8]) -> Result<TextDeserializer<Utf8Encoding>, Error> {
-    |                                                                      ^ this elided lifetime gets resolved as `'a`
-
-error[E0277]: the trait bound `Box<[u8]>: From<Box<[u8; 2]>>` is not satisfied
-   --> src/buffer.rs:799:19
-    |
-799 |         buf: data.into(),
-    |                   ^^^^ the trait `From<Box<[u8; 2]>>` is not implemented for `Box<[u8]>`
-    |
-    = note: required for `Box<[u8; 2]>` to implement `Into<Box<[u8]>>`
-help: consider dereferencing here
-    |
-799 |         buf: (*data).into(),
-    |              ++    +
-
-For more information about this error, try `rustc --explain E0277`.
-warning: `jomini` (lib) generated 2 warnings
-error: could not compile `jomini` (lib) due to 1 previous error; 2 warnings emitted
-
+generated testcase constructs non-public receiver field `buffer::BufferWindow.start_buf`; use safe constructors/mutators
 
 </previous attempt feedback>
 
@@ -1613,40 +1572,64 @@ pub enum BufferError {
 impl BufferWindow {
     #[inline]
     pub fn from_slice(data: &[u8]) -> Self {
-        /* body omitted: interface retained */
+        Self {
+            buf: Box::new([]),
+            start_buf: data.as_ptr(),
+            start: data.as_ptr(),
+            end: data.as_ptr_range().end,
+            prior_reads: 0,
+        }
     }
     #[inline]
     pub fn advance_to(&mut self, ptr: *const u8) {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
-        /* body omitted: interface retained */
+        unsafe {
+            let __klee_arg3 = &self.end;
+            let __klee_arg4 = self.start;
+            klee_ext_bind::callsite!("src-buffer-rs-57-18");
+            let mut __klee_ret_src_buffer_rs_57_18_offset_from = __klee_arg3
+                .offset_from(__klee_arg4);
+            __klee_ret_src_buffer_rs_57_18_offset_from as usize
+        }
     }
     #[inline]
     pub fn position(&self) -> usize {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
-        unsafe {
-            let __klee_arg5 = &self.start;
-            let __klee_arg6 = self.start_buf;
-            klee_ext_bind::callsite!("src-buffer-rs-67-18");
-            let mut __klee_ret_src_buffer_rs_67_18_offset_from = __klee_arg5
-                .offset_from(__klee_arg6);
-            __klee_ret_src_buffer_rs_67_18_offset_from as usize
-        }
+        /* body omitted: interface retained */
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         debug_assert!(range.start >= self.start_buf);
         debug_assert!(range.end <= self.end);

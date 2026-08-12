@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-07-30T01:31:46.599649+00:00",
+  "updated_at": "2026-08-11T05:51:22.648573+00:00",
   "crate": "/workspaces/UnSAT-Rust/benchmark/ruklee/hftbacktest-0.4.0",
   "injected_crate": "/workspaces/UnSAT-Rust/crates_inj/hftbacktest-0.4.0",
   "metadata": "/workspaces/UnSAT-Rust/crates/hftbacktest-0.4.0.json",
@@ -21,28 +21,242 @@
     "path": "rust/library/core/src/ptr/const_ptr.rs:880",
     "name": "const unsafe fn add",
     "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-    "dsl": "(!((get_arg(1) * get_field(get_type_at_func(0), \"size\")) != 0) || ((get_field(get_arg(0), \"allocation\") == get_field(get_result(), \"allocation\")) && (get_field(get_arg(0), \"address\") >= get_field(get_field(get_arg(0), \"allocation\"), \"start\")) && (get_field(get_field(get_arg(0), \"allocation\"), \"end\") >= get_field(get_result(), \"address\"))))"
+    "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
   },
   "result": {
-    "init_status": "not-in-ir",
-    "llm_status": null,
-    "rerun_status": null,
-    "rerun_returncode": null,
-    "rerun_reported_callsite": false,
-    "rerun_dsl_sat": false,
-    "rerun_has_certain_symbol": false,
-    "full_rerun_passed": false
+    "init_status": "violation",
+    "llm_status": "error",
+    "rerun_status": "reported-sat",
+    "rerun_returncode": 0,
+    "rerun_reported_callsite": true,
+    "rerun_dsl_sat": true,
+    "rerun_has_certain_symbol": true,
+    "full_rerun_passed": true
   },
   "stages": {
     "init": {
-      "status": "not-in-ir",
-      "returncode": null,
+      "status": "violation",
+      "returncode": -11,
       "timed_out": false,
-      "duration_sec": 0.0,
-      "log": null,
-      "klee_output_dir": null
+      "duration_sec": 50.587,
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-out",
+      "certainty_chain": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-control-chains.json",
+      "has_certain_symbol": true
     },
-    "llm": {},
-    "rerun": {}
+    "llm": {
+      "status": "error",
+      "artifact_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880",
+      "source_path": "src/backtest/data/mod.rs",
+      "source_line": 212,
+      "prompt": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-prompt.txt",
+      "response": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-response.txt",
+      "context_stats": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-context-stats.json",
+      "context_policy": "slice",
+      "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-build.log",
+      "attempts": [
+        {
+          "attempt": 1,
+          "context_mode": "slice",
+          "source_path": "src/backtest/data/mod.rs",
+          "source_line": 212,
+          "status": "error",
+          "error": "Failed to compile '/workspaces/UnSAT-Rust/crates_inj/hftbacktest-0.4.0':\nstdout: \nstderr:    Compiling hftbacktest v0.4.0 (/workspaces/UnSAT-Rust/crates_inj/hftbacktest-0.4.0)\nerror[E0433]: failed to resolve: use of unresolved module or unlinked crate `backtest`\n   --> src/backtest/data/mod.rs:217:16\n    |\n217 |     let data = backtest::data::DataPtr::new(1);\n    |                ^^^^^^^^ use of unresolved module or unlinked crate `backtest`\n    |\n    = help: if you wanted to use a crate named `backtest`, use `cargo add backtest` to add it to your `Cargo.toml`\n\nwarning: unused attribute\n  --> src/backtest/evs.rs:43:5\n   |\n43 | /     #[unsafe(\n44 | |         export_name = \"__klee_target_ZN8backtest3evs8EventSet4nextE_src_backtest_evs_rs_54_39\"\n45 | |     )]\n   | |______^ help: remove this attribute\n   |\nnote: attribute also specified here\n  --> src/backtest/evs.rs:47:5\n   |\n47 | /     #[unsafe(\n48 | |         export_name = \"__klee_target_ZN8backtest3evs8EventSet4nextE_src_backtest_evs_rs_62_27\"\n49 | |     )]\n   | |______^\n   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!\n   = note: `#[warn(unused_attributes)]` on by default\n\nwarning: unused variable: `depth_mode`\n  --> src/connector/binancefutures/ws.rs:75:9\n   |\n75 |     let depth_mode = DepthManageMode::NaturalRefresh;\n   |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_depth_mode`\n   |\n   = note: `#[warn(unused_variables)]` on by default\n\nwarning: unused variable: `pending_depth_messages`\n  --> src/connector/binancefutures/ws.rs:76:13\n   |\n76 |     let mut pending_depth_messages: HashMap<String, Vec<stream::Depth>> = HashMap::new();\n   |             ^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pending_depth_messages`\n\nwarning: variable does not need to be mutable\n  --> src/connector/binancefutures/ws.rs:76:9\n   |\n76 |     let mut pending_depth_messages: HashMap<String, Vec<stream::Depth>> = HashMap::new();\n   |         ----^^^^^^^^^^^^^^^^^^^^^^\n   |         |\n   |         help: remove this `mut`\n   |\n   = note: `#[warn(unused_mut)]` on by default\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/ws.rs:183:37\n    |\n183 | ...                   let mut prev_u_val = prev_u.get_mut(&data.symbol);\n    |                           ----^^^^^^^^^^\n    |                           |\n    |                           help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/backtest/proc/partialfillexchange.rs:727:34\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nwarning: unused variable: `timestamp`\n   --> src/backtest/proc/partialfillexchange.rs:727:48\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                                ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`\n\nwarning: variable does not need to be mutable\n   --> src/backtest/proc/partialfillexchange.rs:727:30\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                              ----^^^^^\n    |                              |\n    |                              help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:34\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nwarning: unused variable: `timestamp`\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:48\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                                ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`\n\nwarning: variable does not need to be mutable\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:30\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                              ----^^^^^\n    |                              |\n    |                              help: remove this `mut`\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/ordermanager.rs:168:9\n    |\n168 |         mut order: Order,\n    |         ----^^^^^\n    |         |\n    |         help: remove this `mut`\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/mod.rs:469:9\n    |\n469 |         mut order: Order,\n    |         ----^^^^^\n    |         |\n    |         help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/connector/bybit/ordermanager.rs:181:32\n    |\n181 |         let (_, order_link_id, order) = self\n    |                                ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nFor more information about this error, try `rustc --explain E0433`.\nwarning: `hftbacktest` (lib) generated 14 warnings\nerror: could not compile `hftbacktest` (lib) due to 1 previous error; 14 warnings emitted\n",
+          "feedback": "Failed to compile '/workspaces/UnSAT-Rust/crates_inj/hftbacktest-0.4.0':\nstdout: \nstderr:    Compiling hftbacktest v0.4.0 (/workspaces/UnSAT-Rust/crates_inj/hftbacktest-0.4.0)\nerror[E0433]: failed to resolve: use of unresolved module or unlinked crate `backtest`\n   --> src/backtest/data/mod.rs:217:16\n    |\n217 |     let data = backtest::data::DataPtr::new(1);\n    |                ^^^^^^^^ use of unresolved module or unlinked crate `backtest`\n    |\n    = help: if you wanted to use a crate named `backtest`, use `cargo add backtest` to add it to your `Cargo.toml`\n\nwarning: unused attribute\n  --> src/backtest/evs.rs:43:5\n   |\n43 | /     #[unsafe(\n44 | |         export_name = \"__klee_target_ZN8backtest3evs8EventSet4nextE_src_backtest_evs_rs_54_39\"\n45 | |     )]\n   | |______^ help: remove this attribute\n   |\nnote: attribute also specified here\n  --> src/backtest/evs.rs:47:5\n   |\n47 | /     #[unsafe(\n48 | |         export_name = \"__klee_target_ZN8backtest3evs8EventSet4nextE_src_backtest_evs_rs_62_27\"\n49 | |     )]\n   | |______^\n   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!\n   = note: `#[warn(unused_attributes)]` on by default\n\nwarning: unused variable: `depth_mode`\n  --> src/connector/binancefutures/ws.rs:75:9\n   |\n75 |     let depth_mode = DepthManageMode::NaturalRefresh;\n   |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_depth_mode`\n   |\n   = note: `#[warn(unused_variables)]` on by default\n\nwarning: unused variable: `pending_depth_messages`\n  --> src/connector/binancefutures/ws.rs:76:13\n   |\n76 |     let mut pending_depth_messages: HashMap<String, Vec<stream::Depth>> = HashMap::new();\n   |             ^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pending_depth_messages`\n\nwarning: variable does not need to be mutable\n  --> src/connector/binancefutures/ws.rs:76:9\n   |\n76 |     let mut pending_depth_messages: HashMap<String, Vec<stream::Depth>> = HashMap::new();\n   |         ----^^^^^^^^^^^^^^^^^^^^^^\n   |         |\n   |         help: remove this `mut`\n   |\n   = note: `#[warn(unused_mut)]` on by default\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/ws.rs:183:37\n    |\n183 | ...                   let mut prev_u_val = prev_u.get_mut(&data.symbol);\n    |                           ----^^^^^^^^^^\n    |                           |\n    |                           help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/backtest/proc/partialfillexchange.rs:727:34\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nwarning: unused variable: `timestamp`\n   --> src/backtest/proc/partialfillexchange.rs:727:48\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                                ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`\n\nwarning: variable does not need to be mutable\n   --> src/backtest/proc/partialfillexchange.rs:727:30\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                              ----^^^^^\n    |                              |\n    |                              help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:34\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nwarning: unused variable: `timestamp`\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:48\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                                ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`\n\nwarning: variable does not need to be mutable\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:30\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                              ----^^^^^\n    |                              |\n    |                              help: remove this `mut`\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/ordermanager.rs:168:9\n    |\n168 |         mut order: Order,\n    |         ----^^^^^\n    |         |\n    |         help: remove this `mut`\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/mod.rs:469:9\n    |\n469 |         mut order: Order,\n    |         ----^^^^^\n    |         |\n    |         help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/connector/bybit/ordermanager.rs:181:32\n    |\n181 |         let (_, order_link_id, order) = self\n    |                                ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nFor more information about this error, try `rustc --explain E0433`.\nwarning: `hftbacktest` (lib) generated 14 warnings\nerror: could not compile `hftbacktest` (lib) due to 1 previous error; 14 warnings emitted\n\n\ncommand: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-backtest-data-mod-rs-162-18-rule-301-rustc-1-87-line880-ac08490491', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']\nreturncode: 101\n\n[stdout]\n\n[stderr]\n   Compiling hftbacktest v0.4.0 (/workspaces/UnSAT-Rust/crates_inj/hftbacktest-0.4.0)\nerror[E0433]: failed to resolve: use of unresolved module or unlinked crate `backtest`\n   --> src/backtest/data/mod.rs:217:16\n    |\n217 |     let data = backtest::data::DataPtr::new(1);\n    |                ^^^^^^^^ use of unresolved module or unlinked crate `backtest`\n    |\n    = help: if you wanted to use a crate named `backtest`, use `cargo add backtest` to add it to your `Cargo.toml`\n\nwarning: unused attribute\n  --> src/backtest/evs.rs:43:5\n   |\n43 | /     #[unsafe(\n44 | |         export_name = \"__klee_target_ZN8backtest3evs8EventSet4nextE_src_backtest_evs_rs_54_39\"\n45 | |     )]\n   | |______^ help: remove this attribute\n   |\nnote: attribute also specified here\n  --> src/backtest/evs.rs:47:5\n   |\n47 | /     #[unsafe(\n48 | |         export_name = \"__klee_target_ZN8backtest3evs8EventSet4nextE_src_backtest_evs_rs_62_27\"\n49 | |     )]\n   | |______^\n   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!\n   = note: `#[warn(unused_attributes)]` on by default\n\nwarning: unused variable: `depth_mode`\n  --> src/connector/binancefutures/ws.rs:75:9\n   |\n75 |     let depth_mode = DepthManageMode::NaturalRefresh;\n   |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_depth_mode`\n   |\n   = note: `#[warn(unused_variables)]` on by default\n\nwarning: unused variable: `pending_depth_messages`\n  --> src/connector/binancefutures/ws.rs:76:13\n   |\n76 |     let mut pending_depth_messages: HashMap<String, Vec<stream::Depth>> = HashMap::new();\n   |             ^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pending_depth_messages`\n\nwarning: variable does not need to be mutable\n  --> src/connector/binancefutures/ws.rs:76:9\n   |\n76 |     let mut pending_depth_messages: HashMap<String, Vec<stream::Depth>> = HashMap::new();\n   |         ----^^^^^^^^^^^^^^^^^^^^^^\n   |         |\n   |         help: remove this `mut`\n   |\n   = note: `#[warn(unused_mut)]` on by default\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/ws.rs:183:37\n    |\n183 | ...                   let mut prev_u_val = prev_u.get_mut(&data.symbol);\n    |                           ----^^^^^^^^^^\n    |                           |\n    |                           help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/backtest/proc/partialfillexchange.rs:727:34\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nwarning: unused variable: `timestamp`\n   --> src/backtest/proc/partialfillexchange.rs:727:48\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                                ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`\n\nwarning: variable does not need to be mutable\n   --> src/backtest/proc/partialfillexchange.rs:727:30\n    |\n727 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                              ----^^^^^\n    |                              |\n    |                              help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:34\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nwarning: unused variable: `timestamp`\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:48\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                                                ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`\n\nwarning: variable does not need to be mutable\n   --> src/backtest/proc/l3_nopartialfillexchange.rs:359:30\n    |\n359 |     fn ack_modify(&mut self, mut order: Order, timestamp: i64) -> Result<(), BacktestError> {\n    |                              ----^^^^^\n    |                              |\n    |                              help: remove this `mut`\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/ordermanager.rs:168:9\n    |\n168 |         mut order: Order,\n    |         ----^^^^^\n    |         |\n    |         help: remove this `mut`\n\nwarning: variable does not need to be mutable\n   --> src/connector/binancefutures/mod.rs:469:9\n    |\n469 |         mut order: Order,\n    |         ----^^^^^\n    |         |\n    |         help: remove this `mut`\n\nwarning: unused variable: `order`\n   --> src/connector/bybit/ordermanager.rs:181:32\n    |\n181 |         let (_, order_link_id, order) = self\n    |                                ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`\n\nFor more information about this error, try `rustc --explain E0433`.\nwarning: `hftbacktest` (lib) generated 14 warnings\nerror: could not compile `hftbacktest` (lib) due to 1 previous error; 14 warnings emitted\n",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-build-attempt-1.log"
+        },
+        {
+          "attempt": 2,
+          "context_mode": "slice",
+          "source_path": "src/backtest/data/mod.rs",
+          "source_line": 212,
+          "status": "rerun-miss",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-build-attempt-2.log",
+          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/rerun-ir/hftbacktest.ll",
+          "rerun": {
+            "status": "callsite-reported-non-sat",
+            "returncode": 0,
+            "timed_out": false,
+            "reported_callsite": true,
+            "dsl_sat": false,
+            "has_certain_symbol": false,
+            "full_rerun_passed": false,
+            "external_calls": [],
+            "observed_callsites": [
+              {
+                "site": "src-utils-aligned-rs-48-21",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-49-27",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-53-17",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-backtest-data-mod-rs-162-18",
+                "target": "src-backtest-data-mod-rs-162-18"
+              }
+            ],
+            "saw_rust_panic": false,
+            "duration_sec": 107.187,
+            "mode": "rerun"
+          },
+          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-rerun-attempt-2.log",
+          "feedback": "The testcase compiled but did not reproduce the target violation.\nKLEE reached `src-backtest-data-mod-rs-162-18`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-utils-aligned-rs-48-21` -> `src-utils-aligned-rs-49-27` -> `src-utils-aligned-rs-53-17` -> `src-backtest-data-mod-rs-162-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-backtest-data-mod-rs-162-18` and reproduce the target counterexample there.\nThe metadata caller `backtest::data::DataPtr::at` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.\n\nObserved KLEE rerun target-argument feedback from the failed testcase:\n- Observation 1: get_arg(0) = 131860797587456; get_arg(1) = 1; target counterexample query was unsat.\n  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 131860797587456`.\n  At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 1`.\nIf an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation."
+        },
+        {
+          "attempt": 3,
+          "context_mode": "full",
+          "status": "error",
+          "error": "generated testcase must be gated by feature unsat-poc-src-backtest-data-mod-rs-162-18-rule-301-rustc-1-87-line880-ac08490491",
+          "feedback": "generated testcase must be gated by feature unsat-poc-src-backtest-data-mod-rs-162-18-rule-301-rustc-1-87-line880-ac08490491\n\n<still required semantic retry feedback from the last KLEE rerun>\nThe testcase compiled but did not reproduce the target violation.\nKLEE reached `src-backtest-data-mod-rs-162-18`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-utils-aligned-rs-48-21` -> `src-utils-aligned-rs-49-27` -> `src-utils-aligned-rs-53-17` -> `src-backtest-data-mod-rs-162-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-backtest-data-mod-rs-162-18` and reproduce the target counterexample there.\nThe metadata caller `backtest::data::DataPtr::at` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.\n\nObserved KLEE rerun target-argument feedback from the failed testcase:\n- Observation 1: get_arg(0) = 131860797587456; get_arg(1) = 1; target counterexample query was unsat.\n  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 131860797587456`.\n  At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 1`.\nIf an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.\n</still required semantic retry feedback from the last KLEE rerun>"
+        },
+        {
+          "attempt": 4,
+          "context_mode": "full",
+          "source_path": "src/backtest/data/mod.rs",
+          "source_line": 212,
+          "status": "rerun-miss",
+          "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-build-attempt-4.log",
+          "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/rerun-ir/hftbacktest.ll",
+          "rerun": {
+            "status": "callsite-reported-non-sat",
+            "returncode": 0,
+            "timed_out": false,
+            "reported_callsite": true,
+            "dsl_sat": false,
+            "has_certain_symbol": false,
+            "full_rerun_passed": false,
+            "external_calls": [],
+            "observed_callsites": [
+              {
+                "site": "src-utils-aligned-rs-48-21",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-49-27",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-53-17",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-backtest-data-mod-rs-162-18",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-48-21",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-49-27",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-utils-aligned-rs-53-17",
+                "target": "src-backtest-data-mod-rs-162-18"
+              },
+              {
+                "site": "src-backtest-data-mod-rs-162-18",
+                "target": "src-backtest-data-mod-rs-162-18"
+              }
+            ],
+            "saw_rust_panic": false,
+            "duration_sec": 108.017,
+            "mode": "rerun"
+          },
+          "rerun_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-rerun-attempt-4.log",
+          "feedback": "The testcase compiled but did not reproduce the target violation.\nKLEE reached `src-backtest-data-mod-rs-162-18`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-utils-aligned-rs-48-21` -> `src-utils-aligned-rs-49-27` -> `src-utils-aligned-rs-53-17` -> `src-backtest-data-mod-rs-162-18` -> `src-utils-aligned-rs-48-21` -> `src-utils-aligned-rs-49-27` -> `src-utils-aligned-rs-53-17` -> `src-backtest-data-mod-rs-162-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-backtest-data-mod-rs-162-18` and reproduce the target counterexample there.\nThe metadata caller `backtest::data::DataPtr::at` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.\n\nObserved KLEE rerun target-argument feedback from the failed testcase:\n- Observation 1: get_arg(0) = 134357918416896; get_arg(1) = 1; target counterexample query was unsat.\n  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 134357918416896`.\n  At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 1`.\n- Observation 2: get_arg(0) = 134340738547712; get_arg(1) = 1; target counterexample query was unsat.\n  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 134340738547712`.\n  At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 1`.\nIf an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation."
+        },
+        {
+          "attempt": 5,
+          "context_mode": "full",
+          "status": "error",
+          "error": "generated testcase must be gated by feature unsat-poc-src-backtest-data-mod-rs-162-18-rule-301-rustc-1-87-line880-ac08490491",
+          "feedback": "generated testcase must be gated by feature unsat-poc-src-backtest-data-mod-rs-162-18-rule-301-rustc-1-87-line880-ac08490491\n\n<still required semantic retry feedback from the last KLEE rerun>\nThe testcase compiled but did not reproduce the target violation.\nKLEE reached `src-backtest-data-mod-rs-162-18`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.\nKLEE reached these callsite markers before missing the target (last markers first-order): `src-utils-aligned-rs-48-21` -> `src-utils-aligned-rs-49-27` -> `src-utils-aligned-rs-53-17` -> `src-backtest-data-mod-rs-162-18` -> `src-utils-aligned-rs-48-21` -> `src-utils-aligned-rs-49-27` -> `src-utils-aligned-rs-53-17` -> `src-backtest-data-mod-rs-162-18`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-backtest-data-mod-rs-162-18` and reproduce the target counterexample there.\nThe metadata caller `backtest::data::DataPtr::at` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.\nDo not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.\n\nObserved KLEE rerun target-argument feedback from the failed testcase:\n- Observation 1: get_arg(0) = 134357918416896; get_arg(1) = 1; target counterexample query was unsat.\n  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 134357918416896`.\n  At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 1`.\n- Observation 2: get_arg(0) = 134340738547712; get_arg(1) = 1; target counterexample query was unsat.\n  At the selected target expression, `get_arg(0)` is source expression `ptr`; this failed observation had `ptr = 134340738547712`.\n  At the selected target expression, `get_arg(1)` is source expression `index`; this failed observation had `index = 1`.\nIf an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.\n\n<still-active semantic constraints from earlier KLEE reruns>\n- Observation 1: get_arg(0) = 131860797587456; get_arg(1) = 1; target counterexample query was unsat.\n</still-active semantic constraints from earlier KLEE reruns>\n</still required semantic retry feedback from the last KLEE rerun>"
+        }
+      ],
+      "rerun_sym": {
+        "status": "reproduced",
+        "mode": "rerun-sym",
+        "source_path": "src/backtest/data/mod.rs",
+        "source_line": 212,
+        "testcase": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-rerun-sym.rs",
+        "constants": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/rerun-sym-constants.json",
+        "symbol_count": 7,
+        "build_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/testcase-build-rerun-sym.log",
+        "llvm_ir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/rerun-sym-ir/hftbacktest.ll",
+        "klee_rerun_sym_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-rerun-sym",
+        "klee_rerun_sym_log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-rerun-sym.log",
+        "rerun": {
+          "status": "reported-sat",
+          "returncode": 0,
+          "timed_out": false,
+          "reported_callsite": true,
+          "dsl_sat": true,
+          "has_certain_symbol": true,
+          "full_rerun_passed": true,
+          "external_calls": [],
+          "observed_callsites": [
+            {
+              "site": "src-utils-aligned-rs-48-21",
+              "target": "src-backtest-data-mod-rs-162-18"
+            },
+            {
+              "site": "src-utils-aligned-rs-49-27",
+              "target": "src-backtest-data-mod-rs-162-18"
+            },
+            {
+              "site": "src-utils-aligned-rs-53-17",
+              "target": "src-backtest-data-mod-rs-162-18"
+            },
+            {
+              "site": "src-backtest-data-mod-rs-162-18",
+              "target": "src-backtest-data-mod-rs-162-18"
+            }
+          ],
+          "saw_rust_panic": false,
+          "duration_sec": 107.711,
+          "mode": "rerun-sym"
+        }
+      }
+    },
+    "rerun": {
+      "status": "reported-sat",
+      "returncode": 0,
+      "timed_out": false,
+      "reported_callsite": true,
+      "dsl_sat": true,
+      "has_certain_symbol": true,
+      "full_rerun_passed": true,
+      "external_calls": [],
+      "observed_callsites": [
+        {
+          "site": "src-utils-aligned-rs-48-21",
+          "target": "src-backtest-data-mod-rs-162-18"
+        },
+        {
+          "site": "src-utils-aligned-rs-49-27",
+          "target": "src-backtest-data-mod-rs-162-18"
+        },
+        {
+          "site": "src-utils-aligned-rs-53-17",
+          "target": "src-backtest-data-mod-rs-162-18"
+        },
+        {
+          "site": "src-backtest-data-mod-rs-162-18",
+          "target": "src-backtest-data-mod-rs-162-18"
+        }
+      ],
+      "saw_rust_panic": false,
+      "duration_sec": 107.711,
+      "mode": "rerun-sym",
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-rerun-sym.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/hftbacktest-0.4.0/full-matrix-logs/src-backtest-data-mod-rs-162-18/rule-301-rustc-1_87-line880/klee-rerun-sym"
+    }
   }
 }

@@ -2,14 +2,16 @@
 #[cfg(feature = "unsat-poc-src-buffer-rs-52-18-rule-606-09167b89c4")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_buffer_rs_52_18_rule_606_09167b89c4() {
-    let backing = vec![11u8, 22u8];
-    let mut window = BufferWindow::from_slice(&backing);
+    let data = Box::new([b'a', b'b', b'c']);
+    let ptr = data.as_ptr();
 
-    let tiny = vec![99u8];
-    window.buf = tiny.into_boxed_slice();
-    window.start = backing.as_ptr();
-    window.end = backing.as_ptr().wrapping_add(2);
-    window.prior_reads = 7;
+    let window = BufferWindow {
+        buf: data,
+        start_buf: ptr,
+        start: ptr,
+        end: ptr.wrapping_add(1),
+        prior_reads: 0,
+    };
 
     let _ = window.window();
 }

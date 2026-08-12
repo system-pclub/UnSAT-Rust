@@ -10,16 +10,14 @@ pub extern "C" fn __unsat_poc_src_unix_rs_126_34_rule_432_dd63fb35e6() {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&path)
         .expect("open temp file");
     file.set_len(1).expect("set_len");
-    file.write_all(&[0]).expect("write");
+    file.write_all(&[0u8]).expect("write");
 
-    let mmap = crate::MmapOptions::new()
-        .len(1)
-        .map_mut(&file)
-        .expect("map_mut");
-
-    let _ = mmap.flush(1, 1);
+    let mut inner = unix::MmapInner::map_mut(1, &file, 0).expect("map_mut");
+    let _ = inner.mut_ptr();
+    let _ = inner.flush(1, 0);
 }
 ```

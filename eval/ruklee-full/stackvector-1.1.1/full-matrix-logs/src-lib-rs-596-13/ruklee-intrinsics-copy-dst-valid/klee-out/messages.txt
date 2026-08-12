@@ -1,9 +1,9 @@
 KLEE: Using Z3 solver backend
 KLEE: Deterministic allocator: Using quarantine queue size 8
-KLEE: Deterministic allocator: globals (start-address=0x79410d400000 size=10 GiB)
-KLEE: Deterministic allocator: constants (start-address=0x793e8d400000 size=10 GiB)
-KLEE: Deterministic allocator: heap (start-address=0x783e8d400000 size=1024 GiB)
-KLEE: Deterministic allocator: stack (start-address=0x781e8d400000 size=128 GiB)
+KLEE: Deterministic allocator: globals (start-address=0x7a7555c00000 size=10 GiB)
+KLEE: Deterministic allocator: constants (start-address=0x7a72d5c00000 size=10 GiB)
+KLEE: Deterministic allocator: heap (start-address=0x7972d5c00000 size=1024 GiB)
+KLEE: Deterministic allocator: stack (start-address=0x7952d5c00000 size=128 GiB)
 KLEE: [compose-verify] trait summary: <*const T as PointerMethods>::padd
 KLEE: [compose-verify] trait summary: <*mut T as PointerMethods>::padd
 KLEE: [compose-verify] trait summary: <[T; 0] as Array>::ptr
@@ -306,25 +306,27 @@ KLEE: Optimizing module...
 KLEE: Running IntrinsicCleanerPass on module: /workspaces/UnSAT-Rust/.local/irs/stackvector.ll
 KLEE: [snapshot] arg0 uses Rust debug layout '&mut stackvector::StackVec<[u8; 8]>' (size=8 fields=0)
 KLEE: [snapshot] arg0 pointee layout 'StackVec<[u8; 8]>' (size=16 fields=2)
-KLEE: [snapshot] arg0 allocated pointee/object 'StackVec<[u8; 8]>' MO address=132450571255808 bytes=16; binding base address to argument
+KLEE: [snapshot] arg0 allocated pointee/object 'StackVec<[u8; 8]>' MO address=133774637531136 bytes=16; binding base address to argument
 KLEE: [snapshot] arg1 uses Rust debug layout 'usize' (size=8 fields=0)
 KLEE: [snapshot] arg2 uses Rust debug layout 'BadBoundsIterator2' (size=1 fields=1)
-KLEE: [snapshot] arg2 allocated pointee/object 'BadBoundsIterator2' MO address=132244412825600 bytes=1; binding base address to argument
-KLEE: [ext.call] explicit arg0 source=132450571255808
+KLEE: [snapshot] arg2 allocated pointee/object 'BadBoundsIterator2' MO address=133568479100928 bytes=1; binding base address to argument
+KLEE: [ext.call] explicit arg0 source=133774637531136
 KLEE: [ext.call] explicit arg1 source=(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1)
 KLEE: [ext.exec] klee_ext_callsite site='src-lib-rs-593-23' target='src-lib-rs-596-13'
 KLEE: [ext.exec] klee_ext_callsite site='src-lib-rs-596-13' target='src-lib-rs-596-13'
 KLEE: [ext.callsite] reached 'src-lib-rs-596-13'
-KLEE: [ext.callsite] deferring 'src-lib-rs-596-13' until target call _ZN4core10intrinsics4copy18precondition_check17h3db7f948464091eeE
+KLEE: [ext.callsite] deferring 'src-lib-rs-596-13' until target call <unknown>
+KLEE: [ext.callsite] skipping target pointer precondition_check before deferred GEP result
+KLEE: [compose-verify] modeling memmove size=1
+KLEE: [compose-verify] memmove call stack:
+	#000016103 in _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE(self=133774637531136, symbolic, iterable=133568479100928) at /home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/intrinsics/mod.rs:3854
+
 KLEE: [ext.dsl] function type[0] T is external-certain symbolic
-KLEE: [ext.callsite] completing deferred 'src-lib-rs-596-13' before target call
+KLEE: [ext.callsite] completing deferred 'src-lib-rs-596-13' with result=133433187631120
 KLEE: [ext.call] values:
-  __klee_call_arg1 = (ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1) (explicit)
-  __klee_call_arg0 = 132450571255808 (explicit)
-  __klee_call_arg3 = (Extract 0 (ZExt w8 (Eq 0
-                         (Sub w64 (ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg0.length)
-                                  (ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1)))))
-  __klee_call_arg2 = 1
+  __klee_result = 133433187631120
+  __klee_call_arg1 = 16
+  __klee_call_arg0 = 133433187631104
 
 KLEE: [ext.dsl] path constraints:
 array _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg0.length[8] : w32 -> w8 = symbolic
@@ -333,191 +335,12 @@ array _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1[
              (Eq N0:(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1)
                  N1:(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg0.length)))
          (Ule N1 8)
-         (Ule N0 N1)]
+         (Ule N0 N1)
+         (Eq 1 (Sub w64 N1 N0))]
         false)
 
 KLEE: [ext.dsl] 1 -> 1
-KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1))
+KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=16)
 KLEE: [ext.dsl] 2 -> 2
-KLEE: [ext.dsl] get_arg(2) -> simplified(__klee_call_arg2=1)
-KLEE: [ext.dsl] 0 -> 0
-KLEE: [ext.dsl] get_type_at_func(0) -> type@5802811685389707597
-KLEE: [ext.dsl] "size" -> size
-KLEE: [ext.dsl] get_field(get_type_at_func(0), "size") -> (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                  56))
-KLEE: [ext.dsl] binary.left expr: 1
-KLEE: [ext.dsl] binary.left is constant: width=64 value=false
-KLEE: [ext.dsl] binary.right expr: (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                  56))
-KLEE: [ext.dsl] (get_arg(2) * get_field(get_type_at_func(0), "size")) -> (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                  56))
-KLEE: [ext.dsl] memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), "size"))) -> range((ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1),(Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                  56)))
-KLEE: [ext.dsl] "write" -> write
-KLEE: [ext.dsl] is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), "size"))), "write") -> (And (Ule 10450160224196928925
-           N0:(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1))
-      (Ule (Add w64 N0
-                    (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                                     0)
-                                                                            (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                                     8))
-                                                                    (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                                             16))
-                                                            (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                                     24))
-                                                    (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                                             32))
-                                            (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                                     40))
-                                    (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                                             48))
-                            (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                                     56)))
-           (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_15426578279034073811))
-                                                                            0)
-                                                                   (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_15426578279034073811))
-                                                                            8))
-                                                           (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_15426578279034073811))
-                                                                    16))
-                                                   (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_15426578279034073811))
-                                                            24))
-                                           (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_15426578279034073811))
-                                                    32))
-                                   (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_15426578279034073811))
-                                            40))
-                           (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_15426578279034073811))
-                                    48))
-                   (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_15426578279034073811))
-                            56))))
-KLEE: [ext.dsl] simplified_var(is_valid_for(memory_range(get_arg(1),(get_arg(2)*get_type_at_func(0).size)),'write')) <= is_valid_for(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), "size"))), "write") -> simplified(is_valid_for(memory_range(get_arg(1),(get_arg(2)*get_type_at_func(0).size)),'write')=(And (Ule 10450160224196928925
-           N0:(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1))
-      (Ule (Add w64 N0
-                    (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                                     0)
-                                                                            (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                                     8))
-                                                                    (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                                             16))
-                                                            (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                                     24))
-                                                    (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                                             32))
-                                            (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                                     40))
-                                    (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                                             48))
-                            (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                                     56)))
-           (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_15426578279034073811))
-                                                                            0)
-                                                                   (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_15426578279034073811))
-                                                                            8))
-                                                           (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_15426578279034073811))
-                                                                    16))
-                                                   (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_15426578279034073811))
-                                                            24))
-                                           (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_15426578279034073811))
-                                                    32))
-                                   (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_15426578279034073811))
-                                            40))
-                           (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_15426578279034073811))
-                                    48))
-                   (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_15426578279034073811))
-                            56)))))
-KLEE: [ext.dsl] resolved constraint expr: (And (Ule 10450160224196928925
-           N0:(ReadLSB w64 0 _ZN11stackvector17StackVec$LT$A$GT$11insert_many17h63cb32817a0cf4feE.arg1))
-      (Ule (Add w64 N0
-                    (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_714838250774382528))
-                                                                                     0)
-                                                                            (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_714838250774382528))
-                                                                                     8))
-                                                                    (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_714838250774382528))
-                                                                             16))
-                                                            (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_714838250774382528))
-                                                                     24))
-                                                    (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_714838250774382528))
-                                                             32))
-                                            (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_714838250774382528))
-                                                     40))
-                                    (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_714838250774382528))
-                                             48))
-                            (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_714838250774382528))
-                                     56)))
-           (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_15426578279034073811))
-                                                                            0)
-                                                                   (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_15426578279034073811))
-                                                                            8))
-                                                           (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_15426578279034073811))
-                                                                    16))
-                                                   (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_15426578279034073811))
-                                                            24))
-                                           (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_15426578279034073811))
-                                                    32))
-                                   (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_15426578279034073811))
-                                            40))
-                           (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_15426578279034073811))
-                                    48))
-                   (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_15426578279034073811))
-                            56))))
-KLEE: [ext.dsl] resolved constraint uses certain symbol: true
-KLEE: [ext.dsl] violation query uses certain symbol: true
-KLEE: [ext.dsl] SAT(constraints AND NOT resolved constraint): sat
-KLEE: [ext.dsl] at callsite 'src-lib-rs-596-13': query solved
-KLEE: [compose-verify] target DSL violation is satisfiable; halting focused init after solved query
-KLEE: halting execution, dumping remaining states
+KLEE: [compose-verify] summarized Rust Vec::push
+KLEE: [compose-verify] summarized Rust Vec::push

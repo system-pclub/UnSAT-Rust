@@ -1,0 +1,4033 @@
+Generate one small in-crate Rust testcase that concretely reproduces the
+target counterexample.
+
+
+
+<high priority retry constraints>
+These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
+- - Observation 1: get_arg(0) = 126767335473152; get_arg(1) = 1; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `s`; this failed observation had `s = 126767335473152`.
+- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+</high priority retry constraints>
+
+	Requirements:
+	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
+	  operations. If the crate uses Rust 2024 and the compiler requires it, the
+	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
+	  must not occur in the output.
+	- Do not call any function whose signature is declared `unsafe fn` or any
+	  external FFI function that rustc requires to be called from an unsafe
+	  block. If a previous compiler diagnostic says a call "is unsafe and
+	  requires unsafe function or block", remove that call and construct the
+	  target caller's receiver/arguments with safe visible fields, safe local
+	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
+	  small local safe helper instead.
+	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
+	  code must not contain the token `unsafe` anywhere, including comments,
+	  explanations, strings, or block bodies.
+	- The testcase is compiled as part of the library with
+	  `cargo build --lib --features unsat-poc-src-util-rs-11-24-rule-303-rustc-1-87-line880-ffd1ba1ecb`. It is not compiled with
+	  `cargo test`.
+	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
+	  or located inside a test-only module, even if such an item appeared in a
+	  previous attempt or compiler diagnostic. If a test-only helper would have
+	  been convenient, recreate the necessary state using non-test library
+	  constructors, public fields visible from the injection module, or a small
+	  local safe helper inside `__unsat_poc_src_util_rs_11_24_rule_303_rustc_1_87_line880_ffd1ba1ecb`.
+	- The testcase is injected into the module containing the target callsite, so
+	  it may use fields and types visible from that module. Reproduce the supplied
+	  control-chain steps literally; do not replace them with unrelated APIs.
+	- Because the testcase is compiled inside the library crate, do not import
+	  the current crate through its package name (for example, avoid
+	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
+	  already visible from the injection module.
+	- Preserve nested module paths for dependency or re-exported types. If the
+	  context or compiler feedback shows `foo::bar::Type`,
+	  `foo::{bar::Type, Other}`, or suggests importing `crate::x::bar::Type`,
+	  use that exact nested path instead of guessing that `Type` is re-exported
+	  from `foo` or `crate::x`. If the surrounding source file refers to a
+	  dependency module directly as `foo::Type`, and the testcase is injected
+	  into that same module, use that visible `foo::Type` path instead of
+	  inventing `crate::foo::Type`.
+	- If the target context lists visible `use` statements or direct dependency
+	  paths from the injection module, those names are already in scope for the
+	  generated function. Use the visible path exactly; for an external crate
+	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
+	- Candidate constructors are only suggestions, but a candidate direct
+	  target-caller skeleton is the primary path when it type-checks. If a
+	  constructor or wrapper can call external FFI, validate inputs away, panic,
+	  or return before the target callsite, construct the target caller's
+	  receiver/arguments from visible fields instead.
+- If the target caller receiver or its nested fields contain raw pointers that
+  are read or written before the target callsite, do not leave those prefix
+  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
+  local arrays, Vecs, or other safe pointer-producing values to provide just
+  enough backing storage for prefix reads/writes needed to reach the target.
+  This prefix backing is separate from the target counterexample relation; keep
+  prefix-only state valid while choosing the actual target caller field/index/
+  length/value that makes the target callsite a counterexample.
+  If the same caller argument/index/count is used both by prefix pointer
+  operations and by the target unsafe call, pick a small violating value for the
+  target and make only the prefix backing large enough for that value. Do not
+  make every raw-pointer field share the same backing size: a prefix field may
+  need two elements to reach the target while the actual target field may need
+  only one element so the target relation is false. For pointer arithmetic
+  targets such as `add`/`offset`, an offset/count of zero often makes the target
+  safety relation trivially true; if a previous observation showed the selected
+  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
+  any earlier prefix receiver valid for that value, and make the target
+  receiver/buffer relation false at that same value.
+  If a visible receiver field has a pointer-to-pointer type such as
+  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
+  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
+  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
+  from data bytes instead of a valid pointer array.
+- The KLEE init witness and target context override examples in the Rust
+  context. Do not imitate an unrelated example's container size, element count,
+  indexes, or constructor choices when they do not reproduce the target
+  counterexample.
+- Before writing code, work backward from the target call arguments and the
+  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
+  length, pointer base, or receiver field, construct that field/receiver state
+  directly at a small boundary value instead of adding elements just because an
+  example did.
+- Read the target caller's guards and arithmetic before choosing values. Try
+  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
+  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
+  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
+  guard checks an expression like `a + b`, a wraparound pair can pass the guard
+  while a later target expression using `a`, `b`, or the wrapped result becomes
+  the counterexample.
+- Do not stop at the first ordinary in-bounds value that reaches the target
+  callsite. If a previous attempt reached the target but did not reproduce the
+  counterexample, change the caller parameters or receiver fields that feed the
+  selected target expression, especially values involved in earlier arithmetic
+  or comparisons.
+- If the target context contains an instrumented bound-argument map, use that
+  map before choosing values. For example, `bind_arg_*(1, X)` means target
+  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
+  argument `get_arg(2)` is the current value of `Y`; generate the
+  counterexample for the mapped source expressions at the actual target call.
+- If the prefix path decodes a value from bytes selected out of a collection,
+  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
+  the selected bytes must be valid for that decode before the target is
+  reached. Do not use placeholder byte strings for such selected elements.
+  Prefer constructing a separate value of the decoded type with visible safe
+  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
+  for that value into the selected collection element.
+  If the selected element came from a receiver field or nested receiver
+  collection, build that receiver with the selected collection non-empty at the
+  chosen selector/index. A standalone local byte value or a decoded top-level
+  value is not enough unless it is actually stored into the selected collection
+  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
+  the final state for a receiver whose prefix must read an existing selected
+  element.
+- When the target context shows an inner target-call source line, identify the
+  receiver and argument expressions on that exact line and make those expression
+  values reproduce the target counterexample. If the target-call index/count/length comes from
+  a visible struct field, array element, method result, or caller parameter,
+  construct that source value directly; do not assume it must equal the element's
+  position in a Vec or an earlier guarded lookup index unless the source code
+  forces equality.
+- In particular, do not preserve common data-structure invariants such as
+  `field named index == Vec slot`, `stored length == allocation length`, or
+  `neighbor id == current object id` unless the target caller enforces them
+  before the target call. Counterexamples often require safe construction of a
+  deliberately inconsistent but type-correct receiver state: keep the earlier
+  values needed to reach the callsite valid, and make the actual target
+  expression's field/argument form the counterexample.
+- If the witness-derived target relation says a length/count/capacity/index
+  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
+  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
+  container for that same field. A testcase that reaches the callsite while the
+  target expression is still on the safe side is invalid.
+- If the target context shows a root wrapper location and a different inner
+  target-call containing function, prefer the most direct safe function that can
+  reach the inner target call and is callable from the injected module. When
+  the actual-containing function is safe and in the same module, constructing
+  its receiver/parameters and calling it directly is valid and often better
+  than routing through a root wrapper that performs earlier guarded lookups,
+  loop traversal, validation, or panic-prone setup.
+- If the target context contains a "Direct actual-containing safe function
+  option" and it type-checks from the injection module, use that direct function
+  as the primary target caller. Do not fall back to the root wrapper merely
+  because the metadata caller/root source location is shown; the root wrapper is
+  only a fallback when the direct actual-containing safe function is not visible
+  or cannot be called safely.
+- If there is no separate actual-containing safe function, the target callsite
+  metadata names the caller function to exercise. If that caller is safe and
+  visible, call it directly instead of a higher-level wrapper unless doing so
+  fails to type-check from the injection module.
+- Gate the function with exactly `#[cfg(feature = "unsat-poc-src-util-rs-11-24-rule-303-rustc-1-87-line880-ffd1ba1ecb")]`.
+- Define `pub extern "C" fn __unsat_poc_src_util_rs_11_24_rule_303_rustc_1_87_line880_ffd1ba1ecb()` with no arguments under that
+  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
+  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
+	- Copy the feature gate and function name exactly. The first lines should be
+	  exactly this shape, with the closing quote and bracket intact:
+	  `#[cfg(feature = "unsat-poc-src-util-rs-11-24-rule-303-rustc-1-87-line880-ffd1ba1ecb")]`
+	  `#[no_mangle]`
+	  `pub extern "C" fn __unsat_poc_src_util_rs_11_24_rule_303_rustc_1_87_line880_ffd1ba1ecb() {`
+	- Exercise the target callsite through the certainty call chain. Use concrete
+	  values for every input; do not use KLEE helpers or symbolic inputs.
+	- Do not assume that length/count/capacity/index arguments must equal the
+	  actual size of a local container. When the target caller accepts a pointer,
+	  slice, raw buffer, length, count, capacity, or index as separate inputs,
+	  choose these inputs independently and try boundary relationships that
+	  reproduce the target counterexample while still reaching that callsite.
+	- The function will be appended to the Rust file containing the callsite, so
+	  use paths that compile from that module.
+	- Return only the function in one Rust fenced code block.
+
+<certainty call chain>
+[]
+</certainty call chain>
+
+<target callsite metadata>
+{
+  "caller_parent": null,
+  "caller": {
+    "name": "util::prefetch_index",
+    "path": "src/util.rs",
+    "line_start": 9,
+    "line_end": 10,
+    "body_end": 29,
+    "require_template": true,
+    "is_unsafe": false,
+    "return_ty": "()"
+  },
+  "callee": {
+    "name": "std::ptr::const_ptr::<impl *const T>::add",
+    "path": "rust/library/core/src/ptr/const_ptr.rs",
+    "line_start": 880,
+    "line_end": 931,
+    "body_end": 931,
+    "require_template": false,
+    "is_unsafe": true,
+    "return_ty": "*const T"
+  },
+  "callsite": {
+    "line": 11,
+    "col": 24,
+    "path": "src/util.rs",
+    "id": "src-util-rs-11-24"
+  },
+  "callee_type_args": [
+    {
+      "index": 0,
+      "name": "T",
+      "owner": "impl",
+      "instantiated_ty": "T",
+      "layout_control": "external",
+      "external_sources": [
+        "T"
+      ]
+    }
+  ]
+}
+</target callsite metadata>
+
+<candidate safe-call plans>
+Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
+1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `util::prefetch_index` directly
+</candidate safe-call plans>
+
+
+
+<target caller and target-call context>
+Target caller: `util::prefetch_index`.
+
+Visible paths from the injection module. The generated testcase is appended to this same Rust file, so these imports/direct dependency paths are already in scope; use them exactly instead of inventing `crate::<dependency>::...` paths.
+
+Top visible `use` statements:
+```rust
+use super::*;
+use colored::Colorize;
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+use rdst::RadixSort;
+```
+
+Direct dependency crate/module prefixes visibly used in this file: `colored::...`, `rand::...`, `rayon::...`, `rdst::...`.
+
+Target expression selected by the callsite line/column:
+- column: `24`
+- expression: `s.as_ptr()`
+- receiver expression: `s`
+- method/function: `as_ptr`
+Choose caller receiver/argument values so this expression at this target callsite becomes the counterexample, while all earlier guards needed to reach it still pass.
+
+Root callsite/source location to reach. This can be a wrapper expression rather than the innermost target expression:
+src/util.rs:11
+```rust
+ 3: use super::*;
+ 4: use colored::Colorize;
+ 5: use rand::{thread_rng, Rng};
+ 6: use rayon::prelude::*;
+ 7: use rdst::RadixSort;
+ 8: 
+ 9: /// Prefetch the given cacheline into L1 cache.
+10: pub fn prefetch_index<T>(s: &[T], index: usize) {
+11:     let ptr = unsafe { s.as_ptr().add(index) as *const u64 };
+12:     #[cfg(target_arch = "x86_64")]
+13:     unsafe {
+14:         std::arch::x86_64::_mm_prefetch(ptr as *const i8, std::arch::x86_64::_MM_HINT_T0);
+15:     }
+16:     #[cfg(target_arch = "x86")]
+17:     unsafe {
+18:         std::arch::x86::_mm_prefetch(ptr as *const i8, std::arch::x86::_MM_HINT_T0);
+19:     }
+```
+
+Target caller prefix. Preserve the safe preconditions needed to execute from the function entry to the target callsite, while making the target callsite a counterexample:
+src/util.rs:10-11
+```rust
+10: pub fn prefetch_index<T>(s: &[T], index: usize) {
+11:     let ptr = unsafe { s.as_ptr().add(index) as *const u64 };
+```
+
+Relevant macro/helper definitions used by the safe prefix before the target callsite. Use these source facts only to choose values that let the prefix return normally and reach the target; the counterexample still must be for the target caller and target callsite:
+
+src/bucket_idx.rs:10-12
+```rust
+10:     fn add(self, rhs: usize) -> Self::Output {
+11:         Self(self.0 + rhs as u32)
+12:     }
+```
+
+Relevant public type definitions from registry dependencies. These are source facts for constructing the target caller state; do not call unsafe APIs from these snippets:
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.5/src/rngs/small.rs:14-117
+```rust
+ 14: type Rng = super::xoshiro256plusplus::Xoshiro256PlusPlus;
+ 15: #[cfg(not(target_pointer_width = "64"))]
+ 16: type Rng = super::xoshiro128plusplus::Xoshiro128PlusPlus;
+ 17: 
+ 18: /// A small-state, fast non-crypto PRNG
+ 19: ///
+ 20: /// `SmallRng` may be a good choice when a PRNG with small state, cheap
+ 21: /// initialization, good statistical quality and good performance are required.
+ 22: /// Note that depending on the application, [`StdRng`] may be faster on many
+ 23: /// modern platforms while providing higher-quality randomness. Furthermore,
+ 24: /// `SmallRng` is **not** a good choice when:
+ 25: /// - Security against prediction is important. Use [`StdRng`] instead.
+ 26: /// - Seeds with many zeros are provided. In such cases, it takes `SmallRng`
+ 27: ///   about 10 samples to produce 0 and 1 bits with equal probability. Either
+ 28: ///   provide seeds with an approximately equal number of 0 and 1 (for example
+ 29: ///   by using [`SeedableRng::from_entropy`] or [`SeedableRng::seed_from_u64`]),
+ 30: ///   or use [`StdRng`] instead.
+ 31: ///
+ 32: /// The algorithm is deterministic but should not be considered reproducible
+ 33: /// due to dependence on platform and possible replacement in future
+ 34: /// library versions. For a reproducible generator, use a named PRNG from an
+ 35: /// external crate, e.g. [rand_xoshiro] or [rand_chacha].
+ 36: /// Refer also to [The Book](https://rust-random.github.io/book/guide-rngs.html).
+ 37: ///
+ 38: /// The PRNG algorithm in `SmallRng` is chosen to be efficient on the current
+ 39: /// platform, without consideration for cryptography or security. The size of
+ 40: /// its state is much smaller than [`StdRng`]. The current algorithm is
+ 41: /// `Xoshiro256PlusPlus` on 64-bit platforms and `Xoshiro128PlusPlus` on 32-bit
+ 42: /// platforms. Both are also implemented by the [rand_xoshiro] crate.
+ 43: ///
+ 44: /// # Examples
+ 45: ///
+ 46: /// Initializing `SmallRng` with a random seed can be done using [`SeedableRng::from_entropy`]:
+ 47: ///
+ 48: /// ```
+ 49: /// use rand::{Rng, SeedableRng};
+ 50: /// use rand::rngs::SmallRng;
+ 51: ///
+ 52: /// // Create small, cheap to initialize and fast RNG with a random seed.
+ 53: /// // The randomness is supplied by the operating system.
+ 54: /// let mut small_rng = SmallRng::from_entropy();
+ 55: /// # let v: u32 = small_rng.gen();
+ 56: /// ```
+ 57: ///
+ 58: /// When initializing a lot of `SmallRng`'s, using [`thread_rng`] can be more
+ 59: /// efficient:
+ 60: ///
+ 61: /// ```
+ 62: /// use rand::{SeedableRng, thread_rng};
+ 63: /// use rand::rngs::SmallRng;
+ 64: ///
+ 65: /// // Create a big, expensive to initialize and slower, but unpredictable RNG.
+ 66: /// // This is cached and done only once per thread.
+ 67: /// let mut thread_rng = thread_rng();
+ 68: /// // Create small, cheap to initialize and fast RNGs with random seeds.
+ 69: /// // One can generally assume this won't fail.
+ 70: /// let rngs: Vec<SmallRng> = (0..10)
+ 71: ///     .map(|_| SmallRng::from_rng(&mut thread_rng).unwrap())
+ 72: ///     .collect();
+ 73: /// ```
+ 74: ///
+ 75: /// [`StdRng`]: crate::rngs::StdRng
+ 76: /// [`thread_rng`]: crate::thread_rng
+ 77: /// [rand_chacha]: https://crates.io/crates/rand_chacha
+ 78: /// [rand_xoshiro]: https://crates.io/crates/rand_xoshiro
+ 79: #[cfg_attr(doc_cfg, doc(cfg(feature = "small_rng")))]
+ 80: #[derive(Clone, Debug, PartialEq, Eq)]
+ 81: pub struct SmallRng(Rng);
+ 82: 
+ 83: impl RngCore for SmallRng {
+ 84:     #[inline(always)]
+ 85:     fn next_u32(&mut self) -> u32 {
+ 86:         self.0.next_u32()
+ 87:     }
+ 88: 
+ 89:     #[inline(always)]
+ 90:     fn next_u64(&mut self) -> u64 {
+ 91:         self.0.next_u64()
+ 92:     }
+ 93: 
+ 94:     #[inline(always)]
+ 95:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 96:         self.0.fill_bytes(dest);
+ 97:     }
+ 98: 
+ 99:     #[inline(always)]
+100:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+101:         self.0.try_fill_bytes(dest)
+102:     }
+103: }
+104: 
+105: impl SeedableRng for SmallRng {
+106:     type Seed = <Rng as SeedableRng>::Seed;
+107: 
+108:     #[inline(always)]
+109:     fn from_seed(seed: Self::Seed) -> Self {
+110:         SmallRng(Rng::from_seed(seed))
+111:     }
+112: 
+113:     #[inline(always)]
+114:     fn from_rng<R: RngCore>(rng: R) -> Result<Self, Error> {
+115:         Rng::from_rng(rng).map(SmallRng)
+116:     }
+117: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.5/src/rngs/xoshiro256plusplus.rs:24-122
+```rust
+ 24: pub struct Xoshiro256PlusPlus {
+ 25:     s: [u64; 4],
+ 26: }
+ 27: 
+ 28: impl SeedableRng for Xoshiro256PlusPlus {
+ 29:     type Seed = [u8; 32];
+ 30: 
+ 31:     /// Create a new `Xoshiro256PlusPlus`.  If `seed` is entirely 0, it will be
+ 32:     /// mapped to a different seed.
+ 33:     #[inline]
+ 34:     fn from_seed(seed: [u8; 32]) -> Xoshiro256PlusPlus {
+ 35:         if seed.iter().all(|&x| x == 0) {
+ 36:             return Self::seed_from_u64(0);
+ 37:         }
+ 38:         let mut state = [0; 4];
+ 39:         read_u64_into(&seed, &mut state);
+ 40:         Xoshiro256PlusPlus { s: state }
+ 41:     }
+ 42: 
+ 43:     /// Create a new `Xoshiro256PlusPlus` from a `u64` seed.
+ 44:     ///
+ 45:     /// This uses the SplitMix64 generator internally.
+ 46:     fn seed_from_u64(mut state: u64) -> Self {
+ 47:         const PHI: u64 = 0x9e3779b97f4a7c15;
+ 48:         let mut seed = Self::Seed::default();
+ 49:         for chunk in seed.as_mut().chunks_mut(8) {
+ 50:             state = state.wrapping_add(PHI);
+ 51:             let mut z = state;
+ 52:             z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+ 53:             z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+ 54:             z = z ^ (z >> 31);
+ 55:             chunk.copy_from_slice(&z.to_le_bytes());
+ 56:         }
+ 57:         Self::from_seed(seed)
+ 58:     }
+ 59: }
+ 60: 
+ 61: impl RngCore for Xoshiro256PlusPlus {
+ 62:     #[inline]
+ 63:     fn next_u32(&mut self) -> u32 {
+ 64:         // The lowest bits have some linear dependencies, so we use the
+ 65:         // upper bits instead.
+ 66:         (self.next_u64() >> 32) as u32
+ 67:     }
+ 68: 
+ 69:     #[inline]
+ 70:     fn next_u64(&mut self) -> u64 {
+ 71:         let result_plusplus = self.s[0]
+ 72:             .wrapping_add(self.s[3])
+ 73:             .rotate_left(23)
+ 74:             .wrapping_add(self.s[0]);
+ 75: 
+ 76:         let t = self.s[1] << 17;
+ 77: 
+ 78:         self.s[2] ^= self.s[0];
+ 79:         self.s[3] ^= self.s[1];
+ 80:         self.s[1] ^= self.s[2];
+ 81:         self.s[0] ^= self.s[3];
+ 82: 
+ 83:         self.s[2] ^= t;
+ 84: 
+ 85:         self.s[3] = self.s[3].rotate_left(45);
+ 86: 
+ 87:         result_plusplus
+ 88:     }
+ 89: 
+ 90:     #[inline]
+ 91:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 92:         fill_bytes_via_next(self, dest);
+ 93:     }
+ 94: 
+ 95:     #[inline]
+ 96:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+ 97:         self.fill_bytes(dest);
+ 98:         Ok(())
+ 99:     }
+100: }
+101: 
+102: #[cfg(test)]
+103: mod tests {
+104:     use super::*;
+105: 
+106:     #[test]
+107:     fn reference() {
+108:         let mut rng = Xoshiro256PlusPlus::from_seed(
+109:             [1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
+110:              3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
+111:         // These values were produced with the reference implementation:
+112:         // http://xoshiro.di.unimi.it/xoshiro256plusplus.c
+113:         let expected = [
+114:             41943041, 58720359, 3588806011781223, 3591011842654386,
+115:             9228616714210784205, 9973669472204895162, 14011001112246962877,
+116:             12406186145184390807, 15849039046786891736, 10450023813501588000,
+117:         ];
+118:         for &e in &expected {
+119:             assert_eq!(rng.next_u64(), e);
+120:         }
+121:     }
+122: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.5/src/rngs/xoshiro128plusplus.rs:24-118
+```rust
+ 24: pub struct Xoshiro128PlusPlus {
+ 25:     s: [u32; 4],
+ 26: }
+ 27: 
+ 28: impl SeedableRng for Xoshiro128PlusPlus {
+ 29:     type Seed = [u8; 16];
+ 30: 
+ 31:     /// Create a new `Xoshiro128PlusPlus`.  If `seed` is entirely 0, it will be
+ 32:     /// mapped to a different seed.
+ 33:     #[inline]
+ 34:     fn from_seed(seed: [u8; 16]) -> Xoshiro128PlusPlus {
+ 35:         if seed.iter().all(|&x| x == 0) {
+ 36:             return Self::seed_from_u64(0);
+ 37:         }
+ 38:         let mut state = [0; 4];
+ 39:         read_u32_into(&seed, &mut state);
+ 40:         Xoshiro128PlusPlus { s: state }
+ 41:     }
+ 42: 
+ 43:     /// Create a new `Xoshiro128PlusPlus` from a `u64` seed.
+ 44:     ///
+ 45:     /// This uses the SplitMix64 generator internally.
+ 46:     fn seed_from_u64(mut state: u64) -> Self {
+ 47:         const PHI: u64 = 0x9e3779b97f4a7c15;
+ 48:         let mut seed = Self::Seed::default();
+ 49:         for chunk in seed.as_mut().chunks_mut(8) {
+ 50:             state = state.wrapping_add(PHI);
+ 51:             let mut z = state;
+ 52:             z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+ 53:             z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+ 54:             z = z ^ (z >> 31);
+ 55:             chunk.copy_from_slice(&z.to_le_bytes());
+ 56:         }
+ 57:         Self::from_seed(seed)
+ 58:     }
+ 59: }
+ 60: 
+ 61: impl RngCore for Xoshiro128PlusPlus {
+ 62:     #[inline]
+ 63:     fn next_u32(&mut self) -> u32 {
+ 64:         let result_starstar = self.s[0]
+ 65:             .wrapping_add(self.s[3])
+ 66:             .rotate_left(7)
+ 67:             .wrapping_add(self.s[0]);
+ 68: 
+ 69:         let t = self.s[1] << 9;
+ 70: 
+ 71:         self.s[2] ^= self.s[0];
+ 72:         self.s[3] ^= self.s[1];
+ 73:         self.s[1] ^= self.s[2];
+ 74:         self.s[0] ^= self.s[3];
+ 75: 
+ 76:         self.s[2] ^= t;
+ 77: 
+ 78:         self.s[3] = self.s[3].rotate_left(11);
+ 79: 
+ 80:         result_starstar
+ 81:     }
+ 82: 
+ 83:     #[inline]
+ 84:     fn next_u64(&mut self) -> u64 {
+ 85:         next_u64_via_u32(self)
+ 86:     }
+ 87: 
+ 88:     #[inline]
+ 89:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 90:         fill_bytes_via_next(self, dest);
+ 91:     }
+ 92: 
+ 93:     #[inline]
+ 94:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+ 95:         self.fill_bytes(dest);
+ 96:         Ok(())
+ 97:     }
+ 98: }
+ 99: 
+100: #[cfg(test)]
+101: mod tests {
+102:     use super::*;
+103: 
+104:     #[test]
+105:     fn reference() {
+106:         let mut rng = Xoshiro128PlusPlus::from_seed(
+107:             [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0]);
+108:         // These values were produced with the reference implementation:
+109:         // http://xoshiro.di.unimi.it/xoshiro128plusplus.c
+110:         let expected = [
+111:             641, 1573767, 3222811527, 3517856514, 836907274, 4247214768,
+112:             3867114732, 1355841295, 495546011, 621204420,
+113:         ];
+114:         for &e in &expected {
+115:             assert_eq!(rng.next_u32(), e);
+116:         }
+117:     }
+118: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rand-0.8.5/src/rngs/std.rs:34-98
+```rust
+34: pub struct StdRng(Rng);
+35: 
+36: impl RngCore for StdRng {
+37:     #[inline(always)]
+38:     fn next_u32(&mut self) -> u32 {
+39:         self.0.next_u32()
+40:     }
+41: 
+42:     #[inline(always)]
+43:     fn next_u64(&mut self) -> u64 {
+44:         self.0.next_u64()
+45:     }
+46: 
+47:     #[inline(always)]
+48:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+49:         self.0.fill_bytes(dest);
+50:     }
+51: 
+52:     #[inline(always)]
+53:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+54:         self.0.try_fill_bytes(dest)
+55:     }
+56: }
+57: 
+58: impl SeedableRng for StdRng {
+59:     type Seed = <Rng as SeedableRng>::Seed;
+60: 
+61:     #[inline(always)]
+62:     fn from_seed(seed: Self::Seed) -> Self {
+63:         StdRng(Rng::from_seed(seed))
+64:     }
+65: 
+66:     #[inline(always)]
+67:     fn from_rng<R: RngCore>(rng: R) -> Result<Self, Error> {
+68:         Rng::from_rng(rng).map(StdRng)
+69:     }
+70: }
+71: 
+72: impl CryptoRng for StdRng {}
+73: 
+74: 
+75: #[cfg(test)]
+76: mod test {
+77:     use crate::rngs::StdRng;
+78:     use crate::{RngCore, SeedableRng};
+79: 
+80:     #[test]
+81:     fn test_stdrng_construction() {
+82:         // Test value-stability of StdRng. This is expected to break any time
+83:         // the algorithm is changed.
+84:         #[rustfmt::skip]
+85:         let seed = [1,0,0,0, 23,0,0,0, 200,1,0,0, 210,30,0,0,
+86:                     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+87: 
+88:         let target = [10719222850664546238, 14064965282130556830];
+89: 
+90:         let mut rng0 = StdRng::from_seed(seed);
+91:         let x0 = rng0.next_u64();
+92: 
+93:         let mut rng1 = StdRng::from_rng(rng0).unwrap();
+94:         let x1 = rng1.next_u64();
+95: 
+96:         assert_eq!([x0, x1], target);
+97:     }
+98: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/either-1.9.0/src/lib.rs:50-189
+```rust
+ 50: pub enum Either<L, R> {
+ 51:     /// A value of type `L`.
+ 52:     Left(L),
+ 53:     /// A value of type `R`.
+ 54:     Right(R),
+ 55: }
+ 56: 
+ 57: /// Evaluate the provided expression for both [`Either::Left`] and [`Either::Right`].
+ 58: ///
+ 59: /// This macro is useful in cases where both sides of [`Either`] can be interacted with
+ 60: /// in the same way even though the don't share the same type.
+ 61: ///
+ 62: /// Syntax: `either::for_both!(` *expression* `,` *pattern* `=>` *expression* `)`
+ 63: ///
+ 64: /// # Example
+ 65: ///
+ 66: /// ```
+ 67: /// use either::Either;
+ 68: ///
+ 69: /// fn length(owned_or_borrowed: Either<String, &'static str>) -> usize {
+ 70: ///     either::for_both!(owned_or_borrowed, s => s.len())
+ 71: /// }
+ 72: ///
+ 73: /// fn main() {
+ 74: ///     let borrowed = Either::Right("Hello world!");
+ 75: ///     let owned = Either::Left("Hello world!".to_owned());
+ 76: ///
+ 77: ///     assert_eq!(length(borrowed), 12);
+ 78: ///     assert_eq!(length(owned), 12);
+ 79: /// }
+ 80: /// ```
+ 81: #[macro_export]
+ 82: macro_rules! for_both {
+ 83:     ($value:expr, $pattern:pat => $result:expr) => {
+ 84:         match $value {
+ 85:             $crate::Either::Left($pattern) => $result,
+ 86:             $crate::Either::Right($pattern) => $result,
+ 87:         }
+ 88:     };
+ 89: }
+ 90: 
+ 91: /// Macro for unwrapping the left side of an `Either`, which fails early
+ 92: /// with the opposite side. Can only be used in functions that return
+ 93: /// `Either` because of the early return of `Right` that it provides.
+ 94: ///
+ 95: /// See also `try_right!` for its dual, which applies the same just to the
+ 96: /// right side.
+ 97: ///
+ 98: /// # Example
+ 99: ///
+100: /// ```
+101: /// use either::{Either, Left, Right};
+102: ///
+103: /// fn twice(wrapper: Either<u32, &str>) -> Either<u32, &str> {
+104: ///     let value = either::try_left!(wrapper);
+105: ///     Left(value * 2)
+106: /// }
+107: ///
+108: /// fn main() {
+109: ///     assert_eq!(twice(Left(2)), Left(4));
+110: ///     assert_eq!(twice(Right("ups")), Right("ups"));
+111: /// }
+112: /// ```
+113: #[macro_export]
+114: macro_rules! try_left {
+115:     ($expr:expr) => {
+116:         match $expr {
+117:             $crate::Left(val) => val,
+118:             $crate::Right(err) => return $crate::Right(::core::convert::From::from(err)),
+119:         }
+120:     };
+121: }
+122: 
+123: /// Dual to `try_left!`, see its documentation for more information.
+124: #[macro_export]
+125: macro_rules! try_right {
+126:     ($expr:expr) => {
+127:         match $expr {
+128:             $crate::Left(err) => return $crate::Left(::core::convert::From::from(err)),
+129:             $crate::Right(val) => val,
+130:         }
+131:     };
+132: }
+133: 
+134: impl<L: Clone, R: Clone> Clone for Either<L, R> {
+135:     fn clone(&self) -> Self {
+136:         match self {
+137:             Left(inner) => Left(inner.clone()),
+138:             Right(inner) => Right(inner.clone()),
+139:         }
+140:     }
+141: 
+142:     fn clone_from(&mut self, source: &Self) {
+143:         match (self, source) {
+144:             (Left(dest), Left(source)) => dest.clone_from(source),
+145:             (Right(dest), Right(source)) => dest.clone_from(source),
+146:             (dest, source) => *dest = source.clone(),
+147:         }
+148:     }
+149: }
+150: 
+151: impl<L, R> Either<L, R> {
+152:     /// Return true if the value is the `Left` variant.
+153:     ///
+154:     /// ```
+155:     /// use either::*;
+156:     ///
+157:     /// let values = [Left(1), Right("the right value")];
+158:     /// assert_eq!(values[0].is_left(), true);
+159:     /// assert_eq!(values[1].is_left(), false);
+160:     /// ```
+161:     pub fn is_left(&self) -> bool {
+162:         match *self {
+163:             Left(_) => true,
+164:             Right(_) => false,
+165:         }
+166:     }
+167: 
+168:     /// Return true if the value is the `Right` variant.
+169:     ///
+170:     /// ```
+171:     /// use either::*;
+172:     ///
+173:     /// let values = [Left(1), Right("the right value")];
+174:     /// assert_eq!(values[0].is_right(), false);
+175:     /// assert_eq!(values[1].is_right(), true);
+176:     /// ```
+177:     pub fn is_right(&self) -> bool {
+178:         !self.is_left()
+179:     }
+180: 
+181:     /// Convert the left side of `Either<L, R>` to an `Option<L>`.
+182:     ///
+183:     /// ```
+184:     /// use either::*;
+185:     ///
+186:     /// let left: Either<_, ()> = Left("some value");
+187:     /// assert_eq!(left.left(),  Some("some value"));
+188:     ///
+189:     /// let right: Either<(), _> = Right(321);
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rayon-1.8.0/src/iter/unzip.rs:9-148
+```rust
+  9:     type Left: Send;
+ 10: 
+ 11:     /// The type of item expected by the right consumer.
+ 12:     type Right: Send;
+ 13: 
+ 14:     /// Consumes one item and feeds it to one or both of the underlying folders.
+ 15:     fn consume<FA, FB>(&self, item: T, left: FA, right: FB) -> (FA, FB)
+ 16:     where
+ 17:         FA: Folder<Self::Left>,
+ 18:         FB: Folder<Self::Right>;
+ 19: 
+ 20:     /// Reports whether this op may support indexed consumers.
+ 21:     /// - e.g. true for `unzip` where the item count passed through directly.
+ 22:     /// - e.g. false for `partition` where the sorting is not yet known.
+ 23:     fn indexable() -> bool {
+ 24:         false
+ 25:     }
+ 26: }
+ 27: 
+ 28: /// Runs an unzip-like operation into default `ParallelExtend` collections.
+ 29: fn execute<I, OP, FromA, FromB>(pi: I, op: OP) -> (FromA, FromB)
+ 30: where
+ 31:     I: ParallelIterator,
+ 32:     OP: UnzipOp<I::Item>,
+ 33:     FromA: Default + Send + ParallelExtend<OP::Left>,
+ 34:     FromB: Default + Send + ParallelExtend<OP::Right>,
+ 35: {
+ 36:     let mut a = FromA::default();
+ 37:     let mut b = FromB::default();
+ 38:     execute_into(&mut a, &mut b, pi, op);
+ 39:     (a, b)
+ 40: }
+ 41: 
+ 42: /// Runs an unzip-like operation into `ParallelExtend` collections.
+ 43: fn execute_into<I, OP, FromA, FromB>(a: &mut FromA, b: &mut FromB, pi: I, op: OP)
+ 44: where
+ 45:     I: ParallelIterator,
+ 46:     OP: UnzipOp<I::Item>,
+ 47:     FromA: Send + ParallelExtend<OP::Left>,
+ 48:     FromB: Send + ParallelExtend<OP::Right>,
+ 49: {
+ 50:     // We have no idea what the consumers will look like for these
+ 51:     // collections' `par_extend`, but we can intercept them in our own
+ 52:     // `drive_unindexed`.  Start with the left side, type `A`:
+ 53:     let iter = UnzipA { base: pi, op, b };
+ 54:     a.par_extend(iter);
+ 55: }
+ 56: 
+ 57: /// Unzips the items of a parallel iterator into a pair of arbitrary
+ 58: /// `ParallelExtend` containers.
+ 59: ///
+ 60: /// This is called by `ParallelIterator::unzip`.
+ 61: pub(super) fn unzip<I, A, B, FromA, FromB>(pi: I) -> (FromA, FromB)
+ 62: where
+ 63:     I: ParallelIterator<Item = (A, B)>,
+ 64:     FromA: Default + Send + ParallelExtend<A>,
+ 65:     FromB: Default + Send + ParallelExtend<B>,
+ 66:     A: Send,
+ 67:     B: Send,
+ 68: {
+ 69:     execute(pi, Unzip)
+ 70: }
+ 71: 
+ 72: /// Unzips an `IndexedParallelIterator` into two arbitrary `Consumer`s.
+ 73: ///
+ 74: /// This is called by `super::collect::unzip_into_vecs`.
+ 75: pub(super) fn unzip_indexed<I, A, B, CA, CB>(pi: I, left: CA, right: CB) -> (CA::Result, CB::Result)
+ 76: where
+ 77:     I: IndexedParallelIterator<Item = (A, B)>,
+ 78:     CA: Consumer<A>,
+ 79:     CB: Consumer<B>,
+ 80:     A: Send,
+ 81:     B: Send,
+ 82: {
+ 83:     let consumer = UnzipConsumer {
+ 84:         op: &Unzip,
+ 85:         left,
+ 86:         right,
+ 87:     };
+ 88:     pi.drive(consumer)
+ 89: }
+ 90: 
+ 91: /// An `UnzipOp` that splits a tuple directly into the two consumers.
+ 92: struct Unzip;
+ 93: 
+ 94: impl<A: Send, B: Send> UnzipOp<(A, B)> for Unzip {
+ 95:     type Left = A;
+ 96:     type Right = B;
+ 97: 
+ 98:     fn consume<FA, FB>(&self, item: (A, B), left: FA, right: FB) -> (FA, FB)
+ 99:     where
+100:         FA: Folder<A>,
+101:         FB: Folder<B>,
+102:     {
+103:         (left.consume(item.0), right.consume(item.1))
+104:     }
+105: 
+106:     fn indexable() -> bool {
+107:         true
+108:     }
+109: }
+110: 
+111: /// Partitions the items of a parallel iterator into a pair of arbitrary
+112: /// `ParallelExtend` containers.
+113: ///
+114: /// This is called by `ParallelIterator::partition`.
+115: pub(super) fn partition<I, A, B, P>(pi: I, predicate: P) -> (A, B)
+116: where
+117:     I: ParallelIterator,
+118:     A: Default + Send + ParallelExtend<I::Item>,
+119:     B: Default + Send + ParallelExtend<I::Item>,
+120:     P: Fn(&I::Item) -> bool + Sync + Send,
+121: {
+122:     execute(pi, Partition { predicate })
+123: }
+124: 
+125: /// An `UnzipOp` that routes items depending on a predicate function.
+126: struct Partition<P> {
+127:     predicate: P,
+128: }
+129: 
+130: impl<P, T> UnzipOp<T> for Partition<P>
+131: where
+132:     P: Fn(&T) -> bool + Sync + Send,
+133:     T: Send,
+134: {
+135:     type Left = T;
+136:     type Right = T;
+137: 
+138:     fn consume<FA, FB>(&self, item: T, left: FA, right: FB) -> (FA, FB)
+139:     where
+140:         FA: Folder<T>,
+141:         FB: Folder<T>,
+142:     {
+143:         if (self.predicate)(&item) {
+144:             (left.consume(item), right)
+145:         } else {
+146:             (left, right.consume(item))
+147:         }
+148:     }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rayon-1.8.0/src/iter/cloned.rs:153-223
+```rust
+153:     type Folder = ClonedFolder<C::Folder>;
+154:     type Reducer = C::Reducer;
+155:     type Result = C::Result;
+156: 
+157:     fn split_at(self, index: usize) -> (Self, Self, Self::Reducer) {
+158:         let (left, right, reducer) = self.base.split_at(index);
+159:         (
+160:             ClonedConsumer::new(left),
+161:             ClonedConsumer::new(right),
+162:             reducer,
+163:         )
+164:     }
+165: 
+166:     fn into_folder(self) -> Self::Folder {
+167:         ClonedFolder {
+168:             base: self.base.into_folder(),
+169:         }
+170:     }
+171: 
+172:     fn full(&self) -> bool {
+173:         self.base.full()
+174:     }
+175: }
+176: 
+177: impl<'a, T, C> UnindexedConsumer<&'a T> for ClonedConsumer<C>
+178: where
+179:     C: UnindexedConsumer<T>,
+180:     T: 'a + Clone,
+181: {
+182:     fn split_off_left(&self) -> Self {
+183:         ClonedConsumer::new(self.base.split_off_left())
+184:     }
+185: 
+186:     fn to_reducer(&self) -> Self::Reducer {
+187:         self.base.to_reducer()
+188:     }
+189: }
+190: 
+191: struct ClonedFolder<F> {
+192:     base: F,
+193: }
+194: 
+195: impl<'a, T, F> Folder<&'a T> for ClonedFolder<F>
+196: where
+197:     F: Folder<T>,
+198:     T: 'a + Clone,
+199: {
+200:     type Result = F::Result;
+201: 
+202:     fn consume(self, item: &'a T) -> Self {
+203:         ClonedFolder {
+204:             base: self.base.consume(item.clone()),
+205:         }
+206:     }
+207: 
+208:     fn consume_iter<I>(mut self, iter: I) -> Self
+209:     where
+210:         I: IntoIterator<Item = &'a T>,
+211:     {
+212:         self.base = self.base.consume_iter(iter.into_iter().cloned());
+213:         self
+214:     }
+215: 
+216:     fn complete(self) -> F::Result {
+217:         self.base.complete()
+218:     }
+219: 
+220:     fn full(&self) -> bool {
+221:         self.base.full()
+222:     }
+223: }
+```
+
+/home/user/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anyhow-1.0.75/src/chain.rs:36-102
+```rust
+ 36:     type Item = &'a (dyn StdError + 'static);
+ 37: 
+ 38:     fn next(&mut self) -> Option<Self::Item> {
+ 39:         match &mut self.state {
+ 40:             Linked { next } => {
+ 41:                 let error = (*next)?;
+ 42:                 *next = error.source();
+ 43:                 Some(error)
+ 44:             }
+ 45:             #[cfg(feature = "std")]
+ 46:             Buffered { rest } => rest.next(),
+ 47:         }
+ 48:     }
+ 49: 
+ 50:     fn size_hint(&self) -> (usize, Option<usize>) {
+ 51:         let len = self.len();
+ 52:         (len, Some(len))
+ 53:     }
+ 54: }
+ 55: 
+ 56: #[cfg(feature = "std")]
+ 57: impl DoubleEndedIterator for Chain<'_> {
+ 58:     fn next_back(&mut self) -> Option<Self::Item> {
+ 59:         match &mut self.state {
+ 60:             Linked { mut next } => {
+ 61:                 let mut rest = Vec::new();
+ 62:                 while let Some(cause) = next {
+ 63:                     next = cause.source();
+ 64:                     rest.push(cause);
+ 65:                 }
+ 66:                 let mut rest = rest.into_iter();
+ 67:                 let last = rest.next_back();
+ 68:                 self.state = Buffered { rest };
+ 69:                 last
+ 70:             }
+ 71:             Buffered { rest } => rest.next_back(),
+ 72:         }
+ 73:     }
+ 74: }
+ 75: 
+ 76: impl ExactSizeIterator for Chain<'_> {
+ 77:     fn len(&self) -> usize {
+ 78:         match &self.state {
+ 79:             Linked { mut next } => {
+ 80:                 let mut len = 0;
+ 81:                 while let Some(cause) = next {
+ 82:                     next = cause.source();
+ 83:                     len += 1;
+ 84:                 }
+ 85:                 len
+ 86:             }
+ 87:             #[cfg(feature = "std")]
+ 88:             Buffered { rest } => rest.len(),
+ 89:         }
+ 90:     }
+ 91: }
+ 92: 
+ 93: #[cfg(feature = "std")]
+ 94: impl Default for Chain<'_> {
+ 95:     fn default() -> Self {
+ 96:         Chain {
+ 97:             state: ChainState::Buffered {
+ 98:                 rest: Vec::new().into_iter(),
+ 99:             },
+100:         }
+101:     }
+102: }
+```
+
+Existing safe construction examples for types mentioned above. Use these only as constructor/mutator/caller skeletons; choose your own values to build a target-caller counterexample, and do not call unsafe APIs from these examples. If a type's prefix path reads from a collection, decodes an element, or expects a branch guard to hold, do not rely on `Default`, `Vec::new()`, or `vec![]` as the complete receiver state unless the example also mutates the relevant fields into a non-empty, coherent state:
+
+src/rngs/small.rs:29-49
+```rust
+29: ///   by using [`SeedableRng::from_entropy`] or [`SeedableRng::seed_from_u64`]),
+30: ///   or use [`StdRng`] instead.
+31: ///
+32: /// The algorithm is deterministic but should not be considered reproducible
+33: /// due to dependence on platform and possible replacement in future
+34: /// library versions. For a reproducible generator, use a named PRNG from an
+35: /// external crate, e.g. [rand_xoshiro] or [rand_chacha].
+36: /// Refer also to [The Book](https://rust-random.github.io/book/guide-rngs.html).
+37: ///
+38: /// The PRNG algorithm in `SmallRng` is chosen to be efficient on the current
+39: /// platform, without consideration for cryptography or security. The size of
+40: /// its state is much smaller than [`StdRng`]. The current algorithm is
+41: /// `Xoshiro256PlusPlus` on 64-bit platforms and `Xoshiro128PlusPlus` on 32-bit
+42: /// platforms. Both are also implemented by the [rand_xoshiro] crate.
+43: ///
+44: /// # Examples
+45: ///
+46: /// Initializing `SmallRng` with a random seed can be done using [`SeedableRng::from_entropy`]:
+47: ///
+48: /// ```
+49: /// use rand::{Rng, SeedableRng};
+```
+
+src/rngs/small.rs:71-103
+```rust
+ 71: ///     .map(|_| SmallRng::from_rng(&mut thread_rng).unwrap())
+ 72: ///     .collect();
+ 73: /// ```
+ 74: ///
+ 75: /// [`StdRng`]: crate::rngs::StdRng
+ 76: /// [`thread_rng`]: crate::thread_rng
+ 77: /// [rand_chacha]: https://crates.io/crates/rand_chacha
+ 78: /// [rand_xoshiro]: https://crates.io/crates/rand_xoshiro
+ 79: #[cfg_attr(doc_cfg, doc(cfg(feature = "small_rng")))]
+ 80: #[derive(Clone, Debug, PartialEq, Eq)]
+ 81: pub struct SmallRng(Rng);
+ 82: 
+ 83: impl RngCore for SmallRng {
+ 84:     #[inline(always)]
+ 85:     fn next_u32(&mut self) -> u32 {
+ 86:         self.0.next_u32()
+ 87:     }
+ 88: 
+ 89:     #[inline(always)]
+ 90:     fn next_u64(&mut self) -> u64 {
+ 91:         self.0.next_u64()
+ 92:     }
+ 93: 
+ 94:     #[inline(always)]
+ 95:     fn fill_bytes(&mut self, dest: &mut [u8]) {
+ 96:         self.0.fill_bytes(dest);
+ 97:     }
+ 98: 
+ 99:     #[inline(always)]
+100:     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+101:         self.0.try_fill_bytes(dest)
+102:     }
+103: }
+```
+
+src/rngs/std.rs:79-97
+```rust
+79: 
+80:     #[test]
+81:     fn test_stdrng_construction() {
+82:         // Test value-stability of StdRng. This is expected to break any time
+83:         // the algorithm is changed.
+84:         #[rustfmt::skip]
+85:         let seed = [1,0,0,0, 23,0,0,0, 200,1,0,0, 210,30,0,0,
+86:                     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+87: 
+88:         let target = [10719222850664546238, 14064965282130556830];
+89: 
+90:         let mut rng0 = StdRng::from_seed(seed);
+91:         let x0 = rng0.next_u64();
+92: 
+93:         let mut rng1 = StdRng::from_rng(rng0).unwrap();
+94:         let x1 = rng1.next_u64();
+95: 
+96:         assert_eq!([x0, x1], target);
+97:     }
+```
+
+src/rngs/xoshiro128plusplus.rs:103-117
+```rust
+103: 
+104:     #[test]
+105:     fn reference() {
+106:         let mut rng = Xoshiro128PlusPlus::from_seed(
+107:             [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0]);
+108:         // These values were produced with the reference implementation:
+109:         // http://xoshiro.di.unimi.it/xoshiro128plusplus.c
+110:         let expected = [
+111:             641, 1573767, 3222811527, 3517856514, 836907274, 4247214768,
+112:             3867114732, 1355841295, 495546011, 621204420,
+113:         ];
+114:         for &e in &expected {
+115:             assert_eq!(rng.next_u32(), e);
+116:         }
+117:     }
+```
+
+src/rngs/xoshiro256plusplus.rs:105-121
+```rust
+105: 
+106:     #[test]
+107:     fn reference() {
+108:         let mut rng = Xoshiro256PlusPlus::from_seed(
+109:             [1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
+110:              3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
+111:         // These values were produced with the reference implementation:
+112:         // http://xoshiro.di.unimi.it/xoshiro256plusplus.c
+113:         let expected = [
+114:             41943041, 58720359, 3588806011781223, 3591011842654386,
+115:             9228616714210784205, 9973669472204895162, 14011001112246962877,
+116:             12406186145184390807, 15849039046786891736, 10450023813501588000,
+117:         ];
+118:         for &e in &expected {
+119:             assert_eq!(rng.next_u64(), e);
+120:         }
+121:     }
+```
+
+src/rngs/small.rs:112-116
+```rust
+112: 
+113:     #[inline(always)]
+114:     fn from_rng<R: RngCore>(rng: R) -> Result<Self, Error> {
+115:         Rng::from_rng(rng).map(SmallRng)
+116:     }
+```
+
+src/rngs/small.rs:46-49
+```rust
+46: /// Initializing `SmallRng` with a random seed can be done using [`SeedableRng::from_entropy`]:
+47: ///
+48: /// ```
+49: /// use rand::{Rng, SeedableRng};
+```
+
+src/rngs/std.rs:65-69
+```rust
+65: 
+66:     #[inline(always)]
+67:     fn from_rng<R: RngCore>(rng: R) -> Result<Self, Error> {
+68:         Rng::from_rng(rng).map(StdRng)
+69:     }
+```
+</target caller and target-call context>
+
+
+
+
+<klee init witness>
+Target callsite id: src-util-rs-11-24
+
+Rule id: rule-303-rustc-1_87-line880
+</klee init witness>
+
+
+Important:
+- Generate a counterexample for the target callsite. If the context identifies
+  a direct actual-containing safe function, call that function directly when it
+  is visible/type-checks from the injected module; otherwise use the target
+  caller named in the metadata.
+- Use the KLEE init witness, when present, as the target shape for the concrete
+  testcase. If a call argument in the witness comes from a receiver field,
+  container length/capacity, slice length, pointer, index, or other caller state,
+  construct that caller state so the target call's arguments reproduce the
+  counterexample. Boundary states such as empty containers, zero lengths, one-element
+  containers, and indexes equal to a length are often the smallest useful
+  choices; use whichever one is implied by the witness and still reaches the
+  target callsite.
+- The testcase is judged by whether KLEE reports the exact target callsite id.
+  A panic, `None`/`Err`, early return, or a different target call before that
+  site is a failed testcase even if the API call looks plausible.
+- If previous KLEE feedback says the target callsite was reported but the
+  counterexample was not reproduced, generate a different safe testcase for the same
+  target caller and target callsite.
+
+
+
+<previous attempt feedback>
+The previous testcase attempt failed. Fix the generated testcase using this
+compiler/tool feedback. Do not repeat the same mistake.
+
+The testcase compiled but did not reproduce the target violation.
+KLEE reached `src-util-rs-11-24`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
+KLEE reached these callsite markers before missing the target (last markers first-order): `src-util-rs-11-24` -> `src-util-rs-14-9`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-util-rs-11-24` and reproduce the target counterexample there.
+The metadata caller `util::prefetch_index` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
+Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+
+Observed KLEE rerun target-argument feedback from the failed testcase:
+- Observation 1: get_arg(0) = 126767335473152; get_arg(1) = 1; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `s`; this failed observation had `s = 126767335473152`.
+If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+
+</previous attempt feedback>
+
+
+<rust context>
+
+<file path="examples/many_keys.rs">
+```rust
+//! Construct a PtrHash instance on 10^11 keys in memory.
+//! Using 6 threads this takes around 90 minutes.
+//!
+//! NOTE: This requires somewhere between 32 and 64GB of memory.
+use bitvec::bitvec;
+use ptr_hash::{hash::*, tiny_ef::TinyEf, PtrHash, PtrHashParams};
+use rayon::prelude::*;
+
+fn main() {
+    let n = 100_000_000_000;
+    let n_query = 1 << 27;
+    let range = 0..n as u64;
+    let keys = range.clone().into_par_iter();
+    let ptr_hash = PtrHash::<_, TinyEf, Murmur2_64, _>::new_from_par_iter(
+        n,
+        keys.clone(),
+        PtrHashParams {
+            c: 10.,
+            // ~10GB of keys per shard.
+            keys_per_shard: 1 << 29,
+            shard_to_disk: false,
+            ..Default::default()
+        },
+    );
+    // Since running all queries is super slow, we only check a subset of them.
+    // Although this doesn't completely check that there are no duplicate
+    // mappings, by the birthday paradox we can be quite sure there are none
+    // since we check way more than sqrt(n) of them.
+    eprintln!("Checking duplicates...");
+    let mut done = bitvec![0; n];
+    for key in 0..n_query {
+        let idx = ptr_hash.index_minimal(&key);
+        assert!(!done[idx]);
+        done.set(idx, true);
+    }
+}
+
+```
+</file>
+
+<file path="examples/memory_bandwidth.rs">
+```rust
+#![allow(unused)]
+use std::{hint::black_box, time::Instant};
+
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+
+const CACHELINE: usize = 64;
+const ITS: usize = 20;
+
+fn main() {
+    // Allocate 4GB bytes of random data.
+    let n: usize = 4_000_000_000;
+    let data: Vec<u8> = (0..n)
+        .into_par_iter()
+        .map_init(thread_rng, |rng, _| rng.gen())
+        .collect();
+
+    // test_full(&data);
+    // test_cacheline(&data);
+    // test_stride(&data);
+    let strides = [103, 29, 53, 13, 193, 149];
+    for threads in [1, 2, 3, 4, 5, 6] {
+        eprint!("Threads: {}", threads);
+        let start = Instant::now();
+        rayon::scope(|scope| {
+            for &stride in strides.iter().take(threads) {
+                // let data = data.clone();
+                let data = &data;
+                scope.spawn(move |_| test_stride::<true>(data, stride));
+            }
+        });
+        let e = start.elapsed();
+        eprintln!(
+            "  {:>8.2?} {:>10.3}GB/s",
+            e,
+            (ITS * threads * n) as f64 / e.as_nanos() as f64
+        );
+    }
+}
+
+#[inline(never)]
+fn test_full(data: &Vec<u8>) {
+    let n = data.len();
+    let mut sum1 = 0;
+    for _ in 0..ITS {
+        for x in data {
+            sum1 += *x as u64;
+        }
+    }
+    black_box(sum1);
+}
+
+#[inline(never)]
+fn test_cacheline(data: &Vec<u8>) {
+    let n = data.len();
+    let mut sum2 = 0;
+    for _ in 0..ITS {
+        for i in (0..n).step_by(CACHELINE) {
+            unsafe {
+                sum2 += *data.get_unchecked(i) as u64;
+            }
+        }
+    }
+    black_box(sum2);
+}
+
+#[inline(never)]
+fn test_stride<const PREFETCH: bool>(data: &Vec<u8>, s: usize) {
+    let n = data.len();
+    let mut sum2 = 0;
+    let cs = s * CACHELINE;
+    for _ in 0..ITS {
+        for offset in 0..s {
+            for i in (offset * CACHELINE..n).step_by(cs) {
+                unsafe {
+                    if PREFETCH {
+                        ptr_hash::util::prefetch_index(data, i + 10 * cs);
+                    }
+                    sum2 += *data.get_unchecked(i) as u64;
+                }
+            }
+        }
+    }
+    black_box(sum2);
+}
+
+```
+</file>
+
+<file path="src/bin/run.rs">
+```rust
+#![allow(unused)]
+use clap::{Parser, Subcommand};
+#[cfg(feature = "epserde")]
+use epserde::prelude::*;
+use itertools::Itertools;
+use ptr_hash::{
+    hash::{Hasher, Murmur2_64},
+    pack::Packed,
+    tiny_ef::{TinyEf, TinyEfUnit},
+    *,
+};
+use std::{
+    cmp::min,
+    hint::black_box,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
+    time::SystemTime,
+};
+
+#[derive(clap::Parser)]
+struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
+
+const DEFAULT_C: f64 = 9.0;
+const DEFAULT_ALPHA: f64 = 0.98;
+const DEFAULT_SLOTS_PER_PART: usize = 1 << 18;
+const DEFAULT_KEYS_PER_SHARD: usize = 1 << 33;
+const DEFAULT_DISK: bool = false;
+
+#[derive(Subcommand)]
+enum Command {
+    /// Construct PtrHash.
+    Build {
+        #[arg(short)]
+        n: usize,
+        #[arg(short, default_value_t = DEFAULT_C)]
+        c: f64,
+        #[arg(short, default_value_t = DEFAULT_ALPHA)]
+        alpha: f64,
+        #[arg(short, default_value_t = DEFAULT_SLOTS_PER_PART)]
+        s: usize,
+        #[arg(short, default_value_t = DEFAULT_KEYS_PER_SHARD)]
+        keys_per_shard: usize,
+        #[arg(short, default_value_t = DEFAULT_DISK)]
+        disk: bool,
+        #[arg(long)]
+        stats: bool,
+        #[arg(short, long, default_value_t = 0)]
+        threads: usize,
+    },
+
+    /// Measure query time on randomly-constructed PtrHash.
+    Query {
+        #[arg(short)]
+        n: usize,
+        /// Path to file containing one key per line.
+        #[arg(long)]
+        keys: Option<PathBuf>,
+        #[arg(short, default_value_t = DEFAULT_C)]
+        c: f64,
+        #[arg(short, default_value_t = DEFAULT_ALPHA)]
+        alpha: f64,
+        #[arg(short, default_value_t = DEFAULT_SLOTS_PER_PART)]
+        s: usize,
+        #[arg(short, default_value_t = DEFAULT_KEYS_PER_SHARD)]
+        keys_per_shard: usize,
+        #[arg(short, default_value_t = DEFAULT_DISK)]
+        disk: bool,
+        #[arg(long, default_value_t = 300000000)]
+        total: usize,
+        #[arg(long)]
+        stats: bool,
+        #[arg(short, long, default_value_t = 0)]
+        threads: usize,
+    },
+}
+
+type PH<Key> = PtrHash<Key, TinyEf, hash::Xx128, Vec<u8>>;
+
+fn main() -> anyhow::Result<()> {
+    let Args { command } = Args::parse();
+
+    match command {
+        Command::Build {
+            n,
+            c,
+            alpha,
+            stats,
+            s,
+            keys_per_shard,
+            threads,
+            disk,
+        } => {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build_global()
+                .unwrap();
+            let keys = ptr_hash::util::generate_keys(n);
+            let pt = PH::new(
+                &keys,
+                PtrHashParams {
+                    c,
+                    alpha,
+                    print_stats: stats,
+                    slots_per_part: s,
+                    keys_per_shard,
+                    shard_to_disk: disk,
+                    ..Default::default()
+                },
+            );
+
+            #[cfg(feature = "epserde")]
+            {
+                Serialize::store(&pt, "pt.bin")?;
+            }
+        }
+        Command::Query {
+            mut n,
+            c,
+            alpha,
+            total,
+            stats,
+            s,
+            keys_per_shard,
+            disk,
+            threads,
+            keys,
+        } => {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build_global()
+                .unwrap();
+
+            let params = PtrHashParams {
+                c,
+                alpha,
+                print_stats: stats,
+                slots_per_part: s,
+                keys_per_shard,
+                shard_to_disk: disk,
+                ..Default::default()
+            };
+
+            if let Some(keys_file) = keys {
+                // read file keys_file
+                let file = std::fs::read_to_string(keys_file).unwrap();
+                let keys = file.lines().map(|l| l.as_bytes()).collect_vec();
+                // let pt = DefaultPtrHash::<Murmur2_64, _>::new(&keys, params);
+                // benchmark_queries(total, &keys, &pt);
+                bench_hashers(total, &params, &keys);
+            } else {
+                let keys = ptr_hash::util::generate_keys(n);
+                #[cfg(feature = "epserde")]
+                let pt = <PtrHash>::mmap("pt.bin", Flags::default())?;
+                #[cfg(not(feature = "epserde"))]
+                // let pt = <PtrHash>::new_random(n, params);
+                // benchmark_queries(total, &keys, &pt);
+                bench_hashers(total, &params, &keys);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn bench_hashers<Key: KeyT>(total: usize, params: &PtrHashParams, keys: &[Key]) {
+    let n = keys.len();
+    let loops = total.div_ceil(n);
+    fn test<H: Hasher<Key>, Key: KeyT>(loops: usize, keys: &[Key], params: &PtrHashParams) {
+        type PH<Key, H> = PtrHash<Key, TinyEf, H, Vec<u8>>;
+        let pt = PH::<Key, H>::new_random(keys.len(), *params);
+
+        let query = bench_index(loops, keys, |key| pt.index(key));
+        eprintln!("  sequential: {query:>4.1}");
+        let query = time(loops, keys, || {
+            pt.index_stream::<64, false>(keys).sum::<usize>()
+        });
+        eprintln!(" prefetch 64: {query:>5.2}ns");
+    }
+
+    eprintln!("fxhash");
+    test::<hash::FxHash, _>(loops, keys, params);
+    eprintln!("murmur2");
+    test::<hash::Murmur2_64, _>(loops, keys, params);
+    eprintln!("murmur3");
+    test::<hash::FastMurmur3_128, _>(loops, keys, params);
+
+    eprintln!("highway64");
+    test::<hash::Highway64, _>(loops, keys, params);
+    eprintln!("highway128");
+    test::<hash::Highway128, _>(loops, keys, params);
+    eprintln!("city64");
+    test::<hash::City64, _>(loops, keys, params);
+    eprintln!("city128");
+    test::<hash::City128, _>(loops, keys, params);
+    eprintln!("wy64");
+    test::<hash::Wy64, _>(loops, keys, params);
+    eprintln!("xx64");
+    test::<hash::Xx64, _>(loops, keys, params);
+    eprintln!("xx128");
+    test::<hash::Xx128, _>(loops, keys, params);
+    eprintln!("metro64");
+    test::<hash::Metro64, _>(loops, keys, params);
+    eprintln!("metro128");
+    test::<hash::Metro128, _>(loops, keys, params);
+    eprintln!("spooky64");
+    test::<hash::Spooky64, _>(loops, keys, params);
+    eprintln!("spooky128");
+    test::<hash::Spooky128, _>(loops, keys, params);
+}
+
+fn benchmark_queries<Key: KeyT, H: Hasher<Key>, T: Packed, V: AsRef<[u8]> + Sync>(
+    total: usize,
+    keys: &[Key],
+    pt: &PtrHash<Key, T, H, V>,
+) {
+    let n = keys.len();
+    let loops = total.div_ceil(n);
+
+    eprintln!("BENCHMARKING loops {loops}");
+    let query = bench_index(loops, keys, |key| pt.index(key));
+    eprintln!(" ( 1  )  : {query:>4.1}");
+    let query = bench_index(loops, keys, |key| pt.index_minimal(key));
+    eprintln!(" ( 1  )+r: {query:>4.1}");
+
+    // let query = bench_index_all(loops, keys, |keys| pt.index_stream::<32>(keys));
+    // eprint!(" (32): {query:>4.1}");
+    // let query = bench_index_all(loops, keys, |keys| pt.index_stream::<1>(keys));
+    // eprintln!(" (1): {query:>4.1}");
+    // let query = time(loops, keys, || pt.index_stream::<64>(&keys).sum());
+    // eprint!(" (64): {query:>4.1}");
+    for threads in 1..=6 {
+        let query = time(loops, keys, || {
+            index_parallel::<64, _, _, _, _>(pt, keys, threads, false)
+        });
+        eprintln!(" (64t{threads})  : {query:>5.2}ns");
+        let query = time(loops, keys, || {
+            index_parallel::<64, _, _, _, _>(pt, keys, threads, true)
+        });
+        eprintln!(" (64t{threads})+r: {query:>5.2}ns");
+    }
+    // let query = bench_index_all(loops, keys, |keys| pt.index_stream::<128>(keys));
+    // eprint!(" (128): {query:>4.1}");
+
+    // eprint!("    | Remap: ");
+
+    // let query = bench_index(loops, keys, |key| pt.index_minimal(key));
+    // eprint!(" (1): {query:>4.1}");
+
+    // let query = bench_index_all(loops, keys, |keys| pt.index_minimal_stream::<32>(keys));
+    // eprint!(" (32): {query:>4.1}");
+    // let query = bench_index_all(loops, keys, |keys| pt.index_minimal_stream::<64>(keys));
+    // eprint!(" (64): {query:>4.1}");
+    // let query = bench_index_all(loops, keys, |keys| pt.index_minimal_stream::<128>(keys));
+    // eprint!(" (128): {query:>4.1}");
+    // eprintln!();
+}
+
+#[must_use]
+pub fn bench_index<Key: KeyT>(loops: usize, keys: &[Key], index: impl Fn(&Key) -> usize) -> f32 {
+    let start = SystemTime::now();
+    let mut sum = 0;
+    for _ in 0..loops {
+        for key in keys {
+            sum += index(key);
+        }
+    }
+    black_box(sum);
+    start.elapsed().unwrap().as_nanos() as f32 / (loops * keys.len()) as f32
+}
+
+#[must_use]
+pub fn time<Key: KeyT, F>(loops: usize, keys: &[Key], f: F) -> f32
+where
+    F: Fn() -> usize,
+{
+    let start = SystemTime::now();
+    for _ in 0..loops {
+        black_box(f());
+    }
+    start.elapsed().unwrap().as_nanos() as f32 / (loops * keys.len()) as f32
+}
+
+/// Wrapper around `index_stream` that runs multiple threads.
+fn index_parallel<const A: usize, Key: KeyT, T: Packed, H: Hasher<Key>, V: AsRef<[u8]> + Sync>(
+    pt: &PtrHash<Key, T, H, V>,
+    xs: &[Key],
+    threads: usize,
+    minimal: bool,
+) -> usize {
+    let chunk_size = xs.len().div_ceil(threads);
+    let sum = AtomicUsize::new(0);
+    rayon::scope(|scope| {
+        let pt = &pt;
+        for thread_idx in 0..threads {
+            let sum = &sum;
+            scope.spawn(move |_| {
+                let start_idx = thread_idx * chunk_size;
+                let end = min((thread_idx + 1) * chunk_size, xs.len());
+
+                let thread_sum = if minimal {
+                    pt.index_stream::<A, true>(&xs[start_idx..end])
+                        .sum::<usize>()
+                } else {
+                    pt.index_stream::<A, false>(&xs[start_idx..end])
+                        .sum::<usize>()
+                };
+                sum.fetch_add(thread_sum, Ordering::Relaxed);
+            });
+        }
+    });
+    sum.load(Ordering::Relaxed)
+}
+
+```
+</file>
+
+<file path="src/bucket_idx.rs">
+```rust
+use std::ops::{Add, Index, IndexMut, Sub};
+
+// Ord so we can sort them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BucketIdx(pub u32);
+
+impl Add<usize> for BucketIdx {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self(self.0 + rhs as u32)
+    }
+}
+
+impl Sub<usize> for BucketIdx {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self(self.0 - rhs as u32)
+    }
+}
+
+impl BucketIdx {
+    pub const NONE: BucketIdx = BucketIdx(u32::MAX);
+    pub fn range(num_buckets: usize) -> impl Iterator<Item = Self> + Clone {
+        (0..num_buckets as u32).map(Self)
+    }
+    pub fn is_some(&self) -> bool {
+        self.0 != u32::MAX
+    }
+    pub fn is_none(&self) -> bool {
+        self.0 == u32::MAX
+    }
+}
+
+impl<T> Index<BucketIdx> for [T] {
+    type Output = T;
+
+    fn index(&self, index: BucketIdx) -> &Self::Output {
+        unsafe { self.get_unchecked(index.0 as usize) }
+    }
+}
+
+impl<T> IndexMut<BucketIdx> for [T] {
+    fn index_mut(&mut self, index: BucketIdx) -> &mut Self::Output {
+        unsafe { self.get_unchecked_mut(index.0 as usize) }
+    }
+}
+
+impl<T> Index<BucketIdx> for Vec<T> {
+    type Output = T;
+
+    fn index(&self, index: BucketIdx) -> &Self::Output {
+        unsafe { self.get_unchecked(index.0 as usize) }
+    }
+}
+
+impl<T> IndexMut<BucketIdx> for Vec<T> {
+    fn index_mut(&mut self, index: BucketIdx) -> &mut Self::Output {
+        unsafe { self.get_unchecked_mut(index.0 as usize) }
+    }
+}
+
+```
+</file>
+
+<file path="src/displace.rs">
+```rust
+use super::*;
+use crate::{bucket_idx::BucketIdx, stats::BucketStats};
+use bitvec::{slice::BitSlice, vec::BitVec};
+use rayon::prelude::*;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Mutex,
+};
+
+impl<Key: KeyT, F: Packed, Hx: Hasher<Key>> PtrHash<Key, F, Hx> {
+    pub(super) fn displace_shard(
+        &self,
+        shard: usize,
+        hashes: &[Hx::H],
+        part_starts: &[u32],
+        pilots: &mut [u8],
+        taken: &mut [BitVec],
+    ) -> bool {
+        let pilots_per_part = pilots.par_chunks_exact_mut(self.b);
+
+        let iter = pilots_per_part.zip(taken).enumerate();
+
+        let total_displacements = AtomicUsize::new(0);
+        let parts_done = AtomicUsize::new(shard * self.parts_per_shard);
+        let stats = Mutex::new(BucketStats::new());
+
+        let ok = iter.try_for_each(|(part_in_shard, (pilots, taken))| {
+            let part = shard * self.parts_per_shard + part_in_shard;
+            let hashes = &hashes
+                [part_starts[part_in_shard] as usize..part_starts[part_in_shard + 1] as usize];
+            let cnt = self.displace_part(part, hashes, pilots, taken, &stats)?;
+            let parts_done = parts_done.fetch_add(1, Ordering::Relaxed);
+            total_displacements.fetch_add(cnt, Ordering::Relaxed);
+
+            eprint!(
+                "parts done: {parts_done:>6}/{:>6} ({:>4.1}%)\r",
+                self.num_parts,
+                100. * parts_done as f32 / self.num_parts as f32
+            );
+            Some(())
+        });
+
+        if ok.is_none() {
+            return false;
+        }
+
+        assert_eq!(
+            parts_done.load(Ordering::Relaxed),
+            (shard + 1) * self.parts_per_shard
+        );
+
+        let total_displacements: usize = total_displacements.load(Ordering::Relaxed);
+        let sum_pilots = pilots.iter().map(|&k| k as Pilot).sum::<Pilot>();
+
+        // Clear the last \r line.
+        eprint!("\x1b[K");
+        eprintln!(
+            "  displ./bkt: {:>14.3}",
+            total_displacements as f32 / (self.b * self.parts_per_shard) as f32
+        );
+        eprintln!(
+            "   avg pilot: {:>14.3}",
+            sum_pilots as f32 / (self.b * self.parts_per_shard) as f32
+        );
+
+        if self.params.print_stats {
+            stats.lock().unwrap().print();
+        }
+
+        true
+    }
+
+    fn displace_part(
+        &self,
+        part: usize,
+        hashes: &[Hx::H],
+        pilots: &mut [u8],
+        taken: &mut BitSlice,
+        stats: &Mutex<BucketStats>,
+    ) -> Option<usize> {
+        let (starts, bucket_order) = self.sort_buckets(part, hashes);
+
+        let kmax = 256;
+
+        let mut slots = vec![BucketIdx::NONE; self.s];
+        let bucket_len = |b: BucketIdx| (starts[b + 1] - starts[b]) as usize;
+
+        let max_bucket_len = bucket_len(bucket_order[0]);
+
+        let mut stack = vec![];
+
+        let slots_for_bucket = |b: BucketIdx, p: Pilot| unsafe {
+            let hp = self.hash_pilot(p);
+            hashes
+                .get_unchecked(starts[b] as usize..starts[b + 1] as usize)
+                .iter()
+                .map(move |&hx| self.slot_in_part_hp(hx, hp))
+        };
+        let mut duplicate_slots = {
+            let mut slots_tmp = vec![0; max_bucket_len];
+            move |b: BucketIdx, p: Pilot| {
+                slots_tmp.clear();
+                slots_tmp.extend(slots_for_bucket(b, p));
+                slots_tmp.sort_unstable();
+                slots_tmp.iter().tuple_windows().any(|(a, b)| a == b)
+            }
+        };
+
+        let mut recent = [BucketIdx::NONE; 4];
+        let mut total_displacements = 0;
+
+        for (i, &new_b) in bucket_order.iter().enumerate() {
+            let new_bucket = &hashes[starts[new_b] as usize..starts[new_b + 1] as usize];
+            if new_bucket.is_empty() {
+                pilots[new_b] = 0;
+                continue;
+            }
+            let new_b_len = new_bucket.len();
+
+            let mut displacements = 0usize;
+
+            stack.push(new_b);
+            recent.fill(BucketIdx::NONE);
+            let mut recent_idx = 0;
+            recent[0] = new_b;
+
+            'b: while let Some(b) = stack.pop() {
+                if displacements > self.s && displacements.is_power_of_two() {
+                    eprintln!(
+                        "part {part:>6} bucket {:>5.2}%  chain: {displacements:>9}",
+                        100. * (part * self.b + i) as f32 / self.b_total as f32,
+                    );
+                    if displacements >= 10 * self.s {
+                        eprintln!(
+                            "\
+Too many displacements. Aborting!
+Possible causes:
+- Too many elements in part.
+- Not enough empty slots => lower alpha.
+- Not enough buckets     => increase c.
+- Not enough entropy     => fix algorithm.
+"
+                        );
+                        return None;
+                    }
+                }
+
+                // 1a) Check for a solution without collisions.
+
+                let bucket =
+                    unsafe { hashes.get_unchecked(starts[b] as usize..starts[b + 1] as usize) };
+                let b_slots =
+                    |hp: PilotHash| bucket.iter().map(move |&hx| self.slot_in_part_hp(hx, hp));
+
+                // 1b) Hot-path for when there are no collisions, which is most of the buckets.
+                if let Some((p, hp)) = self.find_pilot(kmax, bucket, taken) {
+                    // HOT: Many branch misses here.
+                    pilots[b] = p as u8;
+                    for p in b_slots(hp) {
+                        unsafe {
+                            // Taken is already filled by find_pilot.
+                            // HOT: This is a hot instruction; takes as much time as finding the pilot.
+                            *slots.get_unchecked_mut(p) = b;
+                        }
+                    }
+                    continue 'b;
+                }
+
+                // 2) Search for a pilot with minimal number of collisions.
+
+                let p = pilots[b] as Pilot + 1;
+                // (worst colliding bucket size, p)
+                let mut best = (usize::MAX, u64::MAX);
+
+                'p: for delta in 0u64..kmax {
+                    // HOT: This code is slow and full of branch-misses.
+                    // But also, it's only 20% of displace() time, since the
+                    // hot-path above covers most.
+                    let p = (p + delta) % kmax;
+                    let hp = self.hash_pilot(p);
+                    let mut collision_score = 0;
+                    for p in b_slots(hp) {
+                        let s = unsafe { *slots.get_unchecked(p) };
+                        // HOT: many branches
+                        let new_score = if s.is_none() {
+                            continue;
+                        } else if recent.contains(&s) {
+                            continue 'p;
+                        } else {
+                            // HOT: cache misses.
+                            bucket_len(s).pow(2)
+                        };
+                        collision_score += new_score;
+                        if collision_score >= best.0 {
+                            continue 'p;
+                        }
+                    }
+
+                    // This check takes 2% of times even though it almost
+                    // always passes. Can we delay it to filling of the
+                    // slots table, and backtrack if needed.
+                    if !duplicate_slots(b, p) {
+                        best = (collision_score, p);
+                        // Since we already checked for a collision-free solution,
+                        // the next best is a single collision of size b_len.
+                        if collision_score == new_b_len * new_b_len {
+                            break;
+                        }
+                    }
+                }
+
+                if best == (usize::MAX, u64::MAX) {
+                    for hx in bucket {
+                        eprintln!("{:x?}", hx);
+                    }
+                    eprintln!("part {part}: Indistinguishable hashes in bucket!");
+                    return None;
+                }
+
+                let (_collision_score, p) = best;
+                pilots[b] = p as u8;
+                let hp = self.hash_pilot(p);
+
+                // Drop the collisions and set the new pilot.
+                for slot in b_slots(hp) {
+                    // THIS IS A HOT INSTRUCTION.
+                    let b2 = slots[slot];
+                    if b2.is_some() {
+                        assert!(b2 != b);
+                        // DROP BUCKET b
+                        stack.push(b2);
+                        displacements += 1;
+                        for p2 in slots_for_bucket(b2, pilots[b2] as Pilot) {
+                            unsafe {
+                                *slots.get_unchecked_mut(p2) = BucketIdx::NONE;
+                                taken.set_unchecked(p2, false);
+                            }
+                        }
+                    }
+                    unsafe {
+                        *slots.get_unchecked_mut(slot) = b;
+                        taken.set_unchecked(slot, true);
+                    }
+                }
+
+                recent_idx += 1;
+                recent_idx %= 4;
+                recent[recent_idx] = b;
+            }
+            total_displacements += displacements;
+        }
+
+        if self.params.print_stats {
+            let mut stats = stats.lock().unwrap();
+            for (i, &b) in bucket_order.iter().enumerate() {
+                stats.add(i, bucket_order.len(), bucket_len(b), pilots[b] as Pilot);
+            }
+        }
+
+        Some(total_displacements)
+    }
+
+    fn find_pilot(
+        &self,
+        kmax: u64,
+        bucket: &[Hx::H],
+        taken: &mut BitSlice,
+    ) -> Option<(Pilot, PilotHash)> {
+        // This gives ~10% speedup.
+        match bucket.len() {
+            1 => self.find_pilot_array::<1>(kmax, bucket.try_into().unwrap(), taken),
+            2 => self.find_pilot_array::<2>(kmax, bucket.try_into().unwrap(), taken),
+            3 => self.find_pilot_array::<3>(kmax, bucket.try_into().unwrap(), taken),
+            4 => self.find_pilot_array::<4>(kmax, bucket.try_into().unwrap(), taken),
+            5 => self.find_pilot_array::<5>(kmax, bucket.try_into().unwrap(), taken),
+            6 => self.find_pilot_array::<6>(kmax, bucket.try_into().unwrap(), taken),
+            7 => self.find_pilot_array::<7>(kmax, bucket.try_into().unwrap(), taken),
+            8 => self.find_pilot_array::<8>(kmax, bucket.try_into().unwrap(), taken),
+            _ => self.find_pilot_slice(kmax, bucket, taken),
+        }
+    }
+    fn find_pilot_array<const L: usize>(
+        &self,
+        kmax: u64,
+        bucket: &[Hx::H; L],
+        taken: &mut BitSlice,
+    ) -> Option<(Pilot, PilotHash)> {
+        self.find_pilot_slice(kmax, bucket, taken)
+    }
+
+    // Note: Prefetching on `taken` is not needed because we use parts that fit in L1 cache anyway.
+    //
+    // Note: Tried looping over multiple pilots in parallel, but the additional
+    // lookups this does aren't worth it.
+    #[inline(always)]
+    fn find_pilot_slice(
+        &self,
+        kmax: u64,
+        bucket: &[Hx::H],
+        taken: &mut BitSlice,
+    ) -> Option<(Pilot, PilotHash)> {
+        let r = bucket.len() / 4 * 4;
+        'p: for p in 0u64..kmax {
+            let hp = self.hash_pilot(p);
+            // True when the slot for hx is already taken.
+            let check = |hx| unsafe { *taken.get_unchecked(self.slot_in_part_hp(hx, hp)) };
+
+            // Process chunks of 4 bucket elements at a time.
+            // This reduces branch-misses (of all of displace) 3-fold, giving 20% speedup.
+            for i in (0..r).step_by(4) {
+                // Check all 4 elements of the chunk without early break.
+                // NOTE: It's hard to SIMD vectorize the `slot` computation
+                // here because it uses 64x64->128bit multiplies.
+                let checks: [bool; 4] = unsafe {
+                    [
+                        check(*bucket.get_unchecked(i)),
+                        check(*bucket.get_unchecked(i + 1)),
+                        check(*bucket.get_unchecked(i + 2)),
+                        check(*bucket.get_unchecked(i + 3)),
+                    ]
+                };
+                if checks.iter().any(|&bad| bad) {
+                    continue 'p;
+                }
+            }
+            // Check remaining elements.
+            let mut bad = false;
+            for &hx in &bucket[r..] {
+                bad |= check(hx);
+            }
+            if bad {
+                continue 'p;
+            }
+
+            if self.try_take_pilot(bucket, hp, taken) {
+                return Some((p, hp));
+            }
+        }
+        None
+    }
+
+    /// Fill `taken` with the slots for `hp`, but backtrack as soon as a
+    /// collision within the bucket is found.
+    ///
+    /// Returns true on success.
+    fn try_take_pilot(&self, bucket: &[Hx::H], hp: PilotHash, taken: &mut BitSlice) -> bool {
+        // This bucket does not collide with previous buckets, but it may still collide with itself.
+        for (i, &hx) in bucket.iter().enumerate() {
+            let slot = self.slot_in_part_hp(hx, hp);
+            if unsafe { *taken.get_unchecked(slot) } {
+                // Collision within the bucket. Clean already set entries.
+                for &hx in unsafe { bucket.get_unchecked(..i) } {
+                    unsafe { taken.set_unchecked(self.slot_in_part_hp(hx, hp), false) };
+                }
+                return false;
+            }
+            unsafe { taken.set_unchecked(slot, true) };
+        }
+        true
+    }
+}
+
+```
+</file>
+
+<file path="src/fastmod.rs">
+```rust
+// Multiply a u128 by u64 and return the upper 64 bits of the result.
+// ((lowbits * d as u128) >> 128) as u64
+fn mul128_u64(lowbits: u128, d: u64) -> u64 {
+    let bot_half = ((lowbits & u64::MAX as u128) * d as u128) >> 64; // Won't overflow
+    let top_half = (lowbits >> 64) * d as u128;
+    let both_halves = bot_half + top_half; // Both halves are already shifted down by 64
+    (both_halves >> 64) as u64
+}
+
+/// FastMod64
+/// Taken from https://github.com/lemire/fastmod/blob/master/include/fastmod.h
+#[derive(Copy, Clone, Debug)]
+pub struct FM64 {
+    d: u64,
+    m: u128,
+}
+impl Reduce for FM64 {
+    fn new(d: usize) -> Self {
+        Self {
+            d: d as u64,
+            m: u128::MAX / d as u128 + 1,
+        }
+    }
+    fn reduce(self, h: u64) -> usize {
+        let lowbits = self.m.wrapping_mul(h as u128);
+        mul128_u64(lowbits, self.d) as usize
+    }
+}
+
+/// FastMod32, using the low 32 bits of the hash.
+/// Taken from https://github.com/lemire/fastmod/blob/master/include/fastmod.h
+#[derive(Copy, Clone, Debug)]
+pub struct FM32 {
+    d: u64,
+    m: u64,
+}
+impl Reduce for FM32 {
+    fn new(d: usize) -> Self {
+        assert!(d <= u32::MAX as usize);
+        Self {
+            d: d as u64,
+            m: u64::MAX / d as u64 + 1,
+        }
+    }
+    fn reduce(self, h: u64) -> usize {
+        let lowbits = self.m * (h as u64);
+        ((lowbits as u128 * self.d as u128) >> 64) as usize
+    }
+}
+
+```
+</file>
+
+<file path="src/hash.rs">
+```rust
+use crate::KeyT;
+use std::fmt::Debug;
+
+/// A wrapper trait that supports both 64 and 128bit hashes.
+pub trait Hash: Copy + Debug + Default + Send + Sync + Eq + rdst::RadixKey {
+    /// Returns the low 64bits.
+    fn low(&self) -> u64;
+    /// Returns the high 64bits.
+    fn high(&self) -> u64;
+}
+
+impl Hash for u64 {
+    fn low(&self) -> u64 {
+        *self
+    }
+    fn high(&self) -> u64 {
+        *self
+    }
+}
+
+impl Hash for u128 {
+    fn low(&self) -> u64 {
+        *self as u64
+    }
+    fn high(&self) -> u64 {
+        (*self >> 64) as u64
+    }
+}
+
+pub trait Hasher<Key>: Sync {
+    type H: Hash;
+    fn hash(x: &Key, seed: u64) -> Self::H;
+}
+
+fn to_bytes<Key>(x: &Key) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(x as *const Key as *const u8, std::mem::size_of::<Key>()) }
+}
+
+// A. u64-only hashers
+/// Multiply the key by a mixing constant.
+pub struct MulHash;
+/// Pass the key through unchanged.
+/// Used for benchmarking.
+pub struct NoHash;
+
+// B. Fast hashers that are always included.
+/// Good for hashing `u64` and smaller keys.
+/// Note that this doesn't use a seed, so while it is a bijection on `u64` keys,
+/// larger keys will give unfixable collisions.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct FxHash;
+/// Very fast weak 64bit hash with more quality than FxHash.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Murmur2_64;
+/// Fast weak 128bit hash for integers.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct FastMurmur3_128;
+
+// C. Additional higher quality but slower hashers.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Murmur3_128;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Highway64;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Highway128;
+/// Fast good 64bit hash.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct City64;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct City128;
+/// Fast good 64bit hash.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Wy64;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Xx64;
+/// Fast good 128bit hash (but fails at 10^11 keys).
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Xx128;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Metro64;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Metro128;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Spooky64;
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct Spooky128;
+
+// Hash implementations.
+
+// A. u64-only hashers.
+impl MulHash {
+    // Reuse the mixing constant from MurmurHash.
+    // pub const C: u64 = 0xc6a4a7935bd1e995;
+    // Reuse the mixing constant from FxHash.
+    pub const C: u64 = 0x517cc1b727220a95;
+}
+impl Hasher<u64> for MulHash {
+    type H = u64;
+    fn hash(x: &u64, _seed: u64) -> u64 {
+        Self::C.wrapping_mul(*x)
+    }
+}
+impl Hasher<u64> for NoHash {
+    type H = u64;
+    fn hash(x: &u64, _seed: u64) -> u64 {
+        *x
+    }
+}
+
+// B. Fast hashers that are always included.
+impl<Key: KeyT> Hasher<Key> for FxHash {
+    type H = u64;
+    fn hash(x: &Key, _seed: u64) -> u64 {
+        fxhash::hash64(x)
+    }
+}
+impl<Key> Hasher<Key> for Murmur2_64 {
+    type H = u64;
+    fn hash(x: &Key, seed: u64) -> u64 {
+        murmur2::murmur64a(to_bytes(x), seed)
+    }
+}
+impl<Key> Hasher<Key> for FastMurmur3_128 {
+    type H = u128;
+    fn hash(x: &Key, seed: u64) -> u128 {
+        fastmurmur3::murmur3_x64_128(to_bytes(x), seed)
+    }
+}
+
+// C. Furhther high quality hash functions.
+impl<Key> Hasher<Key> for Murmur3_128 {
+    type H = u128;
+    fn hash(x: &Key, seed: u64) -> u128 {
+        let mut bytes = to_bytes(x);
+        murmur3::murmur3_x64_128(&mut bytes, seed as u32).unwrap()
+    }
+}
+impl<Key> Hasher<Key> for Highway64 {
+    type H = u64;
+    fn hash(x: &Key, _seed: u64) -> u64 {
+        use highway::HighwayHash;
+        highway::HighwayHasher::default().hash64(to_bytes(x))
+    }
+}
+impl<Key> Hasher<Key> for Highway128 {
+    type H = u128;
+    fn hash(x: &Key, _seed: u64) -> u128 {
+        use highway::HighwayHash;
+        let words = highway::HighwayHasher::default().hash128(to_bytes(x));
+        unsafe { std::mem::transmute(words) }
+    }
+}
+impl<Key> Hasher<Key> for City64 {
+    type H = u64;
+    fn hash(x: &Key, _seed: u64) -> u64 {
+        cityhash_102_rs::city_hash_64(to_bytes(x))
+    }
+}
+impl<Key> Hasher<Key> for City128 {
+    type H = u128;
+    fn hash(x: &Key, seed: u64) -> u128 {
+        cityhash_102_rs::city_hash_128_seed(to_bytes(x), seed as _)
+    }
+}
+impl<Key> Hasher<Key> for Wy64 {
+    type H = u64;
+    fn hash(x: &Key, seed: u64) -> u64 {
+        wyhash::wyhash(to_bytes(x), seed)
+    }
+}
+impl<Key> Hasher<Key> for Xx64 {
+    type H = u64;
+    fn hash(x: &Key, seed: u64) -> u64 {
+        xxhash_rust::xxh64::xxh64(to_bytes(x), seed)
+    }
+}
+impl<Key> Hasher<Key> for Xx128 {
+    type H = u128;
+    fn hash(x: &Key, seed: u64) -> u128 {
+        xxhash_rust::xxh3::xxh3_128_with_seed(to_bytes(x), seed)
+    }
+}
+impl<Key> Hasher<Key> for Metro64 {
+    type H = u64;
+    fn hash(x: &Key, seed: u64) -> u64 {
+        use std::hash::Hasher;
+        let mut hasher = metrohash::MetroHash64::with_seed(seed);
+        hasher.write(to_bytes(x));
+        hasher.finish()
+    }
+}
+impl<Key> Hasher<Key> for Metro128 {
+    type H = u128;
+    fn hash(x: &Key, seed: u64) -> u128 {
+        use std::hash::Hasher;
+        let mut hasher = metrohash::MetroHash128::with_seed(seed);
+        hasher.write(to_bytes(x));
+        let (l, h) = hasher.finish128();
+        (h as u128) << 64 | l as u128
+    }
+}
+impl<Key> Hasher<Key> for Spooky64 {
+    type H = u64;
+    fn hash(x: &Key, seed: u64) -> u64 {
+        use std::hash::Hasher;
+        let mut hasher = hashers::jenkins::spooky_hash::SpookyHasher::new(seed, 0);
+        hasher.write(to_bytes(x));
+        hasher.finish()
+    }
+}
+impl<Key> Hasher<Key> for Spooky128 {
+    type H = u128;
+    fn hash(x: &Key, seed: u64) -> u128 {
+        use std::hash::Hasher;
+        let mut hasher = hashers::jenkins::spooky_hash::SpookyHasher::new(seed, 0);
+        hasher.write(to_bytes(x));
+        let (l, h) = hasher.finish128();
+        (h as u128) << 64 | l as u128
+    }
+}
+
+```
+</file>
+
+<file path="src/lib.rs">
+```rust
+//! PTRHash is a minimal perfect hash function.
+//!
+//! Usage example:
+//! ```rust
+//! use ptr_hash::{PtrHash, PtrHashParams};
+//! let n = 1_000_000;
+//! let keys = ptr_hash::util::generate_keys(n);
+//! let mphf = <PtrHash>::new(&keys, PtrHashParams::default());
+//! let sum = mphf.index_stream::<32, true>(&keys).sum::<usize>();
+//! assert_eq!(sum, (n * (n - 1)) / 2);
+//! // Get the minimal index of a key.
+//! let key = 0;
+//! let idx = mphf.index_minimal(&key);
+//! assert!(idx < n);
+//! // Get the non-minimal index of a key. Slightly faster.
+//! let _idx = mphf.index(&key);
+//! // An iterator over the indices of the keys.
+//! // 32: number of iterations ahead to prefetch.
+//! // true: remap to a minimal key in [0, n).
+//! let indices = mphf.index_stream::<32, true>(&keys);
+//! assert_eq!(indices.sum::<usize>(), (n * (n - 1)) / 2);
+//! // Test that all items map to different indices
+//! let mut taken = vec![false; n];
+//! for key in keys {
+//!     let idx = mphf.index_minimal(&key);
+//!     assert!(!taken[idx]);
+//!     taken[idx] = true;
+//! }
+//! ```
+//#![cfg_attr(target_arch = "aarch64", feature(stdsimd))]
+#![allow(clippy::needless_range_loop)]
+
+/// Customizable Hasher trait.
+pub mod hash;
+/// Extendable backing storage trait and types.
+pub mod pack;
+/// Reusable Tiny Elias-Fano implementation.
+pub mod tiny_ef;
+/// Some internal logging and testing utilities.
+pub mod util;
+
+mod bucket_idx;
+mod displace;
+mod reduce;
+mod shard;
+mod sort_buckets;
+mod stats;
+
+
+use bitvec::{bitvec, vec::BitVec};
+use either::Either;
+use itertools::izip;
+use itertools::Itertools;
+use pack::EliasFano;
+use pack::MutPacked;
+use rand::{random, Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use rayon::prelude::*;
+use rdst::RadixSort;
+use std::{borrow::Borrow, default::Default, marker::PhantomData, time::Instant};
+use tiny_ef::TinyEf;
+
+use crate::{hash::*, pack::Packed, reduce::*, util::log_duration};
+
+/// Parameters for PtrHash construction.
+///
+/// Since these are not used in inner loops they are simple variables instead of template arguments.
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct PtrHashParams {
+    /// Use `n/alpha` slots approximately.
+    pub alpha: f64,
+    /// Use `c*n/lg(n)` buckets.
+    pub c: f64,
+    /// Map `beta` of elements...
+    pub beta: f64,
+    /// ... to `gamma` of buckets.
+    pub gamma: f64,
+    /// #slots/part will be the largest power of 2 not larger than this.
+    /// Default is 2^18.
+    pub slots_per_part: usize,
+    /// Upper bound on number of keys per shard.
+    /// Default is 2^33, or 32GB of hashes per shard.
+    pub keys_per_shard: usize,
+    /// When true, write each shard to a file instead of iterating multiple
+    /// times.
+    pub shard_to_disk: bool,
+
+    /// Print bucket size and pilot stats after construction.
+    pub print_stats: bool,
+}
+
+/// Default parameter values should provide reasonably fast construction for all n up to 2^32:
+/// - `alpha=0.98`
+/// - `c=9.0`
+/// - `slots_per_part=2^18=262144`
+impl Default for PtrHashParams {
+    fn default() -> Self {
+        Self {
+            alpha: 0.98,
+            c: 9.0,
+            // TODO: Understand why exactly this choice of parameters.
+            beta: 0.6,
+            gamma: 0.3,
+            slots_per_part: 1 << 18,
+            // By default, limit to 2^32 keys per shard, whose hashes take 8B*2^32=32GB.
+            keys_per_shard: 1 << 33,
+            shard_to_disk: false,
+            print_stats: false,
+        }
+    }
+}
+
+// Externally visible aliases for convenience.
+
+/// An alias for PtrHash with default generic arguments.
+/// Using this, you can write `DefaultPtrHash::new()` instead of `<PtrHash>::new()`.
+pub type DefaultPtrHash<H, Key> = PtrHash<Key, TinyEf, H, Vec<u8>>;
+
+/// Using EliasFano for the remap is slower but uses slightly less memory.
+pub type EfPtrHash<H, Key> = PtrHash<Key, EliasFano, H, Vec<u8>>;
+
+/// Trait that keys must satisfy.
+pub trait KeyT: Default + Send + Sync + std::hash::Hash {}
+impl<T: Default + Send + Sync + std::hash::Hash> KeyT for T {}
+
+// Some fixed algorithmic decisions.
+type Rp = FastReduce;
+type Rb = FastReduce;
+type Rs = MulReduce;
+type Pilot = u64;
+type PilotHash = u64;
+const SPLIT_BUCKETS: bool = true;
+
+/// PtrHash datastructure.
+/// The recommended way to use PtrHash with default types.
+///
+/// `F`: The packing to use for remapping free slots, default `TinyEf`.
+/// `Hx`: The hasher to use for keys, default `FxHash`.
+/// `V`: The pilots type. Usually `Vec<u8>`, or `&[u8]` for Epserde.
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct PtrHash<
+    Key: KeyT = u64,
+    F: Packed = TinyEf,
+    Hx: Hasher<Key> = hash::FxHash,
+    V: AsRef<[u8]> = Vec<u8>,
+> {
+    params: PtrHashParams,
+
+    /// The number of keys.
+    n: usize,
+    /// The total number of parts.
+    num_parts: usize,
+    /// The number of shards.
+    num_shards: usize,
+    /// The maximal number of parts per shard.
+    /// The last shard may have fewer parts.
+    parts_per_shard: usize,
+    /// The total number of slots.
+    s_total: usize,
+    /// The total number of buckets.
+    b_total: usize,
+    /// The number of slots per part, always a power of 2.
+    s: usize,
+    /// Since s is a power of 2, we can compute multiplications using a shift
+    /// instead.
+    s_bits: u32,
+    /// The number of buckets per part.
+    b: usize,
+
+    /// Additional constants.
+    p1: u64,
+    p2: usize,
+    c3: isize,
+
+    // Precomputed fast modulo operations.
+    /// Fast %shards.
+    rem_shards: Rp,
+    /// Fast %parts.
+    rem_parts: Rp,
+    /// Fast &b.
+    rem_b: Rb,
+    /// Fast &b_total.
+    rem_b_total: Rb,
+    /// Fast %(p2/p1 * B)
+    rem_c1: Rb,
+    /// Fast %((1-p1)/(1-p2) * B)
+    rem_c2: Rb,
+
+    /// Fast %s.
+    rem_s: Rs,
+
+    // Computed state.
+    /// The global seed.
+    seed: u64,
+    /// The pilots.
+    pilots: V,
+    /// Remap the out-of-bound slots to free slots.
+    remap: F,
+    _key: PhantomData<Key>,
+    _hx: PhantomData<Hx>,
+}
+
+/// Construction methods.
+impl<Key: KeyT, F: MutPacked, Hx: Hasher<Key>> PtrHash<Key, F, Hx, Vec<u8>> {
+    /// Create a new PtrHash instance from the given keys.
+    ///
+    /// NOTE: Only up to 2^40 keys are supported.
+    ///
+    /// Default parameters `alpha=0.98` and `c=9.0` should give fast
+    /// construction that always succeeds, using `2.69 bits/key`.  Depending on
+    /// the number of keys, you may be able to lower `c` (or slightly increase
+    /// `alpha`) to reduce memory usage, at the cost of increasing construction
+    /// time.
+    ///
+    /// By default, keys are partitioned into buckets of size ~250000, and parts are processed in parallel.
+    /// This will use all available threads. To limit to fewer threads, use:
+    /// ```rust
+    /// let threads = 1;
+    /// rayon::ThreadPoolBuilder::new()
+    /// .num_threads(threads)
+    /// .build_global()
+    /// .unwrap();
+    /// ```
+    ///
+    /// NOTE: Use `<PtrHash>::new()` or `DefaultPtrHash::new()` instead of simply `PtrHash::new()`.
+    pub fn new(keys: &[Key], params: PtrHashParams) -> Self {
+        let mut ptr_hash = Self::init(keys.len(), params);
+        ptr_hash.compute_pilots(keys.par_iter());
+        ptr_hash
+    }
+
+    /// Same as `new` above, but takes a `ParallelIterator` over keys instead of a slice.
+    /// The iterator must be cloneable for two reasons:
+    /// - Construction can fail for the first seed (e.g. due to duplicate
+    ///   hashes), in which case a new pass over keys is need.
+    /// NOTE: The exact API may change here depending on what's most convenient to use.
+    pub fn new_from_par_iter<'a>(
+        n: usize,
+        keys: impl ParallelIterator<Item = impl Borrow<Key>> + Clone + 'a,
+        params: PtrHashParams,
+    ) -> Self {
+        let mut ptr_hash = Self::init(n, params);
+        ptr_hash.compute_pilots(keys);
+        ptr_hash
+    }
+
+    /// PtrHash with random pilots, for benchmarking query speed.
+    pub fn new_random(n: usize, params: PtrHashParams) -> Self {
+        let mut ptr_hash = Self::init(n, params);
+        let k = (0..ptr_hash.b_total)
+            .map(|_| random::<u8>() as Pilot)
+            .collect();
+        ptr_hash.pilots = MutPacked::new(k);
+        let rem_s_total = FastReduce::new(ptr_hash.s_total);
+        let mut remap_vals = (ptr_hash.n..ptr_hash.s_total)
+            .map(|_| rem_s_total.reduce(random::<u64>()) as _)
+            .collect_vec();
+        remap_vals.radix_sort_unstable();
+        ptr_hash.remap = MutPacked::new(remap_vals);
+        ptr_hash.print_bits_per_element();
+        ptr_hash
+    }
+
+    /// Only initialize the parameters; do not compute the pilots yet.
+    fn init(n: usize, params: PtrHashParams) -> Self {
+        assert!(n > 1, "Things break if n=1.");
+        assert!(n < (1 << 40), "Number of keys must be less than 2^40.");
+
+        // Target number of slots in total over all parts.
+        let s_total_target = (n as f64 / params.alpha) as usize;
+
+        // Target number of buckets in total.
+        let b_total_target = params.c * (s_total_target as f64) / (s_total_target as f64).log2();
+
+        assert!(
+            params.slots_per_part <= u32::MAX as _,
+            "Each part must have <2^32 slots"
+        );
+        // We start with the given maximum number of slots per part, since
+        // that is what should fit in L1 or L2 cache.
+        // Thus, the number of partitions is:
+        let s = 1 << params.slots_per_part.ilog2();
+        let num_shards = n.div_ceil(params.keys_per_shard);
+        let parts_per_shard = s_total_target.div_ceil(s).div_ceil(num_shards);
+        let num_parts = num_shards * parts_per_shard;
+
+        let s_total = s * num_parts;
+        // b divisible by 3 is exploited by bucket_thirds.
+        let b = ((b_total_target / (num_parts as f64)).ceil() as usize).next_multiple_of(3);
+        let b_total = b * num_parts;
+        // TODO: Figure out if large gcd(b,s) is a problem for the original PtrHash.
+
+        eprintln!("        keys: {n:>10}");
+        eprintln!("      shards: {num_shards:>10}");
+        eprintln!("       parts: {num_parts:>10}");
+        eprintln!("   slots/prt: {s:>10}");
+        eprintln!("   slots tot: {s_total:>10}");
+        eprintln!(" buckets/prt: {b:>10}");
+        eprintln!(" buckets tot: {b_total:>10}");
+        eprintln!(" keys/bucket: {:>13.2}", n as f64 / b_total as f64);
+
+        // Map beta% of hashes to gamma% of buckets.
+        let beta = params.beta;
+        let gamma = params.gamma;
+
+        let p1 = (beta * u64::MAX as f64) as u64;
+        let p2 = (gamma * b as f64) as usize;
+        // (b-2) to avoid rounding issues.
+        let c1 = (gamma / beta * b.saturating_sub(2) as f64).floor() as usize;
+        // (b-2) to avoid rounding issues.
+        let c2 = (1. - gamma) / (1. - beta) * b.saturating_sub(2) as f64;
+        // +1 to avoid bucket<p2 due to rounding.
+        let c3 = p2 as isize - (beta * c2) as isize + 1;
+        Self {
+            params,
+            n,
+            num_parts,
+            num_shards,
+            parts_per_shard,
+            s_total,
+            s,
+            s_bits: s.ilog2(),
+            b_total,
+            b,
+            p1,
+            p2,
+            c3,
+            rem_shards: Rp::new(num_shards),
+            rem_parts: Rp::new(num_parts),
+            rem_b: Rb::new(b),
+            rem_b_total: Rb::new(b_total),
+            rem_c1: Rb::new(c1),
+            rem_c2: Rb::new(c2 as usize),
+            rem_s: Rs::new(s),
+            seed: 0,
+            pilots: Default::default(),
+            remap: F::default(),
+            _key: PhantomData,
+            _hx: PhantomData,
+        }
+    }
+
+    fn compute_pilots<'a>(
+        &mut self,
+        keys: impl ParallelIterator<Item = impl Borrow<Key>> + Clone + 'a,
+    ) {
+        let overall_start = std::time::Instant::now();
+        // Initialize arrays;
+        let mut taken: Vec<BitVec> = vec![];
+        let mut pilots: Vec<u8> = vec![];
+
+        let mut tries = 0;
+        const MAX_TRIES: usize = 3;
+
+        let mut rng = ChaCha8Rng::seed_from_u64(31415);
+
+        // Loop over global seeds `s`.
+        's: loop {
+            tries += 1;
+            assert!(
+                tries <= MAX_TRIES,
+                "Failed to find a global seed after {MAX_TRIES} tries for {} keys.",
+                self.s
+            );
+            if tries > 1 {
+                eprintln!("Try {tries} for global seed.");
+            }
+
+            // Choose a global seed s.
+            self.seed = rng.gen();
+
+            // Reset output-memory.
+            pilots.clear();
+            pilots.resize(self.b_total, 0);
+
+            for taken in taken.iter_mut() {
+                taken.clear();
+                taken.resize(self.s, false);
+            }
+            taken.resize_with(self.num_parts, || bitvec![0; self.s]);
+
+            // Iterate over shards.
+            let shard_hashes = if self.params.shard_to_disk {
+                Either::Left(self.shard_keys_to_disk(keys.clone()))
+            } else {
+                Either::Right(self.shard_keys(keys.clone()))
+            };
+            let shard_pilots = pilots.chunks_mut(self.b * self.parts_per_shard);
+            let shard_taken = taken.chunks_mut(self.parts_per_shard);
+            // eprintln!("Num shards (keys) {}", shard_keys.());
+            for (shard, (hashes, pilots, taken)) in
+                izip!(shard_hashes, shard_pilots, shard_taken).enumerate()
+            {
+                eprintln!("Shard {shard:>3}/{:3}", self.num_shards);
+
+                // Determine the buckets.
+                let start = std::time::Instant::now();
+                let Some((hashes, part_starts)) = self.sort_parts(shard, hashes) else {
+                    // Found duplicate hashes.
+                    continue 's;
+                };
+                let start = log_duration("sort buckets", start);
+
+                // Compute pilots.
+                if !self.displace_shard(shard, &hashes, &part_starts, pilots, taken) {
+                    continue 's;
+                }
+                log_duration("displace", start);
+            }
+
+            // Found a suitable seed.
+            if tries > 1 {
+                eprintln!("Found seed after {tries} tries.");
+            }
+
+            break 's;
+        }
+
+        let start = std::time::Instant::now();
+        self.remap_free_slots(taken);
+        log_duration("remap free", start);
+        self.print_bits_per_element();
+        log_duration("total build", overall_start);
+
+        // Pack the data.
+        self.pilots = pilots;
+    }
+
+    fn remap_free_slots(&mut self, taken: Vec<BitVec>) {
+        assert_eq!(
+            taken.iter().map(|t| t.count_zeros()).sum::<usize>(),
+            self.s_total - self.n,
+            "Not the right number of free slots left!\n total slots {} - n {}",
+            self.s_total,
+            self.n
+        );
+
+        if self.s_total == self.n {
+            return;
+        }
+
+        // Compute the free spots.
+        let mut v = Vec::with_capacity(self.s_total - self.n);
+        let get = |t: &Vec<BitVec>, idx: usize| t[idx / self.s][idx % self.s];
+        for i in taken
+            .iter()
+            .enumerate()
+            .flat_map(|(p, t)| {
+                let offset = p * self.s;
+                t.iter_zeros().map(move |i| offset + i)
+            })
+            .take_while(|&i| i < self.n)
+        {
+            while !get(&taken, self.n + v.len()) {
+                v.push(i as u64);
+            }
+            v.push(i as u64);
+        }
+        self.remap = MutPacked::new(v);
+    }
+}
+
+/// Indexing methods.
+impl<Key: KeyT, F: Packed, Hx: Hasher<Key>, V: AsRef<[u8]>> PtrHash<Key, F, Hx, V> {
+    /// Return the number of bits per element used for the pilots (`.0`) and the
+    /// remapping (`.1)`.
+    pub fn bits_per_element(&self) -> (f32, f32) {
+        let pilots = self.pilots.as_ref().size_in_bytes() as f32 / self.n as f32;
+        let remap = self.remap.size_in_bytes() as f32 / self.n as f32;
+        (8. * pilots, 8. * remap)
+    }
+
+    pub fn print_bits_per_element(&self) {
+        let (p, r) = self.bits_per_element();
+        eprintln!(
+            "bits/element: {:>13.2}  (pilots {p:4.2}, remap {r:4.2})",
+            p + r
+        );
+    }
+
+    /// Get a non-minimal index of the given key.
+    /// Use `index_minimal` to get a key in `[0, n)`.
+    ///
+    /// `index.rs` has additional streaming/SIMD implementations.
+    pub fn index(&self, key: &Key) -> usize {
+        let hx = self.hash_key(key);
+        let b = self.bucket(hx);
+        let pilot = self.pilots.as_ref().index(b);
+        self.slot(hx, pilot)
+    }
+
+    /// Get the index for `key` in `[0, n)`.
+    pub fn index_minimal(&self, key: &Key) -> usize {
+        let hx = self.hash_key(key);
+        let b = self.bucket(hx);
+        let p = self.pilots.as_ref().index(b);
+        let slot = self.slot(hx, p);
+        if slot < self.n {
+            slot
+        } else {
+            self.remap.index(slot - self.n) as usize
+        }
+    }
+
+    /// Takes an iterator over keys and returns an iterator over the indices of the keys.
+    ///
+    /// Uses a buffer of size K for prefetching ahead.
+    //
+    // TODO: A chunked version that processes K keys at a time.
+    // TODO: SIMD to determine buckets/positions in parallel.
+    pub fn index_stream<'a, const K: usize, const MINIMAL: bool>(
+        &'a self,
+        xs: impl IntoIterator<Item = &'a Key> + 'a,
+    ) -> impl Iterator<Item = usize> + 'a {
+        // Append K values at the end of the iterator to make sure we wrap sufficiently.
+        let mut hxs = xs
+            .into_iter()
+            .map(|x| self.hash_key(x))
+            .chain(std::iter::repeat(Hx::H::default()).take(K));
+
+        let mut next_hx: [Hx::H; K] = [Hx::H::default(); K];
+        let mut next_i: [usize; K] = [0; K];
+        // Initialize and prefetch first values.
+        for idx in 0..K {
+            next_hx[idx] = hxs.next().unwrap();
+            next_i[idx] = self.bucket(next_hx[idx]);
+            crate::util::prefetch_index(self.pilots.as_ref(), next_i[idx]);
+        }
+        hxs.enumerate().map(move |(idx, hx)| {
+            let idx = idx % K;
+            let cur_hx = next_hx[idx];
+            let cur_i = next_i[idx];
+            next_hx[idx] = hx;
+            next_i[idx] = self.bucket(next_hx[idx]);
+            crate::util::prefetch_index(self.pilots.as_ref(), next_i[idx]);
+            let pilot = self.pilots.as_ref().index(cur_i);
+            // NOTE: Caching `part` slows things down, so it's recomputed as part of `self.slot`.
+            let slot = self.slot(cur_hx, pilot);
+            if MINIMAL && slot >= self.n {
+                self.remap.index(slot - self.n) as usize
+            } else {
+                slot
+            }
+        })
+    }
+
+    fn hash_key(&self, x: &Key) -> Hx::H {
+        Hx::hash(x, self.seed)
+    }
+
+    fn hash_pilot(&self, p: Pilot) -> PilotHash {
+        MulHash::hash(&p, self.seed)
+    }
+
+    fn shard(&self, hx: Hx::H) -> usize {
+        self.rem_shards.reduce(hx.high())
+    }
+
+    fn part(&self, hx: Hx::H) -> usize {
+        self.rem_parts.reduce(hx.high())
+    }
+
+    /// Map `hx_remainder` to a bucket in the range [0, self.b).
+    /// Hashes <self.p1 are mapped to large buckets [0, self.p2).
+    /// Hashes >=self.p1 are mapped to small [self.p2, self.b).
+    ///
+    /// (Unless SPLIT_BUCKETS is false, in which case all hashes are mapped to [0, self.b).)
+    fn bucket_in_part(&self, hx_remainder: u64) -> usize {
+        if !SPLIT_BUCKETS {
+            return self.rem_b.reduce(hx_remainder);
+        }
+
+        // NOTE: There is a lot of MOV/CMOV going on here.
+        let is_large = hx_remainder >= self.p1;
+        let rem = if is_large { self.rem_c2 } else { self.rem_c1 };
+        let b = (is_large as isize * self.c3 + rem.reduce(hx_remainder) as isize) as usize;
+        debug_assert!(!is_large || self.p2 <= b, "p2 {} <= b {}", self.p2, b);
+        debug_assert!(!is_large || b < self.b, "b {} < p2 {}", b, self.b);
+        debug_assert!(is_large || b < self.p2, "b {} < p2 {}", b, self.p2);
+        b
+    }
+
+    /// See bucket.rs for additional implementations.
+    /// Returns the offset in the slots array for the current part and the bucket index.
+    fn bucket(&self, hx: Hx::H) -> usize {
+        if !SPLIT_BUCKETS {
+            return self.rem_b_total.reduce(hx.high());
+        }
+
+        // Extract the high bits for part selection; do normal bucket
+        // computation within the part using the remaining bits.
+        // NOTE: This is somewhat slow, but doing better is hard.
+        let (part, hx) = self.rem_parts.reduce_with_remainder(hx.high());
+        let bucket = self.bucket_in_part(hx);
+        part * self.b + bucket
+    }
+
+    /// Slot uses the 64 low bits of the hash.
+    fn slot(&self, hx: Hx::H, pilot: u64) -> usize {
+        (self.part(hx) << self.s_bits) + self.slot_in_part(hx, pilot)
+    }
+
+    fn slot_in_part(&self, hx: Hx::H, pilot: Pilot) -> usize {
+        self.slot_in_part_hp(hx, self.hash_pilot(pilot))
+    }
+
+    /// Slot uses the 64 low bits of the hash.
+    fn slot_in_part_hp(&self, hx: Hx::H, hp: PilotHash) -> usize {
+        self.rem_s.reduce(hx.low() ^ hp)
+    }
+}
+
+```
+</file>
+
+<file path="src/pack.rs">
+```rust
+use sucds::mii_sequences::EliasFanoBuilder;
+
+use crate::tiny_ef::{TinyEf, TinyEfUnit};
+
+/// A trait for backing storage types.
+pub trait Packed: Sync {
+    /// This uses get_unchecked internally, so you must ensure that index is within bounds.
+    fn index(&self, index: usize) -> u64;
+    /// Prefetch the element at the given index.
+    fn prefetch(&self, _index: usize) {}
+    /// Size in bytes.
+    fn size_in_bytes(&self) -> usize;
+}
+
+/// An extension of Packed that can be used during construction.
+pub trait MutPacked: Packed {
+    fn default() -> Self;
+    fn new(vals: Vec<u64>) -> Self;
+}
+
+macro_rules! vec_impl {
+    ($t:ty) => {
+        impl MutPacked for Vec<$t> {
+            fn default() -> Self {
+                Default::default()
+            }
+            fn new(vals: Vec<u64>) -> Self {
+                vals.into_iter()
+                    .map(|x| {
+                        x.try_into()
+                            .expect(&format!("Value {x} is larger than backing type can hold."))
+                    })
+                    .collect()
+            }
+        }
+        impl Packed for Vec<$t> {
+            fn index(&self, index: usize) -> u64 {
+                unsafe { (*self.get_unchecked(index)) as u64 }
+            }
+            fn prefetch(&self, index: usize) {
+                crate::util::prefetch_index(self, index);
+            }
+            fn size_in_bytes(&self) -> usize {
+                std::mem::size_of_val(self.as_slice())
+            }
+        }
+    };
+}
+
+vec_impl!(u8);
+vec_impl!(u16);
+vec_impl!(u32);
+vec_impl!(u64);
+
+macro_rules! slice_impl {
+    ($t:ty) => {
+        impl Packed for [$t] {
+            fn index(&self, index: usize) -> u64 {
+                unsafe { (*self.get_unchecked(index)) as u64 }
+            }
+            fn prefetch(&self, index: usize) {
+                crate::util::prefetch_index(self, index);
+            }
+            fn size_in_bytes(&self) -> usize {
+                std::mem::size_of_val(self)
+            }
+        }
+    };
+}
+
+slice_impl!(u8);
+slice_impl!(u16);
+slice_impl!(u32);
+slice_impl!(u64);
+
+impl MutPacked for TinyEf<Vec<TinyEfUnit>> {
+    fn default() -> Self {
+        Default::default()
+    }
+    fn new(vals: Vec<u64>) -> Self {
+        Self::new(&vals)
+    }
+}
+
+impl<T: AsRef<[TinyEfUnit]> + Sync> Packed for TinyEf<T> {
+    fn index(&self, index: usize) -> u64 {
+        self.index(index)
+    }
+    fn prefetch(&self, index: usize) {
+        self.prefetch(index)
+    }
+    fn size_in_bytes(&self) -> usize {
+        self.size_in_bytes()
+    }
+}
+
+/// Wrapper around the Sucds implementation.
+pub struct EliasFano(sucds::mii_sequences::EliasFano);
+
+impl MutPacked for EliasFano {
+    fn default() -> Self {
+        EliasFano(Default::default())
+    }
+
+    fn new(vals: Vec<u64>) -> Self {
+        if vals.is_empty() {
+            Self::default()
+        } else {
+            let mut builder =
+                EliasFanoBuilder::new(*vals.last().unwrap() as usize + 1, vals.len()).unwrap();
+            builder.extend(vals.iter().map(|&x| x as usize)).unwrap();
+            EliasFano(builder.build())
+        }
+    }
+}
+
+impl Packed for EliasFano {
+    #[inline(always)]
+    fn index(&self, index: usize) -> u64 {
+        self.0.select(index as _).unwrap() as u64
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        sucds::Serializable::size_in_bytes(&self.0)
+    }
+}
+
+```
+</file>
+
+<file path="src/reduce.rs">
+```rust
+use crate::hash::MulHash;
+
+pub trait Reduce: Copy + Sync + std::fmt::Debug {
+    /// Reduce into the range [0, d).
+    fn new(d: usize) -> Self;
+    /// Reduce a (uniform random 64 bit) number into the range [0, d).
+    fn reduce(self, h: u64) -> usize;
+    /// Reduce a (uniform random 64 bit) number into the range [0, d),
+    /// and also return a remainder that can be used for further reductions.
+    fn reduce_with_remainder(self, _h: u64) -> (usize, u64) {
+        unimplemented!();
+    }
+}
+
+/// FastReduce64
+/// Taken from https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+/// NOTE: This only uses the lg(n) high-order bits of entropy from the hash.
+#[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct FastReduce {
+    d: usize,
+}
+impl Reduce for FastReduce {
+    fn new(d: usize) -> Self {
+        Self { d }
+    }
+    fn reduce(self, h: u64) -> usize {
+        ((self.d as u128 * h as u128) >> 64) as usize
+    }
+    fn reduce_with_remainder(self, h: u64) -> (usize, u64) {
+        let r = self.d as u128 * h as u128;
+        ((r >> 64) as usize, r as u64)
+    }
+}
+
+/// Multiply-Reduce 64
+/// Multiply by mixing constant C and take the required number of bits.
+/// Only works when the modulus is a power of 2.
+#[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct MulReduce {
+    mask: usize,
+}
+impl MulReduce {
+    pub const C: u64 = MulHash::C;
+}
+impl Reduce for MulReduce {
+    fn new(d: usize) -> Self {
+        assert!(d.is_power_of_two());
+        Self { mask: d - 1 }
+    }
+    fn reduce(self, h: u64) -> usize {
+        ((Self::C as u128 * h as u128) >> 64) as usize & self.mask
+    }
+}
+
+```
+</file>
+
+<file path="src/shard.rs">
+```rust
+use std::{
+    fs::File,
+    io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write},
+    sync::Mutex,
+    thread,
+    time::Duration,
+};
+
+use super::*;
+
+impl<Key: KeyT, F: Packed, Hx: Hasher<Key>> PtrHash<Key, F, Hx> {
+    /// Loop over the keys once per shard.
+    /// Return an iterator over shards.
+    /// For each shard, a filtered copy of the ParallelIterator is returned.
+    pub(crate) fn shard_keys<'a>(
+        &'a self,
+        keys: impl ParallelIterator<Item = impl Borrow<Key>> + Clone + 'a,
+    ) -> impl Iterator<Item = Vec<Hx::H>> + 'a {
+        (0..self.num_shards).map(move |shard| {
+            keys.clone()
+                .map(|key| self.hash_key(key.borrow()))
+                .filter(move |h| self.shard(*h) == shard)
+                .collect()
+        })
+    }
+
+    /// Loop over the keys and write each keys hash to the corresponding shard.
+    /// Returns an iterator over shards.
+    /// Files are written to /tmp by default, but this can be changed using the
+    /// TMPDIR environment variable.
+    ///
+    /// This is based on `SigStore` in `sux-rs`, but simplified for the specific use case here.
+    /// https://github.com/vigna/sux-rs/blob/main/src/utils/sig_store.rs
+    pub(crate) fn shard_keys_to_disk<'a>(
+        &'a self,
+        keys: impl ParallelIterator<Item = impl Borrow<Key>> + Clone + 'a,
+    ) -> impl Iterator<Item = Vec<Hx::H>> + 'a {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        eprintln!("TMP PATH: {:?}", temp_dir.path());
+
+        // Create a file writer and count for each shard.
+        let writers = (0..self.num_shards)
+            .map(|shard| {
+                Mutex::new((
+                    BufWriter::new(
+                        File::options()
+                            .read(true)
+                            .write(true)
+                            .create(true)
+                            .open(temp_dir.path().join(format!("{}.tmp", shard)))
+                            .unwrap(),
+                    ),
+                    0,
+                ))
+            })
+            .collect_vec();
+
+        // Each thread has a local buffer per shard.
+        let init = || writers.iter().map(ThreadLocalBuf::new).collect_vec();
+        // Iterate over keys.
+        keys.for_each_init(init, |bufs, key| {
+            let h = self.hash_key(key.borrow());
+            let shard = self.shard(h);
+            bufs[shard].push(h);
+        });
+
+        eprintln!("Wrote all files. Pausing.");
+        for w in &writers {
+            let c = w.lock().unwrap().1;
+            eprintln!("Count: {c}");
+        }
+        thread::sleep(Duration::from_secs(10));
+
+        // Convert writers to files.
+        let files = writers
+            .into_iter()
+            .map(|w| {
+                let (mut w, cnt) = w.into_inner().unwrap();
+                w.flush().unwrap();
+                let mut file = w.into_inner().unwrap();
+                file.seek(SeekFrom::Start(0)).unwrap();
+                (file, cnt)
+            })
+            .collect_vec();
+
+        files.into_iter().map(move |(f, cnt)| {
+            let mut v = vec![Hx::H::default(); cnt];
+            let mut f = BufReader::new(f);
+            let (pre, data, post) = unsafe { v.align_to_mut::<u8>() };
+            assert!(pre.is_empty());
+            assert!(post.is_empty());
+            f.read_exact(data).unwrap();
+            v
+        })
+    }
+}
+
+struct ThreadLocalBuf<'a, H> {
+    buf: Vec<H>,
+    file: &'a Mutex<(BufWriter<File>, usize)>,
+}
+
+impl<'a, H> ThreadLocalBuf<'a, H> {
+    fn new(file: &'a Mutex<(BufWriter<File>, usize)>) -> Self {
+        Self {
+            buf: Vec::with_capacity(1 << 16),
+            file,
+        }
+    }
+    fn push(&mut self, h: H) {
+        self.buf.push(h);
+        // L2 size
+        if self.buf.len() == (1 << 16) {
+            self.flush();
+        }
+    }
+    fn flush(&mut self) {
+        let mut file = self.file.lock().unwrap();
+        let (pre, bytes, post) = unsafe { self.buf.align_to::<u8>() };
+        assert!(pre.is_empty());
+        assert!(post.is_empty());
+        file.0.write_all(bytes).unwrap();
+        file.1 += self.buf.len();
+        self.buf.clear();
+    }
+}
+
+impl<'a, H> Drop for ThreadLocalBuf<'a, H> {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
+```
+</file>
+
+<file path="src/sort_buckets.rs">
+```rust
+use super::*;
+use crate::bucket_idx::BucketIdx;
+use rdst::RadixSort;
+use std::time::Instant;
+
+impl<Key: KeyT, F: Packed, Hx: Hasher<Key>> PtrHash<Key, F, Hx> {
+    /// Returns:
+    /// 1. Hashes
+    /// 2. Start indices of each bucket.
+    /// 3. Order of the buckets within each part.
+    ///
+    /// This returns None if duplicate hashes are found.
+    #[must_use]
+    pub(super) fn sort_parts(
+        &self,
+        shard: usize,
+        mut hashes: Vec<Hx::H>,
+    ) -> Option<(Vec<Hx::H>, Vec<u32>)> {
+        // For FastReduce methods, we can just sort by hash directly
+        // instead of sorting by bucket id: For FR32L, first partition by those
+        // <self.p1 and those >=self.p1, and then sort each group using the low
+        // 32 bits.
+        // NOTE: This does not work for other reduction methods.
+
+        let start = Instant::now();
+        // 1. Collect hashes per part.
+        let start = log_duration("┌  hash keys", start);
+        // 2. Radix sort hashes.
+        // TODO: Write robinhood sort that inserts in the right place directly.
+        // A) Sort L1 sized ranges.
+        // B) Splat the front of each range to the next part of the target interval.
+        hashes.radix_sort_unstable();
+        let start = log_duration("├ radix sort", start);
+
+        // 3. Check duplicates.
+        let distinct = hashes.par_windows(2).all(|w| w[0] != w[1]);
+        let start = log_duration("├ check dups", start);
+        if !distinct {
+            eprintln!("Hashes are not distinct!");
+            return None;
+        }
+
+        // 4. Find the start of each part using binary search.
+        if !hashes.is_empty() {
+            assert!(shard * self.parts_per_shard <= self.part(hashes[0]));
+            assert!(self.part(*hashes.last().unwrap()) < (shard + 1) * self.parts_per_shard);
+        }
+        let mut part_starts = vec![0u32; self.parts_per_shard + 1];
+        for part_in_shard in 1..=self.parts_per_shard {
+            part_starts[part_in_shard] = hashes
+                .binary_search_by(|h| {
+                    if self.part(*h) < shard * self.parts_per_shard + part_in_shard {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    }
+                })
+                .unwrap_err() as u32;
+        }
+
+        // Check max part len.
+        let mut max_part_len = 0;
+        for (part, (start, end)) in part_starts.iter().tuple_windows().enumerate() {
+            let len = end - start;
+            max_part_len = max_part_len.max(len);
+            if len as usize > self.s {
+                eprintln!(
+                    "Shard {shard} Part {part}: More elements than slots! elements {len} > {} slots",
+                    self.s
+                );
+                return None;
+            }
+        }
+        eprintln!("max key/part: {max_part_len:>10}",);
+        eprintln!(
+            "max    alpha: {:>13.2}%",
+            100. * max_part_len as f32 / self.s as f32
+        );
+
+        log_duration("├part starts", start);
+
+        Some((hashes, part_starts))
+    }
+
+    // Sort the buckets in the given part and corresponding range of hashes.
+    pub(super) fn sort_buckets(&self, part: usize, hashes: &[Hx::H]) -> (Vec<u32>, Vec<BucketIdx>) {
+        // Where each bucket starts in hashes.
+        let mut bucket_starts = Vec::with_capacity(self.b + 1);
+
+        // The order of buckets, from large to small.
+        let mut order: Vec<BucketIdx> = vec![BucketIdx::NONE; self.b];
+
+        // The number of buckets of each length.
+        let mut bucket_len_cnt = vec![0; 32];
+
+        let mut end = 0;
+        bucket_starts.push(end as u32);
+
+        // Loop over buckets in part, setting start positions and counting # buckets of each size.
+        for b in 0..self.b {
+            let start = end;
+            // NOTE: Many branch misses here.
+            while end < hashes.len() && self.bucket(hashes[end]) == part * self.b + b {
+                end += 1;
+            }
+
+            let l = end - start;
+            if l >= bucket_len_cnt.len() {
+                bucket_len_cnt.resize(l + 1, 0);
+            }
+            bucket_len_cnt[l] += 1;
+            bucket_starts.push(end as u32);
+        }
+
+        assert_eq!(end, hashes.len());
+
+        let max_bucket_size = bucket_len_cnt.len() - 1;
+        {
+            let expected_bucket_size = self.s as f32 / self.b as f32;
+            assert!(max_bucket_size <= (20. * expected_bucket_size) as usize, "Part {part}: Bucket size {max_bucket_size} is too much larger than the expected size of {expected_bucket_size}." );
+        }
+
+        // Compute start positions of each range of buckets of equal size.
+        let mut acc = 0;
+        for i in (0..=max_bucket_size).rev() {
+            let tmp = bucket_len_cnt[i];
+            bucket_len_cnt[i] = acc;
+            acc += tmp;
+        }
+
+        // Write buckets to their right location.
+        for b in BucketIdx::range(self.b) {
+            let l = (bucket_starts[b + 1] - bucket_starts[b]) as usize;
+            order[bucket_len_cnt[l]] = b;
+            bucket_len_cnt[l] += 1;
+        }
+
+        (bucket_starts, order)
+    }
+}
+
+```
+</file>
+
+<file path="src/stats.rs">
+```rust
+use crate::Pilot;
+
+#[derive(Default, Clone)]
+struct Row {
+    buckets: usize,
+    elements: usize,
+    pilot_sum: Pilot,
+    pilot_max: Pilot,
+}
+
+impl Row {
+    fn add(&mut self, bucket_len: usize, pilot: Pilot) {
+        self.buckets += 1;
+        self.elements += bucket_len;
+        self.pilot_sum += pilot;
+        self.pilot_max = self.pilot_max.max(pilot);
+    }
+}
+
+pub struct BucketStats {
+    by_pct: Vec<Row>,
+    by_bucket_len: Vec<Row>,
+}
+
+impl BucketStats {
+    pub fn new() -> Self {
+        Self {
+            by_pct: vec![Row::default(); 100],
+            by_bucket_len: vec![Row::default(); 100],
+        }
+    }
+
+    pub fn add(&mut self, bucket_id: usize, buckets_total: usize, bucket_len: usize, pilot: Pilot) {
+        let pct = bucket_id * 100 / buckets_total;
+        self.by_pct[pct].add(bucket_len, pilot);
+        if self.by_bucket_len.len() <= bucket_len {
+            self.by_bucket_len.resize(bucket_len + 1, Row::default());
+        }
+        self.by_bucket_len[bucket_len].add(bucket_len, pilot);
+    }
+
+    pub fn print(&self) {
+        eprintln!();
+        Self::print_rows(&self.by_pct, false);
+        eprintln!();
+        Self::print_rows(&self.by_bucket_len, true);
+        eprintln!();
+    }
+
+    fn print_rows(rows: &[Row], reverse: bool) {
+        let b_total = rows.iter().map(|r| r.buckets).sum::<usize>();
+        let n = rows.iter().map(|r| r.elements).sum::<usize>();
+
+        eprintln!(
+            "{:>3}  {:>11} {:>7} {:>6} {:>6} {:>6} {:>10} {:>10}",
+            "sz", "cnt", "bucket%", "cuml%", "elem%", "cuml%", "avg p", "max p"
+        );
+        let mut bucket_cuml = 0;
+        let mut elem_cuml = 0;
+        let process_row = |row: &Row| {
+            if row.buckets == 0 {
+                return;
+            }
+            bucket_cuml += row.buckets;
+            elem_cuml += row.elements;
+            eprintln!(
+                "{:>3}: {:>11} {:>7.2} {:>6.2} {:>6.2} {:>6.2} {:>10.1} {:>10}",
+                row.elements / row.buckets,
+                row.buckets,
+                row.buckets as f32 / b_total as f32 * 100.,
+                bucket_cuml as f32 / b_total as f32 * 100.,
+                row.elements as f32 / n as f32 * 100.,
+                elem_cuml as f32 / n as f32 * 100.,
+                row.pilot_sum as f32 / row.buckets as f32,
+                row.pilot_max,
+            );
+        };
+        if reverse {
+            rows.iter().rev().for_each(process_row);
+        } else {
+            rows.iter().for_each(process_row);
+        }
+        let sum_pilots = rows.iter().map(|r| r.pilot_sum).sum::<Pilot>();
+        let max_pilot = rows.iter().map(|r| r.pilot_max).max().unwrap();
+        eprintln!(
+            "{:>3}: {:>11} {:>7.2} {:>6.2} {:>6.2} {:>6.2} {:>10.1} {:>10}",
+            "",
+            b_total,
+            100.,
+            100.,
+            100.,
+            100.,
+            sum_pilots as f32 / b_total as f32,
+            max_pilot
+        );
+    }
+}
+
+```
+</file>
+
+<file path="src/test.rs">
+```rust
+use super::*;
+use crate::util::generate_keys;
+
+/// Construct the MPHF and test all keys are mapped to unique indices.
+#[test]
+fn construct() {
+    for n in [
+        2,
+        10,
+        100,
+        1000,
+        10_000,
+        100_000,
+        1_000_000,
+        10_000_000,
+        100_000_000,
+    ] {
+        let keys = generate_keys(n);
+        let ptr_hash = <PtrHash>::new(&keys, Default::default());
+        let mut done = bitvec![0; n];
+        for key in keys {
+            let idx = ptr_hash.index_minimal(&key);
+            assert!(!done[idx]);
+            done.set(idx, true);
+        }
+    }
+}
+
+#[test]
+fn index_stream() {
+    for n in [2, 10, 100, 1000, 10_000, 100_000, 1_000_000] {
+        let keys = generate_keys(n);
+        let ptr_hash = <PtrHash>::new(&keys, Default::default());
+        let sum = ptr_hash.index_stream::<32, true>(&keys).sum::<usize>();
+        assert_eq!(sum, (n * (n - 1)) / 2);
+    }
+}
+
+#[test]
+fn new_par_iter() {
+    let n = 10_000_000;
+    let keys = generate_keys(n);
+    <PtrHash>::new_from_par_iter(n, keys.par_iter(), Default::default());
+}
+
+#[test]
+fn in_memory_sharding() {
+    let n = 1 << 25;
+    let range = 0..n as u64;
+    let keys = range.clone().into_par_iter();
+    let ptr_hash = <PtrHash>::new_from_par_iter(
+        n,
+        keys.clone(),
+        PtrHashParams {
+            keys_per_shard: 1 << 22,
+            shard_to_disk: false,
+            ..Default::default()
+        },
+    );
+    eprintln!("Checking duplicates...");
+    let mut done = bitvec![0; n];
+    for key in range {
+        let idx = ptr_hash.index_minimal(&key);
+        assert!(!done[idx]);
+        done.set(idx, true);
+    }
+}
+
+#[test]
+fn on_disk_sharding() {
+    let n = 1 << 25;
+    let range = 0..n as u64;
+    let keys = range.clone().into_par_iter();
+    let ptr_hash = <PtrHash>::new_from_par_iter(
+        n,
+        keys.clone(),
+        PtrHashParams {
+            keys_per_shard: 1 << 22,
+            shard_to_disk: true,
+            ..Default::default()
+        },
+    );
+    eprintln!("Checking duplicates...");
+    let mut done = bitvec![0; n];
+    for key in range {
+        let idx = ptr_hash.index_minimal(&key);
+        assert!(!done[idx]);
+        done.set(idx, true);
+    }
+}
+
+/// Test that sharded construction and queries work with more than 2^32 keys.
+#[test]
+#[ignore = "very slow"]
+fn many_keys_memory() {
+    let n = 1 << 33;
+    let n_query = 1 << 27;
+    let range = 0..n as u64;
+    let keys = range.clone().into_par_iter();
+    let ptr_hash = <PtrHash>::new_from_par_iter(
+        n,
+        keys.clone(),
+        PtrHashParams {
+            keys_per_shard: 1 << 30,
+            shard_to_disk: false,
+            ..Default::default()
+        },
+    );
+    // Since running all queries is super slow, we only check a subset of them.
+    // Although this doesn't completely check that there are no duplicate
+    // mappings, by the birthday paradox we can be quite sure there are none
+    // since we check way more than sqrt(n) of them.
+    eprintln!("Checking duplicates...");
+    let mut done = bitvec![0; n];
+    for key in 0..n_query {
+        let idx = ptr_hash.index_minimal(&key);
+        assert!(!done[idx]);
+        done.set(idx, true);
+    }
+}
+
+/// Test that sharded construction and queries work with more than 2^32 keys.
+#[test]
+#[ignore = "very slow; writes 64GB to disk"]
+fn many_keys_disk() {
+    let n = 1 << 33;
+    let n_query = 1 << 27;
+    let range = 0..n as u64;
+    let keys = range.clone().into_par_iter();
+    let ptr_hash = <PtrHash>::new_from_par_iter(
+        n,
+        keys.clone(),
+        PtrHashParams {
+            keys_per_shard: 1 << 30,
+            shard_to_disk: true,
+            ..Default::default()
+        },
+    );
+    // Since running all queries is super slow, we only check a subset of them.
+    // Although this doesn't completely check that there are no duplicate
+    // mappings, by the birthday paradox we can be quite sure there are none
+    // since we check way more than sqrt(n) of them.
+    eprintln!("Checking duplicates...");
+    let mut done = bitvec![0; n];
+    for key in 0..n_query {
+        let idx = ptr_hash.index_minimal(&key);
+        assert!(!done[idx]);
+        done.set(idx, true);
+    }
+}
+
+```
+</file>
+
+<file path="src/tiny_ef.rs">
+```rust
+use common_traits::SelectInWord;
+use std::cmp::min;
+/// Number of stored values per unit.
+const L: usize = 44;
+/// TinyEF is an integer encoding that packs chunks of 44 40-bit values into a single
+/// cacheline, using 64/44*8 = 11.6 bits per value.
+/// Each chunk can hold increasing values in a range of length 256*84=21504.
+///
+/// This is efficient when consecutive values differ by roughly 100, where using
+/// Elias-Fano directly on the full list would use around 9 bits/value.
+///
+/// The main benefit is that this only requires reading a single cacheline per
+/// query, where Elias-Fano encoding usually needs 3 reads.
+#[derive(Default)]
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+pub struct TinyEf<E = Vec<TinyEfUnit>> {
+    ef: E,
+}
+impl TinyEf<Vec<TinyEfUnit>> {
+    pub fn new(vals: &[u64]) -> Self {
+        let mut p = Vec::with_capacity(vals.len().div_ceil(L));
+        for i in (0..vals.len()).step_by(L) {
+            p.push(TinyEfUnit::new(&vals[i..min(i + L, vals.len())]));
+        }
+        Self { ef: p }
+    }
+}
+impl<E: AsRef<[TinyEfUnit]>> TinyEf<E> {
+    #[inline(never)]
+    pub fn index(&self, index: usize) -> u64 {
+        unsafe {
+            let __klee_arg0 = self.ef.as_ref();
+            let __klee_arg1 = index / L;
+            let __klee_len2 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len2);
+            klee_ext_bind::bind_arg_slice_index_value(1, &__klee_arg1, __klee_len2);
+            klee_ext_bind::callsite!("src-tiny_ef-rs-36-20");
+            let mut __klee_ret_src_tiny_ef_rs_36_20_get_unchecked = __klee_arg0
+                .get_unchecked(__klee_arg1);
+            (*__klee_ret_src_tiny_ef_rs_36_20_get_unchecked).get(index % L)
+        }
+    }
+    pub fn prefetch(&self, index: usize) {
+        crate::util::prefetch_index(self.ef.as_ref(), index / L);
+    }
+    pub fn size_in_bytes(&self) -> usize {
+        std::mem::size_of_val(self.ef.as_ref())
+    }
+}
+/// Single-cacheline Elias-Fano encoding that holds 44 40-bit values in a range of size 256*84=21504.
+#[derive(Clone, Copy)]
+#[repr(C)]
+#[repr(align(64))]
+#[cfg_attr(feature = "epserde", derive(epserde::prelude::Epserde))]
+#[cfg_attr(feature = "epserde", zero_copy)]
+pub struct TinyEfUnit {
+    high_boundaries: [u64; 2],
+    reduced_offset: u32,
+    low_bits: [u8; L],
+}
+impl TinyEfUnit {
+    fn new(vals: &[u64]) -> Self {
+        assert!(! vals.is_empty());
+        assert!(vals.len() <= L);
+        let l = vals.len();
+        assert!(
+            vals[l - 1] - vals[0] <= 256 * (128 - L as u64),
+            "Range of values {} ({} to {}) is too large!", vals[l - 1] - vals[0],
+            vals[0], vals[l - 1]
+        );
+        assert!(vals[l - 1] < (1 << 40));
+        let offset = vals[0] & !0xff;
+        let mut low_bits = [0u8; L];
+        for (i, &v) in vals.iter().enumerate() {
+            low_bits[i] = (v & 0xff) as u8;
+        }
+        let mut high_boundaries = [0u64; 2];
+        for (i, &v) in vals.iter().enumerate() {
+            let idx = i + ((v - offset) >> 8) as usize;
+            assert!(idx < 128, "Value {} is too large!", v - offset);
+            high_boundaries[idx / 64] |= 1 << (idx % 64);
+        }
+        Self {
+            reduced_offset: (offset >> 8) as u32,
+            high_boundaries,
+            low_bits,
+        }
+    }
+    fn get(&self, idx: usize) -> u64 {
+        let p = self.high_boundaries[0].count_ones() as usize;
+        let one_pos = if idx < p {
+            self.high_boundaries[0].select_in_word(idx)
+        } else {
+            64 + self.high_boundaries[1].select_in_word(idx - p)
+        };
+        256 * self.reduced_offset as u64 + 256 * (one_pos - idx) as u64
+            + self.low_bits[idx] as u64
+    }
+}
+#[test]
+fn test() {
+    let max = (128 - L) * 256;
+    let mut vals = [0u64; L];
+    for _ in 0..10000 {
+        for v in &mut vals {
+            *v = rand::random::<u64>() % max as u64;
+        }
+        vals.sort_unstable();
+        vals[0] = 0;
+        let lef = TinyEfUnit::new(&vals);
+        for i in 0..L {
+            assert_eq!(lef.get(i), vals[i], "error; full list: {:?}", vals);
+        }
+    }
+}
+
+```
+</file>
+
+<file path="src/util.rs">
+```rust
+//! Internal utilities that are only exposed for testing/benchmarking purposes.
+//! Do not use externally.
+use super::*;
+use colored::Colorize;
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+use rdst::RadixSort;
+/// Prefetch the given cacheline into L1 cache.
+#[inline(never)]
+pub fn prefetch_index<T>(s: &[T], index: usize) {
+    let ptr = unsafe {
+        let __klee_arg0 = s.as_ptr();
+        klee_ext_bind::bind_arg_ptr_value(0, __klee_arg0);
+        klee_ext_bind::bind_arg_u64_value(1, &index);
+        klee_ext_bind::callsite!("src-util-rs-11-24");
+        let mut __klee_ret_src_util_rs_11_24_add = __klee_arg0.add(index);
+        __klee_ret_src_util_rs_11_24_add as *const u64
+    };
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        let __klee_arg1 = ptr as *const i8;
+        klee_ext_bind::callsite!("src-util-rs-14-9");
+        let mut __klee_ret_src_util_rs_14_9__mm_prefetch = std::arch::x86_64::_mm_prefetch(
+            __klee_arg1,
+            std::arch::x86_64::_MM_HINT_T0,
+        );
+    }
+    #[cfg(target_arch = "x86")]
+    unsafe {
+        std::arch::x86::_mm_prefetch(ptr as *const i8, std::arch::x86::_MM_HINT_T0);
+    }
+    #[cfg(target_arch = "aarch64")] unsafe {}
+    #[cfg(
+        not(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))
+    )] {}
+}
+pub(crate) fn log_duration(name: &str, start: Instant) -> Instant {
+    eprintln!(
+        "{}", format!("{name:>12}: {:>13.2?}s", start.elapsed().as_secs_f32()) .bold()
+    );
+    Instant::now()
+}
+pub fn generate_keys(n: usize) -> Vec<u64> {
+    let start = Instant::now();
+    let keys = loop {
+        let start = Instant::now();
+        let keys: Vec<_> = (0..n)
+            .into_par_iter()
+            .map_init(thread_rng, |rng, _| rng.gen())
+            .collect();
+        let start = log_duration("┌   gen keys", start);
+        let mut keys2: Vec<_> = keys.par_iter().copied().collect();
+        let start = log_duration("├      clone", start);
+        keys2.radix_sort_unstable();
+        let start = log_duration("├       sort", start);
+        let distinct = keys2.par_windows(2).all(|w| w[0] < w[1]);
+        log_duration("├ duplicates", start);
+        if distinct {
+            break keys;
+        }
+        eprintln!("DUPLICATE KEYS GENERATED");
+    };
+    log_duration("generatekeys", start);
+    keys
+}
+
+```
+</file>
+</rust context>

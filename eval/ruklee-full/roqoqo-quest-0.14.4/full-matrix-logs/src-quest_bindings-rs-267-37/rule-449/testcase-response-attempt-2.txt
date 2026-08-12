@@ -2,29 +2,29 @@
 #[cfg(feature = "unsat-poc-src-quest-bindings-rs-267-37-rule-449-0bf63d018f")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_quest_bindings_rs_267_37_rule_449_0bf63d018f() {
-    let row = 1usize;
-    let column = 0usize;
-    let value = Complex64::new(1.0, 0.0);
+    let real_rows: Vec<Box<[f64]>> = vec![vec![1.0f64].into_boxed_slice()];
+    let imag_rows: Vec<Box<[f64]>> = vec![vec![2.0f64].into_boxed_slice()];
 
-    let mut real_row0 = [0.0f64; 1];
-    let mut real_row1 = [0.0f64; 1];
-    let mut imag_row0 = [0.0f64; 1];
-    let mut imag_row1 = [0.0f64; 1];
-
-    let real_rows = vec![real_row0.as_mut_ptr(), real_row1.as_mut_ptr()];
-    let imag_rows = vec![imag_row0.as_mut_ptr(), imag_row1.as_mut_ptr()];
+    let real_ptrs: Vec<*mut f64> = real_rows
+        .iter()
+        .map(|row| row.as_ptr() as *mut f64)
+        .collect();
+    let imag_ptrs: Vec<*mut f64> = imag_rows
+        .iter()
+        .map(|row| row.as_ptr() as *mut f64)
+        .collect();
 
     let complex_matrix = quest_sys::ComplexMatrixN {
-        real: real_rows.as_ptr() as *mut *mut f64,
-        imag: imag_rows.as_ptr() as *mut *mut f64,
-        numQubits: 1,
+        numQubits: 0,
+        real: real_ptrs.as_ptr() as *mut *mut f64,
+        imag: imag_ptrs.as_ptr() as *mut *mut f64,
     };
 
     let mut receiver = ComplexMatrixN {
         complex_matrix,
-        dimension: 2,
+        dimension: 1,
     };
 
-    let _ = receiver.set(row, column, value);
+    let _ = receiver.set(1, 0, Complex64::new(3.0, 4.0));
 }
 ```

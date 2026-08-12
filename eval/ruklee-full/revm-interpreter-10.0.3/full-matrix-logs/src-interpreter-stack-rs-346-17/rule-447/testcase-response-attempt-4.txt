@@ -2,47 +2,41 @@
 #[cfg(feature = "unsat-poc-src-interpreter-stack-rs-346-17-rule-447-485609ff7e")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_interpreter_stack_rs_346_17_rule_447_485609ff7e() {
-    use crate::{DummyHost, Gas, Interpreter, InterpreterResult};
-    use crate::primitives::{Bytecode, Bytes, U256};
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterResult};
+    use revm_primitives::{Bytecode, Bytes, U256};
 
     let mut interp = Interpreter::new(
         crate::Contract::new(
             Bytes::from([0x00]),
             Bytecode::LegacyRaw(Bytes::from([0x00])),
             None,
-            crate::primitives::Address::ZERO,
+            revm_primitives::Address::ZERO,
             None,
-            crate::primitives::Address::ZERO,
+            revm_primitives::Address::ZERO,
             U256::ZERO,
         ),
         1_000_000,
         false,
     );
 
-    interp.shared_memory = crate::SharedMemory::new();
-    interp.shared_memory.resize(128);
-
-    interp.stack = crate::Stack::new();
-    interp.stack.push(U256::from(0x11u64)).unwrap();
-    interp.stack.push(U256::from(0x22u64)).unwrap();
-    interp.stack.push(U256::from(0x33u64)).unwrap();
-    interp.stack.push(U256::from(0x44u64)).unwrap();
-    interp.stack.push(U256::from(0x55u64)).unwrap();
+    interp.is_eof = false;
+    interp.instruction_result = InstructionResult::Continue;
+    interp.gas = Gas::new(1_000_000);
 
     let mut host = DummyHost::default();
 
-    let slice = [
-        1u8, 2, 3, 4, 5, 6, 7, 8,
-        9, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31, 32,
-        0xaa, 0xbb, 0xcc,
-    ];
+    let mut data = Vec::with_capacity(33);
+    data.extend_from_slice(&[0u8; 32]);
+    data.push(0xAA);
 
-    let _ = interp.stack.push_slice(&slice);
+    let _ = interp.stack.push(U256::from(1u64));
+    let _ = interp.stack.push(U256::from(2u64));
+    let _ = interp.stack.push(U256::from(3u64));
+    let _ = interp.stack.push(U256::from(4u64));
+    let _ = interp.stack.push(U256::from(5u64));
 
-    let _ = host;
-    let _ = Gas::new(0);
-    let _ = InterpreterResult::new(crate::InstructionResult::Continue, Bytes::new(), Gas::new(0));
+    let _ = interp.stack.push_slice(&data);
+
+    let _ = (&mut interp, &mut host, InterpreterResult::new(InstructionResult::Continue, Bytes::new(), Gas::new(0)));
 }
 ```

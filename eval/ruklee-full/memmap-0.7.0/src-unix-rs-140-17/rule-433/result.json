@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-07-29T21:28:49.591863+00:00",
+  "updated_at": "2026-08-11T11:47:40.054750+00:00",
   "crate": "/workspaces/UnSAT-Rust/benchmark/ruklee/memmap-0.7.0",
   "injected_crate": "/workspaces/UnSAT-Rust/crates_inj/memmap-0.7.0",
   "metadata": "/workspaces/UnSAT-Rust/crates/memmap-0.7.0.json",
@@ -21,12 +21,12 @@
     "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
     "name": "const unsafe fn offset",
     "rule": "If the computed offset is non-zero, the range between self and the result must not wrap around the edge of the address space.",
-    "dsl": "(!((get_arg(1) * get_field(get_type_at_func(0), \"size\")) != 0) || get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") >= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\"))"
+    "dsl": "offset_does_not_wrap(get_arg(0), get_arg(1), get_field(get_type_at_func(0), \"size\"), \"signed\")"
   },
   "result": {
-    "init_status": "not-in-ir",
-    "llm_status": null,
-    "rerun_status": null,
+    "init_status": "violation",
+    "llm_status": "error",
+    "rerun_status": "not-run",
     "rerun_returncode": null,
     "rerun_reported_callsite": false,
     "rerun_dsl_sat": false,
@@ -35,14 +35,23 @@
   },
   "stages": {
     "init": {
-      "status": "not-in-ir",
-      "returncode": null,
+      "status": "violation",
+      "returncode": 0,
       "timed_out": false,
-      "duration_sec": 0.0,
-      "log": null,
-      "klee_output_dir": null
+      "duration_sec": 4.112,
+      "log": "/workspaces/UnSAT-Rust/eval/ruklee-full/memmap-0.7.0/full-matrix-logs/src-unix-rs-140-17/rule-433/klee.log",
+      "klee_output_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/memmap-0.7.0/full-matrix-logs/src-unix-rs-140-17/rule-433/klee-out",
+      "certainty_chain": "/workspaces/UnSAT-Rust/eval/ruklee-full/memmap-0.7.0/full-matrix-logs/src-unix-rs-140-17/rule-433/klee-control-chains.json",
+      "has_certain_symbol": true
     },
-    "llm": {},
-    "rerun": {}
+    "llm": {
+      "status": "error",
+      "error": "testcase generation/build failed after 3 attempts:\nFailed to compile '/workspaces/UnSAT-Rust/crates_inj/memmap-0.7.0':\nstdout: \nstderr: warning: no edition set: defaulting to the 2015 edition while the latest is 2024\n   Compiling memmap v0.7.0 (/workspaces/UnSAT-Rust/crates_inj/memmap-0.7.0)\nerror[E0133]: call to unsafe function `MmapOptions::map_mut` is unsafe and requires unsafe function or block\n   --> src/unix.rs:432:20\n    |\n432 |     let mut mmap = opts.map_mut(&file).expect(\"map_mut\");\n    |                    ^^^^^^^^^^^^^^^^^^^ call to unsafe function\n    |\n    = note: consult the function's documentation for information on how to avoid undefined behavior\n\nFor more information about this error, try `rustc --explain E0133`.\nerror: could not compile `memmap` (lib) due to 1 previous error\n\n\ncommand: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-unix-rs-140-17-rule-433-7de862fa60', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']\nreturncode: 101\n\n[stdout]\n\n[stderr]\nwarning: no edition set: defaulting to the 2015 edition while the latest is 2024\n   Compiling memmap v0.7.0 (/workspaces/UnSAT-Rust/crates_inj/memmap-0.7.0)\nerror[E0133]: call to unsafe function `MmapOptions::map_mut` is unsafe and requires unsafe function or block\n   --> src/unix.rs:432:20\n    |\n432 |     let mut mmap = opts.map_mut(&file).expect(\"map_mut\");\n    |                    ^^^^^^^^^^^^^^^^^^^ call to unsafe function\n    |\n    = note: consult the function's documentation for information on how to avoid undefined behavior\n\nFor more information about this error, try `rustc --explain E0133`.\nerror: could not compile `memmap` (lib) due to 1 previous error\n",
+      "artifact_dir": "/workspaces/UnSAT-Rust/eval/ruklee-full/memmap-0.7.0/full-matrix-logs/src-unix-rs-140-17/rule-433"
+    },
+    "rerun": {
+      "status": "not-run",
+      "full_rerun_passed": false
+    }
   }
 }

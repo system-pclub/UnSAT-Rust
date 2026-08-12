@@ -172,7 +172,27 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "direct-mut-ref-escape:unix::MmapInner::mut_ptr",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "MmapInner"
+      },
+      {
+        "detail": "public safe function returns mutable access to the field path",
+        "field": "ptr",
+        "function": "unix::MmapInner::mut_ptr",
+        "kind": "mut_ref_escape",
+        "root_type": "unix::MmapInner"
+      }
+    ],
+    "symbol": "__klee_target_ZN4unix9MmapInner5flushE_src_unix_rs_126_34.arg0.ptr"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -224,8 +244,9 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> call safe `map` -> call target caller `unix::MmapInner::flush`
-2. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> call target caller `unix::MmapInner::flush` directly
+1. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> construct or obtain a `MmapInner` value -> call safe `unix::MmapInner::mut_ptr` to affect `ptr` -> call target caller `unix::MmapInner::flush`
+2. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> call safe `mut_ptr` -> call target caller `unix::MmapInner::flush`
+3. construct `unix::MmapInner` for `receiver` using constructor(s): `unix::MmapInner::map`, `unix::MmapInner::map_exec`, `unix::MmapInner::map_mut` -> call target caller `unix::MmapInner::flush` directly
 </candidate safe-call plans>
 
 
@@ -347,10 +368,10 @@ stdout:
 stderr: warning: no edition set: defaulting to the 2015 edition while the latest is 2024
    Compiling memmap v0.7.0 (/workspaces/UnSAT-Rust/crates_inj/memmap-0.7.0)
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `unix`
-   --> src/unix.rs:270:17
+   --> src/unix.rs:305:21
     |
-270 |     let inner = unix::MmapInner::map_mut(4096, &file, 0).unwrap();
-    |                 ^^^^ use of unresolved module or unlinked crate `unix`
+305 |     let mut inner = unix::MmapInner::map_mut(1, &file, 0).unwrap();
+    |                     ^^^^ use of unresolved module or unlinked crate `unix`
     |
     = help: if you wanted to use a crate named `unix`, use `cargo add unix` to add it to your `Cargo.toml`
 help: consider importing this struct through its public re-export
@@ -359,8 +380,8 @@ help: consider importing this struct through its public re-export
     |
 help: if you import `MmapInner`, refer to it directly
     |
-270 -     let inner = unix::MmapInner::map_mut(4096, &file, 0).unwrap();
-270 +     let inner = MmapInner::map_mut(4096, &file, 0).unwrap();
+305 -     let mut inner = unix::MmapInner::map_mut(1, &file, 0).unwrap();
+305 +     let mut inner = MmapInner::map_mut(1, &file, 0).unwrap();
     |
 
 For more information about this error, try `rustc --explain E0433`.
@@ -376,10 +397,10 @@ returncode: 101
 warning: no edition set: defaulting to the 2015 edition while the latest is 2024
    Compiling memmap v0.7.0 (/workspaces/UnSAT-Rust/crates_inj/memmap-0.7.0)
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `unix`
-   --> src/unix.rs:270:17
+   --> src/unix.rs:305:21
     |
-270 |     let inner = unix::MmapInner::map_mut(4096, &file, 0).unwrap();
-    |                 ^^^^ use of unresolved module or unlinked crate `unix`
+305 |     let mut inner = unix::MmapInner::map_mut(1, &file, 0).unwrap();
+    |                     ^^^^ use of unresolved module or unlinked crate `unix`
     |
     = help: if you wanted to use a crate named `unix`, use `cargo add unix` to add it to your `Cargo.toml`
 help: consider importing this struct through its public re-export
@@ -388,8 +409,8 @@ help: consider importing this struct through its public re-export
     |
 help: if you import `MmapInner`, refer to it directly
     |
-270 -     let inner = unix::MmapInner::map_mut(4096, &file, 0).unwrap();
-270 +     let inner = MmapInner::map_mut(4096, &file, 0).unwrap();
+305 -     let mut inner = unix::MmapInner::map_mut(1, &file, 0).unwrap();
+305 +     let mut inner = MmapInner::map_mut(1, &file, 0).unwrap();
     |
 
 For more information about this error, try `rustc --explain E0433`.
@@ -1071,6 +1092,7 @@ impl MmapInner {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(export_name = "__klee_target_ZN4unix9MmapInner5flushE_src_unix_rs_126_34")]
     pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {
         let alignment = (self.ptr as usize + offset) % page_size();
         let offset = offset as isize - alignment as isize;
@@ -1090,6 +1112,9 @@ impl MmapInner {
         if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN4unix9MmapInner11flush_asyncE_src_unix_rs_140_17"
+    )]
     pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {
         /* body omitted: interface retained */
     }
@@ -1111,7 +1136,7 @@ impl MmapInner {
     }
     #[inline]
     pub fn mut_ptr(&mut self) -> *mut u8 {
-        /* body omitted: interface retained */
+        self.ptr as *mut u8
     }
     #[inline]
     pub fn len(&self) -> usize {

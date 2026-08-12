@@ -5,8 +5,8 @@ target counterexample.
 
 <high priority retry constraints>
 These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 138805436743680; get_arg(1) = 1; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `vertex_data`; this failed observation had `vertex_data = 138805436743680`.
+- - Observation 1: get_arg(0) = 122218254172160; get_arg(1) = 1; target counterexample query was unsat.
+- At the selected target expression, `get_arg(0)` is source expression `vertex_data`; this failed observation had `vertex_data = 122218254172160`.
 - At the selected target expression, `get_arg(1)` is source expression `vertices.position_offset`; this failed observation had `vertices.position_offset = 1`.
 - If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 </high priority retry constraints>
@@ -226,7 +226,7 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `packing::Vertex` for `vertices` using fields visible from the injection module when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> construct `simplify::SimplifyOptions` for `options` using constructor(s): `simplify::_::<impl simplify::SimplifyOptions>::empty`, `simplify::_::<impl simplify::SimplifyOptions>::all`, `simplify::_::<impl simplify::SimplifyOptions>::from_bits` -> call target caller `simplify::simplify_with_locks` directly
+1. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `simplify::simplify_with_locks` directly
 </candidate safe-call plans>
 
 
@@ -407,8 +407,8 @@ The metadata caller `simplify::simplify_with_locks` is a safe function that cont
 Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
 
 Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 138805436743680; get_arg(1) = 1; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `vertex_data`; this failed observation had `vertex_data = 138805436743680`.
+- Observation 1: get_arg(0) = 122218254172160; get_arg(1) = 1; target counterexample query was unsat.
+  At the selected target expression, `get_arg(0)` is source expression `vertex_data`; this failed observation had `vertex_data = 122218254172160`.
   At the selected target expression, `get_arg(1)` is source expression `vertices.position_offset`; this failed observation had `vertices.position_offset = 1`.
 If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
 
@@ -2152,6 +2152,9 @@ pub fn optimize_vertex_fetch_remap(indices: &[u32], vertex_count: usize) -> Vec<
 /// `threshold` indicates how much the overdraw optimizer can degrade vertex cache
 /// efficiency (1.05 = up to 5%) to reduce overdraw more efficiently.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8optimize26optimize_overdraw_in_placeE_src_optimize_rs_166_30"
+)]
 pub fn optimize_overdraw_in_place(
     indices: &mut [u32],
     vertices: &VertexDataAdapter<'_>,
@@ -2488,6 +2491,9 @@ use crate::{ffi, DecodePosition, VertexDataAdapter, VertexStream};
 /// This makes it possible to use the index buffer for Z pre-pass or shadowmap rendering, while using
 /// the original index buffer for regular rendering.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN6shadow23generate_shadow_indicesE_src_shadow_rs_12_30"
+)]
 pub fn generate_shadow_indices(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -2609,6 +2615,7 @@ bitflags! {
 /// If the original vertex data isn't required, creating a compact vertex buffer
 /// using `optimize_vertex_fetch` is recommended.
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8simplify8simplifyE_src_simplify_rs_39_30")]
 pub fn simplify(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -2690,6 +2697,9 @@ pub fn simplify_decoder<T: DecodePosition>(
 /// If the original vertex data isn't required, creating a compact vertex buffer
 /// using `optimize_vertex_fetch` is recommended.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8simplify19simplify_with_locksE_src_simplify_rs_114_30"
+)]
 pub fn simplify_with_locks(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,
@@ -2781,6 +2791,9 @@ pub fn simplify_with_locks_decoder<T: DecodePosition>(
 /// If the original vertex data isn't required, creating a compact vertex buffer using `optimize_vertex_fetch`
 /// is recommended.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8simplify15simplify_sloppyE_src_simplify_rs_198_30"
+)]
 pub fn simplify_sloppy(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,

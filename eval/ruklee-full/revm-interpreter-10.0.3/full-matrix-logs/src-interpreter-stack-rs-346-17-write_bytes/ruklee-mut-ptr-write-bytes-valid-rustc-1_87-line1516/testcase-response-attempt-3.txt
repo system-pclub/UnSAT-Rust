@@ -2,46 +2,54 @@
 #[cfg(feature = "unsat-poc-src-interpreter-stack-rs-346-17-write-bytes-ruklee-mut-ptr-write-bytes-valid-rus-9454a34345")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_interpreter_stack_rs_346_17_write_bytes_ruklee_mut_ptr_write_bytes_valid_rus_9454a34345() {
-    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterAction};
-    use revm_primitives::{Address, Bytecode, Bytes, U256};
+    use crate::{DummyHost, Gas, InstructionResult, Interpreter, InterpreterResult};
+    use crate::primitives::{Bytecode, Bytes, U256};
+
+    let mut stack = crate::Stack::new();
+    stack.data_mut().push(U256::from(0x1111u64));
+    stack.data_mut().push(U256::from(0x2222u64));
+    stack.data_mut().push(U256::from(0x3333u64));
+    stack.data_mut().push(U256::from(0x4444u64));
+    stack.data_mut().push(U256::from(0x5555u64));
 
     let mut interp = Interpreter::new(
         crate::Contract::new(
             Bytes::new(),
             Bytecode::LegacyRaw(Bytes::from([0x00])),
             None,
-            Address::ZERO,
+            Default::default(),
             None,
-            Address::ZERO,
+            Default::default(),
             U256::ZERO,
         ),
-        1_000_000,
+        10_000,
         false,
     );
-
-    interp.instruction_result = InstructionResult::Continue;
+    interp.stack = stack;
     interp.is_eof = false;
-    interp.is_static = false;
-    interp.gas = Gas::new(1_000_000);
-    interp.next_action = InterpreterAction::None;
+    interp.instruction_result = InstructionResult::Continue;
+    interp.gas = Gas::new(10_000);
+    interp.shared_memory = crate::SharedMemory::new();
 
     let mut host = DummyHost::default();
 
-    let mut data = Vec::with_capacity(6);
-    data.extend_from_slice(&[
-        U256::from(0x1111u64),
-        U256::from(0x2222u64),
-        U256::from(0x3333u64),
-        U256::from(0x4444u64),
-        U256::from(0x5555u64),
-        U256::from(0x6666u64),
-    ]);
-    interp.stack = crate::Stack::new();
-    interp.stack.data_mut().extend(data);
+    let slice = [
+        0x10u8, 0x11, 0x12, 0x13,
+        0x20, 0x21, 0x22, 0x23,
+        0x30, 0x31, 0x32, 0x33,
+        0x40, 0x41, 0x42, 0x43,
+        0x50, 0x51, 0x52, 0x53,
+        0x60, 0x61, 0x62, 0x63,
+        0x70, 0x71, 0x72, 0x73,
+        0x80, 0x81, 0x82, 0x83,
+        0x90, 0x91, 0x92, 0x93,
+    ];
 
-    let slice = [1u8, 2, 3, 4, 5, 6, 7, 8, 9];
     let _ = interp.stack.push_slice(&slice);
+    let _ = interp.stack.push_slice(&slice[..33]);
+    let _ = interp.stack.push_slice(&slice[..1]);
 
-    let _ = &mut host;
+    let _ = host;
+    let _ = InterpreterResult::new(InstructionResult::Continue, Bytes::new(), Gas::new(0));
 }
 ```

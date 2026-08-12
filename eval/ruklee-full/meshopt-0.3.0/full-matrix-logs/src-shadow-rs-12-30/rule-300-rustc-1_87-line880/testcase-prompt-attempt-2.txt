@@ -218,7 +218,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `packing::Vertex` for `vertices` using fields visible from the injection module when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `shadow::generate_shadow_indices` directly
+1. construct `packing::Vertex` for `vertices` using its genuinely public fields when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `shadow::generate_shadow_indices` directly
 </candidate safe-call plans>
 
 
@@ -395,9 +395,9 @@ warning: unexpected `cfg` condition value: `cargo-clippy`
   = note: `#[warn(unexpected_cfgs)]` on by default
 
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `shadow`
-   --> src/shadow.rs:112:13
+   --> src/shadow.rs:110:13
     |
-112 |     let _ = shadow::generate_shadow_indices(&indices, &vertices);
+110 |     let _ = shadow::generate_shadow_indices(&indices, &vertices);
     |             ^^^^^^ use of unresolved module or unlinked crate `shadow`
     |
     = help: if you wanted to use a crate named `shadow`, use `cargo add shadow` to add it to your `Cargo.toml`
@@ -426,9 +426,9 @@ warning: unexpected `cfg` condition value: `cargo-clippy`
   = note: `#[warn(unexpected_cfgs)]` on by default
 
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `shadow`
-   --> src/shadow.rs:112:13
+   --> src/shadow.rs:110:13
     |
-112 |     let _ = shadow::generate_shadow_indices(&indices, &vertices);
+110 |     let _ = shadow::generate_shadow_indices(&indices, &vertices);
     |             ^^^^^^ use of unresolved module or unlinked crate `shadow`
     |
     = help: if you wanted to use a crate named `shadow`, use `cargo add shadow` to add it to your `Cargo.toml`
@@ -747,6 +747,9 @@ use crate::{ffi, DecodePosition, VertexDataAdapter, VertexStream};
 /// This makes it possible to use the index buffer for Z pre-pass or shadowmap rendering, while using
 /// the original index buffer for regular rendering.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN6shadow23generate_shadow_indicesE_src_shadow_rs_12_30"
+)]
 pub fn generate_shadow_indices(
     indices: &[u32],
     vertices: &VertexDataAdapter<'_>,

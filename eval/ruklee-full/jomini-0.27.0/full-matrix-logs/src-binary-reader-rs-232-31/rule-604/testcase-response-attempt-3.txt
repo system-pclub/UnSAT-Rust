@@ -2,28 +2,16 @@
 #[cfg(feature = "unsat-poc-src-binary-reader-rs-232-31-rule-604-4b696fb29b")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_binary_reader_rs_232_31_rule_604_4b696fb29b() {
-    use crate::binary::{TokenReader, TokenResolver};
-    use std::io::Cursor;
+    use crate::binary::{TokenReader, Token};
 
-    struct R;
-
-    impl TokenResolver for R {
-        fn resolve(&self, _: u16) -> Option<&str> {
-            None
-        }
-    }
-
-    let data = [
-        0x2d, 0x28, // token id
-        0x01, 0x00, // '='
-        0x03, 0x00, // '{'
-        0x04, 0x00, // '}'
-    ];
-
-    let mut reader = TokenReader::builder()
-        .buffer_len(8)
-        .build(Cursor::new(&data[..]));
+    let backing = vec![0x2d, 0x28, 0x01, 0x00, 0x04, 0x00];
+    let mut reader = TokenReader::from_slice(&backing);
 
     let _ = reader.next();
+
+    let mut reader2 = TokenReader::builder().buffer_len(8).build(&backing[..]);
+    let _ = reader2.next();
+
+    let _ = Token::Equal;
 }
 ```

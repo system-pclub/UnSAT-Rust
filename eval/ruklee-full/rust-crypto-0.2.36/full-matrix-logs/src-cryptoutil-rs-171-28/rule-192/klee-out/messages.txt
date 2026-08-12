@@ -1,9 +1,9 @@
 KLEE: Using Z3 solver backend
 KLEE: Deterministic allocator: Using quarantine queue size 8
-KLEE: Deterministic allocator: globals (start-address=0x7d59dae00000 size=10 GiB)
-KLEE: Deterministic allocator: constants (start-address=0x7d575ae00000 size=10 GiB)
-KLEE: Deterministic allocator: heap (start-address=0x7c575ae00000 size=1024 GiB)
-KLEE: Deterministic allocator: stack (start-address=0x7c375ae00000 size=128 GiB)
+KLEE: Deterministic allocator: globals (start-address=0x70284d800000 size=10 GiB)
+KLEE: Deterministic allocator: constants (start-address=0x7025cd800000 size=10 GiB)
+KLEE: Deterministic allocator: heap (start-address=0x6f25cd800000 size=1024 GiB)
+KLEE: Deterministic allocator: stack (start-address=0x6f05cd800000 size=128 GiB)
 KLEE: [compose-verify] trait summary: <KeySize as Clone>::clone
 KLEE: [compose-verify] trait summary: <KeySize as Clone>::clone_from
 KLEE: [compose-verify] trait summary: <AesGcm as AeadEncryptor>::encrypt
@@ -585,24 +585,41 @@ KLEE: [snapshot] arg1 uses Rust debug layout 'usize' (size=8 fields=0)
 KLEE: [snapshot] materialized ABI-split Rust slice 'u8' arg0/arg1 virtual elem_bytes=1 with symbolic len
 KLEE: [ext.exec] klee_ext_callsite site='src-cryptoutil-rs-171-28' target='src-cryptoutil-rs-171-28'
 KLEE: [ext.callsite] reached 'src-cryptoutil-rs-171-28'
-KLEE: [ext.call] values: <empty>
+KLEE: [ext.callsite] deferring 'src-cryptoutil-rs-171-28' until target call <unknown>
+KLEE: [ext.callsite] skipping target pointer precondition_check before deferred GEP result
+KLEE: [compose-verify] modeling memset size=4
+KLEE: [compose-verify] memset call stack:
+	#000019130 in __klee_target_ZN10cryptoutil11read_u32_beE_src_cryptoutil_rs_172_9(input.0=symbolic, input.1=symbolic) at /home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/intrinsics/mod.rs:3931
+
+KLEE: [ext.dsl] function type[0] T fixed from report as u32 (size=4 align=4)
+KLEE: [ext.callsite] completing deferred 'src-cryptoutil-rs-171-28' with result=122099704266760
+KLEE: [ext.call] values:
+  __klee_result = 122099704266760
+  __klee_call_arg1 = 8
+  __klee_call_arg0 = 122099704266752
 
 KLEE: [ext.dsl] path constraints:
-array _ZN6crypto10cryptoutil11read_u32_be17h196bb4d34d32ddddE.arg0.slice_data.virtual_base[8] : w32 -> w8 = symbolic
-array _ZN6crypto10cryptoutil11read_u32_be17h196bb4d34d32ddddE.arg1[8] : w32 -> w8 = symbolic
-(query [(Eq 137539262332928
-             (ReadLSB w64 0 _ZN6crypto10cryptoutil11read_u32_be17h196bb4d34d32ddddE.arg0.slice_data.virtual_base))
+array __klee_target_ZN10cryptoutil11read_u32_beE_src_cryptoutil_rs_172_9.arg0.slice_data.virtual_base[8] : w32 -> w8 = symbolic
+array __klee_target_ZN10cryptoutil11read_u32_beE_src_cryptoutil_rs_172_9.arg1[8] : w32 -> w8 = symbolic
+(query [(Eq 123032785895424
+             (ReadLSB w64 0 __klee_target_ZN10cryptoutil11read_u32_beE_src_cryptoutil_rs_172_9.arg0.slice_data.virtual_base))
          (Eq 4
-             (ReadLSB w64 0 _ZN6crypto10cryptoutil11read_u32_be17h196bb4d34d32ddddE.arg1))]
+             (ReadLSB w64 0 __klee_target_ZN10cryptoutil11read_u32_beE_src_cryptoutil_rs_172_9.arg1))]
         false)
 
 KLEE: [ext.dsl] 0 -> 0
-KLEE: [ext.dsl] 0 -> 0
-KLEE: [ext.dsl] (0 != 0) -> false
-KLEE: [ext.dsl] resolved constraint expr: false
-KLEE: [ext.dsl] resolved constraint is constant: width=1 value=false
-KLEE: [ext.dsl] resolved constraint uses certain symbol: false
-KLEE: [ext.dsl] violation query uses certain symbol: false
+KLEE: [ext.dsl] get_type_at_func(0) -> type@5802811685389707597
+KLEE: [ext.dsl] "allows_uninitialized" -> allows_uninitialized
+KLEE: [ext.dsl] get_field(get_type_at_func(0), "allows_uninitialized") -> (Eq false
+     (Eq 0
+         (Shl w8 (Read w8 0 extdsl_obj_13599046698130637036) 0)))
+KLEE: [ext.dsl] simplified_var(get_type_at_func(0).allows_uninitialized) <= get_field(get_type_at_func(0), "allows_uninitialized") -> simplified(get_type_at_func(0).allows_uninitialized=(Eq false
+     (Eq 0
+         (Shl w8 (Read w8 0 extdsl_obj_13599046698130637036) 0))))
+KLEE: [ext.dsl] resolved constraint expr: (Eq false
+     (Eq 0
+         (Shl w8 (Read w8 0 extdsl_obj_13599046698130637036) 0)))
+KLEE: [ext.dsl] resolved constraint uses certain symbol: true
+KLEE: [ext.dsl] violation query uses certain symbol: true
 KLEE: [ext.dsl] SAT(constraints AND NOT resolved constraint): sat
 KLEE: [ext.dsl] at callsite 'src-cryptoutil-rs-171-28': query solved
-KLEE: [compose-verify] target DSL violation is satisfiable; halting focused init after solved query

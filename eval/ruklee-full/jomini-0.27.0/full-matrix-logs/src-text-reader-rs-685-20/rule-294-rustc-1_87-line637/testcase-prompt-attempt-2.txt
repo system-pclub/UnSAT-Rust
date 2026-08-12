@@ -3,14 +3,6 @@ target counterexample.
 
 
 
-<high priority retry constraints>
-These constraints come from the immediately previous failed compile/KLEE attempt and override examples or ordinary-looking safe values. The next testcase must visibly change these values in the generated Rust source:
-- - Observation 1: get_arg(0) = 132181150122005; get_arg(1) = 132181150121991; target counterexample query was unsat.
-- At the selected target expression, `get_arg(0)` is source expression `end`; this failed observation had `end = 132181150122005`.
-- At the selected target expression, `get_arg(1)` is source expression `ptr`; this failed observation had `ptr = 132181150121991`.
-- If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
-</high priority retry constraints>
-
 	Requirements:
 	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
 	  operations. If the crate uses Rust 2024 and the compiler requires it, the
@@ -183,7 +175,7 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 [
   {
     "certainty": "certain_symbol",
-    "evidence": "executed-field-symbol:text::reader::TokenReader::<R>::new",
+    "evidence": "executed-field-symbol:text::reader::TokenReader::<()>::from_slice",
     "steps": [
       {
         "detail": "DSL access path root",
@@ -193,7 +185,7 @@ These constraints come from the immediately previous failed compile/KLEE attempt
       {
         "detail": "executed safe function materializes a controllable symbol",
         "field": "buf",
-        "function": "text::reader::TokenReader::<R>::new",
+        "function": "text::reader::TokenReader::<()>::from_slice",
         "kind": "mutator",
         "root_type": "text::reader::TokenReader"
       }
@@ -202,7 +194,7 @@ These constraints come from the immediately previous failed compile/KLEE attempt
   },
   {
     "certainty": "certain_symbol",
-    "evidence": "executed-field-symbol:text::reader::TokenReader::<R>::new",
+    "evidence": "executed-field-symbol:text::reader::TokenReader::<()>::from_slice",
     "steps": [
       {
         "detail": "DSL access path root",
@@ -212,7 +204,7 @@ These constraints come from the immediately previous failed compile/KLEE attempt
       {
         "detail": "executed safe function materializes a controllable symbol",
         "field": "buf",
-        "function": "text::reader::TokenReader::<R>::new",
+        "function": "text::reader::TokenReader::<()>::from_slice",
         "kind": "mutator",
         "root_type": "text::reader::TokenReader"
       }
@@ -271,9 +263,9 @@ These constraints come from the immediately previous failed compile/KLEE attempt
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct or obtain a `TokenReader` value -> call safe `text::reader::TokenReader::<R>::new` to affect `buf` -> call target caller `text::reader::TokenReader::<R>::skip_unquoted_value`
-2. call safe `new` -> call target caller `text::reader::TokenReader::<R>::skip_unquoted_value`
-3. construct the minimal visible receiver/arguments needed by the target caller -> call target caller `text::reader::TokenReader::<R>::skip_unquoted_value` directly
+1. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> construct or obtain a `TokenReader` value -> call safe `text::reader::TokenReader::<()>::from_slice` to affect `buf` -> call target caller `text::reader::TokenReader::<R>::skip_unquoted_value`
+2. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> call safe `from_slice` -> call target caller `text::reader::TokenReader::<R>::skip_unquoted_value`
+3. construct `text::reader::TokenReader` for `receiver` using constructor(s): `text::reader::TokenReader::<R>::new` -> call target caller `text::reader::TokenReader::<R>::skip_unquoted_value` directly
 </candidate safe-call plans>
 
 
@@ -513,17 +505,47 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-The testcase compiled but did not reproduce the target violation.
-KLEE reached `src-text-reader-rs-685-20`, but the target counterexample was not reproduced. The previous concrete values satisfied the target callsite's safety requirement. If the target caller takes separate pointer/slice/buffer and length/count/capacity/index inputs, do not tie those numeric inputs to the local allocation size by default; try a small boundary relationship that reaches the same target callsite but makes the safety requirement false.
-KLEE reached these callsite markers before missing the target (last markers first-order): `src-text-reader-rs-751-24-read_unaligned` -> `src-text-reader-rs-751-24-add` -> `src-text-reader-rs-782-24-add` -> `src-buffer-rs-74-28` -> `src-buffer-rs-75-27` -> `src-text-reader-rs-685-20` -> `src-text-reader-rs-686-32` -> `src-text-reader-rs-702-35`. Treat a marker with a different id as prefix progress only; the testcase must still reach the exact target marker `src-text-reader-rs-685-20` and reproduce the target counterexample there.
-The metadata caller `text::reader::TokenReader::<R>::skip_unquoted_value` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
-Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0':
+stdout: 
+stderr:    Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
+    |
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
+    |
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
 
-Observed KLEE rerun target-argument feedback from the failed testcase:
-- Observation 1: get_arg(0) = 132181150122005; get_arg(1) = 132181150121991; target counterexample query was unsat.
-  At the selected target expression, `get_arg(0)` is source expression `end`; this failed observation had `end = 132181150122005`.
-  At the selected target expression, `get_arg(1)` is source expression `ptr`; this failed observation had `ptr = 132181150121991`.
-If an earlier guarded lookup/index is required to reach the target, keep that earlier value in-bounds. Do not reuse that same value for the actual target unsafe-call argument unless the source code requires them to be equal; construct independent visible fields/arguments when the target caller state allows it. If the target context shows an actual unsafe-call source line, change the concrete source value of that exact receiver/argument expression rather than only changing an earlier guarded lookup that merely reaches the target. Do not preserve implicit invariants like `index field == Vec slot` or `stored length == allocation length` when the target caller does not enforce them before the actual unsafe call; safe construction of an inconsistent but type-correct receiver state is allowed. When the same source value is used by prefix pointer operations and the target pointer operation, the prefix pointer backing may need to be larger than the target pointer backing so execution reaches the target and the selected target relation is still false. If multiple visible raw-pointer receiver fields are used with the same index/count before and at the target, do not make all of those fields share the same allocation length by default: keep prefix receivers large enough and make the target receiver shorter or otherwise independent when that is what violates the target relation.
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-text-reader-rs-685-20-rule-294-rustc-1-87-line637-01d7d425f3', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling jomini v0.27.0 (/workspaces/UnSAT-Rust/crates_inj/jomini-0.27.0)
+error[E0762]: unterminated character literal
+   --> src/binary/reader.rs:832:55
+    |
+832 |     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+    |                                                       ^^
+    |
+help: if you meant to write a string literal, use double quotes
+    |
+832 -     let mut __unsat_rerun_sym_000 = 'a>(&self, data: &';
+832 +     let mut __unsat_rerun_sym_000 = "a>(&self, data: &";
+    |
+
+For more information about this error, try `rustc --explain E0762`.
+error: could not compile `jomini` (lib) due to 1 previous error
+
 
 </previous attempt feedback>
 
@@ -2610,7 +2632,10 @@ impl TokenReader<()> {
     /// Read from a byte slice without memcpy's
     #[inline]
     pub fn from_slice(data: &[u8]) -> TokenReader<&'_ [u8]> {
-        /* body omitted: interface retained */
+        TokenReader {
+            reader: data,
+            buf: BufferWindow::from_slice(data),
+        }
     }
 }
 impl<R> TokenReader<R>
@@ -2620,7 +2645,7 @@ where
     /// Convenience method for constructing the default token reader
     #[inline]
     pub fn new(reader: R) -> Self {
-        TokenReader::builder().build(reader)
+        /* body omitted: interface retained */
     }
     /// Returns the byte position of the data stream that has been processed.
     ///
@@ -3318,14 +3343,23 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow7advanceE_src_buffer_rs_45_28"
+    )]
     pub fn advance(&mut self, amt: usize) {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow6windowE_src_buffer_rs_52_18"
+    )]
     pub fn window(&self) -> &[u8] {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow10window_lenE_src_buffer_rs_57_18"
+    )]
     pub fn window_len(&self) -> usize {
         /* body omitted: interface retained */
     }
@@ -3334,10 +3368,19 @@ impl BufferWindow {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow13consumed_dataE_src_buffer_rs_67_18"
+    )]
     pub fn consumed_data(&self) -> usize {
         /* body omitted: interface retained */
     }
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_74_28"
+    )]
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN6buffer12BufferWindow3getE_src_buffer_rs_75_27"
+    )]
     pub fn get(&self, range: Range<*const u8>) -> Scalar {
         /* body omitted: interface retained */
     }
@@ -4346,35 +4389,6 @@ mod datederive {}
 ```
 </file>
 
-<file path="src/copyless.rs">
-```rust
-//! Trimmed down version of copyless v0.1.5: <https://github.com/kvark/copyless>
-/// A typesafe helper that separates new value construction from
-/// vector growing, allowing LLVM to ideally construct the element in place.
-pub struct VecAllocation<'a, T: 'a> {
-    vec: &'a mut Vec<T>,
-    index: usize,
-}
-impl<'a, T> VecAllocation<'a, T> {
-    /// Consumes self and writes the given value into the allocation.
-    #[inline(never)]
-    pub fn init(self, value: T) -> usize {
-        /* body omitted: interface retained */
-    }
-}
-/// Helper trait for a `Vec` type that allocates up-front.
-pub trait VecHelper<T> {
-    /// Grows the vector by a single entry, returning the allocation.
-    fn alloc(&mut self) -> VecAllocation<T>;
-}
-impl<T> VecHelper<T> for Vec<T> {
-    fn alloc(&mut self) -> VecAllocation<T> {
-        /* body omitted: interface retained */
-    }
-}
-```
-</file>
-
 <file path="src/de.rs">
 ```rust
 use crate::{binary::Rgb, Error};
@@ -4569,6 +4583,9 @@ const fn trim_ascii_end(data: &[u8]) -> &[u8] {
     /* body omitted: interface retained */
 }
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8encoding18decode_windows1252E_src_encoding_rs_136_22"
+)]
 pub(crate) fn decode_windows1252(d: &[u8]) -> Cow<str> {
     /* body omitted: interface retained */
 }
@@ -4577,6 +4594,7 @@ fn windows_1252_create(d: &[u8], offset: usize) -> String {
     /* body omitted: interface retained */
 }
 #[inline(never)]
+#[unsafe(export_name = "__klee_target_ZN8encoding11decode_utf8E_src_encoding_rs_195_26")]
 pub(crate) fn decode_utf8(d: &[u8]) -> Cow<str> {
     /* body omitted: interface retained */
 }
@@ -5407,7 +5425,7 @@ impl<T> Copy for Property<T> where T: Copy {}
 impl<T> Property<T> {
     /// Creates a new property
     pub fn new(operator: Operator, value: T) -> Self {
-        Property { operator, value }
+        /* body omitted: interface retained */
     }
 
     /// Return the present operator in the property
@@ -5522,7 +5540,7 @@ struct TextReaderMap<'a, R, E> {
 
 impl<'a, R, E> TextReaderMap<'a, R, E> {
     fn new(de: *const &'a mut TextReaderDeserializer<R, E>, root: bool) -> Self {
-        TextReaderMap { de, root }
+        /* body omitted: interface retained */
     }
 }
 
@@ -5554,11 +5572,7 @@ struct TextReaderTokenDeserializer<'a, R, E> {
 
 impl<'a, R, E> TextReaderTokenDeserializer<'a, R, E> {
     fn new(de: *const &'a mut TextReaderDeserializer<R, E>, token: Token<'a>) -> Self {
-        Self {
-            de,
-            token,
-            op: Operator::Equal,
-        }
+        /* body omitted: interface retained */
     }
 }
 
@@ -5801,7 +5815,7 @@ struct TextReaderSeq<'a, R, E> {
 
 impl<'a, R, E> TextReaderSeq<'a, R, E> {
     fn new(de: *const &'a mut TextReaderDeserializer<R, E>) -> Self {
-        TextReaderSeq { de, hit_end: false }
+        /* body omitted: interface retained */
     }
 }
 
@@ -5827,7 +5841,7 @@ struct TextReaderEnum<'a, R, E> {
 
 impl<'a, R, E> TextReaderEnum<'a, R, E> {
     fn new(de: *const &'a mut TextReaderDeserializer<R, E>, token: Token<'a>) -> Self {
-        TextReaderEnum { de, token }
+        /* body omitted: interface retained */
     }
 }
 
@@ -6115,12 +6129,7 @@ where
     E: Encoding + Clone,
 {
     fn new(reader: ObjectReader<'de, 'tokens, E>, config: DeserializationConfig) -> Self {
-        MapAccess {
-            fields: reader.fields(),
-            config,
-            value: None,
-            at_remainder: false,
-        }
+        /* body omitted: interface retained */
     }
 }
 
@@ -6876,29 +6885,7 @@ where
     E: Encoding + Clone,
 {
     fn new(reader: &ObjectReader<'data, 'tokens, E>) -> Self {
-        // Using the fnv hasher improved throughput of the eu4 json benchmark
-        // by over 15%.
-        let mut key_indices =
-            HashMap::with_capacity_and_hasher(reader.fields_len(), FnvBuildHasher::default());
-        for (key, op, val) in reader.fields() {
-            let entry = key_indices.entry(key.read_scalar().as_bytes());
-
-            match entry {
-                Entry::Vacant(x) => {
-                    x.insert(Vec::with_capacity(0));
-                }
-                Entry::Occupied(mut x) => {
-                    x.get_mut().push((op, val));
-                }
-            }
-        }
-
-        let fields = reader.fields();
-
-        FieldGroupsIter {
-            key_indices,
-            fields,
-        }
+        /* body omitted: interface retained */
     }
 
     /// See [the other `remainder` documentation](crate::text::FieldsIter::remainder)
@@ -6976,12 +6963,7 @@ where
     E: Encoding + Clone,
 {
     fn new(reader: &ObjectReader<'data, 'tokens, E>) -> Self {
-        FieldsIter {
-            token_ind: reader.start_ind,
-            end_ind: reader.end_ind,
-            tokens: reader.tokens,
-            encoding: reader.encoding.clone(),
-        }
+        /* body omitted: interface retained */
     }
 
     /// Returns the remaining values from an object if the container is an
@@ -7021,13 +7003,7 @@ where
 {
     /// Create a new object reader from parsed data with encoded strings
     pub fn new(tape: &'tokens TextTape<'data>, encoding: E) -> Self {
-        let tokens = tape.tokens();
-        ObjectReader {
-            tokens,
-            end_ind: tokens.len(),
-            start_ind: 0,
-            encoding,
-        }
+        /* body omitted: interface retained */
     }
 
     /// Return the number of tokens contained within the object
@@ -7258,12 +7234,7 @@ where
     E: Encoding + Clone,
 {
     fn new(reader: &ArrayReader<'data, 'tokens, E>) -> Self {
-        ValuesIter {
-            token_ind: reader.start_ind,
-            end_ind: reader.end_ind,
-            tokens: reader.tokens,
-            encoding: reader.encoding.clone(),
-        }
+        /* body omitted: interface retained */
     }
 }
 
@@ -7605,7 +7576,11 @@ impl TokenReader<()> {
     /// Read from a byte slice without memcpy's
     #[inline]
     pub fn from_slice(data: &[u8]) -> TokenReader<&'_ [u8]> {
-        /* body omitted: interface retained */
+        TokenReader {
+            reader: data,
+            buf: BufferWindow::from_slice(data),
+            utf8: Utf8Bom::Unknown,
+        }
     }
 }
 impl<R> TokenReader<R>
@@ -7615,7 +7590,7 @@ where
     /// Create a new text reader
     #[inline]
     pub fn new(reader: R) -> Self {
-        TokenReader::builder().build(reader)
+        /* body omitted: interface retained */
     }
     /// Returns the byte position of the data stream that has been processed.
     ///
@@ -8170,7 +8145,7 @@ pub struct TextTapeParser;
 impl TextTapeParser {
     /// Create a text parser
     pub fn new() -> Self {
-        TextTapeParser
+        /* body omitted: interface retained */
     }
 
     /// Parse the text format and return the data tape
@@ -8238,690 +8213,6 @@ fn parse_quote_scalar(d: &[u8]) -> Result<(Scalar, &[u8]), Error> {
 
 #[cfg(target_arch = "x86_64")]
 fn parse_quote_scalar(d: &[u8]) -> Result<(Scalar, &[u8]), Error> {
-    /* body omitted: interface retained */
-}
-```
-</file>
-
-<file path="src/text/writer.rs">
-```rust
-use crate::{
-    binary::Rgb,
-    common::PdsDateFormatter,
-    text::{ArrayReader, ObjectReader, Operator, ValueReader},
-    BinaryToken, Encoding, Error, ErrorKind, TextTape, TextToken,
-};
-use std::{fmt::Arguments, io::Write, ops::Deref};
-
-/// Write data in PDS format.
-///
-/// Instantiated via `TextWriterBuilder`
-#[derive(Debug)]
-pub struct TextWriter<W> {
-    writer: W,
-    scratch: Vec<u8>,
-    mode: DepthMode,
-    depth: Vec<DepthMode>,
-    state: WriteState,
-    indents: [u8; 16],
-    indent_char: u8,
-    indent_factor: u8,
-    needs_line_terminator: bool,
-    mixed_mode: MixedMode,
-}
-
-/// Construct a customized text writer
-///
-/// ```
-/// use jomini::TextWriterBuilder;
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let mut out: Vec<u8> = Vec::new();
-/// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-/// writer.write_unquoted(b"hello")?;
-/// writer.write_unquoted(b"world")?;
-/// assert_eq!(std::str::from_utf8(&out).unwrap(), "hello=world");
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug)]
-pub struct TextWriterBuilder {
-    indent_char: u8,
-    indent_factor: u8,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DepthMode {
-    Object,
-    Array,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MixedMode {
-    Disabled,
-    Started,
-    Keyed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WriteState {
-    Error = 0,
-    Key = 1,
-    ObjectValue = 2,
-    KeyValueSeparator = 3,
-    ArrayValue = 4,
-    ArrayValueFirst = 5,
-    FirstKey = 6,
-
-    // The state after calling `write_start`.
-    FirstUnknown = 7,
-
-    // The state after the first unknown. We still don't know if we are dealing
-    // with an array or object.
-    SecondUnknown = 8,
-}
-
-impl WriteState {
-    #[inline]
-    fn no_data_encountered_yet(&self) -> bool {
-        /* body omitted: interface retained */
-    }
-}
-
-const WRITE_STATE_NEXT: [WriteState; 9] = [
-    WriteState::Error,
-    WriteState::KeyValueSeparator,
-    WriteState::Key,
-    WriteState::Key,
-    WriteState::ArrayValue,
-    WriteState::ArrayValue,
-    WriteState::KeyValueSeparator,
-    WriteState::SecondUnknown,
-    WriteState::ArrayValue,
-];
-
-#[cfg(feature = "faster_writer")]
-macro_rules! write_num {
-    ($self:ident, $data:expr) => {
-        $self.write_unquoted(itoa::Buffer::new().format($data).as_bytes())
-    };
-}
-
-#[cfg(not(feature = "faster_writer"))]
-macro_rules! write_num {
-    ($self:ident, $data:expr) => {
-        write!($self, "{}", $data)
-    };
-}
-
-impl<W> TextWriter<W>
-where
-    W: Write,
-{
-    /// Get inner writer, keeping ownership
-    #[inline]
-    pub fn inner(&mut self) -> &mut W {
-        /* body omitted: interface retained */
-    }
-
-    /// Consumes this Writer, returning the underlying writer
-    #[inline]
-    pub fn into_inner(self) -> W {
-        /* body omitted: interface retained */
-    }
-
-    /// Returns true if the next write event would be a key
-    #[inline]
-    pub fn expecting_key(&self) -> bool {
-        /* body omitted: interface retained */
-    }
-
-    /// Returns true if at the start of an unknown container type
-    #[inline]
-    pub fn at_unknown_start(&self) -> bool {
-        /* body omitted: interface retained */
-    }
-
-    /// Returns true if the writer is prepared to write an array value
-    #[inline]
-    pub fn at_array_value(&self) -> bool {
-        /* body omitted: interface retained */
-    }
-
-    /// Returns the number of objects deep the writer is from the root object
-    #[inline]
-    pub fn depth(&self) -> usize {
-        /* body omitted: interface retained */
-    }
-
-    /// Write out the start of container ('{')
-    ///
-    /// If the type of the container is known to be an array or object, prefer
-    /// [`write_object_start`] or [`write_array_start`]
-    #[inline]
-    pub fn write_start(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write out the start of an object
-    #[inline]
-    pub fn write_object_start(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write out the start of an array
-    #[inline]
-    pub fn write_array_start(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write the end of an array or object
-    #[inline]
-    pub fn write_end(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a boolean
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"hello")?;
-    /// writer.write_bool(true)?;
-    /// writer.write_unquoted(b"foo")?;
-    /// writer.write_bool(false)?;
-    /// assert_eq!(&out, b"hello=yes\nfoo=no");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_bool(&mut self, data: bool) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write an operator. Writing an equal operator is optional whenever
-    /// an object is being written.
-    ///
-    /// If an array was being written, the operator will switch to writing
-    /// an object
-    ///
-    /// ```
-    /// use jomini::{text::Operator, TextWriterBuilder};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"a")?;
-    /// writer.write_operator(Operator::LessThan)?;
-    /// writer.write_unquoted(b"b")?;
-    /// assert_eq!(&out, b"a < b");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_operator(&mut self, data: Operator) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write bytes directly to the writer.
-    ///
-    /// The contents of the bytes are not checked, so it is up to the caller
-    /// to ensure that the data is a valid unquoted field (no spaces or
-    /// control characters).
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"a")?;
-    /// writer.write_unquoted(b"b")?;
-    /// assert_eq!(&out, b"a=b");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_unquoted(&mut self, data: &[u8]) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a field to be encapsulated in quotes.
-    ///
-    /// Unlike the unquoted variant, this method will inspect the data to
-    /// ensure everything is properly escaped, like quotes and escape
-    /// characters. And will trim trailing newlines. The textual data to write
-    /// out is assumed to already be in the correct encoding (windows-1252 or
-    /// UTF-8)
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_quoted(b"name")?;
-    /// writer.write_quoted(br#"captain "joe" rogers"#)?;
-    /// assert_eq!(&out, b"\"name\"=\"captain \\\"joe\\\" rogers\"");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_quoted(&mut self, data: &[u8]) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a signed 32bit integer.
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"stability")?;
-    /// writer.write_i32(-3);
-    /// assert_eq!(&out, b"stability=-3");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_i32(&mut self, data: i32) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write an unsigned 32bit integer.
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"stability")?;
-    /// writer.write_u32(3);
-    /// assert_eq!(&out, b"stability=3");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_u32(&mut self, data: u32) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write an unsigned 64bit integer.
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"seed")?;
-    /// writer.write_u64(1000000000000);
-    /// assert_eq!(&out, b"seed=1000000000000");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_u64(&mut self, data: u64) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a signed 64bit integer.
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"ratio")?;
-    /// writer.write_i64(-1);
-    /// assert_eq!(&out, b"ratio=-1");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_i64(&mut self, data: i64) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a 32 bit floating point at full precision
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"morale")?;
-    /// writer.write_f32(4.566);
-    /// assert_eq!(&out, b"morale=4.566");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_f32(&mut self, data: f32) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a 32 bit floating point at a given precision
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"morale")?;
-    /// writer.write_f32_precision(4.0, 3);
-    /// assert_eq!(&out, b"morale=4.000");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_f32_precision(&mut self, data: f32, precision: usize) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a 64 bit floating point at full precision
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"strength")?;
-    /// writer.write_f64(6790.35609);
-    /// assert_eq!(&out, b"strength=6790.35609");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_f64(&mut self, data: f64) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a 64 bit floating point at a given precision
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"morale")?;
-    /// writer.write_f64_precision(4.0, 3);
-    /// assert_eq!(&out, b"morale=4.000");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_f64_precision(&mut self, data: f64, precision: usize) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a header.
-    ///
-    ///
-    /// It is undefined if the next commands do not write out the start of an array
-    /// or object
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"color")?;
-    /// writer.write_header(b"rgb")?;
-    /// writer.write_array_start()?;
-    /// writer.write_i32(100)?;
-    /// writer.write_i32(200)?;
-    /// writer.write_i32(50)?;
-    /// writer.write_end()?;
-    /// assert_eq!(&out, b"color=rgb {\n  100 200 50\n}");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_header(&mut self, header: &[u8]) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write a date formatted in the game style
-    ///
-    /// ```
-    /// use jomini::{common::{Date, PdsDate}, TextWriterBuilder};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// let date = Date::from_ymd(1444, 11, 11);
-    /// writer.write_unquoted(b"start")?;
-    /// writer.write_date(date.game_fmt())?;
-    /// assert_eq!(&out, b"start=1444.11.11");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_date(&mut self, data: PdsDateFormatter) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write an rgb value
-    ///
-    /// ```
-    /// use jomini::{binary::Rgb, TextWriterBuilder};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"start")?;
-    /// let val = Rgb { r: 10, g: 9, b: 8, a: None };
-    /// writer.write_rgb(&val)?;
-    /// writer.write_unquoted(b"end")?;
-    ///
-    /// let val = Rgb { r: 7, g: 6, b: 5, a: Some(4) };
-    /// writer.write_rgb(&val)?;
-    /// assert_eq!(&out, b"start=rgb {\n  10 9 8\n}\nend=rgb {\n  7 6 5 4\n}");
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn write_rgb(&mut self, color: &Rgb) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write formatted data
-    ///
-    /// Typically not invoked directly but instead through the `write!` macro
-    ///
-    /// ```
-    /// use jomini::TextWriterBuilder;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_unquoted(b"start")?;
-    /// write!(writer, "unknown_{}", 5)?;
-    /// assert_eq!(&out, b"start=unknown_5");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn write_fmt(&mut self, fmt: Arguments) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    #[inline]
-    fn write_line_terminator(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    #[inline]
-    fn write_preamble(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// advance the state
-    fn write_epilogue(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Write the indent characters
-    #[inline]
-    fn write_indent(&mut self) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Enter mixed mode for writing a container that is a list and an object
-    #[inline]
-    pub fn start_mixed_mode(&mut self) {
-        /* body omitted: interface retained */
-    }
-
-    /// Write the binary token with reasonable defaults
-    ///
-    /// This function is intended to be used as a fallback for a higher level
-    /// melter that doesn't need special handling for a given token and thus can
-    /// rely on the default behavior of forwarding the token to the writer's
-    /// `write_x` methods.
-    ///
-    /// Any caller that uses this function will want to provide the floating
-    /// point conversion and token translation, which is different from game to
-    /// game.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use jomini::{binary::{BinaryTape, BinaryToken}, TextTape, TextWriterBuilder};
-    ///
-    /// let data = [ 0x82, 0x2d, 0x01, 0x00, 0x0f, 0x00, 0x03, 0x00, 0x45, 0x4e, 0x47 ];
-    /// let tape = BinaryTape::from_slice(&data[..]).unwrap();
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// for token in tape.tokens() {
-    ///     match token {
-    ///         // Define a floating point handler as there isn't a fallback format
-    ///         BinaryToken::F32(x) => writer.write_f32(f32::from_le_bytes(*x))?,
-    ///         BinaryToken::F64(x) => writer.write_f64(f64::from_le_bytes(*x))?,
-    ///
-    ///         // Every melter will want a custom token resolver
-    ///         BinaryToken::Token(x) => {
-    ///             if *x == 0x2d82 {
-    ///                 writer.write_unquoted(b"field1")?;
-    ///             } else {
-    ///                 writer.write_unquoted(b"unknown")?;
-    ///             }
-    ///         },
-    ///         x => writer.write_binary(x)?,
-    ///     }
-    /// }
-    /// assert_eq!(&out, b"field1=\"ENG\"");
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    #[inline]
-    pub fn write_binary(&mut self, token: &BinaryToken<'_>) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    /// Writes a text tape
-    ///
-    /// Formatting is not preserved.
-    /// ```
-    /// use jomini::{TextTape, TextWriterBuilder};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let tape = TextTape::from_slice(b"hello=world")?;
-    /// let mut out: Vec<u8> = Vec::new();
-    /// let mut writer = TextWriterBuilder::new().from_writer(&mut out);
-    /// writer.write_tape(&tape)?;
-    /// assert_eq!(&out, b"hello=world");
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn write_tape(&mut self, tape: &TextTape) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    fn write_object_core<R>(&mut self, reader: ObjectReader<R>) -> Result<(), Error>
-    where
-        R: Encoding + Clone,
-    {
-        /* body omitted: interface retained */
-    }
-
-    // For when the data is already escaped
-    fn write_escaped_quotes(&mut self, x: &[u8]) -> Result<(), Error> {
-        /* body omitted: interface retained */
-    }
-
-    fn write_value<R>(&mut self, value: ValueReader<R>) -> Result<(), Error>
-    where
-        R: Encoding + Clone,
-    {
-        /* body omitted: interface retained */
-    }
-
-    fn write_array<R>(&mut self, array: ArrayReader<R>) -> Result<(), Error>
-    where
-        R: Encoding + Clone,
-    {
-        /* body omitted: interface retained */
-    }
-
-    fn write_object<R>(&mut self, object: ObjectReader<R>) -> Result<(), Error>
-    where
-        R: Encoding + Clone,
-    {
-        /* body omitted: interface retained */
-    }
-}
-
-impl TextWriterBuilder {
-    /// Construct a new TextWriterBuilder with default values
-    pub fn new() -> TextWriterBuilder {
-        TextWriterBuilder::default()
-    }
-
-    /// The character to indent line.
-    ///
-    /// The default is a space.
-    pub fn indent_char(&mut self, indent_char: u8) -> &mut TextWriterBuilder {
-        /* body omitted: interface retained */
-    }
-
-    /// The number of indents per increased depth
-    ///
-    /// The default is 2
-    pub fn indent_factor(&mut self, indent_factor: u8) -> &mut TextWriterBuilder {
-        /* body omitted: interface retained */
-    }
-
-    /// Construct a text writer from a builder and a writer.
-    pub fn from_writer<R>(&self, writer: R) -> TextWriter<R>
-    where
-        R: Write,
-    {
-        /* body omitted: interface retained */
-    }
-}
-
-impl Default for TextWriterBuilder {
-    fn default() -> Self {
-        /* body omitted: interface retained */
-    }
-}
-
-/// A cow that let's us reuse allocations
-enum ReuseVec<'a> {
-    Owned(Vec<u8>),
-    Borrowed((&'a [u8], Vec<u8>)),
-}
-
-impl<'a> ReuseVec<'a> {
-    fn buffer(self) -> Vec<u8> {
-        /* body omitted: interface retained */
-    }
-}
-
-impl<'a> Deref for ReuseVec<'a> {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        /* body omitted: interface retained */
-    }
-}
-
-#[inline]
-fn escape(data: &[u8], mut buffer: Vec<u8>) -> ReuseVec {
     /* body omitted: interface retained */
 }
 ```

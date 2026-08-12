@@ -31,6 +31,9 @@ impl<'a, T> VecAllocation<'a, T> {
                 value,
             );
             let __klee_arg2 = self.index + 1;
+            let __klee_vec_owner3 = &(self.vec) as *const _;
+            klee_ext_bind::bind_arg_ptr_value(0, &__klee_vec_owner3);
+            klee_ext_bind::bind_arg_u64_value(1, &__klee_arg2);
             klee_ext_bind::callsite!("src-copyless-rs-19-13");
             let mut __klee_ret_src_copyless_rs_19_13_set_len = self
                 .vec
@@ -46,7 +49,11 @@ pub trait VecHelper<T> {
 }
 impl<T> VecHelper<T> for Vec<T> {
     fn alloc(&mut self) -> VecAllocation<T> {
-        /* body omitted: interface retained */
+        let index = self.len();
+        if self.capacity() == index {
+            self.reserve(1);
+        }
+        VecAllocation { vec: self, index }
     }
 }
 ```

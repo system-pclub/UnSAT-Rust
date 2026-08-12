@@ -2,13 +2,18 @@
 #[cfg(feature = "unsat-poc-src-buffer-rs-75-27-rule-606-b880eb1456")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_buffer_rs_75_27_rule_606_b880eb1456() {
-    let data = [1u8, 2u8];
-    let window = BufferWindow::from_slice(&data);
+    let data = Box::new(*b"ab");
+    let ptr = data.as_ptr();
 
-    let start = window.start;
-    let end = window.start.wrapping_add(1);
-    let range = start..end;
+    let window = BufferWindow {
+        buf: data,
+        start_buf: ptr,
+        start: ptr,
+        end: ptr.wrapping_add(1),
+        prior_reads: 0,
+    };
 
+    let range = ptr..ptr.wrapping_add(0);
     let _ = window.get(range);
 }
 ```

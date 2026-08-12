@@ -218,7 +218,7 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `packing::Vertex` for `vertices` using fields visible from the injection module when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using fields visible from the injection module when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `optimize::optimize_overdraw_in_place` directly
+1. construct `packing::Vertex` for `vertices` using its genuinely public fields when that better controls the target caller state: `p: [f32; 3]`, `n: [f32; 3]`, `t: [f32; 2]` -> construct `utilities::VertexDataAdapter` for `vertices` using its genuinely public fields when that better controls the target caller state: `reader: std::io::Cursor<&'a [u8]>`, `vertex_count: usize`, `vertex_stride: usize`, `position_offset: usize` -> or construct `utilities::VertexDataAdapter` for `vertices` using constructor(s): `utilities::VertexDataAdapter::<'a>::new` -> call target caller `optimize::optimize_overdraw_in_place` directly
 </candidate safe-call plans>
 
 
@@ -385,11 +385,63 @@ Important:
 The previous testcase attempt failed. Fix the generated testcase using this
 compiler/tool feedback. Do not repeat the same mistake.
 
-The testcase compiled but did not reproduce the target violation.
-KLEE did not report the exact target callsite `src-optimize-rs-166-30`. The testcase likely panicked, returned `None`/`Err`, returned early, or exercised a different unsafe call before reaching the target.
-KLEE observed a Rust panic before reproducing the target. This usually means a safe prefix lookup/index/branch precondition was not satisfied; adjust constructor fields so every prefix helper returns normally while keeping the target relation violating. Re-check the actual target function prefix shown in the context: any `.get(...).expect(...)`, `Type::decode(...).expect(...)`, `let Some(...) = ... else`, or `if !guard { panic!(...) }` must succeed before the target. Avoid using a default/empty receiver state as the whole testcase when the prefix needs a non-empty collection, valid encoded element, or coherent branch guard. If the prefix reads/writes through raw pointer fields, do not leave those prefix pointer fields as `null()`/`null_mut()`; provide tiny local backing arrays/Vecs or other safe pointer-producing values so the prefix can execute normally before the target callsite. If a target argument/index is also used by earlier prefix raw-pointer operations, make the prefix backing large enough for that value but keep the actual target receiver/buffer relation independent and violating.
-The metadata caller `optimize::optimize_overdraw_in_place` is a safe function that contains the target unsafe callsite. Prefer calling this exact caller directly instead of routing through a higher-level wrapper.
-Do not use KLEE helpers or symbolic inputs. Do not introduce local bindings that shadow crate constants/statics from the target module; call the crate code under test.
+Failed to compile '/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0':
+stdout: 
+stderr:    Compiling meshopt v0.3.0 (/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0)
+warning: unexpected `cfg` condition value: `cargo-clippy`
+ --> src/ffi.rs:4:13
+  |
+4 | #![cfg_attr(feature = "cargo-clippy", allow(clippy::unreadable_literal))]
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `bindgen`, `generate_bindings`, `unsat-poc-src-optimize-rs-166-30-rule-300-rustc-1-87-line880-bae12b410c`, `unsat-poc-src-optimize-rs-166-30-rule-301-rustc-1-87-line880-aab7c6ae15`, `unsat-poc-src-utilities-rs-188-34-rule-300-rustc-1-87-line880-6692cd8ea2`, `unsat-poc-src-utilities-rs-188-34-rule-301-rustc-1-87-line880-672d9b7900`, `unsat-poc-src-utilities-rs-188-34-rule-302-rustc-1-87-line880-d1377d1788`, and `unsat-poc-src-utilities-rs-188-34-rule-303-rustc-1-87-line880-8495d336be`
+  = help: consider adding `cargo-clippy` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `optimize`
+   --> src/optimize.rs:262:5
+    |
+262 |     optimize::optimize_overdraw_in_place(&mut indices, &vertices, 1.0);
+    |     ^^^^^^^^ use of unresolved module or unlinked crate `optimize`
+    |
+    = help: if you wanted to use a crate named `optimize`, use `cargo add optimize` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `meshopt` (lib) generated 1 warning
+error: could not compile `meshopt` (lib) due to 1 previous error; 1 warning emitted
+
+
+command: ['cargo', 'build', '--lib', '--features', 'unsat-poc-src-optimize-rs-166-30-rule-301-rustc-1-87-line880-aab7c6ae15', '-Zbuild-std=std,panic_abort', '-Zbuild-std-features=std_detect_file_io,std_detect_dlsym_getauxval', '--target', 'x86_64-unknown-linux-gnu']
+returncode: 101
+
+[stdout]
+
+[stderr]
+   Compiling meshopt v0.3.0 (/workspaces/UnSAT-Rust/crates_inj/meshopt-0.3.0)
+warning: unexpected `cfg` condition value: `cargo-clippy`
+ --> src/ffi.rs:4:13
+  |
+4 | #![cfg_attr(feature = "cargo-clippy", allow(clippy::unreadable_literal))]
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `bindgen`, `generate_bindings`, `unsat-poc-src-optimize-rs-166-30-rule-300-rustc-1-87-line880-bae12b410c`, `unsat-poc-src-optimize-rs-166-30-rule-301-rustc-1-87-line880-aab7c6ae15`, `unsat-poc-src-utilities-rs-188-34-rule-300-rustc-1-87-line880-6692cd8ea2`, `unsat-poc-src-utilities-rs-188-34-rule-301-rustc-1-87-line880-672d9b7900`, `unsat-poc-src-utilities-rs-188-34-rule-302-rustc-1-87-line880-d1377d1788`, and `unsat-poc-src-utilities-rs-188-34-rule-303-rustc-1-87-line880-8495d336be`
+  = help: consider adding `cargo-clippy` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `optimize`
+   --> src/optimize.rs:262:5
+    |
+262 |     optimize::optimize_overdraw_in_place(&mut indices, &vertices, 1.0);
+    |     ^^^^^^^^ use of unresolved module or unlinked crate `optimize`
+    |
+    = help: if you wanted to use a crate named `optimize`, use `cargo add optimize` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `meshopt` (lib) generated 1 warning
+error: could not compile `meshopt` (lib) due to 1 previous error; 1 warning emitted
+
 
 </previous attempt feedback>
 
@@ -699,6 +751,9 @@ pub fn optimize_vertex_fetch_remap(indices: &[u32], vertex_count: usize) -> Vec<
 /// `threshold` indicates how much the overdraw optimizer can degrade vertex cache
 /// efficiency (1.05 = up to 5%) to reduce overdraw more efficiently.
 #[inline(never)]
+#[unsafe(
+    export_name = "__klee_target_ZN8optimize26optimize_overdraw_in_placeE_src_optimize_rs_166_30"
+)]
 pub fn optimize_overdraw_in_place(
     indices: &mut [u32],
     vertices: &VertexDataAdapter<'_>,

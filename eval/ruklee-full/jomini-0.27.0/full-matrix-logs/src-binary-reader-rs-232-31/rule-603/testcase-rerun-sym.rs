@@ -10,12 +10,11 @@ pub extern "C" fn __unsat_poc_src_binary_reader_rs_232_31_rule_603_3197bf2d02() 
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_002, "__unsat_rerun_sym_002");
     let mut __unsat_rerun_sym_003 = 0x00;
     klee_ext_bind::make_symbolic!(&mut __unsat_rerun_sym_003, "__unsat_rerun_sym_003");
-    use std::io::Cursor;
+    use crate::binary::TokenReader;
 
-    let data = [__unsat_rerun_sym_000, __unsat_rerun_sym_001, __unsat_rerun_sym_002, __unsat_rerun_sym_003];
-    let mut reader = crate::binary::TokenReader::new(Cursor::new(&data[..]));
+    let backing = vec![__unsat_rerun_sym_000, __unsat_rerun_sym_001, __unsat_rerun_sym_002, __unsat_rerun_sym_003];
+    let mut reader = TokenReader::from_slice(&backing);
 
-    let _ = reader.next();
     let _ = reader.next();
 }
 

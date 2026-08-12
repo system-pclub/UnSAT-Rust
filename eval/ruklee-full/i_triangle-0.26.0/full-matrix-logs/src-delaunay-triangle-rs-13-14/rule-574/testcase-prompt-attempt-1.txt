@@ -172,7 +172,26 @@ target counterexample.
 	- Return only the function in one Rust fenced code block.
 
 <certainty call chain>
-[]
+[
+  {
+    "certainty": "certain_symbol",
+    "evidence": "public-field:delaunay::triangle::DTriangle.neighbors",
+    "steps": [
+      {
+        "detail": "DSL access path root",
+        "kind": "root",
+        "root_type": "DTriangle"
+      },
+      {
+        "detail": "field is publicly writable",
+        "field": "neighbors",
+        "kind": "public_field",
+        "root_type": "delaunay::triangle::DTriangle"
+      }
+    ],
+    "symbol": "__klee_target_ZN8delaunay8triangle9DTriangle17neighbor_by_orderE_src_delaunay_triangle_rs_13_14.arg0.neighbors[2]"
+  }
+]
 </certainty call chain>
 
 <target callsite metadata>
@@ -231,7 +250,8 @@ target counterexample.
 
 <candidate safe-call plans>
 Safe-call skeletons. Prefer the first direct target-caller skeleton when it type-checks from the injection module; only fall back to later wrapper skeletons if the direct skeleton does not compile or cannot reach the target. Choose concrete values yourself to generate a counterexample for the target caller and target callsite:
-1. construct `delaunay::triangle::DTriangle` for `receiver` using fields visible from the injection module when that better controls the target caller state: `index: usize`, `vertices: [delaunay::vertex::DVertex; 3]`, `neighbors: [usize; 3]` -> or construct `delaunay::triangle::DTriangle` for `receiver` using constructor(s): `delaunay::triangle::DTriangle::new`, `delaunay::triangle::DTriangle::abc`, `delaunay::triangle::DTriangle::abc_bc_ac_ab` -> call target caller `delaunay::triangle::DTriangle::neighbor_by_order` directly
+1. construct `delaunay::triangle::DTriangle` for `receiver` using its genuinely public fields when that better controls the target caller state: `index: usize`, `vertices: [delaunay::vertex::DVertex; 3]`, `neighbors: [usize; 3]` -> or construct `delaunay::triangle::DTriangle` for `receiver` using constructor(s): `delaunay::triangle::DTriangle::new`, `delaunay::triangle::DTriangle::abc`, `delaunay::triangle::DTriangle::abc_bc_ac_ab` -> construct or obtain a `DTriangle` value -> set or populate public field `delaunay::triangle::DTriangle.neighbors` -> call target caller `delaunay::triangle::DTriangle::neighbor_by_order`
+2. construct `delaunay::triangle::DTriangle` for `receiver` using its genuinely public fields when that better controls the target caller state: `index: usize`, `vertices: [delaunay::vertex::DVertex; 3]`, `neighbors: [usize; 3]` -> or construct `delaunay::triangle::DTriangle` for `receiver` using constructor(s): `delaunay::triangle::DTriangle::new`, `delaunay::triangle::DTriangle::abc`, `delaunay::triangle::DTriangle::abc_bc_ac_ab` -> call target caller `delaunay::triangle::DTriangle::neighbor_by_order` directly
 </candidate safe-call plans>
 
 
@@ -510,11 +530,15 @@ pub struct DTriangle {
 }
 impl DTriangle {
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN8delaunay8triangle9DTriangle17neighbor_by_orderE_src_delaunay_triangle_rs_13_14"
+    )]
     pub fn neighbor_by_order(&self, order: usize) -> usize {
         unsafe {
             let __klee_arg0 = &self.neighbors;
-            klee_ext_bind::bind_arg_u64(1, (__klee_arg0).len() as u64);
-            klee_ext_bind::bind_arg_u64_value(2, &order);
+            let __klee_len1 = (__klee_arg0).len() as u64;
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", __klee_len1);
+            klee_ext_bind::bind_arg_slice_index_value(1, &order, __klee_len1);
             klee_ext_bind::callsite!("src-delaunay-triangle-rs-13-14");
             let mut __klee_ret_src_delaunay_triangle_rs_13_14_get_unchecked = __klee_arg0
                 .get_unchecked(order);
@@ -522,6 +546,9 @@ impl DTriangle {
         }
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN8delaunay8triangle9DTriangle15vertex_by_orderE_src_delaunay_triangle_rs_19_14"
+    )]
     pub fn vertex_by_order(&self, order: usize) -> DVertex {
         /* body omitted: interface retained */
     }
@@ -567,6 +594,9 @@ impl DTriangle {
         /* body omitted: interface retained */
     }
     #[inline(never)]
+    #[unsafe(
+        export_name = "__klee_target_ZN8delaunay8triangle9DTriangle15update_oppositeE_src_delaunay_triangle_rs_121_14"
+    )]
     pub fn update_opposite(&mut self, old_neighbor: usize, new_neighbor: usize) {
         /* body omitted: interface retained */
     }

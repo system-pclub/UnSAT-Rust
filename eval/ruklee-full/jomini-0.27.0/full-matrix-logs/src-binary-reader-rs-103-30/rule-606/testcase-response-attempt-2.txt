@@ -3,29 +3,13 @@
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_binary_reader_rs_103_30_rule_606_2c620ecd6a() {
     use crate::binary::TokenReader;
-    use std::io::{self, Read};
+    use std::io::Cursor;
 
-    struct ShortRead {
-        data: &'static [u8],
-        pos: usize,
-    }
+    let backing = vec![0x41u8, 0x42, 0x43, 0x44];
+    let cursor = Cursor::new(backing);
 
-    impl Read for ShortRead {
-        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-            if self.pos >= self.data.len() {
-                return Ok(0);
-            }
-            let n = core::cmp::min(out.len(), self.data.len() - self.pos);
-            out[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
-            self.pos += n;
-            Ok(n)
-        }
-    }
+    let mut reader = TokenReader::new(cursor);
 
-    let input: &'static [u8] = &[0x2d, 0x28, 0x01, 0x00, 0x03, 0x00];
-    let reader = ShortRead { data: input, pos: 0 };
-    let mut tr = TokenReader::new(reader);
-
-    let _ = tr.read_bytes(1);
+    let _ = reader.read_bytes(1);
 }
 ```

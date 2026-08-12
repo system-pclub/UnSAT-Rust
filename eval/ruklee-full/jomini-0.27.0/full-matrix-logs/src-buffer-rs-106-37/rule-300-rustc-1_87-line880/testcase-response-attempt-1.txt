@@ -2,10 +2,18 @@
 #[cfg(feature = "unsat-poc-src-buffer-rs-106-37-rule-300-rustc-1-87-line880-cded49ad06")]
 #[no_mangle]
 pub extern "C" fn __unsat_poc_src_buffer_rs_106_37_rule_300_rustc_1_87_line880_cded49ad06() {
-    let mut window = BufferWindow::from_slice(b"ab");
-    window.advance(1);
+    let backing = vec![0u8; 2].into_boxed_slice();
+    let ptr = backing.as_ptr();
 
-    let reader = Cursor::new(b"c");
+    let mut window = BufferWindow {
+        buf: backing,
+        start_buf: ptr,
+        start: ptr,
+        end: ptr.wrapping_add(1),
+        prior_reads: 0,
+    };
+
+    let reader = Cursor::new(&b"Z"[..]);
     let _ = window.fill_buf(reader);
 }
 ```

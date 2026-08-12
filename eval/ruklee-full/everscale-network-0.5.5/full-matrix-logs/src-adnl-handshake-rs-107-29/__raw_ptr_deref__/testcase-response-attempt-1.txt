@@ -1,0 +1,21 @@
+```rust
+#[cfg(feature = "unsat-poc-src-adnl-handshake-rs-107-29-raw-ptr-deref-102c91dc5f")]
+#[no_mangle]
+pub extern "C" fn __unsat_poc_src_adnl_handshake_rs_107_29_raw_ptr_deref_102c91dc5f() {
+    use std::sync::Arc;
+
+    let key = Key::from_bytes([1u8; 32]);
+    let local_id = *key.id();
+
+    let mut keys: FastHashMap<NodeIdShort, Arc<Key>> = FastHashMap::default();
+    keys.insert(local_id, Arc::new(key));
+
+    let mut packet = vec![0u8; 96];
+    packet[..32].copy_from_slice(local_id.as_slice());
+    packet[32..64].copy_from_slice(&[2u8; 32]);
+    packet[64..96].copy_from_slice(&[3u8; 32]);
+
+    let mut view = PacketView::from(packet.as_mut_slice());
+    let _ = adnl::handshake::parse_handshake_packet(&keys, &mut view);
+}
+```

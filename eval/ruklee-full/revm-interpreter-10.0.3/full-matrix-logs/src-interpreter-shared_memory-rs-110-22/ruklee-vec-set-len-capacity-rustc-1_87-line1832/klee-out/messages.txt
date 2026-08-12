@@ -1,9 +1,9 @@
 KLEE: Using Z3 solver backend
 KLEE: Deterministic allocator: Using quarantine queue size 8
-KLEE: Deterministic allocator: globals (start-address=0x746250800000 size=10 GiB)
-KLEE: Deterministic allocator: constants (start-address=0x745fd0800000 size=10 GiB)
-KLEE: Deterministic allocator: heap (start-address=0x735fd0800000 size=1024 GiB)
-KLEE: Deterministic allocator: stack (start-address=0x733fd0800000 size=128 GiB)
+KLEE: Deterministic allocator: globals (start-address=0x7ee58c400000 size=10 GiB)
+KLEE: Deterministic allocator: constants (start-address=0x7ee30c400000 size=10 GiB)
+KLEE: Deterministic allocator: heap (start-address=0x7de30c400000 size=1024 GiB)
+KLEE: Deterministic allocator: stack (start-address=0x7dc30c400000 size=128 GiB)
 KLEE: [compose-verify] trait summary: <FunctionReturnFrame as Debug>::fmt
 KLEE: [compose-verify] trait summary: <FunctionReturnFrame as Clone>::clone
 KLEE: [compose-verify] trait summary: <FunctionReturnFrame as Clone>::clone_from
@@ -324,12 +324,19 @@ KLEE: Optimizing module...
 KLEE: Running IntrinsicCleanerPass on module: /workspaces/UnSAT-Rust/.local/irs/revm_interpreter.ll
 KLEE: [snapshot] arg0 uses Rust debug layout '&mut revm_interpreter::interpreter::shared_memory::SharedMemory' (size=8 fields=0)
 KLEE: [snapshot] arg0 pointee layout 'SharedMemory' (size=56 fields=3)
-KLEE: [snapshot] materialized '_ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer' virtual Vec elem_bytes=1
-KLEE: [snapshot] materialized '_ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints' virtual Vec elem_bytes=8
-KLEE: [snapshot] arg0 allocated pointee/object 'SharedMemory' MO address=127233314258944 bytes=56; binding base address to argument
+KLEE: [snapshot] materialized '__klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer' virtual Vec elem_bytes=1
+KLEE: [snapshot] materialized '__klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints' virtual Vec elem_bytes=8
+KLEE: [snapshot] constrained SharedMemory '__klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0' invariant: last_checkpoint <= buffer.len
+KLEE: [snapshot] arg0 allocated pointee/object 'SharedMemory' MO address=138792073691136 bytes=56; binding base address to argument
 KLEE: [compose-verify] modeled Vec::pop len update
 KLEE: [compose-verify] modeled Vec::as_slice preserving ptr/len
-KLEE: [compose-verify] summarized Rust slice::last
+KLEE: [compose-verify] modeled slice::last from base/len elem_size=8
+KLEE: [ext.call] explicit arg0 source=138792073691136
+KLEE: [ext.call] explicit arg1 source=(Extract w64 64 (Select w128 (Eq false
+                                  (Eq 0
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
+                              1
+                              0))
 KLEE: [ext.exec] klee_ext_callsite site='src-interpreter-shared_memory-rs-110-22' target='src-interpreter-shared_memory-rs-110-22'
 KLEE: [ext.callsite] reached 'src-interpreter-shared_memory-rs-110-22'
 KLEE: [ext.callsite] deferring 'src-interpreter-shared_memory-rs-110-22' until target call _ZN5alloc3vec16Vec$LT$T$C$A$GT$7set_len17h8885d2a273335791E
@@ -339,35 +346,54 @@ KLEE: [ext.callsite] completing deferred 'src-interpreter-shared_memory-rs-110-2
 KLEE: [ext.call] values:
   __klee_call_arg1 = (Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
-                              0))
-  __klee_call_arg0 = 127233314258944
+                              0)) (explicit)
+  __klee_call_arg0 = 138792073691136 (explicit)
 
 KLEE: [ext.dsl] path constraints:
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.cap[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.len[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.virtual_base[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.cap[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.virtual_base[8] : w32 -> w8 = symbolic
-array compose_slice_last2[8] : w32 -> w8 = symbolic
-(query [(Eq 127679990841344
-             (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.virtual_base))
-         (Ule (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.len)
-              N0:(ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.cap))
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.virtual_base[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.virtual_base[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint[8] : w32 -> w8 = symbolic
+(query [(Eq 139238750273536
+             (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.virtual_base))
+         (Ule (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len)
+              N0:(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
          (Ule N0 32768)
-         (Eq 127817429803008
-             (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.virtual_base))
-         (Ule N1:(ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)
-              N2:(ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.cap))
+         (Eq 139376189235200
+             (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.virtual_base))
+         (Ule N1:(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)
+              N2:(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap))
          (Ule N2 4096)
-         (Extract 0 (Extract w64 0 (Select w128 (Eq false (Eq 0 N1))
+         (Ule (Concat w64 (Concat w56 (Concat w48 (Concat w40 (Concat w32 (Concat w24 (ReadLSB w16 6 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint)
+                                                                                      (Read w8 5 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                                                          (Read w8 4 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                                              (Read w8 3 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                                  (Read w8 2 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                      (Read w8 1 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                          (Read w8 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+              (Concat w64 (Concat w56 (Concat w48 (Concat w40 (Concat w32 (Concat w24 (ReadLSB w16 6 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len)
+                                                                                      N3:(Read w8 5 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                                                          N4:(Read w8 4 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                                              N5:(Read w8 3 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                                  N6:(Read w8 2 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                      N7:(Read w8 1 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                          N8:(Read w8 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len)))
+         (Extract 0 (Extract w64 0 (Select w128 N9:(Eq false (Eq 0 N1))
                                                 1
                                                 0)))
          (Eq false
              (Extract 0 (Select w64 (Eq 0
-                                        (ReadLSB w64 0 compose_slice_last2))
+                                        (Select w64 (Eq false
+                                                        (Eq 0
+                                                            N10:(Select w64 N9 (Add w64 18446744073709551615 N1) 0)))
+                                                    (Add w64 139376189235200
+                                                             (Mul w64 8 (Add w64 18446744073709551615 N10)))
+                                                    0))
                                     0
                                     1)))]
         false)
@@ -375,117 +401,65 @@ array compose_slice_last2[8] : w32 -> w8 = symbolic
 KLEE: [ext.dsl] 1 -> 1
 KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=(Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
                               0)))
 KLEE: [ext.dsl] 0 -> 0
-KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=127233314258944)
+KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=138792073691136)
 KLEE: [ext.dsl] "capacity" -> capacity
-KLEE: [ext.dsl] get_field(get_arg(0), "capacity") -> (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                  56))
+KLEE: [ext.dsl] get_field(get_arg(0), "capacity") -> (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap)
 KLEE: [ext.dsl] simplified_var(get_arg(1)) <= get_arg(1) -> simplified(get_arg(1)=(Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
                               0)))
-KLEE: [ext.dsl] simplified_var(get_arg(0).capacity) <= get_field(get_arg(0), "capacity") -> simplified(get_arg(0).capacity=(Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                  56)))
+KLEE: [ext.dsl] simplified_var(get_arg(0).capacity) <= get_field(get_arg(0), "capacity") -> simplified(get_arg(0).capacity=(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
 KLEE: [ext.dsl] binary.left expr: (Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
                               0))
-KLEE: [ext.dsl] binary.right expr: (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                  56))
+KLEE: [ext.dsl] binary.right expr: (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap)
 KLEE: [ext.dsl] (simplified_var(get_arg(1)) <= simplified_var(get_arg(0).capacity)) -> (Ule (Extract w64 64 (Select w128 (Eq false
                                        (Eq 0
-                                           (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                           (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                                    1
                                    0))
-      (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                       0)
-                                                              (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                       8))
-                                                      (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                               16))
-                                              (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                       24))
-                                      (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                               32))
-                              (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                       40))
-                      (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                               48))
-              (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                       56)))
+      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
 KLEE: [ext.dsl] resolved constraint expr: (Ule (Extract w64 64 (Select w128 (Eq false
                                        (Eq 0
-                                           (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                           (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                                    1
                                    0))
-      (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                       0)
-                                                              (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                       8))
-                                                      (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                               16))
-                                              (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                       24))
-                                      (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                               32))
-                              (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                       40))
-                      (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                               48))
-              (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                       56)))
-KLEE: [ext.dsl] resolved constraint uses certain symbol: true
-KLEE: [ext.dsl] violation query uses certain symbol: true
+      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
+KLEE: [ext.dsl] resolved constraint uses certain symbol: false
+KLEE: [ext.dsl] uncertain values used by DSL: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- get_field(get_arg(0), "capacity")
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- simplified_var(get_arg(0).capacity) <= get_field(get_arg(0), "capacity")
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- (simplified_var(get_arg(1)) <= simplified_var(get_arg(0).capacity))
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len <- <unknown DSL node>
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap <- <unknown DSL node>
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- get_arg(1)
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- simplified_var(get_arg(1)) <= get_arg(1)
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- (simplified_var(get_arg(1)) <= simplified_var(get_arg(0).capacity))
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint <- <unknown DSL node>
+KLEE: [ext.dsl] DSL still depends on uncertain_symbol values; continuing SAT query under optimistic uncertainty
+KLEE: [ext.dsl] violation query uses certain symbol: false
 KLEE: [ext.dsl] SAT(constraints AND NOT resolved constraint): unsat
 KLEE: [ext.dsl] at callsite 'src-interpreter-shared_memory-rs-110-22': query solved
-KLEE: [compose-verify] created compose_symbolic_ptr_load3 from callee=_ZN4core6option19Option$LT$$RF$T$GT$6cloned17h87475ed85a25de94E; instruction=  %_0.i = load i64, ptr %t, align 8, !dbg !11624; source=/home/user/.rustup/toolchains/nightly-2025-03-28-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/clone.rs:505 25; address=(ReadLSB w64 0 compose_slice_last2)
+KLEE: [ext.callsite] continuing after non-violating occurrence of 'src-interpreter-shared_memory-rs-110-22' during compose verification
+KLEE: [compose-verify] modeled Vec::set_len
+KLEE: [ext.call] explicit arg0 source=138792073691136
+KLEE: [ext.call] explicit arg1 source=(Extract w64 64 (Select w128 (Eq false
+                                  (Eq 0
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
+                              1
+                              0))
 KLEE: [ext.exec] klee_ext_callsite site='src-interpreter-shared_memory-rs-110-22' target='src-interpreter-shared_memory-rs-110-22'
 KLEE: [ext.callsite] reached 'src-interpreter-shared_memory-rs-110-22'
 KLEE: [ext.callsite] deferring 'src-interpreter-shared_memory-rs-110-22' until target call _ZN5alloc3vec16Vec$LT$T$C$A$GT$7set_len17h8885d2a273335791E
@@ -495,34 +469,53 @@ KLEE: [ext.callsite] completing deferred 'src-interpreter-shared_memory-rs-110-2
 KLEE: [ext.call] values:
   __klee_call_arg1 = (Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
-                              0))
-  __klee_call_arg0 = 127233314258944
+                              0)) (explicit)
+  __klee_call_arg0 = 138792073691136 (explicit)
 
 KLEE: [ext.dsl] path constraints:
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.cap[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.len[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.virtual_base[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.cap[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len[8] : w32 -> w8 = symbolic
-array _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.virtual_base[8] : w32 -> w8 = symbolic
-array compose_slice_last2[8] : w32 -> w8 = symbolic
-(query [(Eq 127679990841344
-             (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.virtual_base))
-         (Ule (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.len)
-              N0:(ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.buffer.cap))
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.virtual_base[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.virtual_base[8] : w32 -> w8 = symbolic
+array __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint[8] : w32 -> w8 = symbolic
+(query [(Eq 139238750273536
+             (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.virtual_base))
+         (Ule (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len)
+              N0:(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
          (Ule N0 32768)
-         (Eq 127817429803008
-             (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.virtual_base))
-         (Ule N1:(ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)
-              N2:(ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.cap))
+         (Eq 139376189235200
+             (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.virtual_base))
+         (Ule N1:(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)
+              N2:(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap))
          (Ule N2 4096)
-         (Extract 0 (Extract w64 0 (Select w128 (Eq false (Eq 0 N1))
+         (Ule (Concat w64 (Concat w56 (Concat w48 (Concat w40 (Concat w32 (Concat w24 (ReadLSB w16 6 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint)
+                                                                                      (Read w8 5 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                                                          (Read w8 4 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                                              (Read w8 3 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                                  (Read w8 2 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                                      (Read w8 1 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+                          (Read w8 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint))
+              (Concat w64 (Concat w56 (Concat w48 (Concat w40 (Concat w32 (Concat w24 (ReadLSB w16 6 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len)
+                                                                                      N3:(Read w8 5 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                                                          N4:(Read w8 4 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                                              N5:(Read w8 3 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                                  N6:(Read w8 2 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                                      N7:(Read w8 1 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len))
+                          N8:(Read w8 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len)))
+         (Extract 0 (Extract w64 0 (Select w128 N9:(Eq false (Eq 0 N1))
                                                 1
                                                 0)))
          (Extract 0 (Select w64 (Eq 0
-                                    (ReadLSB w64 0 compose_slice_last2))
+                                    (Select w64 (Eq false
+                                                    (Eq 0
+                                                        N10:(Select w64 N9 (Add w64 18446744073709551615 N1) 0)))
+                                                (Add w64 139376189235200
+                                                         (Mul w64 8 (Add w64 18446744073709551615 N10)))
+                                                0))
                                 0
                                 1))]
         false)
@@ -530,113 +523,56 @@ array compose_slice_last2[8] : w32 -> w8 = symbolic
 KLEE: [ext.dsl] 1 -> 1
 KLEE: [ext.dsl] get_arg(1) -> simplified(__klee_call_arg1=(Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
                               0)))
 KLEE: [ext.dsl] 0 -> 0
-KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=127233314258944)
+KLEE: [ext.dsl] get_arg(0) -> simplified(__klee_call_arg0=138792073691136)
 KLEE: [ext.dsl] "capacity" -> capacity
-KLEE: [ext.dsl] get_field(get_arg(0), "capacity") -> (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                  56))
+KLEE: [ext.dsl] get_field(get_arg(0), "capacity") -> (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap)
 KLEE: [ext.dsl] simplified_var(get_arg(1)) <= get_arg(1) -> simplified(get_arg(1)=(Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
                               0)))
-KLEE: [ext.dsl] simplified_var(get_arg(0).capacity) <= get_field(get_arg(0), "capacity") -> simplified(get_arg(0).capacity=(Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                  56)))
+KLEE: [ext.dsl] simplified_var(get_arg(0).capacity) <= get_field(get_arg(0), "capacity") -> simplified(get_arg(0).capacity=(ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
 KLEE: [ext.dsl] binary.left expr: (Extract w64 64 (Select w128 (Eq false
                                   (Eq 0
-                                      (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                               1
                               0))
-KLEE: [ext.dsl] binary.right expr: (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                  0)
-                                                         (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                  8))
-                                                 (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                          16))
-                                         (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                  24))
-                                 (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                          32))
-                         (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                  40))
-                 (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                          48))
-         (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                  56))
+KLEE: [ext.dsl] binary.right expr: (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap)
 KLEE: [ext.dsl] (simplified_var(get_arg(1)) <= simplified_var(get_arg(0).capacity)) -> (Ule (Extract w64 64 (Select w128 (Eq false
                                        (Eq 0
-                                           (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                           (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                                    1
                                    0))
-      (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                       0)
-                                                              (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                       8))
-                                                      (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                               16))
-                                              (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                       24))
-                                      (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                               32))
-                              (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                       40))
-                      (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                               48))
-              (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                       56)))
+      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
 KLEE: [ext.dsl] resolved constraint expr: (Ule (Extract w64 64 (Select w128 (Eq false
                                        (Eq 0
-                                           (ReadLSB w64 0 _ZN16revm_interpreter11interpreter13shared_memory12SharedMemory12free_context17h379076e1198a4f4cE.arg0.checkpoints.len)))
+                                           (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len)))
                                    1
                                    0))
-      (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Or w64 (Shl w64 (ZExt w64 (Read w8 0 extdsl_obj_11898390644068349003))
-                                                                       0)
-                                                              (Shl w64 (ZExt w64 (Read w8 1 extdsl_obj_11898390644068349003))
-                                                                       8))
-                                                      (Shl w64 (ZExt w64 (Read w8 2 extdsl_obj_11898390644068349003))
-                                                               16))
-                                              (Shl w64 (ZExt w64 (Read w8 3 extdsl_obj_11898390644068349003))
-                                                       24))
-                                      (Shl w64 (ZExt w64 (Read w8 4 extdsl_obj_11898390644068349003))
-                                               32))
-                              (Shl w64 (ZExt w64 (Read w8 5 extdsl_obj_11898390644068349003))
-                                       40))
-                      (Shl w64 (ZExt w64 (Read w8 6 extdsl_obj_11898390644068349003))
-                               48))
-              (Shl w64 (ZExt w64 (Read w8 7 extdsl_obj_11898390644068349003))
-                       56)))
-KLEE: [ext.dsl] resolved constraint uses certain symbol: true
-KLEE: [ext.dsl] violation query uses certain symbol: true
+      (ReadLSB w64 0 __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap))
+KLEE: [ext.dsl] resolved constraint uses certain symbol: false
+KLEE: [ext.dsl] uncertain values used by DSL: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len, __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- get_field(get_arg(0), "capacity")
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- simplified_var(get_arg(0).capacity) <= get_field(get_arg(0), "capacity")
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.cap <- (simplified_var(get_arg(1)) <= simplified_var(get_arg(0).capacity))
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.buffer.len <- <unknown DSL node>
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.cap <- <unknown DSL node>
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- get_arg(1)
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- simplified_var(get_arg(1)) <= get_arg(1)
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.checkpoints.len <- (simplified_var(get_arg(1)) <= simplified_var(get_arg(0).capacity))
+KLEE: [ext.dsl] uncertain value origin: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint <- <unknown creator>
+KLEE: [ext.dsl] uncertain value mapping: __klee_target_ZN11interpreter13shared_memory12SharedMemory12free_contextE_src_interpreter_shared_memory_rs_110_22.arg0.last_checkpoint <- <unknown DSL node>
+KLEE: [ext.dsl] DSL still depends on uncertain_symbol values; continuing SAT query under optimistic uncertainty
+KLEE: [ext.dsl] violation query uses certain symbol: false
 KLEE: [ext.dsl] SAT(constraints AND NOT resolved constraint): unsat
 KLEE: [ext.dsl] at callsite 'src-interpreter-shared_memory-rs-110-22': query solved
+KLEE: [ext.callsite] continuing after non-violating occurrence of 'src-interpreter-shared_memory-rs-110-22' during compose verification
+KLEE: [compose-verify] modeled Vec::set_len
