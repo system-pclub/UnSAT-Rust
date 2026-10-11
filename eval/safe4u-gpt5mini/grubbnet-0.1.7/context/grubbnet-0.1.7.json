@@ -1,0 +1,49 @@
+[
+  {
+    "sample_label": "grubbnet-0.1.7/src/buffer.rs/drain/20",
+    "repo_name": "grubbnet-0.1.7",
+    "relative_file": "src/buffer.rs",
+    "start_line": 20,
+    "end_line": 31,
+    "start_byte": 591,
+    "end_byte": 894,
+    "name": "drain",
+    "raw_code": "pub fn drain(&mut self, count: usize) {\n        unsafe {\n            use std::ptr;\n            ptr::copy(\n                self.data.as_ptr().offset(count as isize),\n                self.data.as_mut_ptr(),\n                self.offset - count,\n            );\n        }\n\n        self.offset -= count;\n    }",
+    "code_with_hints": "pub fn drain(&mut self, count: usize) {\n        unsafe {\n            use std::ptr;\n            ptr::copy(\n                src: self.data.as_ptr().offset(count as isize),\n                dst: self.data.as_mut_ptr(),\n                count: self.offset - count,\n            );\n        }\n\n        self.offset -= count;\n    }",
+    "code_with_type": "pub fn drain(&mut self, count: usize) {\n        unsafe {\n            use std::ptr;\n            ptr::copy(\n                self.data.as_ptr().offset(count as isize),\n                self.data.as_mut_ptr(),\n                self.offset - count,\n            );\n        }\n\n        self.offset -= count;\n    }",
+    "code_with_param": "pub fn drain(&mut self, count: usize) {\n        unsafe {\n            use std::ptr;\n            ptr::copy(\n                src: self.data.as_ptr().offset(count as isize),\n                dst: self.data.as_mut_ptr(),\n                count: self.offset - count,\n            );\n        }\n\n        self.offset -= count;\n    }",
+    "params": [
+      "self",
+      "count"
+    ],
+    "return_type": "",
+    "comment": "/// Deletes `count` bytes from the front of the buffer, then shifts the rest of the buffer back in place at index 0.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "intrinsics",
+        "name": "copy",
+        "item_type": "function",
+        "offset_in_fn": 100,
+        "declaration": "pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination may overlap.\n\nIf the source and destination will *never* overlap,\n[`copy_nonoverlapping`] can be used instead.\n\n`copy` is semantically equivalent to C's [`memmove`], but with the argument\norder swapped. Copying takes place as if the bytes were copied from `src`\nto a temporary array and then copied from the array to `dst`.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes, and must remain valid even\n  when `dst` is written for `count * size_of::<T>()` bytes. (This means if the memory ranges\n  overlap, the two pointers must not be subject to aliasing restrictions relative to each\n  other.)\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes, and must remain valid even\n  when `src` is read for `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\nLike [`read`], `copy` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using both the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nEfficiently create a Rust vector from an unsafe buffer:\n\n```\nuse std::ptr;\n\n/// # Safety\n///\n/// * `ptr` must be correctly aligned for its type and non-zero.\n/// * `ptr` must be valid for reads of `elts` contiguous elements of type `T`.\n/// * Those elements must not be used after calling this function unless `T: Copy`.\n# #[allow(dead_code)]\nunsafe fn from_buf_raw<T>(ptr: *const T, elts: usize) -> Vec<T> {\n    let mut dst = Vec::with_capacity(elts);\n\n    // SAFETY: Our precondition ensures the source is aligned and valid,\n    // and `Vec::with_capacity` ensures that we have usable space to write them.\n    ptr::copy(ptr, dst.as_mut_ptr(), elts);\n\n    // SAFETY: We created it with this much capacity earlier,\n    // and the previous `copy` has initialized these elements.\n    dst.set_len(elts);\n    dst\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 141,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *const T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!(*ptr.offset(1) as char, '2');\n    assert_eq!(*ptr.offset(2) as char, '3');\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "buffer",
+      "name": "NetworkBuffer",
+      "item_type": "struct",
+      "offset_in_fn": 18,
+      "declaration": "NetworkBuffer {\n    pub data: [u8; MAX_BUFFER_SIZE],\n    pub offset: usize,\n}",
+      "documentation": "A simple byte buffer, useful for storing bytes that are going to be consumed in packets."
+    }
+  }
+]

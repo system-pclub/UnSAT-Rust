@@ -1,0 +1,314 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/hftbacktest-0.4.0
+  model: gpt-4o-2024-05-13
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/hftbacktest-0.4.0
+  evaluation jobs: 4
+
+▸ Extract Candidates
+✓ Detected 13 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "hftbacktest-0.4.0"
+✓ Context ready.
+• Context samples: 13
+  src/backtest/data/mod.rs
+    ● at:160 | unsafe callees: add | context refs: 0
+      - add: pub const unsafe fn add(self, count: usize) -> Self where T: Sized,
+  src/backtest/data/npy/mod.rs
+    ● read_npy:168 | unsafe callees: from_data_ptr | context refs: 13
+      - from_data_ptr: pub unsafe fn from_data_ptr(ptr: DataPtr, offset: usize) -> Self
+  src/backtest/evs.rs
+    ● next:49 | unsafe callees: get_unchecked | context refs: 2
+      - get_unchecked: pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output where I: SliceIndex<Self>,
+  src/backtest/mod.rs
+    ● goto:1137 | unsafe callees: get_unchecked_mut | context refs: 14
+      - get_unchecked_mut: pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output where I: SliceIndex<Self>,
+  src/backtest/order.rs
+    ● earliest_timestamp:19 | unsafe callees: none | context refs: 1
+    ● append:34 | unsafe callees: none | context refs: 3
+    ● reset:50 | unsafe callees: none | context refs: 1
+    ● len:55 | unsafe callees: none | context refs: 0
+    ● is_empty:60 | unsafe callees: none | context refs: 0
+    ● pop_front:65 | unsafe callees: none | context refs: 2
+  src/utils/aligned.rs
+    ● new:38 | unsafe callees: from_size_align_unchecked, alloc, new_unchecked | context refs: 3
+      - from_size_align_unchecked: pub const unsafe fn from_size_align_unchecked(size: usize, align: usize) -> Self
+      - alloc: pub unsafe fn alloc(layout: Layout) -> *mut u8
+      - new_unchecked: pub const unsafe fn new_unchecked(ptr: *mut T) -> Self
+    ● as_mut_slice:65 | unsafe callees: none | context refs: 1
+    ● as_slice:75 | unsafe callees: none | context refs: 1
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: ██░░░░░░░░░░░░░░░░░░░░ 1/13 ( 8%) 1 constraints | hftbacktest-0.4.0/src/backtest/mod.rs/goto/1136
+↻ Decomposing samples: ███░░░░░░░░░░░░░░░░░░░ 2/13 (15%) 1 constraints | hftbacktest-0.4.0/src/backtest/evs.rs/next/48
+↻ Decomposing samples: █████░░░░░░░░░░░░░░░░░ 3/13 (23%) 0 constraints | hftbacktest-0.4.0/src/backtest/order.rs/earliest_timestamp/18
+↻ Decomposing samples: ███████░░░░░░░░░░░░░░░ 4/13 (31%) 0 constraints | hftbacktest-0.4.0/src/backtest/order.rs/append/33
+↻ Decomposing samples: ████████░░░░░░░░░░░░░░ 5/13 (38%) 0 constraints | hftbacktest-0.4.0/src/backtest/order.rs/reset/49
+↻ Decomposing samples: ██████████░░░░░░░░░░░░ 6/13 (46%) 0 constraints | hftbacktest-0.4.0/src/backtest/order.rs/len/54
+↻ Decomposing samples: ████████████░░░░░░░░░░ 7/13 (54%) 0 constraints | hftbacktest-0.4.0/src/backtest/order.rs/is_empty/59
+↻ Decomposing samples: ██████████████░░░░░░░░ 8/13 (62%) 0 constraints | hftbacktest-0.4.0/src/backtest/order.rs/pop_front/64
+↻ Decomposing samples: ███████████████░░░░░░░ 9/13 (69%) 4 constraints | hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159
+LLM → Decompose safety contracts for `from_data_ptr` [input≈4,336, max_out=4,096]
+LLM ✓ Decompose safety contracts for `from_data_ptr` [in=4,083 out=31 total=4,114, 1.4s, run=4,114]
+LLM → Critique decomposed safety contracts for `from_data_ptr` [input≈1,210, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `from_data_ptr` [in=967 out=557 total=1,524, 3.0s, run=5,638]
+↻ Decomposing samples: █████████████████░░░░░ 10/13 (77%) 2 constraints | hftbacktest-0.4.0/src/backtest/data/npy/mod.rs/read_npy/167
+LLM → Decompose safety contracts for `from_size_align_unchecked` [input≈4,373, max_out=4,096]
+LLM ✓ Decompose safety contracts for `from_size_align_unchecked` [in=4,122 out=28 total=4,150, 0.8s, run=9,788]
+LLM → Critique decomposed safety contracts for `from_size_align_unchecked` [input≈1,239, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `from_size_align_unchecked` [in=1,001 out=542 total=1,543, 3.2s, run=11,331]
+LLM → Refine decomposed safety contracts for `from_size_align_unchecked` [input≈1,047, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `from_size_align_unchecked` [in=862 out=72 total=934, 2.5s, run=12,265]
+LLM → Critique decomposed safety contracts for `from_size_align_unchecked` [input≈1,286, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `from_size_align_unchecked` [in=1,045 out=676 total=1,721, 2.7s, run=13,986]
+LLM → Decompose safety contracts for `alloc` [input≈4,426, max_out=4,096]
+LLM ✓ Decompose safety contracts for `alloc` [in=4,173 out=95 total=4,268, 1.1s, run=18,254]
+LLM → Critique decomposed safety contracts for `alloc` [input≈1,390, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `alloc` [in=1,123 out=558 total=1,681, 2.5s, run=19,935]
+↻ Decomposing samples: ███████████████████░░░ 11/13 (85%) 8 constraints | hftbacktest-0.4.0/src/utils/aligned.rs/new/37
+↻ Decomposing samples: ████████████████████░░ 12/13 (92%) 0 constraints | hftbacktest-0.4.0/src/utils/aligned.rs/as_mut_slice/64
+↻ Decomposing samples: ██████████████████████ 13/13 (100%) 0 constraints | hftbacktest-0.4.0/src/utils/aligned.rs/as_slice/74
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 13
+• Resolved unsafe callees: 7
+  src/backtest/data/mod.rs
+    ● at:160 (4 constraints) | unsafe: add
+      - add / Numeric Relation: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+      - add / Allocated: If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.
+      - add / Dereferencable: The entire memory range between `self` and the result must be within the bounds of the allocated object.
+      - add / Overflow: The memory range must not "wrap around" the edge of the address space.
+  src/backtest/data/npy/mod.rs
+    ● read_npy:168 (2 constraints) | unsafe: from_data_ptr
+      - from_data_ptr / Type Constraint: The underlying memory layout must match the layout of type `D`.
+      - from_data_ptr / Aligned: The memory must be aligned from the offset.
+  src/backtest/evs.rs
+    ● next:49 (1 constraints) | unsafe: get_unchecked
+      - get_unchecked / Numeric Relation: `index` must be within the bounds of the `Tree`.
+  src/backtest/mod.rs
+    ● goto:1137 (1 constraints) | unsafe: get_unchecked_mut
+      - get_unchecked_mut / Numeric Relation: `index` must be within the bounds of the `Tree`.
+  src/backtest/order.rs
+    ● earliest_timestamp:19 (0 constraints)
+      - no safety constraints found
+    ● append:34 (0 constraints)
+      - no safety constraints found
+    ● reset:50 (0 constraints)
+      - no safety constraints found
+    ● len:55 (0 constraints)
+      - no safety constraints found
+    ● is_empty:60 (0 constraints)
+      - no safety constraints found
+    ● pop_front:65 (0 constraints)
+      - no safety constraints found
+  src/utils/aligned.rs
+    ● new:38 (8 constraints) | unsafe: from_size_align_unchecked, alloc, new_unchecked
+      - from_size_align_unchecked / Numeric Relation: The `size` parameter must be greater than zero.
+      - from_size_align_unchecked / Type Constraint: The `align` parameter must be a power of two.
+      - from_size_align_unchecked / Numeric Relation: The `align` parameter must be greater than zero.
+      - from_size_align_unchecked / Overflow: The `size` and `align` parameters must not cause overflow when used in pointer calculations.
+      - alloc / Type Constraint: The `layout` parameter must specify a valid memory layout.
+      - alloc / Environment: The function must be called in a context where the global allocator is properly initialized and available.
+      - alloc / End of Use: The caller must ensure that the allocated memory is properly deallocated to avoid memory leaks.
+      - new_unchecked / Not Null: The `ptr` must be non-null.
+    ● as_mut_slice:65 (0 constraints)
+      - no safety constraints found
+    ● as_slice:75 (0 constraints)
+      - no safety constraints found
+
+▸ Evaluate Encapsulations
+LLM → Evaluate `goto` against `get_unchecked_mut` (Numeric Relation, pattern 1/2) [input≈3,731, max_out=4,096]
+LLM → Evaluate `next` against `get_unchecked` (Numeric Relation, pattern 1/2) [input≈2,302, max_out=4,096]
+LLM → Evaluate `at` against `add` (Numeric Relation, pattern 1/2) [input≈2,076, max_out=4,096]
+LLM → Evaluate `read_npy` against `from_data_ptr` (Type Constraint, pattern 1/3) [input≈5,840, max_out=4,096]
+LLM ✓ Evaluate `goto` against `get_unchecked_mut` (Numeric Relation, pattern 1/2) [in=3,230 out=349 total=3,579, 2.2s, run=23,514]
+LLM → Evaluate `goto` against `get_unchecked_mut` (Numeric Relation, pattern 2/2) [input≈4,243, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Numeric Relation, pattern 1/2) [in=1,984 out=429 total=2,413, 2.6s, run=25,927]
+LLM → Evaluate `at` against `add` (Numeric Relation, pattern 2/2) [input≈2,588, max_out=4,096]
+LLM ✓ Evaluate `next` against `get_unchecked` (Numeric Relation, pattern 1/2) [in=2,215 out=426 total=2,641, 2.7s, run=28,568]
+LLM → Evaluate `next` against `get_unchecked` (Numeric Relation, pattern 2/2) [input≈2,814, max_out=4,096]
+LLM ✓ Evaluate `read_npy` against `from_data_ptr` (Type Constraint, pattern 1/3) [in=5,691 out=904 total=6,595, 4.0s, run=35,163]
+LLM → Evaluate `read_npy` against `from_data_ptr` (Type Constraint, pattern 2/3) [input≈6,285, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Numeric Relation, pattern 2/2) [in=2,553 out=362 total=2,915, 2.2s, run=38,078]
+✗ Unsound candidate: hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159 (callee=add, type=Numeric Relation); details in final summary.
+LLM → Evaluate `at` against `add` (Allocated, pattern 1/2) [input≈2,985, max_out=4,096]
+LLM ✓ Evaluate `goto` against `get_unchecked_mut` (Numeric Relation, pattern 2/2) [in=3,799 out=407 total=4,206, 2.6s, run=42,284]
+↻ Checking samples: ████░░░░░░░░░░░░░░░░░░ 1/5 (20%) sound | hftbacktest-0.4.0/src/backtest/mod.rs/goto/1136
+LLM → Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 1/2) [input≈2,847, max_out=4,096]
+LLM ✓ Evaluate `next` against `get_unchecked` (Numeric Relation, pattern 2/2) [in=2,784 out=332 total=3,116, 2.2s, run=45,400]
+↻ Checking samples: █████████░░░░░░░░░░░░░ 2/5 (40%) sound | hftbacktest-0.4.0/src/backtest/evs.rs/next/48
+LLM ✓ Evaluate `at` against `add` (Allocated, pattern 1/2) [in=2,889 out=280 total=3,169, 2.0s, run=48,569]
+LLM → Evaluate `at` against `add` (Allocated, pattern 2/2) [input≈2,889, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 1/2) [in=2,688 out=446 total=3,134, 2.5s, run=51,703]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 2/2) [input≈3,359, max_out=4,096]
+LLM ✓ Evaluate `read_npy` against `from_data_ptr` (Type Constraint, pattern 2/3) [in=6,106 out=974 total=7,080, 4.3s, run=58,783]
+LLM → Evaluate `read_npy` against `from_data_ptr` (Type Constraint, pattern 3/3) [input≈6,162, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Allocated, pattern 2/2) [in=2,801 out=286 total=3,087, 2.0s, run=61,870]
+✗ Unsound candidate: hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159 (callee=add, type=Allocated); details in final summary.
+LLM → Evaluate `at` against `add` (Dereferencable, pattern 1/2) [input≈2,569, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 2/2) [in=3,257 out=279 total=3,536, 1.7s, run=65,406]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Type Constraint, pattern 1/3) [input≈5,042, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Dereferencable, pattern 1/2) [in=2,525 out=300 total=2,825, 1.9s, run=68,231]
+LLM → Evaluate `at` against `add` (Dereferencable, pattern 2/2) [input≈2,624, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Type Constraint, pattern 1/3) [in=4,807 out=366 total=5,173, 2.3s, run=73,404]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Type Constraint, pattern 2/3) [input≈5,487, max_out=4,096]
+LLM ✓ Evaluate `read_npy` against `from_data_ptr` (Type Constraint, pattern 3/3) [in=5,924 out=499 total=6,423, 3.2s, run=79,827]
+LLM → Evaluate `read_npy` against `from_data_ptr` (Aligned, pattern 1/2) [input≈3,996, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Dereferencable, pattern 2/2) [in=2,609 out=247 total=2,856, 1.7s, run=82,683]
+✗ Unsound candidate: hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159 (callee=add, type=Dereferencable); details in final summary.
+LLM → Evaluate `at` against `add` (Overflow, pattern 1/2) [input≈2,480, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Type Constraint, pattern 2/3) [in=5,222 out=389 total=5,611, 2.4s, run=88,294]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Type Constraint, pattern 3/3) [input≈5,364, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Overflow, pattern 1/2) [in=2,452 out=288 total=2,740, 1.8s, run=91,034]
+LLM → Evaluate `at` against `add` (Overflow, pattern 2/2) [input≈2,576, max_out=4,096]
+LLM ✓ Evaluate `read_npy` against `from_data_ptr` (Aligned, pattern 1/2) [in=3,983 out=491 total=4,474, 2.9s, run=95,508]
+LLM → Evaluate `read_npy` against `from_data_ptr` (Aligned, pattern 2/2) [input≈3,589, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Type Constraint, pattern 3/3) [in=5,040 out=347 total=5,387, 2.4s, run=100,895]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 1/2) [input≈2,847, max_out=4,096]
+LLM ✓ Evaluate `at` against `add` (Overflow, pattern 2/2) [in=2,578 out=370 total=2,948, 2.2s, run=103,843]
+✗ Unsound candidate: hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159 (callee=add, type=Overflow); details in final summary.
+↻ Checking samples: █████████████░░░░░░░░░ 3/5 (60%) unsound | hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159
+LLM ✓ Evaluate `read_npy` against `from_data_ptr` (Aligned, pattern 2/2) [in=3,530 out=565 total=4,095, 2.9s, run=107,938]
+↻ Checking samples: ██████████████████░░░░ 4/5 (80%) sound | hftbacktest-0.4.0/src/backtest/data/npy/mod.rs/read_npy/167
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 1/2) [in=2,688 out=241 total=2,929, 1.6s, run=110,867]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 2/2) [input≈3,359, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Numeric Relation, pattern 2/2) [in=3,257 out=343 total=3,600, 2.2s, run=114,467]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Overflow, pattern 1/2) [input≈3,279, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Overflow, pattern 1/2) [in=3,182 out=391 total=3,573, 2.2s, run=118,040]
+LLM → Evaluate `new` against `from_size_align_unchecked` (Overflow, pattern 2/2) [input≈3,374, max_out=4,096]
+LLM ✓ Evaluate `new` against `from_size_align_unchecked` (Overflow, pattern 2/2) [in=3,308 out=413 total=3,721, 2.1s, run=121,761]
+LLM → Evaluate `new` against `alloc` (Type Constraint, pattern 1/3) [input≈5,041, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (Type Constraint, pattern 1/3) [in=4,803 out=442 total=5,245, 2.4s, run=127,006]
+LLM → Evaluate `new` against `alloc` (Type Constraint, pattern 2/3) [input≈5,485, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (Type Constraint, pattern 2/3) [in=5,218 out=554 total=5,772, 2.9s, run=132,778]
+LLM → Evaluate `new` against `alloc` (Type Constraint, pattern 3/3) [input≈5,362, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (Type Constraint, pattern 3/3) [in=5,036 out=529 total=5,565, 3.0s, run=138,343]
+LLM → Evaluate `new` against `alloc` (Environment, pattern 1/2) [input≈3,866, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (Environment, pattern 1/2) [in=3,796 out=526 total=4,322, 2.8s, run=142,665]
+LLM → Evaluate `new` against `alloc` (Environment, pattern 2/2) [input≈4,080, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (Environment, pattern 2/2) [in=4,050 out=575 total=4,625, 3.1s, run=147,290]
+LLM → Evaluate `new` against `alloc` (End of Use, pattern 1/2) [input≈3,675, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (End of Use, pattern 1/2) [in=3,518 out=317 total=3,835, 2.0s, run=151,125]
+LLM → Evaluate `new` against `alloc` (End of Use, pattern 2/2) [input≈3,053, max_out=4,096]
+LLM ✓ Evaluate `new` against `alloc` (End of Use, pattern 2/2) [in=2,941 out=463 total=3,404, 2.7s, run=154,529]
+✗ Unsound candidate: hftbacktest-0.4.0/src/utils/aligned.rs/new/37 (callee=alloc, type=End of Use); details in final summary.
+LLM → Evaluate `new` against `new_unchecked` (Not Null, pattern 1/2) [input≈2,880, max_out=4,096]
+LLM ✓ Evaluate `new` against `new_unchecked` (Not Null, pattern 1/2) [in=2,816 out=464 total=3,280, 2.5s, run=157,809]
+LLM → Evaluate `new` against `new_unchecked` (Not Null, pattern 2/2) [input≈2,809, max_out=4,096]
+LLM ✓ Evaluate `new` against `new_unchecked` (Not Null, pattern 2/2) [in=2,698 out=501 total=3,199, 2.3s, run=161,008]
+↻ Checking samples: ██████████████████████ 5/5 (100%) unsound | hftbacktest-0.4.0/src/utils/aligned.rs/new/37
+
+▸ Summary
+  sound 3 | unsound 2 | unknown 0 | total 5
+  requests 43 | input 143,354 | output 17,654 | total 161,008
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/hftbacktest-0.4.0/results.json
+• Elapsed: 210.8s
+
+Unsatisfied contracts:
+  1. hftbacktest-0.4.0/src/backtest/data/mod.rs/at/159 (4 failed contracts)
+  call site: src/backtest/data/mod.rs:162
+  nearby code
+     160 │ pub fn at(&self, index: usize) -> *const u8 {
+     161 │         let ptr = self.ptr as *const u8;
+  >  162 │         unsafe { ptr.add(index) }
+     163 │     }
+     - add / Numeric Relation: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+       LLM evidence:
+       1. **Pointer Initialization**:
+          ```rust
+          let ptr: *const u8 = self.ptr as *const u8;
+          ```
+          Here, `ptr` is cast from `self.ptr` to `*const u8`. This is a straightforward cast and does not affect the contract.
+       
+       2. **Unsafe Call to `add`**:
+          ```rust
+          unsafe { ptr.add(count: index) }
+          ```
+          The `index` parameter is directly passed as the `count` to the `add` function. The contract for `add` requires that the offset in bytes, `index * size_of::<T>()`, must fit in an `isize`.
+       
+       3. **Size of `T`**:
+          Since `ptr` is of type `*const u8`, `T` is `u8`, and `size_of::<u8>()` is 1. Therefore, the offset in bytes is simply `index`.
+       
+       4. **Offset Check**:
+          The contract requires that `index` must fit in an `isize`. The maximum value for `isize` on a 64-bit system is `2^63 - 1` and on a 32-bit system is `2^31 - 1`. Since `index` is of type `usize`, it can potentially be larger than the maximum value of `isize`.
+       
+          However, there is no check in the function to ensure that `index` is within the bounds of `isize`. This means that if `index` is larger than the maximum value of `isize`, the contract is violated.
+     - add / Allocated: If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.
+       LLM evidence:
+       1. **Starting Pointer**:
+          - `self.ptr` is a field of `DataPtr` and is of type `*mut [u8]`.
+          - In the function `at`, `self.ptr` is cast to `*const u8` and assigned to `ptr`.
+       
+       2. **Offset**:
+          - The offset `index` is passed to `add`.
+       
+       3. **Contract Verification**:
+          - The contract states: "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object."
+          - The function `at` does not perform any checks or guarantees that `self.ptr` is derived from a pointer to some allocated object.
+          - The function `at` does not ensure that `self.ptr` is non-null or valid before performing the `add` operation.
+          - If `self.ptr` is not derived from a valid allocated object, using `add` with a non-zero offset can lead to undefined behavior.
+     - add / Dereferencable: The entire memory range between `self` and the result must be within the bounds of the allocated object.
+       LLM evidence:
+       1. **Starting Pointer (`self.ptr`)**:
+          - `self.ptr` is a pointer to a slice of `u8` (`*mut [u8]`).
+          - When cast to `*const u8`, it points to the first byte of the slice.
+       
+       2. **Offset (`index`)**:
+          - The `index` is an arbitrary `usize` value passed to the function.
+       
+       3. **Resulting Pointer**:
+          - The resulting pointer is calculated as `ptr.add(index)`.
+          - The contract requires that the entire memory range between `ptr` and `ptr.add(index)` must be within the bounds of the allocated object.
+       
+       4. **Bounds Check**:
+          - The function does not perform any bounds checking on `index`.
+          - If `index` is greater than or equal to the length of the slice pointed to by `self.ptr`, the resulting pointer will be out of bounds.
+       
+       Given that there is no guarantee that `index` is within the bounds of the slice, the contract is not satisfied.
+     - add / Overflow: The memory range must not "wrap around" the edge of the address space.
+       LLM evidence:
+       1. **Base Pointer (`self.ptr`)**:
+          - `self.ptr` is a pointer to a slice of `u8`, which means it points to a contiguous block of memory.
+          - The pointer is cast to `*const u8` before the `add` operation.
+       
+       2. **Offset (`index`)**:
+          - `index` is an arbitrary `usize` value provided as a parameter to the `at` function.
+          - There is no boundary check on `index` before it is used in the `add` operation.
+       
+       3. **Pointer Arithmetic**:
+          - The `add` function will compute the new pointer by adding `index` to the base pointer `ptr`.
+          - If `index` is large enough, the resulting pointer could wrap around the address space, violating the contract.
+       
+       Since there is no check to ensure that `index` is within the bounds of the memory region pointed to by `self.ptr`, the function does not guarantee that the memory range will not wrap around the edge of the address space.
+  2. hftbacktest-0.4.0/src/utils/aligned.rs/new/37 (1 failed contract)
+  call site: src/utils/aligned.rs:49
+  nearby code
+      47 │                 let layout =
+      48 │                     alloc::Layout::from_size_align_unchecked(len * size_of::<T>(), ALIGNMENT);
+  >   49 │                 let ptr = alloc::alloc(layout);
+      50 │                 if ptr.is_null() {
+      51 │                     alloc::handle_alloc_error(layout);
+     - alloc / End of Use: The caller must ensure that the allocated memory is properly deallocated to avoid memory leaks.
+       LLM evidence:
+       1. **Memory Allocation**:
+          - The function allocates memory using `alloc::alloc(layout)`.
+          - If the allocation fails (i.e., `ptr.is_null()`), it calls `alloc::handle_alloc_error(layout)`, which will either panic or abort the process, ensuring that no further execution occurs with a null pointer.
+       
+       2. **Memory Deallocation**:
+          - The contract of `alloc` requires that the allocated memory must be properly deallocated to avoid memory leaks.
+          - The provided function `new` does not include any deallocation logic. It only allocates memory and constructs an `AlignedArray` instance.
+          - There is no indication in the provided function that the allocated memory will be deallocated when the `AlignedArray` instance is dropped or goes out of scope.
+       
+       Since the function `new` does not ensure that the allocated memory is properly deallocated, it violates the contract of the unsafe callee `alloc`.

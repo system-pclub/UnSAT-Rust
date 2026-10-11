@@ -9,7 +9,6 @@ OPERATORS = [
     {"name": "get_field", "input": [{"name": "base"}, {"name": "field"}]},
     {"name": "memory_range", "input": [{"name": "ptr"}, {"name": "size"}]},
     {"name": "is_valid_for", "input": [{"name": "range"}, {"name": "access"}]},
-    {"name": "is_initialized", "input": [{"name": "range"}]},
     {
         "name": "mul_fits",
         "input": [
@@ -37,15 +36,17 @@ def test_warns_for_untranslated_access_kind() -> None:
     )
 
 
-def test_warns_for_untyped_initialization() -> None:
-    assert "untyped-initialization" in _codes(
-        "is_initialized(memory_range(get_arg(0), 1))"
-    )
-
-
 def test_checks_mul_fits_literals() -> None:
     assert not _codes('mul_fits(get_arg(0), 4, "isize")')
     assert "mul-fits-target" in _codes('mul_fits(get_arg(0), 4, "u16")')
+
+
+def test_get_field_requires_a_literal_field_name() -> None:
+    assert "field-name-literal" in _codes("get_field(get_arg(0), get_arg(1))")
+
+
+def test_allows_rust_typed_fields_on_get_arg() -> None:
+    assert not _codes('get_field(get_arg(1), "start")')
 
 
 def test_rule_semantics_rejects_extra_overflow_condition() -> None:
@@ -64,6 +65,20 @@ def test_rule_semantics_requires_mul_fits_for_isize_rule() -> None:
         "count * size_of::<T>() must fit in an `isize`", ast
     )
     assert "missing-mul-fits" in {issue.code for issue in issues}
+
+
+def test_rule_semantics_accepts_explicit_memory_range_bounds() -> None:
+    ast = parse_dsl(
+        'get_field(get_arg(0), "start") <= '
+        'get_field(memory_range(get_arg(1), 1), "start") && '
+        'get_field(memory_range(get_arg(1), 1), "end") <= '
+        'get_field(get_arg(0), "end")',
+        OPERATORS,
+    )
+    issues = lint_rule_semantics(
+        "The memory range must be contained within a single allocated object", ast
+    )
+    assert "missing-within" not in {issue.code for issue in issues}
 
 
 def test_rule_semantics_rejects_null_exemption_on_alignment_rule() -> None:

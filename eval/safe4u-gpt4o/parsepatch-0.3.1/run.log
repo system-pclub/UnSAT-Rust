@@ -1,0 +1,81 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/parsepatch-0.3.1
+  model: gpt-4o-2024-05-13
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/parsepatch-0.3.1
+  evaluation jobs: 4
+
+▸ Extract Candidates
+↻ Scanning Rust files: ███████████░░░░░░░░░░░ 1/2 (50%) 1 candidates | src/parser.rs
+↻ Scanning Rust files: ██████████████████████ 2/2 (100%) 1 candidates | src/lib.rs
+✓ Detected 1 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "parsepatch-0.3.1"
+✓ Context ready.
+• Context samples: 1
+  src/parser.rs
+    ● parse_numbers:180 | unsafe callees: get_unchecked | context refs: 8
+      - get_unchecked: pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output where I: SliceIndex<Self>,
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: ██████████████████████ 1/1 (100%) 1 constraints | parsepatch-0.3.1/src/parser.rs/parse_numbers/179
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 1
+• Resolved unsafe callees: 1
+  src/parser.rs
+    ● parse_numbers:180 (1 constraints) | unsafe: get_unchecked
+      - get_unchecked / Numeric Relation: `index` must be within the bounds of the `Tree`.
+
+▸ Evaluate Encapsulations
+↻ Checking samples: ██████████████████████ 1/1 (100%) checking | parsepatch-0.3.1/src/parser.rs/parse_numbers/179
+LLM → Evaluate `parse_numbers` against `get_unchecked` (Numeric Relation, pattern 1/2) [input≈2,752, max_out=4,096]
+LLM ✓ Evaluate `parse_numbers` against `get_unchecked` (Numeric Relation, pattern 1/2) [in=2,822 out=306 total=3,128, 2.0s, run=3,128]
+LLM → Evaluate `parse_numbers` against `get_unchecked` (Numeric Relation, pattern 2/2) [input≈3,264, max_out=4,096]
+LLM ✓ Evaluate `parse_numbers` against `get_unchecked` (Numeric Relation, pattern 2/2) [in=3,391 out=277 total=3,668, 1.7s, run=6,796]
+✗ Unsound candidate: parsepatch-0.3.1/src/parser.rs/parse_numbers/179 (callee=get_unchecked, type=Numeric Relation); details in final summary.
+↻ Checking samples: ██████████████████████ 1/1 (100%) unsound | parsepatch-0.3.1/src/parser.rs/parse_numbers/179
+
+▸ Summary
+  sound 0 | unsound 1 | unknown 0 | total 1
+  requests 2 | input 6,213 | output 583 | total 6,796
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/parsepatch-0.3.1/results.json
+• Elapsed: 84.8s
+
+Unsatisfied contracts:
+  1. parsepatch-0.3.1/src/parser.rs/parse_numbers/179 (1 failed contract)
+  call site: src/parser.rs:182
+  nearby code
+     180 │ pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {
+     181 │         // we know that line is beginning with "@@ -"
+  >  182 │         let buf = unsafe { self.buf.get_unchecked(4..) };
+     183 │ 
+     184 │         // NUMS_PAT = re.compile(r'^@@ -([0-9]+),?([0-9]+)? \+([0-9]+),?([0-9]+)? @@')
+     - get_unchecked / Numeric Relation: `index` must be within the bounds of the `Tree`.
+       LLM evidence:
+       1. **Initial Analysis**:
+          - `self.buf` is a slice of bytes (`&[u8]`).
+          - The range `4..` means starting from index 4 to the end of the slice.
+       
+       2. **Contract Verification**:
+          - The contract of `get_unchecked` requires that the `index` must be within the bounds of the slice.
+          - The range `4..` implies that the slice must have at least 5 elements (since indexing starts at 0).
+       
+       3. **Bounds Checking**:
+          - There is no explicit check in the function to ensure that `self.buf` has at least 5 elements before calling `get_unchecked`.
+          - If `self.buf` has fewer than 5 elements, accessing `self.buf.get_unchecked(4..)` would result in undefined behavior.
+       
+       4. **Conclusion**:
+          - Since there is no guarantee that `self.buf` has at least 5 elements, the contract of `get_unchecked` is not satisfied.

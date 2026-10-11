@@ -1,0 +1,1129 @@
+[
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/write_u64_be/20",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 20,
+    "end_line": 27,
+    "start_byte": 807,
+    "end_byte": 1055,
+    "name": "write_u64_be",
+    "raw_code": "pub fn write_u64_be(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_be();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);\n    }\n}",
+    "code_with_hints": "pub fn write_u64_be(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_be();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 8);\n    }\n}",
+    "code_with_type": "pub fn write_u64_be(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_be();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);\n    }\n}",
+    "code_with_param": "pub fn write_u64_be(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_be();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 8);\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Write a u64 into a vector, which must be 8 bytes long. The value is written in big-endian\n/// format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "to_be",
+        "item_type": "function",
+        "offset_in_fn": 100,
+        "declaration": "pub const fn to_be(self) -> Self",
+        "documentation": "Converts `self` to big endian from the target's endianness.\n\nOn big endian this is a no-op. On little endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"big\") {\n    assert_eq!(n.to_be(), n)\n} else {\n    assert_eq!(n.to_be(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 186,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 215,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/write_u64_le/31",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 31,
+    "end_line": 38,
+    "start_byte": 1166,
+    "end_byte": 1414,
+    "name": "write_u64_le",
+    "raw_code": "pub fn write_u64_le(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_le();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);\n    }\n}",
+    "code_with_hints": "pub fn write_u64_le(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_le();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 8);\n    }\n}",
+    "code_with_type": "pub fn write_u64_le(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_le();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);\n    }\n}",
+    "code_with_param": "pub fn write_u64_le(dst: &mut[u8], mut input: u64) {\n    assert!(dst.len() == 8);\n    input = input.to_le();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 8);\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Write a u64 into a vector, which must be 8 bytes long. The value is written in little-endian\n/// format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "to_le",
+        "item_type": "function",
+        "offset_in_fn": 100,
+        "declaration": "pub const fn to_le(self) -> Self",
+        "documentation": "Converts `self` to little endian from the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n    assert_eq!(n.to_le(), n)\n} else {\n    assert_eq!(n.to_le(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 186,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 215,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/write_u64v_le/41",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 41,
+    "end_line": 53,
+    "start_byte": 1515,
+    "end_byte": 1955,
+    "name": "write_u64v_le",
+    "raw_code": "pub fn write_u64v_le(dst: &mut[u8], input: &[u64]) {\n    assert!(dst.len() == 8 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(0);\n        let mut y: *const u64 = input.get_unchecked(0);\n        for _ in 0..input.len() {\n            let tmp = (*y).to_le();\n            ptr::copy_nonoverlapping(&tmp as *const _ as *const u8, x, 8);\n            x = x.offset(8);\n            y = y.offset(1);\n        }\n    }\n}",
+    "code_with_hints": "pub fn write_u64v_le(dst: &mut[u8], input: &[u64]) {\n    assert!(dst.len() == 8 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u64 = input.get_unchecked(index: 0);\n        for _ in 0..input.len() {\n            let tmp: u64 = (*y).to_le();\n            ptr::copy_nonoverlapping(src: &tmp as *const _ as *const u8, dst: x, count: 8);\n            x = x.offset(count: 8);\n            y = y.offset(count: 1);\n        }\n    }\n}",
+    "code_with_type": "pub fn write_u64v_le(dst: &mut[u8], input: &[u64]) {\n    assert!(dst.len() == 8 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(0);\n        let mut y: *const u64 = input.get_unchecked(0);\n        for _ in 0..input.len() {\n            let tmp: u64 = (*y).to_le();\n            ptr::copy_nonoverlapping(&tmp as *const _ as *const u8, x, 8);\n            x = x.offset(8);\n            y = y.offset(1);\n        }\n    }\n}",
+    "code_with_param": "pub fn write_u64v_le(dst: &mut[u8], input: &[u64]) {\n    assert!(dst.len() == 8 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u64 = input.get_unchecked(index: 0);\n        for _ in 0..input.len() {\n            let tmp = (*y).to_le();\n            ptr::copy_nonoverlapping(src: &tmp as *const _ as *const u8, dst: x, count: 8);\n            x = x.offset(count: 8);\n            y = y.offset(count: 1);\n        }\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 142,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 202,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "to_le",
+        "item_type": "function",
+        "offset_in_fn": 281,
+        "declaration": "pub const fn to_le(self) -> Self",
+        "documentation": "Converts `self` to little endian from the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n    assert_eq!(n.to_le(), n)\n} else {\n    assert_eq!(n.to_le(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 307,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 383,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/write_u32_be/57",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 57,
+    "end_line": 64,
+    "start_byte": 2063,
+    "end_byte": 2312,
+    "name": "write_u32_be",
+    "raw_code": "pub fn write_u32_be(dst: &mut [u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_be();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 4);\n    }\n}",
+    "code_with_hints": "pub fn write_u32_be(dst: &mut [u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_be();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 4);\n    }\n}",
+    "code_with_type": "pub fn write_u32_be(dst: &mut [u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_be();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 4);\n    }\n}",
+    "code_with_param": "pub fn write_u32_be(dst: &mut [u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_be();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 4);\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Write a u32 into a vector, which must be 4 bytes long. The value is written in big-endian\n/// format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "to_be",
+        "item_type": "function",
+        "offset_in_fn": 101,
+        "declaration": "pub const fn to_be(self) -> Self",
+        "documentation": "Converts `self` to big endian from the target's endianness.\n\nOn big endian this is a no-op. On little endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"big\") {\n    assert_eq!(n.to_be(), n)\n} else {\n    assert_eq!(n.to_be(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 187,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 216,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/write_u32_le/68",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 68,
+    "end_line": 75,
+    "start_byte": 2423,
+    "end_byte": 2671,
+    "name": "write_u32_le",
+    "raw_code": "pub fn write_u32_le(dst: &mut[u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_le();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 4);\n    }\n}",
+    "code_with_hints": "pub fn write_u32_le(dst: &mut[u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_le();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 4);\n    }\n}",
+    "code_with_type": "pub fn write_u32_le(dst: &mut[u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_le();\n    unsafe {\n        let tmp: *const u8 = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 4);\n    }\n}",
+    "code_with_param": "pub fn write_u32_le(dst: &mut[u8], mut input: u32) {\n    assert!(dst.len() == 4);\n    input = input.to_le();\n    unsafe {\n        let tmp = &input as *const _ as *const u8;\n        ptr::copy_nonoverlapping(src: tmp, dst: dst.get_unchecked_mut(index: 0), count: 4);\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Write a u32 into a vector, which must be 4 bytes long. The value is written in little-endian\n/// format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "to_le",
+        "item_type": "function",
+        "offset_in_fn": 100,
+        "declaration": "pub const fn to_le(self) -> Self",
+        "documentation": "Converts `self` to little endian from the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n    assert_eq!(n.to_le(), n)\n} else {\n    assert_eq!(n.to_le(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 186,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 215,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/write_u32v_le/78",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 78,
+    "end_line": 90,
+    "start_byte": 2772,
+    "end_byte": 3213,
+    "name": "write_u32v_le",
+    "raw_code": "pub fn write_u32v_le (dst: &mut[u8], input: &[u32]) {\n    assert!(dst.len() == 4 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(0);\n        let mut y: *const u32 = input.get_unchecked(0);\n        for _ in 0..input.len() {\n            let tmp = (*y).to_le();\n            ptr::copy_nonoverlapping(&tmp as *const _ as *const u8, x, 4);\n            x = x.offset(4);\n            y = y.offset(1);\n        }\n    }\n}",
+    "code_with_hints": "pub fn write_u32v_le (dst: &mut[u8], input: &[u32]) {\n    assert!(dst.len() == 4 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u32 = input.get_unchecked(index: 0);\n        for _ in 0..input.len() {\n            let tmp: u32 = (*y).to_le();\n            ptr::copy_nonoverlapping(src: &tmp as *const _ as *const u8, dst: x, count: 4);\n            x = x.offset(count: 4);\n            y = y.offset(count: 1);\n        }\n    }\n}",
+    "code_with_type": "pub fn write_u32v_le (dst: &mut[u8], input: &[u32]) {\n    assert!(dst.len() == 4 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(0);\n        let mut y: *const u32 = input.get_unchecked(0);\n        for _ in 0..input.len() {\n            let tmp: u32 = (*y).to_le();\n            ptr::copy_nonoverlapping(&tmp as *const _ as *const u8, x, 4);\n            x = x.offset(4);\n            y = y.offset(1);\n        }\n    }\n}",
+    "code_with_param": "pub fn write_u32v_le (dst: &mut[u8], input: &[u32]) {\n    assert!(dst.len() == 4 * input.len());\n    unsafe {\n        let mut x: *mut u8 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u32 = input.get_unchecked(index: 0);\n        for _ in 0..input.len() {\n            let tmp = (*y).to_le();\n            ptr::copy_nonoverlapping(src: &tmp as *const _ as *const u8, dst: x, count: 4);\n            x = x.offset(count: 4);\n            y = y.offset(count: 1);\n        }\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Write a vector of u32s into a vector of bytes. The values are written in little-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 143,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 203,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "to_le",
+        "item_type": "function",
+        "offset_in_fn": 282,
+        "declaration": "pub const fn to_le(self) -> Self",
+        "documentation": "Converts `self` to little endian from the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n    assert_eq!(n.to_le(), n)\n} else {\n    assert_eq!(n.to_le(), n.swap_bytes())\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 308,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 384,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/read_u64v_be/93",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 93,
+    "end_line": 106,
+    "start_byte": 3307,
+    "end_byte": 3797,
+    "name": "read_u64v_be",
+    "raw_code": "pub fn read_u64v_be(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 8);\n            *x = u64::from_be(tmp);\n            x = x.offset(1);\n            y = y.offset(8);\n        }\n    }\n}",
+    "code_with_hints": "pub fn read_u64v_be(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 8);\n            *x = u64::from_be(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 8);\n        }\n    }\n}",
+    "code_with_type": "pub fn read_u64v_be(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 8);\n            *x = u64::from_be(tmp);\n            x = x.offset(1);\n            y = y.offset(8);\n        }\n    }\n}",
+    "code_with_param": "pub fn read_u64v_be(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 8);\n            *x = u64::from_be(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 8);\n        }\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Read a vector of bytes into a vector of u64s. The values are read in big-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 142,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 201,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 287,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 321,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "from_be",
+        "item_type": "function",
+        "offset_in_fn": 401,
+        "declaration": "pub const fn from_be(x: Self) -> Self",
+        "documentation": "Converts an integer from big endian to the target's endianness.\n\nOn big endian this is a no-op. On little endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"big\") {\n} else {\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 433,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/read_u64v_le/109",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 109,
+    "end_line": 122,
+    "start_byte": 3894,
+    "end_byte": 4384,
+    "name": "read_u64v_le",
+    "raw_code": "pub fn read_u64v_le(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 8);\n            *x = u64::from_le(tmp);\n            x = x.offset(1);\n            y = y.offset(8);\n        }\n    }\n}",
+    "code_with_hints": "pub fn read_u64v_le(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 8);\n            *x = u64::from_le(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 8);\n        }\n    }\n}",
+    "code_with_type": "pub fn read_u64v_le(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 8);\n            *x = u64::from_le(tmp);\n            x = x.offset(1);\n            y = y.offset(8);\n        }\n    }\n}",
+    "code_with_param": "pub fn read_u64v_le(dst: &mut[u64], input: &[u8]) {\n    assert!(dst.len() * 8 == input.len());\n    unsafe {\n        let mut x: *mut u64 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u64 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 8);\n            *x = u64::from_le(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 8);\n        }\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Read a vector of bytes into a vector of u64s. The values are read in little-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 142,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 201,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 287,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 321,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "from_le",
+        "item_type": "function",
+        "offset_in_fn": 401,
+        "declaration": "pub const fn from_le(x: Self) -> Self",
+        "documentation": "Converts an integer from little endian to the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n} else {\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 433,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/read_u32v_be/125",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 125,
+    "end_line": 138,
+    "start_byte": 4478,
+    "end_byte": 4968,
+    "name": "read_u32v_be",
+    "raw_code": "pub fn read_u32v_be(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 4);\n            *x = u32::from_be(tmp);\n            x = x.offset(1);\n            y = y.offset(4);\n        }\n    }\n}",
+    "code_with_hints": "pub fn read_u32v_be(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 4);\n            *x = u32::from_be(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 4);\n        }\n    }\n}",
+    "code_with_type": "pub fn read_u32v_be(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 4);\n            *x = u32::from_be(tmp);\n            x = x.offset(1);\n            y = y.offset(4);\n        }\n    }\n}",
+    "code_with_param": "pub fn read_u32v_be(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 4);\n            *x = u32::from_be(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 4);\n        }\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Read a vector of bytes into a vector of u32s. The values are read in big-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 142,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 201,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 287,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 321,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "from_be",
+        "item_type": "function",
+        "offset_in_fn": 401,
+        "declaration": "pub const fn from_be(x: Self) -> Self",
+        "documentation": "Converts an integer from big endian to the target's endianness.\n\nOn big endian this is a no-op. On little endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"big\") {\n} else {\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 433,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/read_u32v_le/141",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 141,
+    "end_line": 154,
+    "start_byte": 5065,
+    "end_byte": 5555,
+    "name": "read_u32v_le",
+    "raw_code": "pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 4);\n            *x = u32::from_le(tmp);\n            x = x.offset(1);\n            y = y.offset(4);\n        }\n    }\n}",
+    "code_with_hints": "pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 4);\n            *x = u32::from_le(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 4);\n        }\n    }\n}",
+    "code_with_type": "pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(0);\n        let mut y: *const u8 = input.get_unchecked(0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 4);\n            *x = u32::from_le(tmp);\n            x = x.offset(1);\n            y = y.offset(4);\n        }\n    }\n}",
+    "code_with_param": "pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {\n    assert!(dst.len() * 4 == input.len());\n    unsafe {\n        let mut x: *mut u32 = dst.get_unchecked_mut(index: 0);\n        let mut y: *const u8 = input.get_unchecked(index: 0);\n        for _ in 0..dst.len() {\n            let mut tmp: u32 = mem::uninitialized();\n            ptr::copy_nonoverlapping(src: y, dst: &mut tmp as *mut _ as *mut u8, count: 4);\n            *x = u32::from_le(tmp);\n            x = x.offset(count: 1);\n            y = y.offset(count: 4);\n        }\n    }\n}",
+    "params": [
+      "dst",
+      "input"
+    ],
+    "return_type": "",
+    "comment": "/// Read a vector of bytes into a vector of u32s. The values are read in little-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked_mut",
+        "item_type": "function",
+        "offset_in_fn": 142,
+        "declaration": "pub unsafe fn get_unchecked_mut<I>(&mut self, index: I) -> &mut I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a mutable reference to an element or subslice, without doing\nbounds checking.\n\nFor a safe alternative see [`get_mut`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get_mut(index).unwrap_unchecked()`.  It's\nUB to call `.get_unchecked_mut(len)`, even if you immediately convert\nto a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,\n`.get_unchecked_mut(..=len)`, or similar.\n\n[`get_mut`]: slice::get_mut\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &mut [1, 2, 4];\n\nunsafe {\n    let elem = x.get_unchecked_mut(1);\n    *elem = 13;\n}\nassert_eq!(x, &[1, 13, 4]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 201,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 287,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 321,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "from_le",
+        "item_type": "function",
+        "offset_in_fn": 401,
+        "declaration": "pub const fn from_le(x: Self) -> Self",
+        "documentation": "Converts an integer from little endian to the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n} else {\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 433,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/read_u32_le/157",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 157,
+    "end_line": 164,
+    "start_byte": 5637,
+    "end_byte": 5897,
+    "name": "read_u32_le",
+    "raw_code": "pub fn read_u32_le(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);\n        u32::from_le(tmp)\n    }\n}",
+    "code_with_hints": "pub fn read_u32_le(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(src: input.get_unchecked(index: 0), dst: &mut tmp as *mut _ as *mut u8, count: 4);\n        u32::from_le(tmp)\n    }\n}",
+    "code_with_type": "pub fn read_u32_le(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);\n        u32::from_le(tmp)\n    }\n}",
+    "code_with_param": "pub fn read_u32_le(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(src: input.get_unchecked(index: 0), dst: &mut tmp as *mut _ as *mut u8, count: 4);\n        u32::from_le(tmp)\n    }\n}",
+    "params": [
+      "input"
+    ],
+    "return_type": "u32",
+    "comment": "/// Read the value of a vector of bytes as a u32 value in little-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 118,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 148,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 174,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "from_le",
+        "item_type": "function",
+        "offset_in_fn": 240,
+        "declaration": "pub const fn from_le(x: Self) -> Self",
+        "documentation": "Converts an integer from little endian to the target's endianness.\n\nOn little endian this is a no-op. On big endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"little\") {\n} else {\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/read_u32_be/167",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 167,
+    "end_line": 174,
+    "start_byte": 5976,
+    "end_byte": 6236,
+    "name": "read_u32_be",
+    "raw_code": "pub fn read_u32_be(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);\n        u32::from_be(tmp)\n    }\n}",
+    "code_with_hints": "pub fn read_u32_be(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(src: input.get_unchecked(index: 0), dst: &mut tmp as *mut _ as *mut u8, count: 4);\n        u32::from_be(tmp)\n    }\n}",
+    "code_with_type": "pub fn read_u32_be(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);\n        u32::from_be(tmp)\n    }\n}",
+    "code_with_param": "pub fn read_u32_be(input: &[u8]) -> u32 {\n    assert!(input.len() == 4);\n    unsafe {\n        let mut tmp: u32 = mem::uninitialized();\n        ptr::copy_nonoverlapping(src: input.get_unchecked(index: 0), dst: &mut tmp as *mut _ as *mut u8, count: 4);\n        u32::from_be(tmp)\n    }\n}",
+    "params": [
+      "input"
+    ],
+    "return_type": "u32",
+    "comment": "/// Read the value of a vector of bytes as a u32 value in big-endian format.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 118,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 148,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 174,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "from_be",
+        "item_type": "function",
+        "offset_in_fn": 240,
+        "declaration": "pub const fn from_be(x: Self) -> Self",
+        "documentation": "Converts an integer from big endian to the target's endianness.\n\nOn big endian this is a no-op. On little endian the bytes are\nswapped.\n\n# Examples\n\nBasic usage:\n\n```\n\nif cfg!(target_endian = \"big\") {\n} else {\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/xor_keystream/177",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 177,
+    "end_line": 188,
+    "start_byte": 6298,
+    "end_byte": 6744,
+    "name": "xor_keystream",
+    "raw_code": "pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {\n    assert!(dst.len() == plaintext.len());\n    assert!(plaintext.len() <= keystream.len());\n\n    // Do one byte at a time, using unsafe to skip bounds checking.\n    let p = plaintext.as_ptr();\n    let k = keystream.as_ptr();\n    let d = dst.as_mut_ptr();\n    for i in 0isize..plaintext.len() as isize {\n        unsafe{ *d.offset(i) = *p.offset(i) ^ *k.offset(i) };\n    }\n}",
+    "code_with_hints": "pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {\n    assert!(dst.len() == plaintext.len());\n    assert!(plaintext.len() <= keystream.len());\n\n    // Do one byte at a time, using unsafe to skip bounds checking.\n    let p: *const u8 = plaintext.as_ptr();\n    let k: *const u8 = keystream.as_ptr();\n    let d: *mut u8 = dst.as_mut_ptr();\n    for i: isize in 0isize..plaintext.len() as isize {\n        unsafe{ *d.offset(count: i) = *p.offset(count: i) ^ *k.offset(count: i) };\n    }\n}",
+    "code_with_type": "pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {\n    assert!(dst.len() == plaintext.len());\n    assert!(plaintext.len() <= keystream.len());\n\n    // Do one byte at a time, using unsafe to skip bounds checking.\n    let p: *const u8 = plaintext.as_ptr();\n    let k: *const u8 = keystream.as_ptr();\n    let d: *mut u8 = dst.as_mut_ptr();\n    for i: isize in 0isize..plaintext.len() as isize {\n        unsafe{ *d.offset(i) = *p.offset(i) ^ *k.offset(i) };\n    }\n}",
+    "code_with_param": "pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {\n    assert!(dst.len() == plaintext.len());\n    assert!(plaintext.len() <= keystream.len());\n\n    // Do one byte at a time, using unsafe to skip bounds checking.\n    let p = plaintext.as_ptr();\n    let k = keystream.as_ptr();\n    let d = dst.as_mut_ptr();\n    for i in 0isize..plaintext.len() as isize {\n        unsafe{ *d.offset(count: i) = *p.offset(count: i) ^ *k.offset(count: i) };\n    }\n}",
+    "params": [
+      "dst",
+      "plaintext",
+      "keystream"
+    ],
+    "return_type": "",
+    "comment": "/// XOR plaintext and keystream, storing the result in dst.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 396,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/copy_memory/192",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 192,
+    "end_line": 199,
+    "start_byte": 6788,
+    "end_byte": 7021,
+    "name": "copy_memory",
+    "raw_code": "pub fn copy_memory(src: &[u8], dst: &mut [u8]) {\n    assert!(dst.len() >= src.len());\n    unsafe {\n        let srcp = src.as_ptr();\n        let dstp = dst.as_mut_ptr();\n        ptr::copy_nonoverlapping(srcp, dstp, src.len());\n    }\n}",
+    "code_with_hints": "pub fn copy_memory(src: &[u8], dst: &mut [u8]) {\n    assert!(dst.len() >= src.len());\n    unsafe {\n        let srcp: *const u8 = src.as_ptr();\n        let dstp: *mut u8 = dst.as_mut_ptr();\n        ptr::copy_nonoverlapping(src: srcp, dst: dstp, count: src.len());\n    }\n}",
+    "code_with_type": "pub fn copy_memory(src: &[u8], dst: &mut [u8]) {\n    assert!(dst.len() >= src.len());\n    unsafe {\n        let srcp: *const u8 = src.as_ptr();\n        let dstp: *mut u8 = dst.as_mut_ptr();\n        ptr::copy_nonoverlapping(srcp, dstp, src.len());\n    }\n}",
+    "code_with_param": "pub fn copy_memory(src: &[u8], dst: &mut [u8]) {\n    assert!(dst.len() >= src.len());\n    unsafe {\n        let srcp = src.as_ptr();\n        let dstp = dst.as_mut_ptr();\n        ptr::copy_nonoverlapping(src: srcp, dst: dstp, count: src.len());\n    }\n}",
+    "params": [
+      "src",
+      "dst"
+    ],
+    "return_type": "",
+    "comment": "/// Copy bytes from src to dest\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 182,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/cryptoutil.rs/zero/203",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/cryptoutil.rs",
+    "start_line": 203,
+    "end_line": 207,
+    "start_byte": 7059,
+    "end_byte": 7167,
+    "name": "zero",
+    "raw_code": "pub fn zero(dst: &mut [u8]) {\n    unsafe {\n        ptr::write_bytes(dst.as_mut_ptr(), 0, dst.len());\n    }\n}",
+    "code_with_hints": "pub fn zero(dst: &mut [u8]) {\n    unsafe {\n        ptr::write_bytes(dst: dst.as_mut_ptr(), val: 0, count: dst.len());\n    }\n}",
+    "code_with_type": "pub fn zero(dst: &mut [u8]) {\n    unsafe {\n        ptr::write_bytes(dst.as_mut_ptr(), 0, dst.len());\n    }\n}",
+    "code_with_param": "pub fn zero(dst: &mut [u8]) {\n    unsafe {\n        ptr::write_bytes(dst: dst.as_mut_ptr(), val: 0, count: dst.len());\n    }\n}",
+    "params": [
+      "dst"
+    ],
+    "return_type": "",
+    "comment": "/// Zero all bytes in dst\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "intrinsics",
+        "name": "write_bytes",
+        "item_type": "function",
+        "offset_in_fn": 56,
+        "declaration": "pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize)",
+        "documentation": "Sets `count * size_of::<T>()` bytes of memory starting at `dst` to\n`val`.\n\n`write_bytes` is similar to C's [`memset`], but sets `count *\nsize_of::<T>()` bytes to `val`.\n\n[`memset`]: https://en.cppreference.com/w/c/string/byte/memset\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* `dst` must be properly aligned.\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointer must be properly aligned.\n\nAdditionally, note that changing `*dst` in this way can easily lead to undefined behavior (UB)\nlater if the written bytes are not a valid representation of some `T`. For instance, the\nfollowing is an **incorrect** use of this function:\n\n```rust,no_run\nunsafe {\n    let mut value: u8 = 0;\n    let ptr: *mut bool = &mut value as *mut u8 as *mut bool;\n    let _bool = ptr.read(); // This is fine, `ptr` points to a valid `bool`.\n    ptr.write_bytes(42u8, 1); // This function itself does not cause UB...\n    let _bool = ptr.read(); // ...but it makes this operation UB! ⚠️\n}\n```\n\n[valid]: crate::ptr#safety\n\n# Examples\n\nBasic usage:\n\n```\nuse std::ptr;\n\nlet mut vec = vec![0u32; 4];\nunsafe {\n    let vec_ptr = vec.as_mut_ptr();\n    ptr::write_bytes(vec_ptr, 0xfe, 2);\n}\nassert_eq!(vec, [0xfefefefe, 0xfefefefe, 0, 0]);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/util.rs/supports_aesni/14",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/util.rs",
+    "start_line": 14,
+    "end_line": 18,
+    "start_byte": 491,
+    "end_byte": 592,
+    "name": "supports_aesni",
+    "raw_code": "pub fn supports_aesni() -> bool {\n    unsafe {\n        rust_crypto_util_supports_aesni() != 0\n    }\n}",
+    "code_with_hints": "pub fn supports_aesni() -> bool {\n    unsafe {\n        rust_crypto_util_supports_aesni() != 0\n    }\n}",
+    "code_with_type": "pub fn supports_aesni() -> bool {\n    unsafe {\n        rust_crypto_util_supports_aesni() != 0\n    }\n}",
+    "code_with_param": "pub fn supports_aesni() -> bool {\n    unsafe {\n        rust_crypto_util_supports_aesni() != 0\n    }\n}",
+    "params": [],
+    "return_type": "bool",
+    "comment": "",
+    "attributes": "#[cfg(any(target_arch = \"x86\", target_arch = \"x86_64\"))]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "rust_crypto_util_supports_aesni",
+        "item_type": "function",
+        "offset_in_fn": 55,
+        "declaration": "pub unsafe fn rust_crypto_util_supports_aesni() -> u32",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/util.rs/secure_memset/31",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/util.rs",
+    "start_line": 31,
+    "end_line": 38,
+    "start_byte": 887,
+    "end_byte": 1082,
+    "name": "secure_memset",
+    "raw_code": "pub fn secure_memset(dst: &mut [u8], val: u8) {\n    unsafe {\n        rust_crypto_util_secure_memset(\n            dst.as_mut_ptr(),\n            val,\n            dst.len() as libc::size_t);\n    }\n}",
+    "code_with_hints": "pub fn secure_memset(dst: &mut [u8], val: u8) {\n    unsafe {\n        rust_crypto_util_secure_memset(\n            dst: dst.as_mut_ptr(),\n            val,\n            count: dst.len() as libc::size_t);\n    }\n}",
+    "code_with_type": "pub fn secure_memset(dst: &mut [u8], val: u8) {\n    unsafe {\n        rust_crypto_util_secure_memset(\n            dst.as_mut_ptr(),\n            val,\n            dst.len() as libc::size_t);\n    }\n}",
+    "code_with_param": "pub fn secure_memset(dst: &mut [u8], val: u8) {\n    unsafe {\n        rust_crypto_util_secure_memset(\n            dst: dst.as_mut_ptr(),\n            val,\n            count: dst.len() as libc::size_t);\n    }\n}",
+    "params": [
+      "dst",
+      "val"
+    ],
+    "return_type": "",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "rust_crypto_util_secure_memset",
+        "item_type": "function",
+        "offset_in_fn": 69,
+        "declaration": "pub unsafe fn rust_crypto_util_secure_memset(dst: *mut u8, val: libc::uint8_t, count: libc::size_t)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "unix",
+        "name": "size_t",
+        "item_type": "type_alias",
+        "offset_in_fn": 179,
+        "declaration": "size_t = usize;",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/util.rs/fixed_time_eq/42",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/util.rs",
+    "start_line": 42,
+    "end_line": 54,
+    "start_byte": 1232,
+    "end_byte": 1589,
+    "name": "fixed_time_eq",
+    "raw_code": "pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {\n    if lhs.len() != rhs.len() {\n        false\n    } else {\n        let count = lhs.len() as libc::size_t;\n\n        unsafe {\n            let lhsp = lhs.get_unchecked(0);\n            let rhsp = rhs.get_unchecked(0);\n            rust_crypto_util_fixed_time_eq_asm(lhsp, rhsp, count) == 0\n        }\n    }\n}",
+    "code_with_hints": "pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {\n    if lhs.len() != rhs.len() {\n        false\n    } else {\n        let count: usize = lhs.len() as libc::size_t;\n\n        unsafe {\n            let lhsp: &u8 = lhs.get_unchecked(index: 0);\n            let rhsp: &u8 = rhs.get_unchecked(index: 0);\n            rust_crypto_util_fixed_time_eq_asm(lhsp, rhsp, count) == 0\n        }\n    }\n}",
+    "code_with_type": "pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {\n    if lhs.len() != rhs.len() {\n        false\n    } else {\n        let count: usize = lhs.len() as libc::size_t;\n\n        unsafe {\n            let lhsp: &u8 = lhs.get_unchecked(0);\n            let rhsp: &u8 = rhs.get_unchecked(0);\n            rust_crypto_util_fixed_time_eq_asm(lhsp, rhsp, count) == 0\n        }\n    }\n}",
+    "code_with_param": "pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {\n    if lhs.len() != rhs.len() {\n        false\n    } else {\n        let count = lhs.len() as libc::size_t;\n\n        unsafe {\n            let lhsp = lhs.get_unchecked(index: 0);\n            let rhsp = rhs.get_unchecked(index: 0);\n            rust_crypto_util_fixed_time_eq_asm(lhsp, rhsp, count) == 0\n        }\n    }\n}",
+    "params": [
+      "lhs",
+      "rhs"
+    ],
+    "return_type": "bool",
+    "comment": "/// Compare two vectors using a fixed number of operations. If the two vectors are not of equal\n/// length, the function returns false immediately.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "unix",
+        "name": "size_t",
+        "item_type": "type_alias",
+        "offset_in_fn": 153,
+        "declaration": "size_t = usize;",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 206,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "rust_crypto_util_fixed_time_eq_asm",
+        "item_type": "function",
+        "offset_in_fn": 281,
+        "declaration": "pub unsafe fn rust_crypto_util_fixed_time_eq_asm(lhsp: *const u8, rhsp: *const u8, count: libc::size_t) -> u32",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "rust-crypto-0.2.36/src/ghash.rs/new/163",
+    "repo_name": "rust-crypto-0.2.36",
+    "relative_file": "src/ghash.rs",
+    "start_line": 163,
+    "end_line": 181,
+    "start_byte": 5176,
+    "end_byte": 5688,
+    "name": "new",
+    "raw_code": "pub fn new(h: &[u8]) -> Ghash {\n        assert!(h.len() == 16);\n        let mut table: [Gf128; 128] = unsafe { mem::uninitialized() };\n\n        // Precompute values for h * x^0 to h * x^127\n        let mut h = Gf128::from_bytes(h);\n        for poly in table.iter_mut() {\n            *poly = h;\n            h = h.times_x_reduce();\n        }\n\n        Ghash {\n            hs: table,\n            state: Gf128::new(0, 0, 0, 0),\n            a_len: 0,\n            rest: None,\n            finished: false\n        }\n    }",
+    "code_with_hints": "pub fn new(h: &[u8]) -> Ghash {\n        assert!(h.len() == 16);\n        let mut table: [Gf128; 128] = unsafe { mem::uninitialized() };\n\n        // Precompute values for h * x^0 to h * x^127\n        let mut h: Gf128 = Gf128::from_bytes(h);\n        for poly: &mut Gf128 in table.iter_mut() {\n            *poly = h;\n            h = h.times_x_reduce();\n        }\n\n        Ghash {\n            hs: table,\n            state: Gf128::new(a: 0, b: 0, c: 0, d: 0),\n            a_len: 0,\n            rest: None,\n            finished: false\n        }\n    }",
+    "code_with_type": "pub fn new(h: &[u8]) -> Ghash {\n        assert!(h.len() == 16);\n        let mut table: [Gf128; 128] = unsafe { mem::uninitialized() };\n\n        // Precompute values for h * x^0 to h * x^127\n        let mut h: Gf128 = Gf128::from_bytes(h);\n        for poly: &mut Gf128 in table.iter_mut() {\n            *poly = h;\n            h = h.times_x_reduce();\n        }\n\n        Ghash {\n            hs: table,\n            state: Gf128::new(0, 0, 0, 0),\n            a_len: 0,\n            rest: None,\n            finished: false\n        }\n    }",
+    "code_with_param": "pub fn new(h: &[u8]) -> Ghash {\n        assert!(h.len() == 16);\n        let mut table: [Gf128; 128] = unsafe { mem::uninitialized() };\n\n        // Precompute values for h * x^0 to h * x^127\n        let mut h = Gf128::from_bytes(h);\n        for poly in table.iter_mut() {\n            *poly = h;\n            h = h.times_x_reduce();\n        }\n\n        Ghash {\n            hs: table,\n            state: Gf128::new(a: 0, b: 0, c: 0, d: 0),\n            a_len: 0,\n            rest: None,\n            finished: false\n        }\n    }",
+    "params": [
+      "h"
+    ],
+    "return_type": "Ghash",
+    "comment": "/// Creates a new GHASH state, with `h` as the key\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "ghash",
+        "name": "Ghash",
+        "item_type": "struct",
+        "offset_in_fn": 24,
+        "declaration": "Ghash {\n    hs: [Gf128; 128],\n    state: Gf128,\n    a_len: usize,\n    rest: Option<[u8; 16]>,\n    finished: bool\n}",
+        "documentation": "A structure representing the state of a GHASH computation"
+      },
+      {
+        "src_mod": "ghash",
+        "name": "Gf128",
+        "item_type": "struct",
+        "offset_in_fn": 88,
+        "declaration": "Gf128 { d: simd::u32x4 }",
+        "documentation": "A struct representing an element in GF(2^128)x^0 is the msb, while x^127 is the lsb"
+      },
+      {
+        "src_mod": "mem",
+        "name": "uninitialized",
+        "item_type": "function",
+        "offset_in_fn": 116,
+        "declaration": "pub unsafe fn uninitialized<T>() -> T",
+        "documentation": "Bypasses Rust's normal memory-initialization checks by pretending to\nproduce a value of type `T`, while doing nothing at all.\n\n**This function is deprecated.** Use [`MaybeUninit<T>`] instead.\nIt also might be slower than using `MaybeUninit<T>` due to mitigations that were put in place to\nlimit the potential harm caused by incorrect use of this function in legacy code.\n\nThe reason for deprecation is that the function basically cannot be used\ncorrectly: it has the same effect as [`MaybeUninit::uninit().assume_init()`][uninit].\nAs the [`assume_init` documentation][assume_init] explains,\n[the Rust compiler assumes][inv] that values are properly initialized.\n\nTruly uninitialized memory like what gets returned here\nis special in that the compiler knows that it does not have a fixed value.\nThis makes it undefined behavior to have uninitialized data in a variable even\nif that variable has an integer type.\n\nTherefore, it is immediate undefined behavior to call this function on nearly all types,\nincluding integer types and arrays of integer types, and even if the result is unused.\n\n[uninit]: MaybeUninit::uninit\n[assume_init]: MaybeUninit::assume_init\n[inv]: MaybeUninit#initialization-invariant"
+      },
+      {
+        "src_mod": "",
+        "name": "from_bytes",
+        "item_type": "function",
+        "offset_in_fn": 217,
+        "declaration": "fn from_bytes(bytes: &[u8]) -> Gf128",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "times_x_reduce",
+        "item_type": "function",
+        "offset_in_fn": 312,
+        "declaration": "fn times_x_reduce(self) -> Gf128",
+        "documentation": "Multiply the element by x modulo x^128 + x^7 + x^2 + x + 1This is equivalent to a rightshift, followed by an XOR iff the lsb was set,in the bit representation"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  }
+]

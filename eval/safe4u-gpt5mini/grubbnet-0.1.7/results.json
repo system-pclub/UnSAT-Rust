@@ -1,0 +1,152 @@
+[
+  {
+    "sample_label": "grubbnet-0.1.7/src/buffer.rs/drain/20",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`src` must be valid for reads of `count * size_of::<T>()` bytes, and it must remain valid even when `dst` is written for `count * size_of::<T>()` bytes. If the memory ranges overlap, `src` and `dst` must not be subject to aliasing restrictions relative to each other.",
+          "fn_name": "copy",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n2. **Expressions highly related to the contract**\n- `self.data.as_ptr().offset(count as isize)` \u2192 source pointer `src`\n- `self.data.as_mut_ptr()` \u2192 destination pointer `dst`\n- `self.offset - count` \u2192 number of elements copied\n- `self.data` \u2192 underlying allocated object\n\n3. **Step-by-step analysis**\n- `ptr::copy` requires that `src` be valid for reads of `count * size_of::<T>()` bytes, and that this validity hold even while writing to `dst`.\n- Here `T = u8`, so the copy size is `self.offset - count` bytes.\n- `dst` is `self.data.as_mut_ptr()`, which points to the start of the same array `self.data`.\n- `src` is `self.data.as_ptr().offset(count as isize)`, which points `count` bytes into the same array.\n- Since both pointers are derived from the same array, overlapping is possible and is actually intended here; `ptr::copy` allows overlap.\n- The key question is whether `src` is always valid for reading `self.offset - count` bytes.\n- The function uses `self.offset - count` as the copy length, so it assumes `count <= self.offset`. If that holds, then the source range starts at byte `count` and extends through byte `self.offset - 1`, which lies within the initialized portion of the buffer.\n- However, the function receives `count: usize` untrusted, and there is no check that `count <= self.offset`.\n- If `count > self.offset`, then:\n  - `self.offset - count` underflows, producing a huge length.\n  - `src` points past the currently valid data, and the read range is invalid.\n- Therefore the contract is not guaranteed by this function for arbitrary input.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n2. **Contract-relevant expressions**\n- `self.data.as_ptr().offset(count as isize)` \u2192 source pointer passed to `copy`\n- `self.data.as_mut_ptr()` \u2192 destination pointer\n- `self.offset - count` \u2192 number of `u8` elements to copy\n- `count` parameter \u2192 determines source start and output length\n\n3. **Step-by-step analysis**\n- The buffer is `[u8; MAX_BUFFER_SIZE]`, so the source and destination are within the same allocated array.\n- `dst` is always the start of the array, which is valid for writes of up to the array length.\n- The source is computed as `self.data.as_ptr().offset(count as isize)`, which means the copy starts at byte index `count`.\n- The number of bytes copied is `self.offset - count`.\n- For the source to be valid for reads of that many bytes, we need:\n  - `count <= self.offset`\n  - `self.offset - count <= MAX_BUFFER_SIZE - count`\n- The code does **not** check that `count <= self.offset`.\n- If `count > self.offset`, then `self.offset - count` underflows as `usize`, producing a huge count, and the source pointer is also advanced past the initialized/valid region.\n- Even if `count <= self.offset`, the caller must still ensure the source range `[count, self.offset)` is valid, which is only true if `self.offset` itself is within the buffer bounds. The structure does not enforce that here.\n- Therefore, the function does **not** guarantee the contract required by `ptr::copy`.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`dst` must be valid for writes of `count * size_of::<T>()` bytes, and it must remain valid even when `src` is read for `count * size_of::<T>()` bytes.",
+          "fn_name": "copy",
+          "type": "Allocated"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `copy` is called here:\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n## 2. Expressions related to the contract\nRelevant expressions:\n- `dst: self.data.as_mut_ptr()`\n- `count: self.offset - count`\n- `src: self.data.as_ptr().offset(count as isize)`\n\nThe contract in question is about `dst` being valid for writes of `count * size_of::<T>()` bytes and remaining valid during the read from `src`.\n\n## 3. Step-by-step analysis\n- `self.data` is an array `[u8; MAX_BUFFER_SIZE]`, so `self.data.as_mut_ptr()` points to the start of a contiguous buffer of exactly `MAX_BUFFER_SIZE` bytes.\n- The function intends to shift `self.offset - count` bytes from `src` to `dst`.\n- `dst` is the beginning of the same backing array, so as long as `self.offset - count <= MAX_BUFFER_SIZE`, the destination range is within the allocated object.\n- However, `count` is an arbitrary `usize` parameter. There is no explicit check that `count <= self.offset`.\n- If `count > self.offset`, then `self.offset - count` underflows in `usize`, producing a huge value. That makes the `count` argument to `ptr::copy` enormous, and the destination would not be valid for that many bytes.\n- Even before that, `src = self.data.as_ptr().offset(count as isize)` is also unsafe and can point out of bounds if `count` exceeds the buffer length, but the specific contract we are checking is about `dst` validity.\n- Because the function does not validate `count`, it does not guarantee that `dst` is valid for the number of bytes requested by `ptr::copy`.\n\n## 4. Final determination\nNo"
+          },
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n2. **Expressions highly related to the contract**\n- `dst: self.data.as_mut_ptr()`\n- `count: self.offset - count`\n- `src: self.data.as_ptr().offset(count as isize)`\n- `self.data`: backing storage of fixed size `MAX_BUFFER_SIZE`\n- `self.offset`: current logical length / number of valid bytes\n\n3. **Step-by-step analysis**\n- `ptr::copy` requires `dst` to be valid for writing `count * size_of::<T>()` bytes.\n- Here `T = u8`, so the write size is exactly `self.offset - count` bytes.\n- `dst` is `self.data.as_mut_ptr()`, which points to the start of the fixed array `[u8; MAX_BUFFER_SIZE]`.\n- This destination is valid for writes only if `self.offset - count <= MAX_BUFFER_SIZE`.\n- The function does not check that condition, but since `self.offset` is a field of the buffer and represents the current used length, it is expected to be within the array size.\n- The more important issue is the source pointer:\n  `self.data.as_ptr().offset(count as isize)` must also be valid for reading `self.offset - count` bytes.\n- If `count > self.offset`, then `self.offset - count` underflows (because it is `usize`) and the copy length becomes a huge number, violating the contract.\n- The function does not validate that `count <= self.offset`.\n- Therefore, with arbitrary untrusted input for `count`, the contract is not guaranteed.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`src` and `dst` must be properly aligned.",
+          "fn_name": "copy",
+          "type": "Aligned"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n2. **Expressions highly related to the contract**\n- `self.data.as_ptr()`\n- `self.data.as_ptr().offset(count as isize)`\n- `self.data.as_mut_ptr()`\n- `ptr::copy(...)`\n\n3. **Step-by-step data flow analysis**\n- `self.data` has type `[u8; MAX_BUFFER_SIZE]`.\n- `self.data.as_ptr()` returns a pointer to `u8`.\n- `u8` has alignment 1, so `self.data.as_ptr()` is properly aligned for `u8`.\n- `offset(count as isize)` advances the pointer by `count` elements of type `u8`.\n- Because the element type is `u8`, any resulting pointer to an element remains aligned to 1-byte alignment.\n- `self.data.as_mut_ptr()` also points to `u8`, and `u8` only requires alignment 1, so it is properly aligned as well.\n\nSo, for the specific contract about alignment, both `src` and `dst` are properly aligned.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `copy` is called here:\n\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n## 2. Expressions related to the contract\nRelevant expressions for the alignment contract are:\n\n- `self.data.as_ptr().offset(count as isize)`\n- `self.data.as_mut_ptr()`\n\nThese produce the `src` and `dst` pointers passed to `copy`.\n\n## 3. Step-by-step analysis\n- `self.data` has type `[u8; MAX_BUFFER_SIZE]`.\n- The element type is `u8`, whose alignment is 1.\n- `self.data.as_ptr()` and `self.data.as_mut_ptr()` therefore produce properly aligned pointers for `u8`.\n- Calling `.offset(count as isize)` on a `*const u8` advances the pointer by `count * size_of::<u8>()`, and `size_of::<u8>() == 1`.\n- Since alignment requirement for `u8` is 1, any valid byte offset preserves proper alignment.\n- `dst` is `self.data.as_mut_ptr()`, which is also properly aligned for `u8`.\n\nSo with respect to the specific contract \u201c`src` and `dst` must be properly aligned\u201d, this function satisfies it.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If `T` is not `Copy`, the values in both the source region starting at `*src` and the destination region starting at `*dst` must not both be used afterward.",
+          "fn_name": "copy",
+          "type": "End of Use"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n## 2. Expressions highly related to the contract\n\n- `self.data.as_ptr().offset(count as isize)` \u2014 source pointer\n- `self.data.as_mut_ptr()` \u2014 destination pointer\n- `count: self.offset - count` \u2014 number of bytes copied\n- `self.offset -= count` \u2014 updates logical length after the copy\n\n## 3. Data flow analysis for the contract\n\nThe contract in question is:\n\n> If `T` is not `Copy`, the values in both the source region starting at `*src` and the destination region starting at `*dst` must not both be used afterward.\n\nHere, `T` is effectively `u8` because `self.data` is `[u8; MAX_BUFFER_SIZE]`. `u8` is `Copy`, so the specific contract condition about non-`Copy` types does not apply.\n\nStill, checking the data flow:\n\n1. The source region is `self.data[count..self.offset]`.\n2. The destination region is `self.data[0..self.offset-count]`.\n3. `ptr::copy` may overlap, which is intended here because the buffer is being shifted left.\n4. After the copy, the function updates `self.offset -= count`, meaning the logically valid buffer becomes the prefix starting at index 0.\n5. The bytes in the old source region are not separately relied on as distinct non-`Copy` values; they are plain bytes (`u8`), and the function is operating on raw storage.\n\nSo the contract regarding non-`Copy` values being used afterward is satisfied, because the element type is `u8` and there is no violation of post-copy usage rules for non-`Copy` data.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe callee call site\nThe unsafe function `copy` is called here:\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n## 2. Contract-relevant expressions\n- `self.data.as_ptr().offset(count as isize)` \u2014 source pointer\n- `self.data.as_mut_ptr()` \u2014 destination pointer\n- `count: self.offset - count` \u2014 number of elements copied\n- `self.data` \u2014 the underlying buffer being both read from and written to\n\n## 3. Step-by-step data flow analysis\n- `T` is `u8` here, since `self.data` is `[u8; MAX_BUFFER_SIZE]`.\n- The contract in question is specifically about the case where `T` is **not** `Copy`.\n- Since `u8` is `Copy`, this particular contract does not impose any restriction on post-call use of source and destination values.\n- The function copies bytes within the same buffer to shift remaining data toward the front.\n- After the copy, it updates `self.offset -= count`, which indicates the front `count` bytes are logically removed.\n- No non-`Copy` values are involved, so the stated contract is not violated by this code.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`src` and `dst` must be non-null even when `count * size_of::<T>() == 0`.",
+          "fn_name": "copy",
+          "type": "Not Null"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n2. **Expressions related to the contract**\n- `src: self.data.as_ptr().offset(count as isize)`\n- `dst: self.data.as_mut_ptr()`\n- `count: self.offset - count`\n\n3. **Step-by-step analysis**\n- `self.data` is an array field inside `NetworkBuffer`, so under the given assumption it is properly allocated.\n- `self.data.as_ptr()` returns a raw pointer to the start of the array. For a properly allocated array, this pointer is non-null.\n- `self.data.as_mut_ptr()` also returns a raw mutable pointer to the start of the array, which is likewise non-null.\n- The `offset(count as isize)` call computes a derived pointer from the non-null base pointer. Even if `count` were such that the copy length becomes zero, the contract specifically requires `src` and `dst` to be non-null, not necessarily valid for dereference in that zero-length case.\n- Since both pointers originate from the array storage, neither is null.\n- Therefore the contract for `copy` is satisfied with respect to non-nullness.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nptr::copy(\n    src: self.data.as_ptr().offset(count as isize),\n    dst: self.data.as_mut_ptr(),\n    count: self.offset - count,\n);\n```\n\n2. **Expressions highly related to the contract**\n- `self.data.as_ptr().offset(count as isize)` \u2192 `src`\n- `self.data.as_mut_ptr()` \u2192 `dst`\n- `count: self.offset - count`\n\n3. **Data flow and step-by-step contract analysis**\n- `copy` requires both `src` and `dst` to be non-null, even if the byte count is zero.\n- `dst = self.data.as_mut_ptr()`:\n  - `self.data` is a fixed-size array `[u8; MAX_BUFFER_SIZE]`.\n  - For a properly allocated `self`, `as_mut_ptr()` returns a pointer to the array storage, which is non-null.\n- `src = self.data.as_ptr().offset(count as isize)`:\n  - `self.data.as_ptr()` is also derived from the allocated array storage and is non-null.\n  - However, `offset(...)` is unsafe and may produce an invalid pointer if the offset is out of bounds, but the specific contract we are checking is only non-nullness.\n  - For nonzero or zero offset, an in-bounds pointer derived from a valid array base remains non-null.\n- The function does not add any explicit null checks, but the pointers come from a real array field, not from raw untrusted pointers.\n- Therefore, regarding the specific contract \"`src` and `dst` must be non-null even when `count * size_of::<T>() == 0`\", the code satisfies it.\n\n4. **Final determination**\n**Yes**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in `isize` without wrapping around.",
+          "fn_name": "offset",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `offset` is called here:\n```rust\nsrc: self.data.as_ptr().offset(count as isize),\n```\n\n## 2. Contract-relevant expressions\n- `count as isize`\n- `self.data.as_ptr()`\n- `self.offset - count` indirectly affects whether `count` is meaningful, but it is not the direct contract for `offset`\n\n## 3. Step-by-step analysis\n- `offset` requires that the pointer displacement, in bytes, must fit in `isize` and must not rely on wrapping around the address space.\n- Here the offset is `count as isize`, where `count` is a `usize`.\n- If `count > isize::MAX`, then `count as isize` will wrap/truncate into a negative or otherwise incorrect signed value.\n- The function performs no check that `count <= isize::MAX`.\n- Since `count` is an arbitrary untrusted parameter, the contract is not guaranteed.\n- Therefore, the call to `offset` may violate the requirement that the computed byte offset fits in `isize` without wrapping.\n\n## 4. Final determination\nNo"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe callee call site**\n```rust\nsrc: self.data.as_ptr().offset(count as isize),\n```\n\n2. **Expressions related to the contract**\n- `count as isize`\n- `self.data.as_ptr()`\n- The implied byte offset: `count as isize * size_of::<u8>()`\n\n3. **Step-by-step analysis**\n- The unsafe call is `offset` on a `*const u8`.\n- For `u8`, `size_of::<T>() == 1`, so the byte offset equals `count as isize`.\n- The contract requires that the computed offset fits in `isize` without wrapping around.\n- Here, `count` is a `usize` parameter with no validation.\n- Casting `usize` to `isize` can wrap/truncate for values greater than `isize::MAX`.\n- Therefore, if `count > isize::MAX`, the passed offset becomes invalid relative to the contract.\n- Since `count` is untrusted and unchecked, the function does **not** guarantee the contract.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object.",
+          "fn_name": "offset",
+          "type": "Allocated"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\nsrc: self.data.as_ptr().offset(count as isize),\n```\n\n## 2. Expressions highly related to the contract\n\n- `self.data.as_ptr()`\n- `count as isize`\n- `offset(count as isize)`\n\n## 3. Step-by-step analysis of the contract\n\nThe contract for `offset` says:\n\n> If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object.\n\nHere, `self.data.as_ptr()` comes from a field:\n```rust\ndata: [u8; MAX_BUFFER_SIZE]\n```\nThis is a real allocated array inside `NetworkBuffer`, so the pointer returned by `as_ptr()` is derived from an allocated object.\n\nNow consider the offset:\n- `count as isize` may be zero or non-zero.\n- If it is non-zero, the pointer is still derived from `self.data`, which is an allocated object.\n- Therefore the `offset` precondition is satisfied.\n\nThe other issue is whether `count` is in bounds for the buffer, but that is not the specific contract being asked about. For the stated contract alone, the requirement is met.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `offset` is called here:\n```rust\nsrc: self.data.as_ptr().offset(count as isize),\n```\n\n## 2. Contract-relevant expressions\n- `self.data.as_ptr()`: the base pointer being offset\n- `count as isize`: the offset amount\n- `self.offset`: used later for the copy size, but not directly relevant to the `offset` contract\n\n## 3. Step-by-step analysis\n- `self.data` is a fixed-size array field inside `NetworkBuffer`.\n- `self.data.as_ptr()` returns a pointer to the first element of that array.\n- Since `data` is an actual allocated array inside `self`, the pointer is derived from a pointer to an allocated object.\n- The offset being applied is `count as isize`. If this offset is non-zero, the resulting pointer is still based on that allocated array object.\n- Therefore, the contract for `offset` is satisfied with respect to the requirement that non-zero offsets must be derived from a pointer to some allocated object.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the resulting pointer must lie within the bounds of that allocated object.",
+          "fn_name": "offset",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nsrc: self.data.as_ptr().offset(count as isize),\n```\n\n2. **Expressions highly related to the contract**\n- `self.data.as_ptr()`\n- `count as isize`\n- the resulting pointer from `offset(...)`\n- `self.data` (the allocated object)\n- `self.offset - count` (shows intended buffer length, but not directly guarding `count`)\n\n3. **Step-by-step analysis**\n- `self.data.as_ptr()` points to the start of the `data` array, which is the allocated object backing the buffer.\n- The unsafe call computes a pointer `count` elements forward from the start of the array.\n- The contract for `offset` requires that if the offset is non-zero, the entire memory range between the starting pointer and the resulting pointer must stay within the same allocated object.\n- In this function, `count` is an arbitrary `usize` parameter with no validation before the call.\n- There is no check that `count <= self.data.len()` or even that `count <= self.offset`.\n- Therefore, if `count` is larger than the array length, `offset(count as isize)` can produce an out-of-bounds pointer, violating the contract.\n- Even if `count` is less than or equal to `self.offset`, the code does not ensure it is within the bounds of `self.data`, so the contract is still not guaranteed.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nsrc: self.data.as_ptr().offset(count as isize),\n```\n\n2. **Expressions related to the contract**\n- `self.data.as_ptr()`\n- `count as isize`\n- resulting pointer used as `src`\n\n3. **Step-by-step analysis**\n- `self.data` is an array field inside `NetworkBuffer`, so `self.data.as_ptr()` points to the start of that array allocation.\n- `offset(count as isize)` computes a pointer `count` elements forward.\n- The contract for `offset` requires that if the offset is non-zero, every byte between the original pointer and the resulting pointer must stay within the same allocated object.\n- Here, `count` is an arbitrary `usize` parameter and is not checked against `self.offset` or `MAX_BUFFER_SIZE`.\n- If `count` is greater than the length of `self.data`, then `offset(count as isize)` produces a pointer outside the array object, violating the contract.\n- Even if `count` is within `self.offset`, the code does not enforce that `count <= MAX_BUFFER_SIZE`, so the contract is not guaranteed.\n- Therefore, the function does not satisfy the precondition required by `offset`.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  }
+]

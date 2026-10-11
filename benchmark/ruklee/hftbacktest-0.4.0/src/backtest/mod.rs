@@ -74,6 +74,28 @@ pub enum BacktestError {
     DataError(#[from] IoError),
 }
 
+#[cfg(test)]
+mod unsat_ir_instantiations {
+    use super::{data::DataPtr, evs::EventSet, order::OrderBus};
+
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_backtest_pointer_callers() {
+        let events = EventSet::new(1);
+        let _ = events.next();
+
+        let data = DataPtr::new(1);
+        let _ = data.at(std::hint::black_box(0));
+
+        let mut bus = OrderBus::new();
+        let _ = bus.earliest_timestamp();
+        let _ = bus.len();
+        let _ = bus.is_empty();
+        let _ = bus.pop_front();
+        bus.reset();
+    }
+}
+
 /// Backtesting Asset
 pub struct Asset<L: ?Sized, E: ?Sized> {
     pub local: Box<L>,

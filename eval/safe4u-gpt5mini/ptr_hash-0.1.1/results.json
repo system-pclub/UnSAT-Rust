@@ -1,0 +1,104 @@
+[
+  {
+    "sample_label": "ptr_hash-0.1.1/src/util.rs/prefetch_index/9",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `s.as_ptr()`\n- `index`\n- `add(count: index)`\n- `count * size_of::<T>()` implied by the `add` contract\n- `s: &[T]`\n\n## 3. Step-by-step data flow analysis\n\n- `s` is a slice, so `s.as_ptr()` points to the first element of that slice.\n- `index` is an arbitrary `usize` input.\n- The code calls `add(index)` on `s.as_ptr()`, which means it computes a pointer offset of `index * size_of::<T>()` bytes.\n- The contract requires that this computed byte offset must fit in `isize` without overflowing.\n- This function does **not** check that `index <= s.len()`.\n- More importantly, it does **not** check that `index * size_of::<T>() <= isize::MAX`.\n- Since `index` is untrusted and arbitrary, it could be very large, making the multiplication overflow `isize` or otherwise exceed the allowed pointer-offset range.\n- Therefore, the contract for `add` is **not guaranteed** by this function.\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `add` is called here:\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n## 2. Expressions related to the contract\n\nRelevant expressions:\n- `s.as_ptr()`\n- `index`\n- `count * size_of::<T>()` implied by `add(index)`\n- `index * size_of::<T>()` as the byte offset\n- `T` from the slice type `&[T]`\n\n## 3. Step-by-step contract analysis\n\nThe contract for `add` is:\n\n> The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.\n\nHere, `count` is `index`, and the pointer being advanced is `s.as_ptr()`, which has element type `T`. So the byte offset is:\n\n```text\nindex * size_of::<T>()\n```\n\nNow check whether the function guarantees this:\n\n1. `index` is an arbitrary `usize` argument.\n2. There is no bounds check like `index < s.len()`.\n3. There is no check that `index * size_of::<T>() <= isize::MAX`.\n4. Therefore, for large enough `index` and/or large `T`, the multiplication can exceed `isize::MAX` or overflow `usize` before/while being interpreted as a pointer offset.\n5. Because the function does not enforce the required bound, the unsafe contract of `add` is not guaranteed.\n\nNote: even though `s.as_ptr()` comes from a valid slice, that alone does not ensure the offset is safe; the caller must ensure the computed offset is representable in `isize`.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+          "fn_name": "add",
+          "type": "Allocated"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n2. **Expressions related to the contract**\n- `s.as_ptr()`\n- `index`\n- `s.as_ptr().add(index)`\n\n3. **Step-by-step analysis**\n- `s` is a slice reference: `&[T]`. A slice is guaranteed to point to an allocated object (or be a valid dangling-but-well-formed representation for empty slices, but `as_ptr()` still gives a pointer derived from the slice).\n- `s.as_ptr()` returns a pointer derived from the slice\u2019s allocation.\n- The unsafe call uses `add(index)`, so the offset is `index`.\n- If `index == 0`, the contract about non-zero offset does not apply.\n- If `index != 0`, then the pointer used by `add` is still derived from a pointer to an allocated object, namely the slice allocation.\n- Therefore, the contract is satisfied for this call.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call to `add` is:\n\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n## 2. Expressions highly related to the contract\n\n- `s.as_ptr()`\n- `index`\n- `s.as_ptr().add(index)`\n\nThe contract to check:\n> If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n\n## 3. Step-by-step analysis\n\n- `s` is a slice reference: `&[T]`.\n- A Rust slice is guaranteed to be derived from a valid allocation or from a valid dangling-but-well-formed empty slice representation; however, for non-empty slices, `s.as_ptr()` points into allocated storage for the slice elements.\n- The function computes `s.as_ptr().add(index)`.\n- `index` is an arbitrary `usize`, so it may be zero or non-zero.\n- If `index == 0`, the contract about non-zero offset is irrelevant.\n- If `index != 0`, then `add` requires the base pointer to be derived from a pointer to an allocated object.\n- Since `s` is a slice, `s.as_ptr()` is derived from the slice\u2019s underlying allocation when the slice is non-empty. For an empty slice, the caller may still get a valid dangling pointer, but then any non-zero `add(index)` would be invalid if actually used.\n- This function does not ensure `index` is in bounds, but the asked contract is specifically about whether the base pointer is derived from an allocated object when offset is non-zero. Because `s` comes from a slice, the base pointer is indeed derived from a slice object, which is tied to allocation for non-empty slices.\n\nSo, with respect to the stated contract, the function satisfies it.\n\n## 4. Final determination\n\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.",
+          "fn_name": "add",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe callee `add` is called here:\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n## 2. Expressions highly related to the contract\n- `s.as_ptr()`: the starting pointer\n- `index`: the computed offset\n- `s`: the allocated object the pointer must stay within\n- `ptr`: the resulting pointer from `add`\n\n## 3. Step-by-step analysis of the contract\nThe contract says:\n\n> If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.\n\nHere, `self` for `add` is `s.as_ptr()`, and the offset is `index`.\n\n- `s.as_ptr()` points to the first element of the slice `s`.\n- `index` is an arbitrary `usize` parameter and is not checked against `s.len()`.\n- If `index == 0`, the pointer does not move, so the contract is trivially fine.\n- If `index > 0`, then `s.as_ptr().add(index)` requires that all elements from the start pointer up to the resulting pointer lie within the same allocated slice object.\n- But this function does **not** verify that `index <= s.len()`.\n- Therefore, for out-of-bounds values of `index`, the computed pointer may go beyond the slice allocation, violating the `add` contract.\n\nSo the contract is not guaranteed to be satisfied.\n\n## 4. Final determination\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call to `add` is:\n\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n## 2. Expressions highly related to the contract\n\n- `s.as_ptr()`: starting pointer into the slice\n- `index`: the unsigned offset passed to `add`\n- `s: &[T]`: the allocated object backing the slice\n- `ptr`: the resulting pointer after offsetting\n\n## 3. Step-by-step data flow analysis\n\n- `s` is a shared slice, so it refers to one contiguous allocated object.\n- `s.as_ptr()` returns a pointer to the first element of that slice.\n- `index` is completely unconstrained by the function signature. It can be any `usize`, including values larger than `s.len()`.\n- The call `add(index)` requires that if the offset is non-zero, then the entire memory range between the starting pointer and the resulting pointer lies within the same allocated object.\n- Nothing in the function checks that `index <= s.len()`.\n- Therefore, for large `index`, the computed pointer may go past the end of the slice, and the memory range between `s.as_ptr()` and the result would not be guaranteed to remain within the same allocated object.\n\nSo the contract is **not** satisfied in general.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe callee `add` is called here:\n\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n## 2. Expressions highly related to the contract\n\n- `s.as_ptr()`\n- `index`\n- `s.as_ptr().add(index)`\n- the resulting `ptr`\n\n## 3. Step-by-step data flow and contract analysis\n\n- `s.as_ptr()` produces a pointer to the start of slice `s`.\n- `index` is an arbitrary `usize` parameter and is not checked before being passed to `add`.\n- The contract for `add` says that if the offset is non-zero, the pointer range between the original pointer and the result must not wrap around the edge of the address space.\n- Since `index` can be any `usize`, it may be very large.\n- If `index` is large enough, `s.as_ptr().add(index)` could compute a pointer that wraps around the address space rather than forming a valid in-bounds or one-past-the-end pointer.\n- There is no guard ensuring that `index` is small enough to avoid this wraparound.\n- Therefore, this function does **not** guarantee the contract of `add`.\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nlet ptr: *const u64 = unsafe { s.as_ptr().add(count: index) as *const u64 };\n```\n\n2. **Expressions related to the contract**\n- `s.as_ptr()`\n- `index`\n- the computed pointer `s.as_ptr().add(index)`\n\n3. **Step-by-step analysis**\n- `s.as_ptr()` returns a pointer to the first element of the slice `s`.\n- `index` is an arbitrary `usize` parameter and is not checked against `s.len()`.\n- The contract for `add` requires that if the offset is non-zero, the pointer arithmetic must not wrap around the edge of the address space.\n- Since `index` can be any `usize`, `s.as_ptr().add(index)` may attempt to advance the pointer by an arbitrarily large amount.\n- There is no guarantee in this function that `index` is small enough to avoid address-space wraparound.\n- Therefore, the contract of `add` is **not** satisfied.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "ptr_hash-0.1.1/src/tiny_ef.rs/index/33",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`index` must be in bounds for the tree.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. Code snippet calling the unsafe callee:\n```rust\nunsafe { (*self.ef.as_ref().get_unchecked(index: index / L)).get(idx: index % L) }\n```\n\n2. Expressions highly related to the contract:\n- `self.ef.as_ref().get_unchecked(index: index / L)`\n- `index / L`\n- `self.ef`\n\n3. Step-by-step analysis:\n- The unsafe call is `get_unchecked` on `self.ef.as_ref()`.\n- The contract says the provided `index` must be in bounds for the tree/slice.\n- Here, the index passed is `index / L`.\n- `index` is an arbitrary `usize` parameter, so it may be any value.\n- There is no explicit bounds check ensuring that `index / L` is within bounds of `self.ef.as_ref()`.\n- Even if `index % L` is valid for the inner `.get(...)`, that does not guarantee the outer `get_unchecked(index / L)` is in bounds.\n- Therefore, the contract is not guaranteed to be satisfied.\n\n4. Final determination:\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe call is:\n```rust\nunsafe { (*self.ef.as_ref().get_unchecked(index: index / L)).get(idx: index % L) }\n```\nThe relevant unsafe callee here is:\n```rust\nself.ef.as_ref().get_unchecked(index: index / L)\n```\n\n## 2. Expressions highly related to the contract\n- `index / L`\n- `self.ef.as_ref()`\n- `get_unchecked(...)`\n\n## 3. Step-by-step data flow and contract analysis\n- The contract for `get_unchecked` is: `index` must be in bounds for the tree.\n- In this function, the argument passed to `get_unchecked` is `index / L`.\n- The parameter `index: usize` is completely untrusted and can be any value.\n- There is no bounds check in this function ensuring that `index / L` is within the valid range of `self.ef.as_ref()`.\n- The code assumes that the underlying structure has enough chunks for the computed chunk index, but this is not enforced here.\n- Therefore, from the function body alone, the contract is **not guaranteed** to hold for all inputs.\n\n## 4. Final determination\n**No**"
+          }
+        ]
+      }
+    ]
+  }
+]

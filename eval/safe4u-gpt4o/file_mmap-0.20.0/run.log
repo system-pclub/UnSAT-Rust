@@ -1,0 +1,245 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/file_mmap-0.20.0
+  model: gpt-4o-2024-05-13
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/file_mmap-0.20.0
+  evaluation jobs: 4
+
+▸ Extract Candidates
+✓ Detected 2 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "file_mmap-0.20.0"
+✓ Context ready.
+• Context samples: 2
+  src/lib.rs
+    ● set_len:59 | unsafe callees: none | context refs: 3
+    ● write:83 | unsafe callees: from_raw_parts_mut, offset | context refs: 1
+      - from_raw_parts_mut: pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: ███████████░░░░░░░░░░░ 1/2 (50%) 0 constraints | file_mmap-0.20.0/src/lib.rs/set_len/58
+↻ Decomposing samples: ██████████████████████ 2/2 (100%) 14 constraints | file_mmap-0.20.0/src/lib.rs/write/82
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 2
+• Resolved unsafe callees: 2
+  src/lib.rs
+    ● set_len:59 (0 constraints)
+      - no safety constraints found
+    ● write:83 (14 constraints) | unsafe: from_raw_parts_mut, offset
+      - from_raw_parts_mut / Not Null: `data` must be non-null.
+      - from_raw_parts_mut / Dereferencable: `data` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
+      - from_raw_parts_mut / Aligned: `data` must be properly aligned.
+      - from_raw_parts_mut / Dereferencable: The entire memory range of this slice must be contained within a single allocated object.
+      - from_raw_parts_mut / Not Null: `data` must be non-null even for zero-length slices or slices of ZSTs.
+      - from_raw_parts_mut / Aligned: `data` must be aligned even for zero-length slices or slices of ZSTs.
+      - from_raw_parts_mut / Initialized: `data` must point to `len` consecutive properly initialized values of type `T`.
+      - from_raw_parts_mut / Exclusive: The memory referenced by the returned slice must not be accessed through any other pointer (not derived from the return value) for the duration of lifetime `'a`.
+      - from_raw_parts_mut / Numeric Relation: The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
+      - from_raw_parts_mut / Overflow: Adding the total size `len * mem::size_of::<T>()` to `data` must not "wrap around" the address space.
+      - offset / Overflow: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+      - offset / Allocated: If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.
+      - offset / Dereferencable: The entire memory range between `self` and the result must be within the bounds of the allocated object.
+      - offset / Numeric Relation: The computed offset must not cause the memory range to wrap around the edge of the address space.
+
+▸ Evaluate Encapsulations
+↻ Checking samples: ██████████████████████ 1/1 (100%) checking | file_mmap-0.20.0/src/lib.rs/write/82
+LLM → Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 1/2) [input≈2,163, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 1/2) [in=2,171 out=363 total=2,534, 2.2s, run=2,534]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 2/2) [input≈2,092, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 2/2) [in=2,053 out=365 total=2,418, 2.2s, run=4,952]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈2,639, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=2,611 out=487 total=3,098, 2.9s, run=8,050]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈2,694, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=2,695 out=433 total=3,128, 2.5s, run=11,178]
+✗ Unsound candidate: file_mmap-0.20.0/src/lib.rs/write/82 (callee=from_raw_parts_mut, type=Dereferencable); details in final summary.
+LLM → Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 1/2) [input≈2,482, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 1/2) [in=2,454 out=375 total=2,829, 2.5s, run=14,007]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 2/2) [input≈2,074, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 2/2) [in=2,001 out=347 total=2,348, 2.2s, run=16,355]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈2,639, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=2,601 out=521 total=3,122, 3.0s, run=19,477]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈2,694, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=2,685 out=389 total=3,074, 2.3s, run=22,551]
+✗ Unsound candidate: file_mmap-0.20.0/src/lib.rs/write/82 (callee=from_raw_parts_mut, type=Dereferencable); details in final summary.
+LLM → Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 1/2) [input≈2,175, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 1/2) [in=2,182 out=435 total=2,617, 2.5s, run=25,168]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 2/2) [input≈2,104, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Not Null, pattern 2/2) [in=2,064 out=414 total=2,478, 2.7s, run=27,646]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 1/2) [input≈2,491, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 1/2) [in=2,464 out=407 total=2,871, 2.8s, run=30,517]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 2/2) [input≈2,084, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Aligned, pattern 2/2) [in=2,011 out=305 total=2,316, 2.4s, run=32,833]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Initialized, pattern 1/3) [input≈2,187, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Initialized, pattern 1/3) [in=2,165 out=510 total=2,675, 3.0s, run=35,508]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Initialized, pattern 2/3) [input≈2,020, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Initialized, pattern 2/3) [in=1,976 out=473 total=2,449, 2.8s, run=37,957]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Initialized, pattern 3/3) [input≈2,188, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Initialized, pattern 3/3) [in=2,158 out=439 total=2,597, 2.6s, run=40,554]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [input≈2,319, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [in=2,304 out=393 total=2,697, 2.4s, run=43,251]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [input≈2,537, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [in=2,472 out=374 total=2,846, 2.1s, run=46,097]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [input≈2,140, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [in=2,060 out=416 total=2,476, 2.5s, run=48,573]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [input≈2,652, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [in=2,629 out=368 total=2,997, 2.1s, run=51,570]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Overflow, pattern 1/2) [input≈2,562, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Overflow, pattern 1/2) [in=2,547 out=441 total=2,988, 2.8s, run=54,558]
+LLM → Evaluate `write` against `from_raw_parts_mut` (Overflow, pattern 2/2) [input≈2,658, max_out=4,096]
+LLM ✓ Evaluate `write` against `from_raw_parts_mut` (Overflow, pattern 2/2) [in=2,673 out=504 total=3,177, 3.0s, run=57,735]
+✗ Unsound candidate: file_mmap-0.20.0/src/lib.rs/write/82 (callee=from_raw_parts_mut, type=Overflow); details in final summary.
+LLM → Evaluate `write` against `offset` (Overflow, pattern 1/2) [input≈2,567, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Overflow, pattern 1/2) [in=2,548 out=294 total=2,842, 1.8s, run=60,577]
+LLM → Evaluate `write` against `offset` (Overflow, pattern 2/2) [input≈2,663, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Overflow, pattern 2/2) [in=2,674 out=319 total=2,993, 2.0s, run=63,570]
+LLM → Evaluate `write` against `offset` (Allocated, pattern 1/2) [input≈3,056, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Allocated, pattern 1/2) [in=2,967 out=325 total=3,292, 2.3s, run=66,862]
+LLM → Evaluate `write` against `offset` (Allocated, pattern 2/2) [input≈2,960, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Allocated, pattern 2/2) [in=2,879 out=357 total=3,236, 2.2s, run=70,098]
+LLM → Evaluate `write` against `offset` (Dereferencable, pattern 1/2) [input≈2,640, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Dereferencable, pattern 1/2) [in=2,603 out=521 total=3,124, 3.3s, run=73,222]
+LLM → Evaluate `write` against `offset` (Dereferencable, pattern 2/2) [input≈2,695, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Dereferencable, pattern 2/2) [in=2,687 out=360 total=3,047, 2.3s, run=76,269]
+✗ Unsound candidate: file_mmap-0.20.0/src/lib.rs/write/82 (callee=offset, type=Dereferencable); details in final summary.
+LLM → Evaluate `write` against `offset` (Numeric Relation, pattern 1/2) [input≈2,138, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Numeric Relation, pattern 1/2) [in=2,047 out=286 total=2,333, 2.0s, run=78,602]
+LLM → Evaluate `write` against `offset` (Numeric Relation, pattern 2/2) [input≈2,650, max_out=4,096]
+LLM ✓ Evaluate `write` against `offset` (Numeric Relation, pattern 2/2) [in=2,616 out=428 total=3,044, 2.6s, run=81,646]
+✗ Unsound candidate: file_mmap-0.20.0/src/lib.rs/write/82 (callee=offset, type=Numeric Relation); details in final summary.
+↻ Checking samples: ██████████████████████ 1/1 (100%) unsound | file_mmap-0.20.0/src/lib.rs/write/82
+
+▸ Summary
+  sound 0 | unsound 1 | unknown 0 | total 1
+  requests 29 | input 69,997 | output 11,649 | total 81,646
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/file_mmap-0.20.0/results.json
+• Elapsed: 124.2s
+
+Unsatisfied contracts:
+  1. file_mmap-0.20.0/src/lib.rs/write/82 (5 failed contracts)
+  call site: src/lib.rs:85
+  nearby code
+      83 │ pub fn write(&mut self, addr: isize, bytes: &[u8]) -> io::Result<()> {
+      84 │         let mut memory =
+  >   85 │             unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr().offset(addr), bytes.len()) };
+      86 │         memory.write_all(bytes)
+      87 │     }
+  call site: src/lib.rs:85
+  nearby code
+      83 │ pub fn write(&mut self, addr: isize, bytes: &[u8]) -> io::Result<()> {
+      84 │         let mut memory =
+  >   85 │             unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr().offset(addr), bytes.len()) };
+      86 │         memory.write_all(bytes)
+      87 │     }
+     - from_raw_parts_mut / Dereferencable: `data` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
+       LLM evidence:
+       1. **Starting Pointer**: `self.as_mut_ptr()` returns a mutable raw pointer to the start of the mmap'd region. This pointer is assumed to be valid for reads and writes within the bounds of the mmap'd region.
+       2. **Offset Calculation**: `self.as_mut_ptr().offset(count: addr)` calculates a new pointer by adding `addr` (an `isize` value) to the starting pointer. The resulting pointer must still be within the bounds of the mmap'd region or one byte past the end.
+       3. **Length of Slice**: `bytes.len()` specifies the length of the slice to be created. The contract requires that the resulting pointer (`data`) must be valid for both reads and writes for `bytes.len() * mem::size_of::<u8>()` bytes. Since `mem::size_of::<u8>()` is 1, this simplifies to `bytes.len()` bytes.
+       
+       To ensure the contract is satisfied:
+       - The resulting pointer from `self.as_mut_ptr().offset(count: addr)` must be valid for `bytes.len()` bytes.
+       - This means the memory region starting from `self.as_mut_ptr().offset(count: addr)` and extending for `bytes.len()` bytes must be within the bounds of the mmap'd region.
+       
+       Given that `self.as_mut_ptr()` points to the start of the mmap'd region and assuming `addr` and `bytes.len()` are within the bounds of the mmap'd region, the contract should be satisfied. However, the function does not explicitly check if `addr` and `bytes.len()` are within bounds, which could potentially lead to undefined behavior if they are not.
+     - from_raw_parts_mut / Dereferencable: The entire memory range of this slice must be contained within a single allocated object.
+       LLM evidence:
+       1. **Starting Pointer**: `self.as_mut_ptr()` returns a mutable raw pointer to the start of the memory-mapped region. This pointer is valid and points to the beginning of the allocated memory region managed by `FileMmap`.
+       
+       2. **Offset Calculation**: The `offset` function is used to calculate a new pointer by adding `addr` (an `isize` value) to the starting pointer. The resulting pointer is:
+          ```rust
+          self.as_mut_ptr().offset(count: addr)
+          ```
+          This pointer must be within the bounds of the allocated memory region or one byte past the end.
+       
+       3. **Slice Creation**: The `from_raw_parts_mut` function creates a mutable slice from the resulting pointer and the length `bytes.len()`. The contract requires that the entire memory range of this slice must be contained within a single allocated object.
+       
+       4. **Memory Range Check**:
+          - The starting pointer is `self.as_mut_ptr().offset(count: addr)`.
+          - The length of the slice is `bytes.len()`.
+       
+          For the contract to be satisfied, the memory range from `self.as_mut_ptr().offset(count: addr)` to `self.as_mut_ptr().offset(count: addr + bytes.len())` must be within the bounds of the allocated memory region managed by `FileMmap`.
+       
+       5. **Bounds Check**:
+          - The starting pointer `self.as_mut_ptr()` points to the beginning of the memory-mapped region.
+          - The offset `addr` is added to this pointer, resulting in a new pointer.
+          - The length `bytes.len()` is added to this new pointer to determine the end of the slice.
+       
+          The function does not perform any explicit bounds checking to ensure that the resulting slice is within the allocated memory region. If `addr` is too large or negative, or if `bytes.len()` is too large, the resulting slice could exceed the bounds of the allocated memory region.
+     - from_raw_parts_mut / Overflow: Adding the total size `len * mem::size_of::<T>()` to `data` must not "wrap around" the address space.
+       LLM evidence:
+       1. **Pointer Calculation**:
+          - `self.as_mut_ptr().offset(count: addr)` calculates the starting pointer for the slice.
+          - `addr` is an `isize`, so it can be positive or negative, representing the offset from the base pointer.
+       
+       2. **Slice Length**:
+          - `bytes.len()` gives the length of the slice to be created.
+       
+       3. **Contract Check**:
+          - The contract for `from_raw_parts_mut` requires that adding the total size `len * mem::size_of::<T>()` to `data` must not "wrap around" the address space.
+          - In this case, `T` is `u8`, so `mem::size_of::<T>()` is 1.
+          - Therefore, the total size is `bytes.len() * 1`, which is simply `bytes.len()`.
+       
+       4. **Ensuring No Wrap Around**:
+          - The pointer arithmetic `self.as_mut_ptr().offset(count: addr)` must result in a valid pointer within the bounds of the mmap'd region.
+          - The length `bytes.len()` must be such that the resulting slice does not exceed the bounds of the mmap'd region.
+       
+       5. **Potential Issues**:
+          - There is no explicit check to ensure that `addr` and `bytes.len()` together do not cause the pointer to wrap around the address space.
+          - If `addr` is very large or very small (negative), it could potentially cause the pointer arithmetic to wrap around.
+     - offset / Dereferencable: The entire memory range between `self` and the result must be within the bounds of the allocated object.
+       LLM evidence:
+       1. **Starting Pointer**: `self.as_mut_ptr()` returns a mutable raw pointer to the start of the memory-mapped region. This pointer is assumed to be valid and within the bounds of the allocated object.
+       2. **Offset Calculation**: The `offset` function is called with `count: addr`. This means the resulting pointer will be `self.as_mut_ptr() + addr`.
+       3. **Memory Range**: The contract for `offset` requires that the entire memory range between `self.as_mut_ptr()` and `self.as_mut_ptr() + addr` must be within the bounds of the allocated object.
+       
+       To ensure the contract is satisfied, we need to verify that:
+       - `self.as_mut_ptr() + addr` is within the bounds of the allocated object.
+       - The length of the slice created (`bytes.len()`) does not exceed the bounds of the allocated object.
+       
+       ### Step-by-Step Analysis:
+       1. **Pointer Calculation**:
+          - `self.as_mut_ptr()` is the starting pointer.
+          - `self.as_mut_ptr().offset(addr)` calculates the resulting pointer.
+       
+       2. **Bounds Check**:
+          - The resulting pointer must be within the bounds of the allocated object.
+          - The length of the slice (`bytes.len()`) must not exceed the bounds of the allocated object.
+       
+       3. **Memory Range**:
+          - The entire memory range from `self.as_mut_ptr()` to `self.as_mut_ptr().offset(addr) + bytes.len()` must be within the bounds of the allocated object.
+       
+       ### Verification:
+       - The function does not explicitly check if `addr` and `bytes.len()` are within the bounds of the allocated object.
+       - If `addr` is negative or if `addr + bytes.len()` exceeds the size of the allocated object, the contract will be violated.
+       
+       Since the function does not perform any bounds checking on `addr` and `bytes.len()`, it is possible for the memory range to exceed the bounds of the allocated object.
+     - offset / Numeric Relation: The computed offset must not cause the memory range to wrap around the edge of the address space.
+       LLM evidence:
+       1. **Pointer Calculation**:
+          - `self.as_mut_ptr()` returns a pointer to the start of the mmap'd region.
+          - `addr` is the signed offset provided as a parameter to the `write` function.
+       
+       2. **Offset Calculation**:
+          - The `offset` function computes the new pointer by adding `addr` (in units of `u8`) to `self.as_mut_ptr()`.
+          - The contract requires that this computed offset must not cause the memory range to wrap around the edge of the address space.
+       
+       3. **Bounds Checking**:
+          - The function does not perform any bounds checking on `addr` before calling `offset`.
+          - There is no guarantee that `addr` is within a valid range that would prevent wrapping around the edge of the address space.
+       
+       4. **Potential for Undefined Behavior**:
+          - If `addr` is too large or too small, the computed pointer could wrap around the address space, leading to undefined behavior.

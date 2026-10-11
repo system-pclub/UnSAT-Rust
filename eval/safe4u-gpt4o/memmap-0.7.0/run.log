@@ -1,0 +1,178 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/memmap-0.7.0
+  model: gpt-4o-2024-05-13
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/memmap-0.7.0
+  evaluation jobs: 4
+
+▸ Extract Candidates
+↻ Scanning Rust files: ███████░░░░░░░░░░░░░░░ 1/3 (33%) 3 candidates | src/windows.rs
+↻ Scanning Rust files: ███████████████░░░░░░░ 2/3 (67%) 5 candidates | src/unix.rs
+↻ Scanning Rust files: ██████████████████████ 3/3 (100%) 5 candidates | src/lib.rs
+✓ Detected 5 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.52s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "memmap-0.7.0"
+✓ Context ready.
+• Context samples: 5
+  src/unix.rs
+    ● flush:121 | unsafe callees: msync, offset | context refs: 3
+      - msync: pub unsafe fn msync(addr: *mut c_void, len: size_t, flags: c_int) -> c_int
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+    ● flush_async:134 | unsafe callees: msync, offset | context refs: 3
+      - msync: pub unsafe fn msync(addr: *mut c_void, len: size_t, flags: c_int) -> c_int
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+  src/windows.rs
+    ● new:30 | unsafe callees: none | context refs: 0
+    ● map_anon:155 | unsafe callees: none | context refs: 0
+    ● flush_async:204 | unsafe callees: none | context refs: 0
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: ████░░░░░░░░░░░░░░░░░░ 1/5 (20%) 0 constraints | memmap-0.7.0/src/windows.rs/new/29
+↻ Decomposing samples: █████████░░░░░░░░░░░░░ 2/5 (40%) 0 constraints | memmap-0.7.0/src/windows.rs/map_anon/154
+↻ Decomposing samples: █████████████░░░░░░░░░ 3/5 (60%) 0 constraints | memmap-0.7.0/src/windows.rs/flush_async/203
+↻ Decomposing samples: ██████████████████░░░░ 4/5 (80%) 4 constraints | memmap-0.7.0/src/unix.rs/flush/120
+↻ Decomposing samples: ██████████████████████ 5/5 (100%) 4 constraints | memmap-0.7.0/src/unix.rs/flush_async/133
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 5
+• Resolved unsafe callees: 4
+  src/unix.rs
+    ● flush:121 (4 constraints) | unsafe: msync, offset
+      - offset / Overflow: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+      - offset / Allocated: If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.
+      - offset / Dereferencable: The entire memory range between `self` and the result must be within the bounds of the allocated object.
+      - offset / Numeric Relation: The computed offset must not cause the memory range to wrap around the edge of the address space.
+    ● flush_async:134 (4 constraints) | unsafe: msync, offset
+      - offset / Overflow: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+      - offset / Allocated: If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.
+      - offset / Dereferencable: The entire memory range between `self` and the result must be within the bounds of the allocated object.
+      - offset / Numeric Relation: The computed offset must not cause the memory range to wrap around the edge of the address space.
+  src/windows.rs
+    ● new:30 (0 constraints)
+      - no safety constraints found
+    ● map_anon:155 (0 constraints)
+      - no safety constraints found
+    ● flush_async:204 (0 constraints)
+      - no safety constraints found
+
+▸ Evaluate Encapsulations
+LLM → Evaluate `flush` against `offset` (Overflow, pattern 1/2) [input≈2,742, max_out=4,096]
+LLM → Evaluate `flush_async` against `offset` (Overflow, pattern 1/2) [input≈2,758, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Overflow, pattern 1/2) [in=2,709 out=445 total=3,154, 3.5s, run=3,154]
+LLM → Evaluate `flush` against `offset` (Overflow, pattern 2/2) [input≈2,837, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Overflow, pattern 1/2) [in=2,712 out=489 total=3,201, 3.6s, run=6,355]
+LLM → Evaluate `flush_async` against `offset` (Overflow, pattern 2/2) [input≈2,854, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Overflow, pattern 2/2) [in=2,835 out=422 total=3,257, 2.6s, run=9,612]
+LLM → Evaluate `flush` against `offset` (Allocated, pattern 1/2) [input≈3,230, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Overflow, pattern 2/2) [in=2,838 out=498 total=3,336, 3.1s, run=12,948]
+✗ Unsound candidate: memmap-0.7.0/src/unix.rs/flush_async/133 (callee=offset, type=Overflow); details in final summary.
+LLM → Evaluate `flush_async` against `offset` (Allocated, pattern 1/2) [input≈3,247, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Allocated, pattern 1/2) [in=3,128 out=421 total=3,549, 2.9s, run=16,497]
+LLM → Evaluate `flush` against `offset` (Allocated, pattern 2/2) [input≈3,135, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Allocated, pattern 1/2) [in=3,131 out=361 total=3,492, 2.4s, run=19,989]
+LLM → Evaluate `flush_async` against `offset` (Allocated, pattern 2/2) [input≈3,151, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Allocated, pattern 2/2) [in=3,040 out=276 total=3,316, 1.8s, run=23,305]
+LLM → Evaluate `flush` against `offset` (Dereferencable, pattern 1/2) [input≈2,814, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Allocated, pattern 2/2) [in=3,043 out=496 total=3,539, 3.5s, run=26,844]
+LLM → Evaluate `flush_async` against `offset` (Dereferencable, pattern 1/2) [input≈2,830, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Dereferencable, pattern 1/2) [in=2,764 out=433 total=3,197, 2.7s, run=30,041]
+LLM → Evaluate `flush` against `offset` (Dereferencable, pattern 2/2) [input≈2,869, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Dereferencable, pattern 1/2) [in=2,767 out=518 total=3,285, 3.0s, run=33,326]
+LLM → Evaluate `flush_async` against `offset` (Dereferencable, pattern 2/2) [input≈2,886, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Dereferencable, pattern 2/2) [in=2,848 out=474 total=3,322, 2.8s, run=36,648]
+LLM → Evaluate `flush` against `offset` (Numeric Relation, pattern 1/2) [input≈2,312, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Dereferencable, pattern 2/2) [in=2,851 out=433 total=3,284, 2.5s, run=39,932]
+LLM → Evaluate `flush_async` against `offset` (Numeric Relation, pattern 1/2) [input≈2,329, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Numeric Relation, pattern 1/2) [in=2,208 out=526 total=2,734, 2.5s, run=42,666]
+LLM → Evaluate `flush` against `offset` (Numeric Relation, pattern 2/2) [input≈2,824, max_out=4,096]
+LLM ✓ Evaluate `flush_async` against `offset` (Numeric Relation, pattern 1/2) [in=2,211 out=495 total=2,706, 2.8s, run=45,372]
+LLM → Evaluate `flush_async` against `offset` (Numeric Relation, pattern 2/2) [input≈2,841, max_out=4,096]
+LLM ✓ Evaluate `flush` against `offset` (Numeric Relation, pattern 2/2) [in=2,777 out=609 total=3,386, 3.4s, run=48,758]
+↻ Checking samples: ███████████░░░░░░░░░░░ 1/2 (50%) sound | memmap-0.7.0/src/unix.rs/flush/120
+LLM ✓ Evaluate `flush_async` against `offset` (Numeric Relation, pattern 2/2) [in=2,780 out=420 total=3,200, 2.4s, run=51,958]
+✗ Unsound candidate: memmap-0.7.0/src/unix.rs/flush_async/133 (callee=offset, type=Numeric Relation); details in final summary.
+↻ Checking samples: ██████████████████████ 2/2 (100%) unsound | memmap-0.7.0/src/unix.rs/flush_async/133
+
+▸ Summary
+  sound 1 | unsound 1 | unknown 0 | total 2
+  requests 16 | input 44,642 | output 7,316 | total 51,958
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/memmap-0.7.0/results.json
+• Elapsed: 77.8s
+
+Unsatisfied contracts:
+  1. memmap-0.7.0/src/unix.rs/flush_async/133 (2 failed contracts)
+  call site: src/unix.rs:140
+  nearby code
+     138 │         let result = unsafe {
+     139 │             libc::msync(
+  >  140 │                 self.ptr.offset(aligned_offset as isize),
+     141 │                 aligned_len as libc::size_t,
+     142 │                 libc::MS_ASYNC,
+     - offset / Overflow: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+       LLM evidence:
+       1. **Calculation of `alignment`**:
+          ```rust
+          let alignment: usize = offset % page_size();
+          ```
+          - `alignment` is the remainder of `offset` divided by the page size. This value is guaranteed to be less than the page size.
+       
+       2. **Calculation of `aligned_offset`**:
+          ```rust
+          let aligned_offset: usize = offset - alignment;
+          ```
+          - `aligned_offset` is the result of subtracting `alignment` from `offset`. Since `alignment` is always less than or equal to `offset`, `aligned_offset` is always less than or equal to `offset`.
+       
+       3. **Conversion to `isize`**:
+          ```rust
+          addr: self.ptr.offset(count: aligned_offset as isize),
+          ```
+          - `aligned_offset` is cast to `isize` before being passed to `offset`.
+       
+       4. **Contract Verification**:
+          - The contract requires that `count * size_of::<T>()` must fit in an `isize`. Here, `count` is `aligned_offset` and `T` is `c_void`, which has a size of 1 byte.
+          - Therefore, the condition simplifies to `aligned_offset` must fit in an `isize`.
+       
+       5. **Ensuring `aligned_offset` fits in `isize`**:
+          - `aligned_offset` is derived from `offset`, which is a `usize`.
+          - The maximum value of `aligned_offset` is the maximum value of `usize`, which is `usize::MAX`.
+          - Casting `usize::MAX` to `isize` will result in a negative value, which is not valid for the `offset` function.
+       
+       To ensure the contract is satisfied, `aligned_offset` must be checked to ensure it fits within the range of `isize` before casting. This check is missing in the provided function.
+     - offset / Numeric Relation: The computed offset must not cause the memory range to wrap around the edge of the address space.
+       LLM evidence:
+       1. **Calculation of `alignment`**:
+          ```rust
+          let alignment: usize = offset % page_size();
+          ```
+          - `alignment` is the remainder of `offset` divided by the page size. This ensures `alignment` is always less than `page_size()`.
+       
+       2. **Calculation of `aligned_offset`**:
+          ```rust
+          let aligned_offset: usize = offset - alignment;
+          ```
+          - `aligned_offset` is `offset` adjusted down to the nearest page boundary. Since `alignment` is always less than `offset`, `aligned_offset` is always less than or equal to `offset`.
+       
+       3. **Calling `offset`**:
+          ```rust
+          self.ptr.offset(count: aligned_offset as isize)
+          ```
+          - `aligned_offset` is cast to `isize` and passed to `offset`. The contract requires that the computed offset must not cause the memory range to wrap around the edge of the address space.
+       
+       4. **Ensuring No Wrap Around**:
+          - The key here is to ensure that `self.ptr.offset(aligned_offset as isize)` does not wrap around the address space. This can be tricky to verify directly without knowing the exact value of `self.ptr` and the size of the address space.
+          - However, since `aligned_offset` is derived from `offset` and adjusted to a page boundary, it is unlikely to cause a wrap-around unless `offset` itself is extremely large and close to the maximum value of `usize`.
+       
+       5. **Potential Issue**:
+          - If `offset` is very large, `aligned_offset` could also be large, and adding this to `self.ptr` could potentially wrap around the address space. This is a rare edge case but possible.

@@ -86,3 +86,16 @@ impl FileMmap {
         memory.write_all(bytes)
     }
 }
+
+#[cfg(test)]
+mod unsat_ir_instantiations {
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_file_mmap_write() {
+        let path = std::env::temp_dir().join("file-mmap-unsat-ir-instantiation");
+        if let Ok(mut mmap) = super::FileMmap::new(path) {
+            let _ = mmap.set_len(1);
+            let _ = mmap.write(0, &[0]);
+        }
+    }
+}

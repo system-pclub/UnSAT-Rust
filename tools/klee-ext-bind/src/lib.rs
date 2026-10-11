@@ -24,6 +24,7 @@ extern "C" {
     fn klee_ext_callsite(site_id: *const c_char);
     fn klee_ext_raw_pointer_deref(site_id: *const c_char, pointer: *const c_void);
     fn klee_ext_bind_arg_u64(index: u64, value: u64);
+    fn klee_ext_bind_arg_field_u64(index: u64, field: *const c_char, value: u64);
 
     /// KLEE special function: mark `[ptr, ptr+size)` as a symbolic value named
     /// `name`.
@@ -83,16 +84,22 @@ pub fn bind_arg_u64(index: u64, value: u64) {
     unsafe { klee_ext_bind_arg_u64(index, value) }
 }
 
+#[inline(always)]
+pub fn bind_arg_field_u64(index: u64, field_nul: &'static [u8], value: u64) {
+    let field_ptr = field_nul as *const [u8] as *const u8;
+    unsafe { klee_ext_bind_arg_field_u64(index, field_ptr as *const c_char, value) }
+}
+
 pub trait ArgU64Value {
     fn as_arg_u64(&self) -> Option<u64>;
 }
 
-pub trait ArgRustRangeValue {
+pub trait ArgSliceIndexValue {
     /// Return a half-open range `[start, end)` in slice-index units.
     ///
     /// `len` is the receiver slice length, used for open-ended range forms
     /// such as `start..` and `..`.
-    fn as_rustrange_u64(&self, len: u64) -> Option<(u64, u64)>;
+    fn as_slice_index_u64(&self, len: u64) -> Option<(u64, u64)>;
 }
 
 macro_rules! impl_unsigned_arg_u64 {
@@ -128,9 +135,9 @@ macro_rules! impl_signed_arg_u64 {
 impl_unsigned_arg_u64!(usize, u8, u16, u32, u64);
 impl_signed_arg_u64!(isize, i8, i16, i32, i64);
 
-impl ArgRustRangeValue for usize {
+impl ArgSliceIndexValue for usize {
     #[inline(always)]
-    fn as_rustrange_u64(&self, _len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, _len: u64) -> Option<(u64, u64)> {
         let start = *self as u64;
         Some((start, start.checked_add(1).unwrap_or(u64::MAX)))
     }
@@ -143,9 +150,9 @@ impl ArgU64Value for core::ops::Range<usize> {
     }
 }
 
-impl ArgRustRangeValue for core::ops::Range<usize> {
+impl ArgSliceIndexValue for core::ops::Range<usize> {
     #[inline(always)]
-    fn as_rustrange_u64(&self, _len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, _len: u64) -> Option<(u64, u64)> {
         Some((self.start as u64, self.end as u64))
     }
 }
@@ -157,9 +164,9 @@ impl ArgU64Value for core::ops::RangeFrom<usize> {
     }
 }
 
-impl ArgRustRangeValue for core::ops::RangeFrom<usize> {
+impl ArgSliceIndexValue for core::ops::RangeFrom<usize> {
     #[inline(always)]
-    fn as_rustrange_u64(&self, len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, len: u64) -> Option<(u64, u64)> {
         Some((self.start as u64, len))
     }
 }
@@ -171,9 +178,9 @@ impl ArgU64Value for core::ops::RangeTo<usize> {
     }
 }
 
-impl ArgRustRangeValue for core::ops::RangeTo<usize> {
+impl ArgSliceIndexValue for core::ops::RangeTo<usize> {
     #[inline(always)]
-    fn as_rustrange_u64(&self, _len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, _len: u64) -> Option<(u64, u64)> {
         Some((0, self.end as u64))
     }
 }
@@ -185,9 +192,9 @@ impl ArgU64Value for core::ops::RangeFull {
     }
 }
 
-impl ArgRustRangeValue for core::ops::RangeFull {
+impl ArgSliceIndexValue for core::ops::RangeFull {
     #[inline(always)]
-    fn as_rustrange_u64(&self, len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, len: u64) -> Option<(u64, u64)> {
         Some((0, len))
     }
 }
@@ -199,9 +206,9 @@ impl ArgU64Value for core::ops::RangeInclusive<usize> {
     }
 }
 
-impl ArgRustRangeValue for core::ops::RangeInclusive<usize> {
+impl ArgSliceIndexValue for core::ops::RangeInclusive<usize> {
     #[inline(always)]
-    fn as_rustrange_u64(&self, _len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, _len: u64) -> Option<(u64, u64)> {
         let start = *self.start() as u64;
         let end = (*self.end() as u64).checked_add(1)?;
         Some((start, end))
@@ -215,9 +222,9 @@ impl ArgU64Value for core::ops::RangeToInclusive<usize> {
     }
 }
 
-impl ArgRustRangeValue for core::ops::RangeToInclusive<usize> {
+impl ArgSliceIndexValue for core::ops::RangeToInclusive<usize> {
     #[inline(always)]
-    fn as_rustrange_u64(&self, _len: u64) -> Option<(u64, u64)> {
+    fn as_slice_index_u64(&self, _len: u64) -> Option<(u64, u64)> {
         Some((0, (self.end as u64).checked_add(1)?))
     }
 }
@@ -230,14 +237,14 @@ pub fn bind_arg_u64_value<T: ArgU64Value + ?Sized>(index: u64, value: &T) {
 }
 
 #[inline(always)]
-pub fn bind_arg_rustrange_value<T: ArgRustRangeValue + ?Sized>(
-    start_index: u64,
+pub fn bind_arg_slice_index_value<T: ArgSliceIndexValue + ?Sized>(
+    arg_index: u64,
     value: &T,
     len: u64,
 ) {
-    if let Some((start, end)) = value.as_rustrange_u64(len) {
-        bind_arg_u64(start_index, start);
-        bind_arg_u64(start_index + 1, end);
+    if let Some((start, end)) = value.as_slice_index_u64(len) {
+        bind_arg_field_u64(arg_index, b"start\0", start);
+        bind_arg_field_u64(arg_index, b"end\0", end);
     }
 }
 

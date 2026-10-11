@@ -18,6 +18,14 @@ pub unsafe extern "C" fn klee_ext_raw_pointer_deref(
 #[no_mangle]
 pub unsafe extern "C" fn klee_ext_bind_arg_u64(_index: u64, _value: u64) {}
 
+#[no_mangle]
+pub unsafe extern "C" fn klee_ext_bind_arg_field_u64(
+    _index: u64,
+    _field: *const c_char,
+    _value: u64,
+) {
+}
+
 /// Dumb stub: leaves the memory unchanged rather than making it symbolic.
 #[no_mangle]
 pub unsafe extern "C" fn klee_make_symbolic(

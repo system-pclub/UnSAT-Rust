@@ -1,0 +1,114 @@
+[
+  {
+    "sample_label": "memmap-0.7.0/src/unix.rs/flush/120",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.",
+          "fn_name": "offset",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nunsafe { libc::msync(addr: self.ptr.offset(count: offset), len as libc::size_t, flags: libc::MS_SYNC) };\n```\nThe unsafe callee of interest is:\n```rust\nself.ptr.offset(count: offset)\n```\n\n2. **Expressions highly related to the contract**\n- `offset as isize`\n- `alignment as isize`\n- `offset: isize = offset as isize - alignment as isize`\n- `self.ptr.offset(count: offset)`\n\n3. **Step-by-step data flow analysis**\n- The contract for `offset` requires that the byte displacement `count * size_of::<T>()` must fit in an `isize` without wrapping.\n- Here `self.ptr` is a `*mut c_void`, so `size_of::<T>()` is `1`. Thus the contract reduces to: the signed offset value passed to `offset` must be representable in `isize` without overflow/wrapping.\n- The input `offset` parameter is a `usize`, and it is cast to `isize` with `offset as isize`. If `offset > isize::MAX`, this cast wraps/truncates and the resulting `isize` is not a faithful representation of the original value.\n- Then `alignment as isize` is subtracted from that value. This does not repair the issue; it may still rely on wrapped conversion if the original `offset` was too large.\n- There is no prior check ensuring `offset <= isize::MAX` or that `offset as isize - alignment as isize` stays within the valid `isize` range without wrapping.\n- Therefore, the function does **not** guarantee the contract required by `offset`.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe callee `offset` is called here:\n\n```rust\nunsafe { libc::msync(addr: self.ptr.offset(count: offset), len as libc::size_t, flags: libc::MS_SYNC) }\n```\n\nThe relevant subexpression is:\n\n```rust\nself.ptr.offset(count: offset)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nThe contract for `offset` is:\n\n> The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.\n\nRelevant expressions:\n- `offset: isize = offset as isize - alignment as isize;`\n- `self.ptr.offset(count: offset)`\n\nSince `self.ptr` is a `*mut c_void`, `size_of::<T>() == size_of::<c_void>() == 1`, so the byte offset is effectively `offset * 1`.\n\n---\n\n## 3. Step-by-step data flow analysis\n\n1. The function receives `offset: usize` from the caller, which is arbitrary and untrusted.\n2. It computes:\n   ```rust\n   let alignment: usize = (self.ptr as usize + offset) % page_size();\n   ```\n   This may involve arithmetic on `usize`, but the contract we are checking is specifically about `offset` passed to pointer arithmetic.\n3. It then computes:\n   ```rust\n   let offset: isize = offset as isize - alignment as isize;\n   ```\n   Here, `offset as isize` can wrap if the original `usize` is larger than `isize::MAX`. In Rust, `as` conversion from `usize` to `isize` is a truncating cast, so the resulting `isize` is not guaranteed to represent the original value. That already makes the resulting pointer displacement potentially invalid with respect to the contract.\n4. The final pointer arithmetic is:\n   ```rust\n   self.ptr.offset(count: offset)\n   ```\n   Since `offset` is an `isize`, the required condition is that the byte displacement must fit in `isize` without wrapping. But because the value originated from an arbitrary `usize` and was cast with `as isize`, there is no guarantee that this displacement is a valid non-wrapping in-range offset.\n5. Therefore, the contract is not proven to hold for all inputs.\n\n---\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+          "fn_name": "offset",
+          "type": "Workflow"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\nunsafe { libc::msync(addr: self.ptr.offset(count: offset), len as libc::size_t, flags: libc::MS_SYNC) };\n```\n\nThe relevant unsafe callee from the contract is:\n```rust\nself.ptr.offset(count: offset)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\n- `self.ptr`\n- `offset: isize = offset as isize - alignment as isize`\n- `self.ptr.offset(count: offset)`\n- `alignment: usize = (self.ptr as usize + offset) % page_size()`\n\n---\n\n## 3. Step-by-step data flow analysis\n\nThe contract for `offset` says:\n\n> If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n\nLet\u2019s examine what `self.ptr` is in this function:\n\n- `self` is an `MmapInner`:\n  ```rust\n  MmapInner { ptr: *mut libc::c_void, len: usize }\n  ```\n- This type represents a memory-mapped region, so `self.ptr` is expected to point to an allocated/mapped object.\n- The code computes:\n  ```rust\n  let alignment: usize = (self.ptr as usize + offset) % page_size();\n  let offset: isize = offset as isize - alignment as isize;\n  ```\n  This adjusts the requested byte offset so that the final pointer passed to `offset` accounts for page alignment.\n\nNow, the important question is whether the actual use of `offset` can violate the contract.\n\n- `self.ptr.offset(count: offset)` is called on a pointer to the mapped region.\n- The computed `offset` may be zero or non-zero depending on the input.\n- If it is non-zero, the contract requires that `self.ptr` be derived from a pointer to an allocated object.\n- In this context, `self.ptr` is a raw pointer stored inside `MmapInner`, which by design points to a memory-mapped allocation. That satisfies the \u201cderived from a pointer to an allocated object\u201d requirement.\n\nThere is no evidence in this function that `self.ptr` is fabricated from arbitrary memory or from a non-allocated source. Under the assumptions of the type, the pointer is a valid mapping base pointer, so the precondition is met.\n\n---\n\n## 4. Final determination\n\n**Yes**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.",
+          "fn_name": "offset",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nself.ptr.offset(count: offset)\n```\n\n2. **Expressions highly related to the contract**\n- `self.ptr`\n- `offset: isize = offset as isize - alignment as isize`\n- `alignment: usize = (self.ptr as usize + offset) % page_size()`\n- `self.ptr.offset(count: offset)`\n\n3. **Step-by-step analysis**\n- The unsafe contract for `offset` requires that, if the offset is non-zero, the memory range between the starting pointer `self.ptr` and the resulting pointer must stay within the same allocated object, and must not wrap around the address space.\n- Here, `offset` passed to `offset()` is derived from the user-provided `offset` parameter and adjusted by `alignment`.\n- There is no guarantee in the function that `self.ptr` points to an allocation large enough to cover the entire computed range from `self.ptr` to `self.ptr.offset(offset)`.\n- More importantly, `offset` can be arbitrarily large or negative after conversion to `isize`. Since the function does not check that this computed pointer stays within the same allocated object, the contract is not ensured.\n- The contract also forbids address-space wraparound. Because the code performs arithmetic on `usize` and then converts to `isize` without validating bounds, overflow or wraparound is not ruled out.\n- Therefore, this function does not establish the preconditions needed by `offset`.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe callee `offset` is called here:\n\n```rust\nunsafe { libc::msync(addr: self.ptr.offset(count: offset), len as libc::size_t, flags: libc::MS_SYNC) };\n```\n\nThe relevant part for the contract is:\n\n```rust\nself.ptr.offset(count: offset)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\n- `self.ptr`: starting pointer\n- `offset: isize`: computed signed offset\n- `alignment: usize = (self.ptr as usize + offset) % page_size()`\n- `offset: isize = offset as isize - alignment as isize`\n- `self.ptr.offset(count: offset)`: resulting pointer\n\n---\n\n## 3. Step-by-step data flow analysis\n\n1. The method computes:\n   ```rust\n   alignment = (self.ptr as usize + offset) % page_size()\n   ```\n   This is intended to align the address down to a page boundary.\n\n2. Then it adjusts the offset:\n   ```rust\n   offset = offset as isize - alignment as isize\n   ```\n   This can make the resulting pointer move backward from `self.ptr` if `alignment > offset`.\n\n3. The unsafe call uses:\n   ```rust\n   self.ptr.offset(offset)\n   ```\n   The contract for `offset` requires that, if the offset is non-zero, the entire memory range between `self` and the result must remain within the same allocated object and not wrap around the address space.\n\n4. Here, `self.ptr` is a raw pointer stored in `MmapInner`, and `offset` is derived from user-provided `offset` and `len`, not from any proof that the computed pointer stays within the mapped allocation.\n\n5. There is no check that:\n   - the computed offset is within the mapped memory region,\n   - the pointer stays inside the same allocated object,\n   - or that the adjustment does not underflow / wrap around the address space.\n\n6. Since `offset` and `len` are arbitrary input, the computed pointer may point outside the allocation represented by `self.ptr..self.ptr + self.len`, violating the `offset` contract.\n\n---\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "memmap-0.7.0/src/unix.rs/flush_async/133",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.",
+          "fn_name": "offset",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\naddr: self.ptr.offset(count: aligned_offset as isize)\n```\n\n2. **Expressions highly related to the contract**\n- `aligned_offset`\n- `aligned_offset as isize`\n- `self.ptr.offset(...)`\n- `offset % page_size()`\n- `offset - alignment`\n\n3. **Step-by-step analysis**\n- The unsafe call is `ptr.offset(aligned_offset as isize)`.\n- The contract requires that the computed byte offset `count * size_of::<T>()` fits in an `isize` without wrapping.\n- Here `self.ptr` has type `*mut c_void`, so `T = c_void` and `size_of::<T>()` is effectively 1 for pointer arithmetic purposes on a byte-addressed pointer.\n- Therefore, the relevant value is just `aligned_offset as isize`.\n- `aligned_offset` is computed as:\n  - `alignment = offset % page_size()`\n  - `aligned_offset = offset - alignment`\n- Since `offset` is an arbitrary `usize`, it may be larger than `isize::MAX`.\n- Casting `aligned_offset as isize` can wrap/truncate if `aligned_offset` does not fit in `isize`.\n- There is no check ensuring `aligned_offset <= isize::MAX`.\n- So the contract is **not guaranteed** to hold.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call snippet\nThe unsafe callee `offset` is called here:\n```rust\naddr: self.ptr.offset(count: aligned_offset as isize),\n```\n\n## 2. Expressions related to the contract\nRelevant expressions:\n- `offset: usize`\n- `alignment: usize = offset % page_size()`\n- `aligned_offset: usize = offset - alignment`\n- `aligned_offset as isize`\n- `self.ptr.offset(...)`\n\n## 3. Step-by-step analysis\n- `offset` is an arbitrary `usize` input, so it may be very large.\n- `alignment = offset % page_size()` is always smaller than a page, so it only adjusts `offset` downward a little.\n- `aligned_offset = offset - alignment` is still essentially `offset` rounded down to a page boundary.\n- The pointer type is `*mut libc::c_void`, and `size_of::<c_void>()` is treated as 1 byte for pointer arithmetic in Rust.\n- Therefore, the byte offset applied by `offset` is `aligned_offset * 1 = aligned_offset`.\n- The contract requires that this computed byte offset must fit in an `isize` without wrapping.\n- But `aligned_offset` comes directly from user-controlled `offset` and is cast to `isize` with `as isize`.\n- If `offset` is larger than `isize::MAX`, this cast can wrap/truncate, producing an invalid signed offset and violating the contract.\n- There is no check in the function ensuring `aligned_offset <= isize::MAX`.\n\nSo the contract is not guaranteed.\n\n## 4. Final determination\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+          "fn_name": "offset",
+          "type": "Workflow"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe callee `offset` is called here:\n```rust\naddr: self.ptr.offset(count: aligned_offset as isize),\n```\n\n## 2. Expressions highly related to the contract\n- `self.ptr`\n- `aligned_offset`\n- `offset % page_size()`\n- `aligned_offset = offset - alignment`\n- `alignment = offset % page_size()`\n\n## 3. Step-by-step analysis of the contract\nThe contract for `offset` is:\n\n> If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n\nNow analyze the code:\n\n1. `self.ptr` is the base pointer used for `offset`.\n2. `aligned_offset` is computed from the user-provided `offset`, then adjusted downward to a page boundary.\n3. `self.ptr.offset(aligned_offset as isize)` is only valid if the pointer arithmetic is performed from a pointer that is derived from an allocated object, whenever the offset is non-zero.\n4. In this function, `self.ptr` comes from `MmapInner`, which represents a memory-mapped region. Such a pointer is obtained from OS memory mapping and refers to allocated memory, not an arbitrary dangling pointer.\n5. Therefore, using pointer offset on `self.ptr` is consistent with the contract, assuming the `MmapInner` instance is valid.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.",
+          "fn_name": "offset",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `offset` is called here:\n\n```rust\naddr: self.ptr.offset(count: aligned_offset as isize)\n```\n\n## 2. Expressions related to the contract\n\nRelevant expressions:\n\n- `self.ptr`\n- `offset`\n- `alignment = offset % page_size()`\n- `aligned_offset = offset - alignment`\n- `aligned_offset as isize`\n\n## 3. Step-by-step contract analysis\n\nContract for `offset`:\n> If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.\n\nAnalysis:\n\n1. `self.ptr` is a raw pointer into some mapped memory region represented by `MmapInner`.\n2. The function computes `aligned_offset` from the user-provided `offset`.\n3. There is no validation that `aligned_offset` is within the allocated mapping length `self.len`.\n4. There is also no check that `self.ptr.offset(aligned_offset as isize)` stays inside the same allocated object or even one-past-the-end.\n5. Since `offset` is untrusted input, it may be arbitrarily large. Then `aligned_offset as isize` can produce a very large positive or negative offset depending on platform casting behavior, and even if positive, the resulting pointer may move outside the mapped allocation.\n6. Because there is no bound check against `self.len`, the required memory range between `self.ptr` and the result is not guaranteed to stay within the allocated object.\n7. Therefore the contract of `offset` is not satisfied.\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call to `offset` is here:\n\n```rust\naddr: self.ptr.offset(count: aligned_offset as isize),\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `self.ptr`\n- `aligned_offset`\n- `offset % page_size()`\n- `offset - alignment`\n- `aligned_offset as isize`\n\n## 3. Step-by-step data flow analysis\n\n- `self.ptr` is the starting pointer.\n- `aligned_offset` is computed from the user-provided `offset`:\n  ```rust\n  let alignment: usize = offset % page_size();\n  let aligned_offset: usize = offset - alignment;\n  ```\n  So `aligned_offset` is `offset` rounded down to a page boundary.\n- This value is then converted to `isize` and passed to `offset`.\n\nNow check the contract of `offset`:\n\n> If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.\n\nThis function does not verify any of the following:\n- that `self.ptr` points into a valid allocated object of sufficient size,\n- that `aligned_offset` is within that object,\n- that `aligned_offset as isize` does not overflow or wrap,\n- that the resulting pointer stays within the same allocated object.\n\nBecause `offset` and `len` are arbitrary inputs, `aligned_offset` can be arbitrarily large. Even though it is rounded down to a page boundary, it can still produce a pointer far beyond the mapped region, violating the contract.\n\nSo the function does **not** ensure the required in-bounds guarantee.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      }
+    ]
+  }
+]

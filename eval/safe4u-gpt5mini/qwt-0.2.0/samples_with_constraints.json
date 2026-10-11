@@ -1,0 +1,267 @@
+[
+  {
+    "sample_label": "qwt-0.2.0/src/bitvector/mod.rs/get_bits/202",
+    "repo_name": "qwt-0.2.0",
+    "relative_file": "src/bitvector/mod.rs",
+    "start_line": 202,
+    "end_line": 208,
+    "start_byte": 5503,
+    "end_byte": 5792,
+    "name": "get_bits",
+    "raw_code": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len > self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "code_with_hints": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len > self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "code_with_type": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len > self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "code_with_param": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len > self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "params": [
+      "self",
+      "index",
+      "len"
+    ],
+    "return_type": "Option<u64>",
+    "comment": "/// Accesses `len` bits, with 1 <= `len` <= 64, starting at position `index`.\n///\n/// Returns [`None`] if `index`+`len` is out of bounds,\n/// if `len` is 0, or if `len` is greater than 64.\n///\n/// # Examples\n///\n/// ```\n/// use qwt::{BitVector, AccessBin};\n///\n/// let v = vec![0,2,3,4,5];\n/// let bv: BitVector = v.into_iter().collect();\n/// assert_eq!(bv.get(1), Some(false));\n///\n/// assert_eq!(bv.get_bits(1, 3), Some(0b110)); // Accesses bits from index 1 to 3\n///\n/// // Accessing bits from index 1 to 8, which is out of bounds\n/// assert_eq!(bv.get_bits(1, 8), None);\n///\n/// // Accessing more than 64 bits\n/// assert_eq!(bv.get_bits(0, 65), None);\n///\n/// // Accessing more than 0 bits\n/// assert_eq!(bv.get_bits(0, 0), None);\n/// ```\n",
+    "attributes": "#[must_use]\n#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_bits_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 250,
+        "declaration": "pub unsafe fn get_bits_unchecked(&self, index: usize, len: usize) -> u64",
+        "documentation": "Accesses `len` bits, starting at position `index`, without performing bounds checking.\n\n# Safety\n\nThis method is unsafe because it does not perform bounds checking.\nIt is the caller's responsibility to ensure that the provided `index` and `len`\nare within the bounds of the bit vector.\n\n# Examples\n\n```\nuse qwt::{BitVector};\n\nlet v = vec![0,2,3,4,5];\nlet bv: BitVector = v.into_iter().collect();\n\n// This is unsafe because it does not perform bounds checking\nunsafe {\n    assert_eq!(bv.get_bits_unchecked(1, 3), 0b110);\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "bitvector",
+      "name": "BitVector",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "BitVector {\n    data: Box<[DataLine]>,\n    n_bits: usize,\n    n_ones: usize,\n}",
+      "documentation": "Implementation of an immutable bit vector."
+    },
+    "constraints": [
+      {
+        "content": "`index + len` must be within the bounds of the bit vector.",
+        "fn_name": "get_bits_unchecked",
+        "type": "Numeric Relation"
+      }
+    ]
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/bitvector/mod.rs/set/975",
+    "repo_name": "qwt-0.2.0",
+    "relative_file": "src/bitvector/mod.rs",
+    "start_line": 975,
+    "end_line": 991,
+    "start_byte": 26079,
+    "end_byte": 26587,
+    "name": "set",
+    "raw_code": "pub fn set(&mut self, index: usize, bit: bool) {\n        assert!(index < self.n_bits);\n\n        // SAFETY: check above guarantees we are within the bound\n        unsafe {\n            if bit && !self.get_unchecked(index) {\n                self.n_ones += 1;\n            }\n            if !bit && self.get_unchecked(index) {\n                self.n_ones -= 1;\n            }\n        }\n\n        let dl = index >> 9;\n        let pos_in_dl = index & 511;\n        self.data[dl].set_symbol(bit as u64, pos_in_dl);\n    }",
+    "code_with_hints": "pub fn set(&mut self, index: usize, bit: bool) {\n        assert!(index < self.n_bits);\n\n        // SAFETY: check above guarantees we are within the bound\n        unsafe {\n            if bit && !self.get_unchecked(index) {\n                self.n_ones += 1;\n            }\n            if !bit && self.get_unchecked(index) {\n                self.n_ones -= 1;\n            }\n        }\n\n        let dl: usize = index >> 9;\n        let pos_in_dl: usize = index & 511;\n        self.data[dl].set_symbol(symbol: bit as u64, i: pos_in_dl);\n    }",
+    "code_with_type": "pub fn set(&mut self, index: usize, bit: bool) {\n        assert!(index < self.n_bits);\n\n        // SAFETY: check above guarantees we are within the bound\n        unsafe {\n            if bit && !self.get_unchecked(index) {\n                self.n_ones += 1;\n            }\n            if !bit && self.get_unchecked(index) {\n                self.n_ones -= 1;\n            }\n        }\n\n        let dl: usize = index >> 9;\n        let pos_in_dl: usize = index & 511;\n        self.data[dl].set_symbol(bit as u64, pos_in_dl);\n    }",
+    "code_with_param": "pub fn set(&mut self, index: usize, bit: bool) {\n        assert!(index < self.n_bits);\n\n        // SAFETY: check above guarantees we are within the bound\n        unsafe {\n            if bit && !self.get_unchecked(index) {\n                self.n_ones += 1;\n            }\n            if !bit && self.get_unchecked(index) {\n                self.n_ones -= 1;\n            }\n        }\n\n        let dl = index >> 9;\n        let pos_in_dl = index & 511;\n        self.data[dl].set_symbol(symbol: bit as u64, i: pos_in_dl);\n    }",
+    "params": [
+      "self",
+      "index",
+      "bit"
+    ],
+    "return_type": "",
+    "comment": "/// Sets the bit at the given position `index` to `bit`.\n///\n/// # Panics\n///\n/// Panics if `index` is out of bounds.\n///\n/// # Examples\n///\n/// ```\n/// use qwt::{BitVectorMut, AccessBin};\n///\n/// let mut bv = BitVectorMut::with_capacity(2);\n/// bv.push(true);\n/// bv.push(false);\n///\n/// bv.set(1, true);\n/// assert_eq!(bv.get(1), Some(true));\n///\n/// // This will panic because index is out of bounds\n/// // bv.set(10, false);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 199,
+        "declaration": "unsafe fn get_unchecked(&self, index: usize) -> bool",
+        "documentation": "Returns the bit at position `index`.\n\n# Safety\nCalling this method with an out-of-bounds index is undefined behavior.\n\n# Examples\n```\nuse qwt::{BitVectorMut, AccessBin};\n\nlet mut bv = BitVectorMut::with_capacity(10);\nbv.extend_with_zeros(10);\nassert_eq!(unsafe{bv.get_unchecked(8)}, false);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "set_symbol",
+        "item_type": "function",
+        "offset_in_fn": 468,
+        "declaration": "fn set_symbol(&mut self, symbol: u64, i: usize)",
+        "documentation": "set symbol to position `i`"
+      }
+    ],
+    "self_info": {
+      "src_mod": "bitvector",
+      "name": "BitVectorMut",
+      "item_type": "struct",
+      "offset_in_fn": 16,
+      "declaration": "BitVectorMut {\n    data: Vec<DataLine>,\n    n_bits: usize,\n    n_ones: usize,\n}",
+      "documentation": "Implementation of a mutable bit vector."
+    },
+    "constraints": [
+      {
+        "content": "The `index` must be within bounds of the bit vector.",
+        "fn_name": "get_unchecked",
+        "type": "Numeric Relation"
+      }
+    ]
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/bitvector/mod.rs/get_bits/1020",
+    "repo_name": "qwt-0.2.0",
+    "relative_file": "src/bitvector/mod.rs",
+    "start_line": 1020,
+    "end_line": 1026,
+    "start_byte": 27535,
+    "end_byte": 27825,
+    "name": "get_bits",
+    "raw_code": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len >= self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "code_with_hints": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len >= self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "code_with_type": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len >= self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "code_with_param": "pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {\n        if (len == 0) | (len > 64) | (index + len >= self.n_bits) {\n            return None;\n        }\n        // SAFETY: safe access due to the above checks\n        Some(unsafe { self.get_bits_unchecked(index, len) })\n    }",
+    "params": [
+      "self",
+      "index",
+      "len"
+    ],
+    "return_type": "Option<u64>",
+    "comment": "/// Accesses `len` bits, with 1 <= `len` <= 64, starting at position `index`.\n///\n/// Returns [`None`] if `index`+`len` is out of bounds,\n/// if `len` is 0, or if `len` is greater than 64.\n///\n/// # Examples\n///\n/// ```\n/// use qwt::{BitVectorMut, AccessBin};\n///\n/// let mut bv = BitVectorMut::with_capacity(6);\n/// bv.append_bits(0b111101, 6); // Appends 111101 note that we append bits from right to left\n/// assert_eq!(bv.get(1), Some(false));\n///\n/// assert_eq!(bv.get_bits(1, 3), Some(0b110)); // Accesses bits from index 1 to 3\n///\n/// // Accessing bits from index 1 to 8, which is out of bounds\n/// assert_eq!(bv.get_bits(1, 8), None);\n///\n/// // Accessing more than 64 bits\n/// assert_eq!(bv.get_bits(0, 65), None);\n///\n/// // Accessing more than 0 bits\n/// assert_eq!(bv.get_bits(0, 0), None);\n/// ```\n",
+    "attributes": "#[must_use]\n#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_bits_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 251,
+        "declaration": "pub unsafe fn get_bits_unchecked(&self, index: usize, len: usize) -> u64",
+        "documentation": "Accesses `len` bits, starting at position `index`, without performing bounds checking.\n\n# Safety\n\nThis method is unsafe because it does not perform bounds checking.\nIt is the caller's responsibility to ensure that the provided `index` and `len`\nare within the bounds of the bit vector.\n\n# Examples\n\n```\nuse qwt::BitVectorMut;\n\nlet mut bv = BitVectorMut::with_capacity(6);\nbv.append_bits(0b111101, 6); // Appends 101101\n\n// This is unsafe because it does not perform bounds checking\nunsafe {\n    assert_eq!(bv.get_bits_unchecked(1, 3), 0b110);\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "bitvector",
+      "name": "BitVectorMut",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "BitVectorMut {\n    data: Vec<DataLine>,\n    n_bits: usize,\n    n_ones: usize,\n}",
+      "documentation": "Implementation of a mutable bit vector."
+    },
+    "constraints": [
+      {
+        "content": "`index + len` must be within the bounds of the bit vector.",
+        "fn_name": "get_bits_unchecked",
+        "type": "Numeric Relation"
+      }
+    ]
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/utils/mod.rs/prefetch_read_NTA/7",
+    "repo_name": "qwt-0.2.0",
+    "relative_file": "src/utils/mod.rs",
+    "start_line": 7,
+    "end_line": 31,
+    "start_byte": 247,
+    "end_byte": 986,
+    "name": "prefetch_read_NTA",
+    "raw_code": "pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {\n    let _p = data.as_ptr().wrapping_add(offset) as *const i8;\n\n    #[cfg(all(feature = \"prefetch\", any(target_arch = \"x86\", target_arch = \"x86_64\")))]\n    {\n        #[cfg(target_arch = \"x86\")]\n        use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};\n\n        #[cfg(target_arch = \"x86_64\")]\n        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};\n\n        unsafe {\n            _mm_prefetch(_p, _MM_HINT_NTA);\n        }\n    }\n\n    #[cfg(all(feature = \"prefetch\", target_arch = \"aarch64\"))]\n    {\n        use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};\n\n        unsafe {\n            _prefetch(_p, _PREFETCH_READ, _PREFETCH_LOCALITY0);\n        }\n    }\n}",
+    "code_with_hints": "pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {\n    let _p: *const i8 = data.as_ptr().wrapping_add(count: offset) as *const i8;\n\n    #[cfg(all(feature = \"prefetch\", any(target_arch = \"x86\", target_arch = \"x86_64\")))]\n    {\n        #[cfg(target_arch = \"x86\")]\n        use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};\n\n        #[cfg(target_arch = \"x86_64\")]\n        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};\n\n        unsafe {\n            _mm_prefetch(_p, _MM_HINT_NTA);\n        }\n    }\n\n    #[cfg(all(feature = \"prefetch\", target_arch = \"aarch64\"))]\n    {\n        use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};\n\n        unsafe {\n            _prefetch(_p, _PREFETCH_READ, _PREFETCH_LOCALITY0);\n        }\n    }\n}",
+    "code_with_type": "pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {\n    let _p: *const i8 = data.as_ptr().wrapping_add(offset) as *const i8;\n\n    #[cfg(all(feature = \"prefetch\", any(target_arch = \"x86\", target_arch = \"x86_64\")))]\n    {\n        #[cfg(target_arch = \"x86\")]\n        use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};\n\n        #[cfg(target_arch = \"x86_64\")]\n        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};\n\n        unsafe {\n            _mm_prefetch(_p, _MM_HINT_NTA);\n        }\n    }\n\n    #[cfg(all(feature = \"prefetch\", target_arch = \"aarch64\"))]\n    {\n        use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};\n\n        unsafe {\n            _prefetch(_p, _PREFETCH_READ, _PREFETCH_LOCALITY0);\n        }\n    }\n}",
+    "code_with_param": "pub fn prefetch_read_NTA<T>(data: &[T], offset: usize) {\n    let _p = data.as_ptr().wrapping_add(count: offset) as *const i8;\n\n    #[cfg(all(feature = \"prefetch\", any(target_arch = \"x86\", target_arch = \"x86_64\")))]\n    {\n        #[cfg(target_arch = \"x86\")]\n        use std::arch::x86::{_mm_prefetch, _MM_HINT_NTA};\n\n        #[cfg(target_arch = \"x86_64\")]\n        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_NTA};\n\n        unsafe {\n            _mm_prefetch(_p, _MM_HINT_NTA);\n        }\n    }\n\n    #[cfg(all(feature = \"prefetch\", target_arch = \"aarch64\"))]\n    {\n        use core::arch::aarch64::{_prefetch, _PREFETCH_LOCALITY0, _PREFETCH_READ};\n\n        unsafe {\n            _prefetch(_p, _PREFETCH_READ, _PREFETCH_LOCALITY0);\n        }\n    }\n}",
+    "params": [
+      "data",
+      "offset"
+    ],
+    "return_type": "",
+    "comment": "",
+    "attributes": "#[allow(non_snake_case)]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "T",
+        "item_type": "type_param",
+        "offset_in_fn": 25,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "wrapping_add",
+        "item_type": "function",
+        "offset_in_fn": 84,
+        "declaration": "pub const fn wrapping_add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer using wrapping arithmetic.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nThis operation itself is always safe, but using the resulting pointer is not.\n\nThe resulting pointer \"remembers\" the [allocated object] that `self` points to; it must not\nbe used to read or write other allocated objects.\n\nIn other words, `let z = x.wrapping_add((y as usize) - (x as usize))` does *not* make `z`\nthe same as `y` even if we assume `T` has size `1` and there is no overflow: `z` is still\nattached to the object `x` is attached to, and dereferencing it is Undefined Behavior unless\n`x` and `y` point into the same allocated object.\n\nCompared to [`add`], this method basically delays the requirement of staying within the\nsame allocated object: [`add`] is immediate Undefined Behavior when crossing object\nboundaries; `wrapping_add` produces a pointer but still leads to Undefined Behavior if a\npointer is dereferenced when it is out-of-bounds of the object it is attached to. [`add`]\ncan be optimized better and is thus preferable in performance-sensitive code.\n\nThe delayed check only considers the value of the pointer that was dereferenced, not the\nintermediate values used during the computation of the final result. For example,\n`x.wrapping_add(o).wrapping_sub(o)` is always the same as `x`. In other words, leaving the\nallocated object and then re-entering it later is permitted.\n\n[`add`]: #method.add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\n# use std::fmt::Write;\n// Iterate using a raw pointer in increments of two elements\nlet data = [1u8, 2, 3, 4, 5];\nlet mut ptr: *const u8 = data.as_ptr();\nlet step = 2;\nlet end_rounded_up = ptr.wrapping_add(6);\n\nlet mut out = String::new();\nwhile ptr != end_rounded_up {\n    unsafe {\n        write!(&mut out, \"{}, \", *ptr).unwrap();\n    }\n    ptr = ptr.wrapping_add(step);\n}\nassert_eq!(out, \"1, 3, 5, \");\n```"
+      },
+      {
+        "src_mod": "sse",
+        "name": "_mm_prefetch",
+        "item_type": "function",
+        "offset_in_fn": 439,
+        "declaration": "pub unsafe fn _mm_prefetch<const STRATEGY: i32>(p: *const i8)",
+        "documentation": "Fetch the cache line that contains address `p` using the given `STRATEGY`.\n\nThe `STRATEGY` must be one of:\n\n* [`_MM_HINT_T0`](constant._MM_HINT_T0.html): Fetch into all levels of the\n  cache hierarchy.\n\n* [`_MM_HINT_T1`](constant._MM_HINT_T1.html): Fetch into L2 and higher.\n\n* [`_MM_HINT_T2`](constant._MM_HINT_T2.html): Fetch into L3 and higher or\nan   implementation-specific choice (e.g., L2 if there is no L3).\n\n* [`_MM_HINT_NTA`](constant._MM_HINT_NTA.html): Fetch data using the\n  non-temporal access (NTA) hint. It may be a place closer than main memory\n  but outside of the cache hierarchy. This is used to reduce access latency\n  without polluting the cache.\n\n* [`_MM_HINT_ET0`](constant._MM_HINT_ET0.html) and\n  [`_MM_HINT_ET1`](constant._MM_HINT_ET1.html) are similar to `_MM_HINT_T0`\n  and `_MM_HINT_T1` but indicate an anticipation to write to the address.\n\nThe actual implementation depends on the particular CPU. This instruction\nis considered a hint, so the CPU is also free to simply ignore the request.\n\nThe amount of prefetched data depends on the cache line size of the\nspecific CPU, but it will be at least 32 bytes.\n\nCommon caveats:\n\n* Most modern CPUs already automatically prefetch data based on predicted\n  access patterns.\n\n* Data is usually not fetched if this would cause a TLB miss or a page\n  fault.\n\n* Too much prefetching can cause unnecessary cache evictions.\n\n* Prefetching may also fail if there are not enough memory-subsystem\n  resources (e.g., request buffers).\n\n\n[Intel's documentation](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm_prefetch)"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/quadwt/mod.rs/rank_prefetch/390",
+    "repo_name": "qwt-0.2.0",
+    "relative_file": "src/quadwt/mod.rs",
+    "start_line": 390,
+    "end_line": 397,
+    "start_byte": 14491,
+    "end_byte": 14782,
+    "name": "rank_prefetch",
+    "raw_code": "pub fn rank_prefetch(&self, symbol: T, i: usize) -> Option<usize> {\n        if i > self.n || symbol > self.sigma {\n            return None;\n        }\n\n        // SAFETY: Check the above guarantees we are not out of bound\n        Some(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n    }",
+    "code_with_hints": "pub fn rank_prefetch(&self, symbol: T, i: usize) -> Option<usize> {\n        if i > self.n || symbol > self.sigma {\n            return None;\n        }\n\n        // SAFETY: Check the above guarantees we are not out of bound\n        Some(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n    }",
+    "code_with_type": "pub fn rank_prefetch(&self, symbol: T, i: usize) -> Option<usize> {\n        if i > self.n || symbol > self.sigma {\n            return None;\n        }\n\n        // SAFETY: Check the above guarantees we are not out of bound\n        Some(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n    }",
+    "code_with_param": "pub fn rank_prefetch(&self, symbol: T, i: usize) -> Option<usize> {\n        if i > self.n || symbol > self.sigma {\n            return None;\n        }\n\n        // SAFETY: Check the above guarantees we are not out of bound\n        Some(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n    }",
+    "params": [
+      "self",
+      "symbol",
+      "i"
+    ],
+    "return_type": "Option<usize>",
+    "comment": "/// Returns the rank of `symbol` up to position `i` **excluded**.\n///\n/// `None` is returned if `i` is out of bound or if `symbol` is not valid\n/// (i.e., it is greater than or equal to the alphabet size).\n///\n/// Differently from the `rank` function, `rank_prefetch` runs a first phase\n/// in which it estimates the positions in the wavelet tree needed by rank queries\n/// and prefetches these data. It is faster than the original `rank` function whenever\n/// the superblock/block counters fit in L3 cache but the sequence is larger.\n///\n/// # Examples\n///\n/// ```\n/// use qwt::{QWT256, RankUnsigned};\n///\n/// let data = vec![1u8, 0, 1, 0, 2, 4, 5, 3];\n///\n/// let qwt = QWT256::from(data);\n///\n/// assert_eq!(qwt.rank_prefetch(1, 2), Some(1));\n/// assert_eq!(qwt.rank_prefetch(3, 8), Some(1));\n/// assert_eq!(qwt.rank_prefetch(1, 0), Some(0));\n/// assert_eq!(qwt.rank_prefetch(1, 9), None);  // Too large position\n/// assert_eq!(qwt.rank_prefetch(6, 1), None);  // Too large symbol\n/// ```\n",
+    "attributes": "#[inline(always)]\n#[must_use]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "T",
+        "item_type": "type_param",
+        "offset_in_fn": 36,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "rank_prefetch_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 248,
+        "declaration": "pub unsafe fn rank_prefetch_unchecked(&self, symbol: T, i: usize) -> usize",
+        "documentation": "Returns the rank of `symbol` up to position `i` **excluded**.\n\nDifferently from the `rank_unchecked` function, `rank_prefetch` runs a first phase\nin which it estimates the positions in the wavelet tree needed by rank queries\nand prefetches these data. It is faster than the original `rank` function whenever\nthe superblock/block counters fit in L3 cache but the sequence is larger.\n\n# Safety\nCalling this method with a position `i` larger than the size of the sequence\nof with invalid symbol is undefined behavior.\n\n# Examples\n```\nuse qwt::{QWT256, RankUnsigned};\n\nlet data = vec![1u8, 0, 1, 0, 2, 4, 5, 3];\n\nlet qwt = QWT256::from(data);\n\nunsafe {\n    assert_eq!(qwt.rank_prefetch_unchecked(1, 2), 1);\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "quadwt",
+      "name": "QWaveletTree",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "QWaveletTree<T, RS, const WITH_PREFETCH_SUPPORT: bool = false> {\n    n: usize,        // The length of the represented sequence\n    n_levels: usize, // The number of levels of the wavelet matrix\n    sigma: T, // The largest symbol in the sequence. *NOTE*: It's not +1 because it may overflow\n    qvs: Vec<RS>, // A quad vector for each level\n    prefetch_support: Option<Vec<PrefetchSupport>>,\n}",
+      "documentation": "The generic RS is the data structure we use to index a quaternary\nsequence to support `access, `rank`, and `select` queries.\n\nThe const generic `PREFETCH_DATA` specifies if the wavelet tree\nis augmented with extra data to support a deeper level of prefetching.\nThis extra informationa are needed only for sequences such that data\nabout superblocks and blocks do not fit in L3 cache."
+    },
+    "constraints": [
+      {
+        "content": "`i` must not be larger than the size of the sequence.",
+        "fn_name": "rank_prefetch_unchecked",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "`symbol` must be a valid symbol for the represented sequence.",
+        "fn_name": "rank_prefetch_unchecked",
+        "type": "Type Constraint"
+      }
+    ]
+  }
+]

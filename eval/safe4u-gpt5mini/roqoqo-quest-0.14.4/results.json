@@ -1,0 +1,80 @@
+[
+  {
+    "sample_label": "roqoqo-quest-0.14.4/src/quest_bindings.rs/set/258",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Unsafe callee call snippet\nThe unsafe `add` calls are:\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\n```\nand\n```rust\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n## 2. Expressions related to the contract\nRelevant expressions:\n- `row`\n- `column`\n- `self.dimension`\n- `real_pointer.add(count: row)`\n- `imag_pointer.add(count: row)`\n\nThe contract concerns:\n- `count * size_of::<T>()` fitting in `isize` without overflow\n- here `T = *mut f64`, so the byte offset is `row * size_of::<*mut f64>()`\n\n## 3. Step-by-step analysis\n1. The function checks:\n   ```rust\n   if row >= self.dimension || column >= self.dimension {\n       return Err(\"Row or column index out of bounds\");\n   }\n   ```\n   So `row` and `column` are each constrained to be less than `self.dimension`.\n\n2. However, this only guarantees logical matrix bounds, not that `row * size_of::<*mut f64>()` fits in `isize`.\n\n3. If `self.dimension` is extremely large, `row` can still be a valid index while the pointer offset overflows `isize`.\n\n4. There is no additional check that ensures:\n   - `row * size_of::<*mut f64>() <= isize::MAX`\n   - or that the pointer arithmetic does not depend on wrapping behavior.\n\n5. Therefore, the contract for `add` is not fully guaranteed by this function.\n\n## 4. Final determination\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Unsafe callee call site\n\nThe function calls `add` here:\n\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\n...\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n...\n*real_row_pointer.add(count: column) = real;\n...\n*imag_row_pointer.add(count: column) = imag;\n```\n\n## 2. Expressions related to the contract\n\nRelevant expressions:\n- `row`\n- `column`\n- `real_pointer.add(count: row)`\n- `imag_pointer.add(count: row)`\n- `real_row_pointer.add(count: column)`\n- `imag_row_pointer.add(count: column)`\n- `self.dimension`\n- the bounds check:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(\"Row or column index out of bounds\");\n  }\n  ```\n\n## 3. Step-by-step analysis\n\n- The contract for `add` says the computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.\n- Here `add` is used on pointers to `*mut f64` and `f64`.\n- `row` and `column` are checked only against `self.dimension`, so they are guaranteed to be less than `self.dimension` if execution continues.\n- However, the code does **not** establish any upper bound on `self.dimension` itself.\n- Since `row` and `column` are `usize`, they can still be very large if `self.dimension` is very large.\n- For `real_pointer.add(row)`, the offset in bytes is `row * size_of::<*mut f64>()`.\n- For `real_row_pointer.add(column)`, the offset in bytes is `column * size_of::<f64>()`.\n- The code does not prove that either multiplication fits within `isize`.\n- Therefore, the contract is not guaranteed by this function.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+          "fn_name": "add",
+          "type": "Allocated"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are here:\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\n...\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n## 2. Expressions highly related to the contract\n\n- `real_pointer: *mut *mut f64 = self.complex_matrix.real`\n- `imag_pointer: *mut *mut f64 = self.complex_matrix.imag`\n- `row`\n- `column`\n- `row >= self.dimension || column >= self.dimension` bounds check\n\n## 3. Step-by-step data flow analysis\n\n1. The function first checks:\n   ```rust\n   if row >= self.dimension || column >= self.dimension {\n       return Err(\"Row or column index out of bounds\");\n   }\n   ```\n   So if execution reaches the unsafe block, both `row` and `column` are strictly less than `dimension`.\n\n2. The unsafe callee `add` is used with `count: row` on `real_pointer` and `imag_pointer`.\n\n3. The contract says: if the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n\n4. Here, `self` for `add` is `real_pointer` / `imag_pointer`, which come from fields inside `self.complex_matrix`. Since this wrapper represents an internally stored C matrix, these pointers are expected to be valid pointers into allocated memory, assuming the object is properly initialized as given in the task.\n\n5. If `row == 0`, the offset is zero, so the specific contract condition does not apply.\n\n6. If `row > 0`, then `add(row)` computes a non-zero offset. The contract requires the base pointer to be derived from an allocated object. The provided `self` description indicates the internal C matrix is a real allocated structure, and nothing in this function creates a pointer from a non-allocated source. Therefore this requirement is satisfied under the given assumptions.\n\n7. The later `column` offset is applied to `real_row_pointer` and `imag_row_pointer`, but the asked contract is specifically about `add`, and that condition is met by the base pointers as used.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe `add` calls are:\n\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\n...\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n## 2. Expressions highly related to the contract\n- `real_pointer: *mut *mut f64 = self.complex_matrix.real`\n- `imag_pointer: *mut *mut f64 = self.complex_matrix.imag`\n- `row`\n- `column`\n- `self.dimension`\n- the bounds check:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(\"Row or column index out of bounds\");\n  }\n  ```\n\n## 3. Step-by-step data flow analysis\n- The function first checks that `row` and `column` are both within bounds of `self.dimension`.\n- If the check fails, it returns early, so the unsafe pointer arithmetic is not executed.\n- If the check succeeds, `row < self.dimension` and `column < self.dimension`.\n- The unsafe calls to `add` use `row` as the offset on `real_pointer` and `imag_pointer`.\n- The contract in question says: if the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n- Here, the `self` for `add` is `real_pointer` / `imag_pointer`, which come from fields inside `self.complex_matrix`.\n- Given the wrapper type description, these are internally stored C pointers that are expected to point to allocated matrix storage.\n- Since the function only uses `add` after successful bounds checking, and the pointers are assumed to refer to allocated matrix rows, the contract is satisfied.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.",
+          "fn_name": "add",
+          "type": "Dereferencable"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are here:\n\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\n```\n\nand\n\n```rust\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `real_pointer`\n- `imag_pointer`\n- `row`\n- `self.dimension`\n- the bounds check:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(\"Row or column index out of bounds\");\n  }\n  ```\n\n## 3. Step-by-step analysis\n\n1. The function first checks:\n   ```rust\n   if row >= self.dimension || column >= self.dimension {\n       return Err(\"Row or column index out of bounds\");\n   }\n   ```\n   So if the function continues, then `row < self.dimension` and `column < self.dimension`.\n\n2. The unsafe `add(count: row)` is used on `real_pointer` and `imag_pointer`.\n   - Because `row` is bounded by `self.dimension`, this pointer arithmetic is intended to stay within the matrix row-pointer arrays.\n   - The contract says: if the offset is non-zero, the entire memory range between the starting pointer and the result must lie within the allocated object.\n\n3. Since `row` can be any value from `0` up to `self.dimension - 1`, the offset may be non-zero.\n   - For `add` to be valid, `real_pointer` must point into an allocated object containing at least `self.dimension` row pointers, and similarly for `imag_pointer`.\n   - The function body itself does not verify these raw pointers, but `ComplexMatrixN` is described as a wrapper around an internally stored C matrix, so the intended invariant is that these pointers are valid and properly allocated.\n\n4. Under that invariant, `real_pointer.add(row)` and `imag_pointer.add(row)` satisfy the contract, because the computed offset stays within the same allocated object and the intermediate memory range is within bounds.\n\n5. The later column access:\n   ```rust\n   *real_row_pointer.add(count: column) = real;\n   *imag_row_pointer.add(count: column) = imag;\n   ```\n   is separate from the specific `add` contract being checked here.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "1. Code snippet calling the unsafe callee:\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n2. Expressions highly related to the contract:\n- `real_pointer` / `imag_pointer`\n- `row`\n- `self.dimension`\n- the bounds check:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(\"Row or column index out of bounds\");\n  }\n  ```\n\n3. Step-by-step analysis:\n- The contract for `add` requires that if the offset is non-zero, the entire memory range between the starting pointer and the resulting pointer must be within the same allocated object.\n- Before any pointer arithmetic, the function checks:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(...)\n  }\n  ```\n  So on the path to the unsafe block, we know `row < self.dimension` and `column < self.dimension`.\n- `real_pointer` and `imag_pointer` are pointers to arrays of row pointers inside the `ComplexMatrixN` data structure. Assuming the wrapper\u2019s internal storage is properly allocated, indexing by `row` within `0..dimension` should point to an element within those row-pointer arrays.\n- Since `row` is validated to be in bounds, `real_pointer.add(row)` and `imag_pointer.add(row)` compute an offset within the allocated object, and the whole range from the base pointer to the computed pointer stays within that same allocation.\n- The same applies for the later column access on the returned row pointer, but the specific unsafe callee under review is `add` on the row-pointer arrays, and that usage is guarded by the bounds check.\n\n4. Final determination:\n**Yes**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n2. **Expressions related to the contract**\n- `real_pointer.add(count: row)`\n- `imag_pointer.add(count: row)`\n- `row`\n- `self.dimension` bounds check:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(\"Row or column index out of bounds\");\n  }\n  ```\n\n3. **Step-by-step analysis**\n- The function checks `row < self.dimension` and `column < self.dimension` before any pointer arithmetic.\n- Therefore, the `add(row)` call is only reached when `row` is a valid matrix index.\n- The contract in question is specifically about the pointer range not wrapping around the address space when the offset is non-zero.\n- Since `row` is constrained by the matrix dimension, the code intends to access an element within the allocated row-pointer array. Under the stated assumption that `self` fields are properly allocated, `real_pointer` and `imag_pointer` point to valid arrays of at least `dimension` row pointers.\n- Nothing in the function suggests any arithmetic that would intentionally create a wrapping address-space offset.\n- So the required non-wrapping property for `add` is satisfied by the bounds check and the assumed valid allocation.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` calls are here:\n\n```rust\nlet real_row_pointer: *mut f64 = *real_pointer.add(count: row);\n...\nlet imag_row_pointer: *mut f64 = *imag_pointer.add(count: row);\n```\n\n## 2. Expressions highly related to the contract\n\n- `row` passed to `add`\n- `real_pointer`\n- `imag_pointer`\n- `self.dimension`\n- The bounds check:\n  ```rust\n  if row >= self.dimension || column >= self.dimension {\n      return Err(\"Row or column index out of bounds\");\n  }\n  ```\n\n## 3. Step-by-step data flow analysis\n\n- The function first checks:\n  ```rust\n  if row >= self.dimension || column >= self.dimension\n  ```\n  so if this check passes, then `row < self.dimension` and `column < self.dimension`.\n\n- The unsafe `add` is invoked with `count: row`.\n  Since `row` is a `usize`, it is always non-negative.\n\n- The contract for `add` says that if the computed offset is non-zero, the pointer range between the original pointer and the result must not wrap around the edge of the address space.\n\n- Here, `row` is used as an index into arrays of row pointers:\n  ```rust\n  *real_pointer.add(count: row)\n  *imag_pointer.add(count: row)\n  ```\n  Given the prior bounds check, `row` is constrained to a valid matrix dimension index, so the offset is intended to stay within the allocated row-pointer arrays.\n\n- The function assumes `self.complex_matrix.real` and `self.complex_matrix.imag` are valid, properly allocated matrix storage, which is consistent with the wrapper's purpose. Under that assumption, the pointer arithmetic does not require address-space wrapping; it advances within the allocated object.\n\n- Therefore, based on the code path and bounds checks, the contract is satisfied.\n\n## 4. Final determination\n\n**Yes**"
+          }
+        ]
+      }
+    ]
+  }
+]

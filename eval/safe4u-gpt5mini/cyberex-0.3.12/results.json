@@ -1,0 +1,326 @@
+[
+  {
+    "sample_label": "cyberex-0.3.12/src/void.rs/delete/91",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`raw` must point to memory allocated in accordance with `Box`\u2019s memory layout.",
+          "fn_name": "from_raw",
+          "type": "Workflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\ndrop(unsafe { Box::from_raw(ctx as *mut _ as *mut T) });\n```\n\n## 2. Expressions highly related to the contract\n\n- `ctx: *mut c_void`\n- `ctx as *mut _ as *mut T`\n- `Box::from_raw(...)`\n\nThe contract requires that `raw`:\n- points to memory allocated in accordance with `Box`\u2019s memory layout\n\n## 3. Step-by-step data flow analysis\n\n1. The function receives `ctx` as a raw `*mut c_void`.\n2. It blindly casts `ctx` to `*mut T` using:\n   ```rust\n   ctx as *mut _ as *mut T\n   ```\n3. There is no evidence in the function body that `ctx` was originally created by `Box::into_raw`, or otherwise allocated with the exact layout expected by `Box<T>`.\n4. Since `ctx` is an arbitrary untrusted pointer, it may:\n   - be null,\n   - point to non-Box memory,\n   - point to memory with the wrong alignment,\n   - point to memory not allocated by Rust\u2019s global allocator,\n   - or even be invalid/dangling.\n5. `Box::from_raw` will assume ownership of that pointer and later drop/free it as if it were a valid `Box<T>`.\n6. Therefore, the required allocation/layout contract is not guaranteed by this function.\n\n## 4. Final determination\n\nNo"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The same raw pointer must not be passed to `from_raw` more than once.",
+          "fn_name": "from_raw",
+          "type": "End of Use"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe call is here:\n```rust\ndrop(unsafe { Box::from_raw(ctx as *mut _ as *mut T) });\n```\n\n## 2. Expressions highly related to the contract\n- `ctx`\n- `ctx as *mut _ as *mut T`\n- `Box::from_raw(...)`\n\n## 3. Data flow analysis\n- The function receives `ctx: *mut c_void` as an arbitrary raw pointer.\n- That pointer is cast to `*mut T`.\n- `Box::from_raw` takes ownership of that raw pointer and the `drop(...)` immediately destroys the resulting `Box`, freeing the allocation.\n- The contract says: **the same raw pointer must not be passed to `from_raw` more than once**.\n- In this function, there is exactly one call to `Box::from_raw`, so **within this function body alone** the pointer is not passed more than once.\n\nHowever, the function does **not** enforce that `ctx` is unique or that it has not been passed to `Box::from_raw` previously elsewhere. Since `ctx` is an untrusted raw pointer, this function could be called multiple times with the same pointer, which would violate the contract and cause double-free UB.\n- Therefore, the function does **not** satisfy the contract in general.\n\n## 4. Final determination\n**No**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\ndrop(unsafe { Box::from_raw(ctx as *mut _ as *mut T) });\n```\n\n## 2. Expressions highly related to the contract\n\n- `ctx`: the incoming raw pointer\n- `ctx as *mut _ as *mut T`: the raw pointer cast passed into `Box::from_raw`\n- `drop(...)`: consumes the reconstructed `Box`, causing deallocation\n\n## 3. Step-by-step data flow analysis\n\n- `delete<T>` receives `ctx: *mut c_void` from the caller. This value is untrusted and may be any raw pointer.\n- The function casts `ctx` to `*mut T` and passes it to `Box::from_raw`.\n- The contract says: the same raw pointer must not be passed to `from_raw` more than once.\n- Inside this function body, `Box::from_raw(...)` is invoked exactly once.\n- There is no second call to `from_raw` with the same pointer within this function.\n- Since the function does not store or reuse the pointer after the call, it does not violate this contract on its own.\n\nSo, based only on this function, the contract is satisfied.\n\n## 4. Final determination\n\nYes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "cyberex-0.3.12/src/xffi/sto.rs/cchar_to_string/12",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "The memory pointed to by `ptr` must contain a valid nul terminator at the end of the string.",
+          "fn_name": "from_ptr",
+          "type": "Type Constraint"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n2. **Expressions highly related to the contract**\n- `c_str: *const c_char`\n- `CStr::from_ptr(c_str)`\n- `c_str.is_null()`\n\n3. **Step-by-step analysis**\n- The function first checks whether `c_str` is null:\n  ```rust\n  if c_str.is_null() {\n      return String::new();\n  }\n  ```\n  This avoids passing a null pointer to `from_ptr`, but it does **not** establish that the pointed-to memory is a valid C string.\n\n- If `c_str` is non-null, it is passed directly to:\n  ```rust\n  CStr::from_ptr(c_str)\n  ```\n  The contract of `from_ptr` requires that the memory pointed to by `ptr` contain a valid nul terminator at the end of the string.\n\n- The input pointer `c_str` is an arbitrary caller-provided raw pointer. There is no validation in this function that scans memory to confirm a terminating `\\0` exists before calling `from_ptr`.\n\n- Therefore, if the caller provides a non-null pointer to memory that is not nul-terminated, the contract is violated and `from_ptr` may exhibit undefined behavior.\n\n4. **Final determination**\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe callee is invoked here:\n\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\nMore specifically, the unsafe function is:\n\n```rust\nCStr::from_ptr(c_str)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nThe contract says:\n\n> The memory pointed to by `ptr` must contain a valid nul terminator at the end of the string.\n\nRelevant expressions:\n- `c_str: *const c_char`\n- `if c_str.is_null() { return String::new(); }`\n- `CStr::from_ptr(c_str)`\n\n---\n\n## 3. Step-by-step data flow analysis\n\n1. The function accepts a raw C string pointer `c_str`.\n2. It first checks whether `c_str.is_null()`.\n   - If null, it returns an empty `String`.\n   - This avoids calling `from_ptr` on a null pointer.\n3. If `c_str` is non-null, it directly calls:\n   ```rust\n   CStr::from_ptr(c_str)\n   ```\n4. `from_ptr` requires that the memory referenced by `c_str` be a valid NUL-terminated C string.\n5. The function does **not** verify that the input buffer actually contains a terminating `\\0`.\n6. Since `c_str` is an arbitrary untrusted raw pointer, it may point to memory without a NUL terminator.\n7. Therefore, the required contract is **not guaranteed** by this function.\n\n---\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\nThe specific unsafe callee is:\n\n```rust\nCStr::from_ptr(c_str)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n\n- `c_str: *const c_char`\n- `if c_str.is_null() { return String::new(); }`\n- `unsafe { CStr::from_ptr(c_str) ... }`\n\nContract to check:\n- The memory pointed to by `ptr` must contain a valid nul terminator at the end of the string.\n\n---\n\n## 3. Step-by-step data flow analysis\n\n1. The function first checks whether `c_str` is null.\n   - If it is null, it returns an empty `String`.\n   - This avoids calling `from_ptr` on a null pointer, which is good, but this is **not** the contract we need to verify.\n\n2. If `c_str` is not null, the function calls:\n   ```rust\n   CStr::from_ptr(c_str)\n   ```\n   This unsafe call assumes that `c_str` points to a valid C string.\n\n3. The contract requires that the pointed-to memory contains a valid terminating NUL byte.\n   - The function does **not** check this.\n   - The input `c_str` is arbitrary and untrusted.\n   - A non-null pointer may still point to memory without a NUL terminator, or with the terminator beyond accessible memory.\n\n4. Since there is no validation before the unsafe call, the contract is not guaranteed by this function.\n\n---\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`ptr` must be valid for reads of bytes up to and including the nul terminator.",
+          "fn_name": "from_ptr",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `from_ptr` is called here:\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n## 2. Expressions related to the contract\n\nRelevant expressions:\n- `c_str`: the raw pointer argument\n- `c_str.is_null()`: null check before calling `from_ptr`\n- `CStr::from_ptr(c_str)`: the unsafe call that requires pointer validity\n\n## 3. Step-by-step contract analysis\n\n1. The function first checks:\n   ```rust\n   if c_str.is_null() {\n       return String::new();\n   }\n   ```\n   So null pointers are handled safely and do not reach `from_ptr`.\n\n2. For non-null pointers, the function calls:\n   ```rust\n   CStr::from_ptr(c_str)\n   ```\n   The contract requires that `ptr` be valid for reads up to and including the nul terminator.\n\n3. In this function, `c_str` is an arbitrary raw pointer supplied by the caller. There is no verification that:\n   - it points to a valid allocated object,\n   - the memory is readable,\n   - a nul terminator exists,\n   - the buffer extends far enough to include that terminator.\n\n4. Therefore, for arbitrary non-null inputs, `from_ptr` may be invoked with an invalid pointer or with a pointer to a non-terminated buffer, violating the contract.\n\n## 4. Final determination\n\nNo"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `from_ptr` is called here:\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n## 2. Expressions related to the contract\n- `c_str`: the raw C string pointer passed into the function\n- `c_str.is_null()`: the null check before calling `from_ptr`\n- `CStr::from_ptr(c_str)`: requires `c_str` to point to a valid NUL-terminated byte sequence\n\n## 3. Step-by-step analysis\n1. The function first checks:\n   ```rust\n   if c_str.is_null() {\n       return String::new();\n   }\n   ```\n   So `from_ptr` is only called when `c_str` is non-null.\n\n2. However, the contract for `from_ptr` is stronger than just non-null:\n   - `ptr` must be valid for reads of bytes up to and including the nul terminator.\n\n3. In this function, `c_str` is an arbitrary caller-provided raw pointer. There is no validation that:\n   - it points to accessible memory,\n   - the memory is properly initialized,\n   - a NUL terminator exists before invalid memory is reached.\n\n4. Therefore, even after the null check, `CStr::from_ptr(c_str)` may be invoked on a pointer that is not valid for the required read range, violating the contract.\n\n## 4. Final determination\nNo"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The entire memory range of the `CStr` must be contained within a single allocated object.",
+          "fn_name": "from_ptr",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\nThe relevant unsafe callee is:\n```rust\nCStr::from_ptr(c_str)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\n- `c_str: *const c_char` \u2014 the raw pointer provided by the caller\n- `c_str.is_null()` \u2014 early null check\n- `CStr::from_ptr(c_str)` \u2014 constructs a `CStr` from the raw pointer\n- Contract: `\"The entire memory range of the CStr must be contained within a single allocated object.\"`\n\n---\n\n## 3. Step-by-step data flow analysis\n\n1. The function first checks:\n   ```rust\n   if c_str.is_null() {\n       return String::new();\n   }\n   ```\n   So null pointers are handled safely.\n\n2. If `c_str` is non-null, the function directly calls:\n   ```rust\n   CStr::from_ptr(c_str)\n   ```\n\n3. `from_ptr` requires that `c_str` points to a valid NUL-terminated C string whose entire memory range is within a single allocated object.\n\n4. However, `c_str` is an arbitrary untrusted raw pointer parameter. The function does not verify:\n   - that the pointer is valid,\n   - that it is NUL-terminated,\n   - that the full string fits within one allocation,\n   - or that the allocation is large enough.\n\n5. Therefore, although the null case is handled, the contract for `from_ptr` is **not guaranteed** by this function.\n\n---\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe call is here:\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n## 2. Expressions highly related to the contract\n- `c_str: *const c_char` \u2014 the raw pointer passed into `from_ptr`\n- `CStr::from_ptr(c_str)` \u2014 constructs a `CStr` from that pointer\n- `c_str.is_null()` \u2014 only filters out null, not invalid/non-terminated pointers\n\n## 3. Step-by-step analysis of the contract\nThe contract for `from_ptr` is:\n\n> The entire memory range of the `CStr` must be contained within a single allocated object.\n\nLet\u2019s analyze the function:\n\n1. The function accepts an arbitrary raw pointer `c_str`.\n   - Raw pointers are untrusted.\n   - They may point to valid C strings, invalid memory, or memory that is not NUL-terminated.\n\n2. The function checks only:\n   ```rust\n   if c_str.is_null() {\n       return String::new();\n   }\n   ```\n   - This prevents null dereference.\n   - But it does **not** ensure the pointer refers to a valid, allocated C string.\n   - In particular, it does not ensure the bytes up to the first `\\0` are within a single allocated object.\n\n3. The unsafe call:\n   ```rust\n   CStr::from_ptr(c_str)\n   ```\n   requires that the pointed-to C string be properly terminated and fully contained in one allocated object.\n   - Since `c_str` is arbitrary and there is no validation beyond null-checking, this contract is **not guaranteed** by the function.\n\n4. Therefore, the function can violate the `from_ptr` precondition if the caller passes a non-null invalid pointer or a pointer to a non-terminated byte sequence crossing allocation boundaries.\n\n## 4. Final determination\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`ptr` must be non-null, even for a zero-length C string.",
+          "fn_name": "from_ptr",
+          "type": "Not Null"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n2. **Expressions related to the contract**\n- `c_str`: the pointer passed into `CStr::from_ptr`\n- `c_str.is_null()`: the null check before the unsafe call\n\n3. **Step-by-step analysis**\n- The unsafe callee `from_ptr` requires that `ptr` be non-null, even if it points to a zero-length C string.\n- In this function, the input pointer is `c_str`.\n- The code first checks:\n  ```rust\n  if c_str.is_null() {\n      return String::new();\n  }\n  ```\n  So if `c_str` is null, the function returns early and does **not** call `from_ptr`.\n- Only when `c_str` is non-null does execution continue to:\n  ```rust\n  unsafe { CStr::from_ptr(c_str) ... }\n  ```\n- Therefore, every actual call to `from_ptr` receives a non-null pointer.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe callee call site**\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n2. **Expressions related to the contract**\n- `c_str`\n- `c_str.is_null()`\n- `CStr::from_ptr(c_str)`\n\n3. **Step-by-step analysis**\n- The unsafe function `CStr::from_ptr` requires that `ptr` is non-null, even if it points to a zero-length C string.\n- The function `cchar_to_string` first checks:\n  ```rust\n  if c_str.is_null() {\n      return String::new();\n  }\n  ```\n  So if `c_str` is null, it returns early and does **not** call `from_ptr`.\n- Only when `c_str` is non-null does it execute:\n  ```rust\n  unsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n  ```\n- Therefore, the pointer passed to `from_ptr` is guaranteed by the control flow to be non-null at the call site.\n\n4. **Final determination**\n**Yes**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The memory referenced by the returned `CStr` must not be mutated for the duration of lifetime `'a`.",
+          "fn_name": "from_ptr",
+          "type": "Exclusive"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n## 2. Expressions highly related to the contract\n\n- `c_str: *const c_char`\n- `CStr::from_ptr(c_str)`\n- the returned `&CStr`\n- `to_string_lossy()`\n- `into_owned()`\n\n## 3. Step-by-step analysis of the contract\n\nContract for `from_ptr`:\n> The memory referenced by the returned `CStr` must not be mutated for the duration of lifetime `'a`.\n\nAnalysis:\n\n1. `c_str` is a raw const pointer provided by the caller, so its pointee memory is untrusted.\n2. The function checks for null:\n   ```rust\n   if c_str.is_null() {\n       return String::new();\n   }\n   ```\n   So `from_ptr` is only called for non-null pointers.\n3. `CStr::from_ptr(c_str)` creates a borrowed `&CStr` view into the memory referenced by `c_str`.\n4. That borrowed `CStr` is used immediately only to convert to an owned `String`:\n   ```rust\n   .to_string_lossy().into_owned()\n   ```\n   `to_string_lossy()` produces either a borrowed or owned `Cow<str>`, and `into_owned()` ensures a `String` is returned.\n5. The function itself does not mutate the memory referenced by `c_str`.\n6. However, the contract is about whether the memory must not be mutated for the duration of the returned `CStr`\u2019s lifetime `'a`. Since the raw pointer comes from the caller, this function does not and cannot guarantee that other aliases won\u2019t mutate the memory while the temporary `&CStr` exists.\n7. Still, the important question is whether this function itself violates the contract. It does not mutate the memory, and the borrowed `CStr` is only used transiently within the expression before being converted into owned data.\n\nSo, based on the function\u2019s own behavior, it satisfies the contract.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe callee call site\nThe unsafe function `from_ptr` is called here:\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\n## 2. Expressions highly related to the contract\n- `c_str`: the raw input pointer passed into `CStr::from_ptr`\n- `CStr::from_ptr(c_str)`: creates the borrowed `CStr`\n- `.to_string_lossy()`: borrows from the `CStr` if UTF-8 is valid\n- `.into_owned()`: converts the result into an owned `String`\n\n## 3. Step-by-step data flow analysis\n1. The function first checks:\n   ```rust\n   if c_str.is_null() { \u057e\u0565\u0580\u0561\u0564\u0561\u0580\u0571 String::new(); }\n   ```\n   So the unsafe call is only reached when `c_str` is non-null.\n\n2. `CStr::from_ptr(c_str)` creates a borrowed `CStr` view over the memory at `c_str`.\n\n3. The contract requires that the memory referenced by the returned `CStr` must not be mutated for the duration of lifetime `'a`.\n\n4. In this function, the returned `CStr` does not escape the unsafe block:\n   - it is immediately consumed by `to_string_lossy()`\n   - then immediately consumed by `into_owned()`\n   - the final return value is an owned `String`, not a borrowed view\n\n5. Since the borrowed `CStr` is only used transiently during evaluation of the expression, and no reference to it is returned or stored, the function itself does not create any path that mutates the memory or extends the borrow beyond the call.\n\n6. The raw pointer argument `c_str` is untrusted, but the specific contract is about mutation of the referenced memory during lifetime `'a`. This function does not mutate through that pointer, nor does it provide aliasing access that would violate the contract.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The nul terminator must be within `isize::MAX` bytes from `ptr`.",
+          "fn_name": "from_ptr",
+          "type": "Numeric Relation"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\nThe relevant unsafe callee is:\n\n```rust\nCStr::from_ptr(c_str)\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nThe contract for `from_ptr` is:\n\n- **\u201cThe nul terminator must be within `isize::MAX` bytes from `ptr`.\u201d**\n\nRelevant expressions:\n- `c_str`: the raw pointer passed into `from_ptr`\n- `c_str.is_null()`: only checks for null, not for termination distance\n- `CStr::from_ptr(c_str)`: assumes a valid NUL-terminated C string within bounds\n\n---\n\n## 3. Step-by-step analysis of contract satisfaction\n\n1. The function first checks:\n   ```rust\n   if c_str.is_null() {\n       return String::new();\n   }\n   ```\n   This prevents passing a null pointer to `from_ptr`, which is good.\n\n2. However, the unsafe contract is not about nullness. It requires that:\n   - `c_str` points to a valid C string\n   - the terminating `\\0` exists\n   - that terminator is within `isize::MAX` bytes from `c_str`\n\n3. The function does **not** verify that the pointer actually refers to a properly terminated C string.\n   - It does not scan for a terminator before calling `from_ptr`\n   - It does not check the length or memory bounds\n\n4. Since `c_str` is an arbitrary untrusted parameter, it may point to memory with:\n   - no terminator at all, or\n   - a terminator too far away, beyond `isize::MAX` bytes\n\n5. Therefore, the contract of `CStr::from_ptr` is **not guaranteed** by this function.\n\n---\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n```rust\nunsafe { CStr::from_ptr(c_str).to_string_lossy().into_owned() }\n```\n\nThe specific unsafe callee from the contract is:\n```rust\nCStr::from_ptr(c_str)\n```\n\n## 2. Expressions highly related to the contract\n\n- `c_str: *const c_char` \u2014 the raw pointer passed into `from_ptr`\n- `if c_str.is_null() { return String::new(); }` \u2014 null-pointer guard\n- `CStr::from_ptr(c_str)` \u2014 constructs a `CStr` from the raw pointer\n\n## 3. Step-by-step analysis of whether the contract is satisfied\n\n1. The function first checks whether `c_str` is null.\n   - If it is null, the function returns early with an empty `String`.\n   - So `from_ptr` is never called on a null pointer.\n\n2. If `c_str` is not null, the function calls:\n   ```rust\n   CStr::from_ptr(c_str)\n   ```\n   This is safe only if `c_str` points to a valid nul-terminated C string whose terminator is within `isize::MAX` bytes from `ptr`.\n\n3. The function does not validate any of the following:\n   - that the pointer actually refers to a valid C string\n   - that a nul terminator exists\n   - that the terminator is within `isize::MAX` bytes\n\n4. Since `c_str` is an arbitrary raw pointer from the caller, it is untrusted. The code only checks for null, which is insufficient to guarantee the terminator-distance requirement.\n\n5. Therefore, the contract of `from_ptr` is not enforced by this function.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "cyberex-0.3.12/src/xffi/xtr.rs/string_to_buffer/2",
+    "result": "unsound",
+    "response": [
+      {
+        "question": {
+          "content": "`src` must be valid for reads of `count * size_of::<T>()` bytes.",
+          "fn_name": "copy_nonoverlapping",
+          "type": "Dereferencable"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is here:\n\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `s.as_ptr()`\n- `len`\n- `s.len()`\n- `buf_max - 1`\n- `min(v1: buf_max - 1, v2: s.len())`\n\nThe contract to check is:\n\n> `src` must be valid for reads of `count * size_of::<T>()` bytes.\n\nHere:\n- `src = s.as_ptr()`\n- `count = len`\n- `T = u8`, so the required read size is `len` bytes\n\n## 3. Step-by-step data flow analysis\n\n1. `s` is a `&str`, so it refers to a valid UTF-8 string slice.\n2. `s.as_ptr()` points to the start of the string\u2019s byte sequence.\n3. `s.len()` is the number of bytes in the string.\n4. `len` is computed as:\n   ```rust\n   let len: usize = std::cmp::min(buf_max - 1, s.len());\n   ```\n   So `len <= s.len()` always holds, assuming the subtraction is evaluated safely.\n5. Since `len` is at most `s.len()`, reading `len` bytes starting from `s.as_ptr()` stays within the string slice\u2019s allocated and initialized bytes.\n6. Therefore `s.as_ptr()` is valid for reads of `len` bytes, satisfying the contract of `copy_nonoverlapping`.\n\nOne caveat: `buf_max - 1` would underflow if `buf_max == 0`, but the function returns early when `buf_max == 0`, so that case is handled.\n\n## 4. Final determination\n\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe call is:\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n## 2. Expressions highly related to the contract\n- `src: s.as_ptr()`\n- `count: len`\n- `len: usize = std::cmp::min(buf_max - 1, s.len())`\n\n## 3. Step-by-step analysis of the contract\nThe contract for `copy_nonoverlapping` is:\n\n> `src` must be valid for reads of `count * size_of::<T>()` bytes.\n\nHere:\n- `T` is inferred as `u8` because `src` is `*const u8` (`s.as_ptr()`), so `size_of::<T>() = 1`.\n- Therefore, the source region must be readable for exactly `len` bytes.\n- `s` is a `&str`, so `s.as_ptr()` points to the string\u2019s UTF-8 bytes.\n- A Rust `&str` guarantees that its entire byte range is valid and readable for `s.len()` bytes.\n- `len` is computed as `min(buf_max - 1, s.len())`, so `len <= s.len()`.\n- Thus, the source pointer is valid for reading `len` bytes.\n\nThe null check on `buf` and `buf_max == 0` does not affect the source validity directly, but it prevents the destination-side issues for zero-sized/invalid buffer length cases.\n\n## 4. Final determination\nYes"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`dst` must be valid for writes of `count * size_of::<T>()` bytes.",
+          "fn_name": "copy_nonoverlapping",
+          "type": "Allocated"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions are:\n\n- `buf`\n- `buf_max`\n- `len = std::cmp::min(buf_max - 1, s.len())`\n- `dst: buf as *mut _`\n- `count: len`\n\nThe contract to check is:\n\n> `dst` must be valid for writes of `count * size_of::<T>()` bytes.\n\nHere `T = u8`, so the destination must be valid for `len` bytes.\n\n## 3. Step-by-step data flow analysis\n\n1. The function first checks:\n   ```rust\n   if buf.is_null() || buf_max == 0 {\n       return;\n   }\n   ```\n   So if `buf` is null or `buf_max == 0`, it exits early.\n\n2. Then it computes:\n   ```rust\n   let len: usize = std::cmp::min(buf_max - 1, s.len());\n   ```\n   Since `buf_max != 0`, `buf_max - 1` does not underflow.\n\n3. Because `len` is the minimum of `buf_max - 1` and `s.len()`, we know:\n   - `len <= buf_max - 1`\n   - therefore `len < buf_max`\n\n4. The destination passed to `copy_nonoverlapping` is:\n   ```rust\n   dst: buf as *mut _\n   ```\n   and the number of bytes copied is `len`.\n\n5. However, the function only receives a raw pointer `buf` and a size `buf_max`; it does **not** establish that `buf` actually points to a valid writable allocation of at least `buf_max` bytes. The pointer could be dangling or otherwise invalid, even if non-null.\n\n6. Therefore, while the code ensures it will not write more than `buf_max - 1` bytes, it does **not** guarantee that `buf` is valid for writing `len` bytes as required by `copy_nonoverlapping`.\n\n## 4. Final determination\n\nNo"
+          },
+          {
+            "result": "No",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n2. **Expressions highly related to the contract**\n- `buf`\n- `len`\n- `buf_max`\n- `std::cmp::min(v1: buf_max - 1, v2: s.len())`\n- `buf as *mut _`\n\n3. **Step-by-step analysis**\n- The contract for `copy_nonoverlapping` requires `dst` to be valid for writes of `count * size_of::<T>()` bytes.\n- Here `T = u8`, so the required write size is exactly `len` bytes.\n- The function first checks:\n  ```rust\n  if buf.is_null() || buf_max == 0 {\n      return;\n  }\n  ```\n  so `buf` is non-null and `buf_max > 0` before the unsafe call.\n- `len` is computed as:\n  ```rust\n  len = min(buf_max - 1, s.len())\n  ```\n  so `len <= buf_max - 1`, meaning at most `buf_max - 1` bytes are copied.\n- However, the function receives `buf` as a raw pointer with no proof that it points to a valid writable buffer of size at least `buf_max` bytes.\n- Since `buf` and `buf_max` are untrusted parameters, `buf` may be non-null but still invalid or too small for `len` bytes.\n- Therefore the required precondition for `copy_nonoverlapping` is not guaranteed by this function.\n\n4. **Final determination**\nNo"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`src` and `dst` must be properly aligned.",
+          "fn_name": "copy_nonoverlapping",
+          "type": "Aligned"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\n\nThe unsafe callee `copy_nonoverlapping` is called here:\n\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n## 2. Expressions related to the contract\n\nRelevant expressions for the alignment contract:\n\n- `s.as_ptr()` \u2192 the `src` pointer\n- `buf as *mut _` \u2192 the `dst` pointer\n- `len` \u2192 only affects how many bytes are copied, not alignment\n\n## 3. Step-by-step analysis\n\n- `s: &str` is a valid string slice, so `s.as_ptr()` points to the UTF-8 bytes of the string.\n- For `u8`, alignment is 1.\n- A pointer to `u8` is always properly aligned, and copying as `*const u8` / `*mut u8` does not introduce any stricter alignment requirement.\n- `buf` is an external raw pointer argument, but it is only used as `*mut u8`.\n- Since the element type is `u8`, the required alignment is 1, so even an arbitrary byte pointer satisfies the alignment contract as long as it is used as `u8`.\n- Therefore both `src` and `dst` are properly aligned for `copy_nonoverlapping::<u8>`.\n\nThe additional unsafe call `buf.add(len).write_bytes(...)` is unrelated to the specific contract being checked.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n## 2. Expressions highly related to the contract\n\n- `s.as_ptr()` \u2192 source pointer `src`\n- `buf as *mut _` \u2192 destination pointer `dst`\n\nThe contract to check is: **`src` and `dst` must be properly aligned**.\n\n## 3. Step-by-step data flow analysis\n\n- `s: &str`\n  - A `&str` points to UTF-8 bytes.\n  - `s.as_ptr()` returns a `*const u8`.\n  - A `u8` pointer has alignment requirement of 1, so `s.as_ptr()` is properly aligned.\n\n- `buf: *mut u8`\n  - This is an arbitrary raw pointer provided by the caller.\n  - The function only checks:\n    ```rust\n    if buf.is_null() || buf_max == 0 {\n        return;\n    }\n    ```\n    This ensures non-nullness, but **does not ensure alignment**.\n\n- `buf as *mut _`\n  - This cast preserves the same address.\n  - Since `buf` is arbitrary, it may be misaligned even if non-null.\n  - Therefore, the function does **not** establish the alignment requirement for `dst`.\n\n- `len`\n  - The length only affects how many bytes are copied; it is irrelevant to pointer alignment.\n\n## 4. Final determination\n\nThe source pointer `s.as_ptr()` is aligned, but the destination pointer `buf` is caller-controlled and may be unaligned. The function does not validate or correct alignment.\n\n**Answer: No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The memory region beginning at `src` with size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `dst` with the same size.",
+          "fn_name": "copy_nonoverlapping",
+          "type": "Exclusive"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe callee `copy_nonoverlapping` is called here:\n\n```rust\nunsafe {\n    copy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n    buf.add(count: len).write_bytes(val: 0_u8, count: 1);\n}\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions are:\n\n- `src: s.as_ptr()`\n- `dst: buf as *mut _`\n- `count: len`\n- `len = min(buf_max - 1, s.len())`\n\nThe contract to check is:\n\n> The memory region beginning at `src` with size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `dst` with the same size.\n\n## 3. Step-by-step data flow analysis\n\n1. `src` is derived from `s.as_ptr()`, so it points into the string slice `s`.\n2. `dst` is the raw pointer `buf`, supplied by the caller.\n3. `count` is chosen as `min(buf_max - 1, s.len())`, so it is bounded by the input sizes, but this does **not** establish anything about aliasing.\n4. The function does not check whether `buf` points into the same memory region as `s`.\n   - Since `buf` is an arbitrary raw pointer from the caller, it could point into:\n     - the same string buffer as `s`,\n     - an overlapping region within `s`,\n     - or some other overlapping allocation.\n5. If `buf` aliases the memory of `s`, then `src` and `dst` regions overlap for `len` bytes, violating the `copy_nonoverlapping` precondition.\n6. Therefore, from the function body alone, the non-overlap contract is **not guaranteed**.\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n## 2. Expressions highly related to the contract\n\n- `src: s.as_ptr()` \u2014 source memory region\n- `dst: buf as *mut _` \u2014 destination memory region\n- `count: len` \u2014 number of bytes copied\n- `len = min(buf_max - 1, s.len())` \u2014 determines copied range size\n\n## 3. Step-by-step data flow analysis\n\n1. `s.as_ptr()` points to the bytes of the input string `s`.\n2. `buf` is an arbitrary raw pointer provided by the caller. It may point anywhere, including potentially into the same allocation as `s`.\n3. `len` is chosen based on the lengths, but this only limits how many bytes are copied; it does **not** ensure the source and destination regions are disjoint.\n4. `copy_nonoverlapping` requires that the source region `[s.as_ptr(), s.as_ptr().add(len))` and destination region `[buf, buf.add(len))` do **not overlap**.\n5. The function does not check whether `buf` aliases `s.as_ptr()`, nor whether the two regions belong to overlapping memory.\n6. Because `buf` is an untrusted raw pointer argument, overlap is possible from the caller\u2019s perspective, so the contract is not guaranteed.\n\n## 4. Final determination\n\nNo"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`src` and `dst` must be non-null, even when `count * size_of::<T>() == 0`.",
+          "fn_name": "copy_nonoverlapping",
+          "type": "Not Null"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet that calls the unsafe callee**\n```rust\nunsafe {\n    copy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n    buf.add(count: len).write_bytes(val: 0_u8, count: 1);\n}\n```\n\n2. **Expressions highly related to the contract**\n- `src: s.as_ptr()`\n- `dst: buf as *mut _`\n- `count: len`\n- Guard:\n  ```rust\n  if buf.is_null() || buf_max == 0 {\n      return;\n  }\n  ```\n- Length computation:\n  ```rust\n  let len: usize = std::cmp::min(buf_max - 1, s.len());\n  ```\n\n3. **Step-by-step analysis**\n- The contract for `copy_nonoverlapping` requires both `src` and `dst` to be non-null, even if `count == 0`.\n- `dst` comes from `buf`, and the function explicitly checks `if buf.is_null() { return; }`, so when the unsafe call is reached, `dst` is non-null.\n- `src` comes from `s.as_ptr()`. For a `&str`, `as_ptr()` always returns a non-null pointer to the string data, even for an empty string. So `src` is non-null.\n- `count` is `len`, which may be zero if `s.len() == 0`. That does not matter for this contract, because the contract specifically requires non-null pointers even when `count == 0`.\n- Therefore, both required pointers are non-null at the call site.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call is:\n\n```rust\ncopy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n```\n\n---\n\n## 2. Expressions highly related to the contract\n\nThe contract for `copy_nonoverlapping` is:\n\n- `src` must be non-null\n- `dst` must be non-null\n- even if `count * size_of::<T>() == 0`\n\nRelevant expressions:\n\n- `src: s.as_ptr()`\n- `dst: buf as *mut _`\n- `count: len`\n- the early return:\n  ```rust\n  if buf.is_null() || buf_max == 0 {\n      return;\n  }\n  ```\n- the length computation:\n  ```rust\n  let len: usize = std::cmp::min(buf_max - 1, s.len());\n  ```\n\n---\n\n## 3. Step-by-step data flow analysis\n\n1. `src` is `s.as_ptr()`.\n   - `s` is a `&str`, so it always points to valid string data.\n   - `s.as_ptr()` is non-null.\n\n2. `dst` is `buf as *mut _`.\n   - The function checks:\n     ```rust\n     if buf.is_null() || buf_max == 0 {\n         return;\n     }\n     ```\n   - Therefore, if execution reaches the unsafe block, `buf` is guaranteed to be non-null.\n   - Casting `buf` to another pointer type does not change non-nullness.\n\n3. `count` is `len`.\n   - Even if `len == 0`, the contract still requires both pointers to be non-null.\n   - That requirement is already satisfied by the above reasoning.\n\n4. The unsafe call is therefore made only when:\n   - `src` is non-null\n   - `dst` is non-null\n\nSo the function satisfies the contract for `copy_nonoverlapping`.\n\n---\n\n## 4. Final determination\n\n**Yes**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call to `add` is here:\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `buf.add(count: len)`\n- `len`\n- `let len: usize = std::cmp::min(v1: buf_max - 1, v2: s.len());`\n- `buf_max - 1`\n- `s.len()`\n\n## 3. Step-by-step data flow analysis\n\nThe contract for `add` is:\n\n> The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.\n\nHere:\n- `T = u8`, so `size_of::<T>() = 1`\n- Therefore the byte offset is just `len * 1 = len`\n\nNow examine how `len` is computed:\n- The function first returns early if `buf` is null or `buf_max == 0`\n- Otherwise:\n  ```rust\n  len = min(buf_max - 1, s.len())\n  ```\n- So `len <= buf_max - 1`\n\nHowever, there is **no guarantee** that `buf_max - 1` fits in `isize`, because `buf_max` is an arbitrary `usize` and untrusted.\n- If `buf_max` is larger than `isize::MAX + 1`, then `len` can also be larger than `isize::MAX`\n- In that case, `buf.add(len)` would require an offset that does not fit in `isize`\n\nThus, the code does **not** ensure the required bound for `add` from the caller side.\n\n## 4. Final determination\n\nNo"
+          },
+          {
+            "result": "No",
+            "content": "1. **Unsafe call site**\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n2. **Expressions related to the contract**\n- `buf.add(count: len)`\n- `len`\n- `size_of::<u8>()` (implicitly 1 for `buf: *mut u8`)\n\n3. **Step-by-step analysis**\n- The contract for `add` requires that the byte offset `count * size_of::<T>()` fits in `isize` without overflowing.\n- Here `T = u8`, so the byte offset is just `len * 1 = len`.\n- `len` is computed as:\n  ```rust\n  let len: usize = std::cmp::min(buf_max - 1, s.len());\n  ```\n- Before that, the function checks:\n  ```rust\n  if buf.is_null() || buf_max == 0 {\n      return;\n  }\n  ```\n  so `buf_max > 0`, making `buf_max - 1` well-defined.\n- However, `len` can still be any value up to `s.len()`, and there is no explicit guarantee that `len <= isize::MAX`.\n- Since `buf_max` and `s.len()` are untrusted/arbitrary, `len` could exceed `isize::MAX`, which would make the pointer offset invalid for `add`.\n- Therefore the contract is **not guaranteed** by this function.\n\n4. **Final determination**\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+          "fn_name": "add",
+          "type": "Allocated"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call to `add` is:\n\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions are:\n\n- `buf: *mut u8` \u2014 the base pointer used for `add`\n- `len: usize = std::cmp::min(buf_max - 1, s.len())` \u2014 the offset passed to `add`\n- `buf.add(len)` \u2014 the actual pointer arithmetic\n\n## 3. Step-by-step analysis of the contract\n\nThe contract for `add` says:\n\n> If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n\nHere, `buf` is an arbitrary raw pointer parameter from the caller. It may be null, dangling, or point to unallocated memory. The function only checks:\n\n```rust\nif buf.is_null() || buf_max == 0 {\n    return;\n}\n```\n\nThis ensures `buf` is not null and `buf_max > 0`, but it does **not** ensure that `buf` points to an allocated object.\n\nThen:\n\n```rust\nlet len = min(buf_max - 1, s.len());\n```\n\n- `len` may be `0` if `s.len() == 0`\n- `len` may be non-zero if `s.len() > 0` and `buf_max > 1`\n\nIf `len == 0`, `add(0)` is okay even for a non-derived pointer in many cases.\nBut the contract specifically matters when the offset is non-zero.\nSince the function does not guarantee that `buf` is derived from a valid allocated object, calling:\n\n```rust\nbuf.add(len)\n```\n\nwith `len > 0` can violate the contract.\n\nBecause `buf` is untrusted and the function does not validate its provenance, the unsafe precondition is not satisfied.\n\n## 4. Final determination\n\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe callee `add` is called here:\n\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n## 2. Expressions highly related to the contract\n\n- `buf`: the starting pointer passed to `add`\n- `len`: the offset passed to `add`\n- `buf_max == 0` and `buf.is_null()`: early return guard\n- `len = min(buf_max - 1, s.len())`: determines whether the offset is zero or non-zero\n\n## 3. Step-by-step analysis of the contract\n\nContract for `add`:\n> If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.\n\nHere, `self` for `add` is `buf`.\n\n- The function checks `if buf.is_null() || buf_max == 0 { return; }`, so it avoids calling `add` on a null pointer or when `buf_max` is zero.\n- `len` is computed as `min(buf_max - 1, s.len())`, so `len >= 0`.\n- However, the caller provides `buf: *mut u8` and it is arbitrary/untrusted. The code does **not** ensure that `buf` comes from an allocated object.\n- If `len == 0`, the contract condition about non-zero offset does not matter.\n- But if `len > 0`, then `buf.add(len)` requires that `buf` be derived from a pointer to an allocated object.\n- The function does not guarantee that, because `buf` is unchecked and may be any non-null raw pointer.\n\nTherefore, the contract is **not guaranteed to be satisfied**.\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.",
+          "fn_name": "add",
+          "type": "Dereferencable"
+        },
+        "result": "No",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\nThe unsafe callee `add` is called here:\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n## 2. Expressions highly related to the contract\n- `buf`: starting pointer passed to `add`\n- `len`: offset passed to `add`\n- `buf_max`: used to compute `len`\n- `s.len()`: used to compute `len`\n- `buf.add(len)`: resulting pointer location\n\n## 3. Step-by-step analysis of the contract\nContract for `add`:\n> If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.\n\nLet\u2019s analyze:\n\n1. The function first checks:\n   ```rust\n   if buf.is_null() || buf_max == 0 {\n       return;\n   }\n   ```\n   So `buf` is non-null and `buf_max > 0` after this point.\n\n2. It computes:\n   ```rust\n   let len = min(buf_max - 1, s.len());\n   ```\n   Therefore:\n   - `len <= buf_max - 1`\n   - so `len < buf_max`\n\n3. Then it copies `len` bytes from `s` into `buf`:\n   ```rust\n   copy_nonoverlapping(src: s.as_ptr(), dst: buf as *mut _, count: len);\n   ```\n   This does not help establish the `add` contract, but it shows the intended buffer size usage.\n\n4. Then it writes a trailing NUL byte at:\n   ```rust\n   buf.add(len)\n   ```\n   Since `len < buf_max`, this points somewhere within the range `[buf, buf + buf_max - 1]`.\n\n5. However, the contract for `add` is about the allocated object containing the whole range between `self` and the result. The function receives `buf: *mut u8` and `buf_max: usize` as arbitrary/untrusted inputs. There is no proof from the code that `buf` actually points to an allocated object of at least `buf_max` bytes.\n\n6. In other words, even though `len` is bounded by `buf_max - 1`, the code does not establish that:\n   - `buf` and `buf.add(len)` are within the same allocated object, or\n   - the entire range between them is valid.\n\nSo the unsafe call to `add` is not guaranteed to satisfy its contract from the provided code alone.\n\n## 4. Final determination\n**No**"
+          },
+          {
+            "result": "No",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe call to `add` is:\n\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\nThe relevant unsafe callee here is `add`.\n\n---\n\n## 2. Expressions highly related to the contract\n\n- `buf`: starting pointer\n- `len`: offset passed to `add`\n- `buf_max`: used to compute `len`\n- `s.len()`: also used to compute `len`\n- `len = min(buf_max - 1, s.len())`\n\n---\n\n## 3. Step-by-step data flow analysis\n\n- The function first checks:\n  ```rust\n  if buf.is_null() || buf_max == 0 {\n      return;\n  }\n  ```\n  So `buf` is guaranteed non-null after this point, and `buf_max > 0`.\n\n- Then it computes:\n  ```rust\n  let len: usize = std::cmp::min(buf_max - 1, s.len());\n  ```\n  Therefore:\n  - `len <= buf_max - 1`\n  - so `len < buf_max`\n\n- The pointer arithmetic is:\n  ```rust\n  buf.add(len)\n  ```\n  Since `len` is an unsigned forward offset, the resulting pointer is `len` bytes after `buf` for `u8`.\n\n- However, the contract for `add` requires:\n  > If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.\n\n- Here, `buf` is a raw pointer provided by the caller. The function does not verify that `buf` actually points to an allocated object of size at least `buf_max`, or even that the range `[buf, buf + len]` lies within one allocated object.\n\n- `buf_max` is only used as an upper bound for how many bytes to copy, but it does not prove the allocation size or object boundaries.\n\n- Therefore, even though the code avoids null and limits `len`, it still cannot guarantee the allocation/object requirement needed by `add`.\n\n---\n\n## 4. Final determination\n\n**No**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.",
+          "fn_name": "add",
+          "type": "Overflow"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "No",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `add` is called here:\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n## 2. Expressions related to the contract\nRelevant expressions:\n- `buf`: the base pointer\n- `len`: the offset passed to `add`\n- `buf_max - 1`\n- `s.len()`\n- `std::cmp::min(buf_max - 1, s.len())`\n\n## 3. Step-by-step analysis\n- The function first rejects `buf.is_null()` and `buf_max == 0`, so `buf_max - 1` is only evaluated when `buf_max > 0`.\n- `len` is computed as:\n  ```rust\n  len = min(buf_max - 1, s.len())\n  ```\n  so `len <= buf_max - 1`.\n- Therefore `len` is always a valid `usize`, and the call `buf.add(len)` uses an offset that is not artificially created by arithmetic overflow.\n- However, the contract we must verify is specifically:\n  > if the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.\n- Nothing in this function establishes any relationship between `buf` and the allocated object it points into, nor does it prove that `buf + len` stays within the same allocation without wrapping at the address-space boundary.\n- Since `buf` is an arbitrary raw pointer from the caller, and `len` may be any value up to `buf_max - 1`, this code does not guarantee the no-wraparound condition required by `add`.\n\n## 4. Final determination\nNo"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\nThe unsafe `add` call is here:\n\n```rust\nbuf.add(count: len).write_bytes(val: 0_u8, count: 1);\n```\n\n## 2. Expressions highly related to the contract\n\nRelevant expressions:\n- `buf`\n- `len`\n- `buf_max - 1`\n- `s.len()`\n- `std::cmp::min(v1: buf_max - 1, v2: s.len())`\n\n## 3. Step-by-step data flow analysis\n\n- The function first checks:\n  ```rust\n  if buf.is_null() || buf_max == 0 {\n      return;\n  }\n  ```\n  So `buf` is non-null and `buf_max > 0` when reaching the unsafe block.\n\n- Then it computes:\n  ```rust\n  let len: usize = std::cmp::min(buf_max - 1, s.len());\n  ```\n  Since `buf_max > 0`, `buf_max - 1` does not underflow.\n\n- Because `len` is the minimum of `buf_max - 1` and `s.len()`, we know:\n  - `len <= buf_max - 1`\n  - therefore `len < buf_max`\n\n- The `add` call is:\n  ```rust\n  buf.add(len)\n  ```\n  This computes a pointer offset forward by `len` bytes.\n\n- The contract says that if the offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.  \n  Here `len` is a `usize`, and it is bounded by `buf_max - 1`, but `buf_max` itself is untrusted and could be arbitrarily large.\n\n- However, to violate the \u201cno wrapping around address space\u201d requirement, `buf + len` would need to overflow the address space. The code does not explicitly prove that cannot happen, but the computation of `len` itself does not create a wraparound offset; it is a normal forward offset derived from bounded length.\n\n- In typical Rust pointer arithmetic reasoning, the responsibility is that the caller supplies a valid buffer region large enough, and this function\u2019s logic ensures the null terminator is written at the end of the copied prefix, at offset `len`. There is no data-flow path that intentionally computes a wrapping pointer offset.\n\n## 4. Final determination\n\nYes"
+          }
+        ]
+      }
+    ]
+  }
+]

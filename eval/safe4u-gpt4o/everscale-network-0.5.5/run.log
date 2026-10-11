@@ -1,0 +1,285 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/everscale-network-0.5.5
+  model: gpt-4o-2024-05-13
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/everscale-network-0.5.5
+  evaluation jobs: 4
+
+▸ Extract Candidates
+✓ Detected 5 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 2`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "everscale-network-0.5.5"
+✓ Context ready.
+• Context samples: 5
+  src/adnl/handshake.rs
+    ● parse_handshake_packet:85 | unsafe callees: none | context refs: 17
+  src/adnl/node/receiver.rs
+    ● start_receiver:24 | unsafe callees: from_raw_parts_mut, set_len | context refs: 15
+      - from_raw_parts_mut: pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]
+      - set_len: pub unsafe fn set_len(&mut self, new_len: usize)
+  src/adnl/packet_view.rs
+    ● remove_prefix:23 | unsafe callees: from_raw_parts_mut, add | context refs: 0
+      - from_raw_parts_mut: pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]
+      - add: pub const unsafe fn add(self, count: usize) -> Self where T: Sized,
+  src/adnl/queries_cache.rs
+    ● wait:52 | unsafe callees: unwrap_unchecked | context refs: 1
+      - unwrap_unchecked: pub const unsafe fn unwrap_unchecked(self) -> T
+  src/util/fast_rand.rs
+    ● gen_fast_bytes:20 | unsafe callees: assume_init | context refs: 4
+      - assume_init: pub const unsafe fn assume_init(self) -> T
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+LLM → Decompose safety contracts for `unwrap_unchecked` [input≈4,407, max_out=4,096]
+LLM ✓ Decompose safety contracts for `unwrap_unchecked` [in=4,150 out=16 total=4,166, 1.1s, run=4,166]
+LLM → Critique decomposed safety contracts for `unwrap_unchecked` [input≈1,262, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `unwrap_unchecked` [in=1,019 out=398 total=1,417, 3.4s, run=5,583]
+LLM → Refine decomposed safety contracts for `unwrap_unchecked` [input≈1,070, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `unwrap_unchecked` [in=880 out=13 total=893, 0.5s, run=6,476]
+LLM → Critique decomposed safety contracts for `unwrap_unchecked` [input≈1,255, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `unwrap_unchecked` [in=1,016 out=410 total=1,426, 7.9s, run=7,902]
+LLM → Refine decomposed safety contracts for `unwrap_unchecked` [input≈1,062, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `unwrap_unchecked` [in=877 out=13 total=890, 0.4s, run=8,792]
+LLM → Critique decomposed safety contracts for `unwrap_unchecked` [input≈1,255, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `unwrap_unchecked` [in=1,016 out=405 total=1,421, 3.4s, run=10,213]
+↻ Decomposing samples: ████░░░░░░░░░░░░░░░░░░ 1/5 (20%) 1 constraints | everscale-network-0.5.5/src/adnl/queries_cache.rs/wait/51
+↻ Decomposing samples: █████████░░░░░░░░░░░░░ 2/5 (40%) 0 constraints | everscale-network-0.5.5/src/adnl/handshake.rs/parse_handshake_packet/84
+↻ Decomposing samples: █████████████░░░░░░░░░ 3/5 (60%) 13 constraints | everscale-network-0.5.5/src/adnl/packet_view.rs/remove_prefix/22
+↻ Decomposing samples: ██████████████████░░░░ 4/5 (80%) 12 constraints | everscale-network-0.5.5/src/adnl/node/receiver.rs/start_receiver/23
+↻ Decomposing samples: ██████████████████████ 5/5 (100%) 2 constraints | everscale-network-0.5.5/src/util/fast_rand.rs/gen_fast_bytes/19
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 5
+• Resolved unsafe callees: 6
+  src/adnl/handshake.rs
+    ● parse_handshake_packet:85 (0 constraints)
+      - no safety constraints found
+  src/adnl/node/receiver.rs
+    ● start_receiver:24 (12 constraints) | unsafe: from_raw_parts_mut, set_len
+      - from_raw_parts_mut / Not Null: `data` must be non-null.
+      - from_raw_parts_mut / Dereferencable: `data` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
+      - from_raw_parts_mut / Aligned: `data` must be properly aligned.
+      - from_raw_parts_mut / Dereferencable: The entire memory range of this slice must be contained within a single allocated object.
+      - from_raw_parts_mut / Not Null: `data` must be non-null even for zero-length slices or slices of ZSTs.
+      - from_raw_parts_mut / Aligned: `data` must be aligned even for zero-length slices or slices of ZSTs.
+      - from_raw_parts_mut / Initialized: `data` must point to `len` consecutive properly initialized values of type `T`.
+      - from_raw_parts_mut / Exclusive: The memory referenced by the returned slice must not be accessed through any other pointer (not derived from the return value) for the duration of lifetime `'a`.
+      - from_raw_parts_mut / Numeric Relation: The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
+      - from_raw_parts_mut / Overflow: Adding the total size `len * mem::size_of::<T>()` to `data` must not "wrap around" the address space.
+      - set_len / Numeric Relation: The `new_len` must be less than or equal to the vector's capacity.
+      - set_len / Initialized: The elements at the range `old_len..new_len` must be initialized.
+  src/adnl/packet_view.rs
+    ● remove_prefix:23 (13 constraints) | unsafe: from_raw_parts_mut, add
+      - from_raw_parts_mut / Not Null: `data` must be non-null.
+      - from_raw_parts_mut / Dereferencable: `data` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
+      - from_raw_parts_mut / Aligned: `data` must be properly aligned.
+      - from_raw_parts_mut / Dereferencable: The entire memory range of this slice must be contained within a single allocated object.
+      - from_raw_parts_mut / Not Null: `data` must be non-null even for zero-length slices or slices of ZSTs.
+      - from_raw_parts_mut / Aligned: `data` must be aligned even for zero-length slices or slices of ZSTs.
+      - from_raw_parts_mut / Initialized: `data` must point to `len` consecutive properly initialized values of type `T`.
+      - from_raw_parts_mut / Exclusive: The memory referenced by the returned slice must not be accessed through any other pointer (not derived from the return value) for the duration of lifetime `'a`.
+      - from_raw_parts_mut / Numeric Relation: The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
+      - from_raw_parts_mut / Overflow: Adding the total size `len * mem::size_of::<T>()` to `data` must not "wrap around" the address space.
+      - add / Numeric Relation: The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without "wrapping around"), must fit in an `isize`.
+      - add / Dereferencable: If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object, and the entire memory range between `self` and the result must be in bound…
+      - add / Overflow: The memory range between `self` and the result must not "wrap around" the edge of the address space.
+  src/adnl/queries_cache.rs
+    ● wait:52 (1 constraints) | unsafe: unwrap_unchecked
+      - unwrap_unchecked / Type Constraint: `self` must be `Some`.
+  src/util/fast_rand.rs
+    ● gen_fast_bytes:20 (2 constraints) | unsafe: assume_init
+      - assume_init / Initialized: The `MaybeUninit<T>` must be in an initialized state before calling this function.
+      - assume_init / Type Constraint: The type-specific invariants of `T` must be upheld when calling this function.
+
+▸ Evaluate Encapsulations
+LLM → Evaluate `wait` against `unwrap_unchecked` (Type Constraint, pattern 1/3) [input≈4,272, max_out=4,096]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 1/2) [input≈2,198, max_out=4,096]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 1/2) [input≈5,289, max_out=4,096]
+LLM → Evaluate `gen_fast_bytes` against `assume_init` (Initialized, pattern 1/3) [input≈2,332, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 1/2) [in=5,071 out=348 total=5,419, 2.7s, run=15,632]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 2/2) [input≈5,218, max_out=4,096]
+LLM ✓ Evaluate `wait` against `unwrap_unchecked` (Type Constraint, pattern 1/3) [in=4,085 out=441 total=4,526, 2.9s, run=20,158]
+LLM → Evaluate `wait` against `unwrap_unchecked` (Type Constraint, pattern 2/3) [input≈4,717, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 1/2) [in=2,194 out=396 total=2,590, 2.9s, run=22,748]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 2/2) [input≈2,127, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 2/2) [in=4,953 out=360 total=5,313, 2.3s, run=28,061]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈5,765, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 2/2) [in=2,076 out=427 total=2,503, 2.7s, run=30,564]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈2,674, max_out=4,096]
+LLM ✓ Evaluate `wait` against `unwrap_unchecked` (Type Constraint, pattern 2/3) [in=4,500 out=465 total=4,965, 3.3s, run=35,529]
+LLM → Evaluate `wait` against `unwrap_unchecked` (Type Constraint, pattern 3/3) [input≈4,594, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=5,511 out=473 total=5,984, 3.3s, run=41,513]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈5,820, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=2,634 out=465 total=3,099, 3.4s, run=44,612]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈2,729, max_out=4,096]
+LLM ✓ Evaluate `wait` against `unwrap_unchecked` (Type Constraint, pattern 3/3) [in=4,318 out=388 total=4,706, 3.1s, run=49,318]
+✗ Unsound candidate: everscale-network-0.5.5/src/adnl/queries_cache.rs/wait/51 (callee=unwrap_unchecked, type=Type Constraint); details in final summary.
+↻ Checking samples: ██████░░░░░░░░░░░░░░░░ 1/4 (25%) unsound | everscale-network-0.5.5/src/adnl/queries_cache.rs/wait/51
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=5,595 out=481 total=6,076, 3.1s, run=55,394]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 1/2) [input≈5,607, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=2,718 out=398 total=3,116, 2.9s, run=58,510]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 1/2) [input≈2,516, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 1/2) [in=5,354 out=371 total=5,725, 2.6s, run=64,235]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 2/2) [input≈5,200, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 1/2) [in=2,477 out=341 total=2,818, 2.4s, run=67,053]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 2/2) [input≈2,109, max_out=4,096]
+LLM ✓ Evaluate `gen_fast_bytes` against `assume_init` (Initialized, pattern 1/3) [in=2,314 out=431 total=2,745, 16.0s, run=69,798]
+LLM → Evaluate `gen_fast_bytes` against `assume_init` (Initialized, pattern 2/3) [input≈2,165, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 2/2) [in=4,901 out=313 total=5,214, 2.2s, run=75,012]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈5,764, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 2/2) [in=2,024 out=276 total=2,300, 2.4s, run=77,312]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈2,673, max_out=4,096]
+LLM ✓ Evaluate `gen_fast_bytes` against `assume_init` (Initialized, pattern 2/3) [in=2,125 out=365 total=2,490, 2.1s, run=79,802]
+LLM → Evaluate `gen_fast_bytes` against `assume_init` (Initialized, pattern 3/3) [input≈2,333, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=2,624 out=383 total=3,007, 2.2s, run=82,809]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈2,729, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=5,501 out=487 total=5,988, 2.9s, run=88,797]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈5,820, max_out=4,096]
+LLM ✓ Evaluate `gen_fast_bytes` against `assume_init` (Initialized, pattern 3/3) [in=2,307 out=370 total=2,677, 2.8s, run=91,474]
+LLM → Evaluate `gen_fast_bytes` against `assume_init` (Type Constraint, pattern 1/3) [input≈4,476, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=5,585 out=494 total=6,079, 2.9s, run=97,553]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 1/2) [input≈5,300, max_out=4,096]
+LLM ✓ Evaluate `gen_fast_bytes` against `assume_init` (Type Constraint, pattern 1/3) [in=4,316 out=334 total=4,650, 2.2s, run=102,203]
+LLM → Evaluate `gen_fast_bytes` against `assume_init` (Type Constraint, pattern 2/3) [input≈4,921, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=2,708 out=548 total=3,256, 4.1s, run=105,459]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 1/2) [input≈2,209, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 1/2) [in=2,205 out=250 total=2,455, 1.6s, run=107,914]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 2/2) [input≈2,138, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 1/2) [in=5,082 out=309 total=5,391, 3.2s, run=113,305]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 2/2) [input≈5,229, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Not Null, pattern 2/2) [in=2,087 out=327 total=2,414, 2.1s, run=115,719]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 1/2) [input≈2,525, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Not Null, pattern 2/2) [in=4,964 out=411 total=5,375, 2.8s, run=121,094]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 1/2) [input≈5,616, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 1/2) [in=2,487 out=339 total=2,826, 2.1s, run=123,920]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 2/2) [input≈2,118, max_out=4,096]
+LLM ✓ Evaluate `gen_fast_bytes` against `assume_init` (Type Constraint, pattern 2/3) [in=4,731 out=315 total=5,046, 6.2s, run=128,966]
+LLM → Evaluate `gen_fast_bytes` against `assume_init` (Type Constraint, pattern 3/3) [input≈4,797, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 1/2) [in=5,364 out=384 total=5,748, 3.1s, run=134,714]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 2/2) [input≈5,209, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Aligned, pattern 2/2) [in=2,034 out=384 total=2,418, 2.8s, run=137,132]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Initialized, pattern 1/3) [input≈2,221, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Aligned, pattern 2/2) [in=4,911 out=260 total=5,171, 2.2s, run=142,303]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Initialized, pattern 1/3) [input≈5,312, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Initialized, pattern 1/3) [in=2,188 out=450 total=2,638, 2.9s, run=144,941]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Initialized, pattern 2/3) [input≈2,055, max_out=4,096]
+LLM ✓ Evaluate `gen_fast_bytes` against `assume_init` (Type Constraint, pattern 3/3) [in=4,549 out=408 total=4,957, 5.9s, run=149,898]
+↻ Checking samples: ███████████░░░░░░░░░░░ 2/4 (50%) sound | everscale-network-0.5.5/src/util/fast_rand.rs/gen_fast_bytes/19
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Initialized, pattern 1/3) [in=5,065 out=476 total=5,541, 2.7s, run=155,439]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Initialized, pattern 2/3) [input≈5,146, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Initialized, pattern 2/3) [in=1,999 out=422 total=2,421, 3.0s, run=157,860]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Initialized, pattern 3/3) [input≈2,223, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Initialized, pattern 2/3) [in=4,876 out=383 total=5,259, 2.8s, run=163,119]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Initialized, pattern 3/3) [input≈5,314, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Initialized, pattern 3/3) [in=2,181 out=391 total=2,572, 2.6s, run=165,691]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [input≈2,354, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Initialized, pattern 3/3) [in=5,058 out=405 total=5,463, 2.3s, run=171,154]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [input≈5,445, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [in=2,327 out=373 total=2,700, 4.8s, run=173,854]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [input≈2,571, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [in=2,495 out=419 total=2,914, 2.5s, run=176,768]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [input≈2,174, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [in=5,204 out=458 total=5,662, 7.3s, run=182,430]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [input≈5,662, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [in=2,083 out=452 total=2,535, 3.0s, run=184,965]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [input≈2,686, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [in=5,372 out=362 total=5,734, 3.0s, run=190,699]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [input≈5,265, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [in=4,960 out=350 total=5,310, 2.1s, run=196,009]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [input≈5,777, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [in=2,652 out=463 total=3,115, 4.6s, run=199,124]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Overflow, pattern 1/2) [input≈2,597, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [in=5,529 out=343 total=5,872, 3.0s, run=204,996]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Overflow, pattern 1/2) [input≈5,688, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Overflow, pattern 1/2) [in=2,570 out=456 total=3,026, 3.3s, run=208,022]
+LLM → Evaluate `remove_prefix` against `from_raw_parts_mut` (Overflow, pattern 2/2) [input≈2,692, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Overflow, pattern 1/2) [in=5,447 out=332 total=5,779, 2.4s, run=213,801]
+LLM → Evaluate `start_receiver` against `from_raw_parts_mut` (Overflow, pattern 2/2) [input≈5,783, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `from_raw_parts_mut` (Overflow, pattern 2/2) [in=5,573 out=430 total=6,003, 2.7s, run=219,804]
+LLM → Evaluate `start_receiver` against `set_len` (Numeric Relation, pattern 1/2) [input≈5,256, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `from_raw_parts_mut` (Overflow, pattern 2/2) [in=2,696 out=487 total=3,183, 4.0s, run=222,987]
+LLM → Evaluate `remove_prefix` against `add` (Numeric Relation, pattern 1/2) [input≈2,181, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `set_len` (Numeric Relation, pattern 1/2) [in=4,946 out=563 total=5,509, 3.2s, run=228,496]
+LLM → Evaluate `start_receiver` against `set_len` (Numeric Relation, pattern 2/2) [input≈5,768, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `add` (Numeric Relation, pattern 1/2) [in=2,085 out=519 total=2,604, 3.8s, run=231,100]
+LLM → Evaluate `remove_prefix` against `add` (Numeric Relation, pattern 2/2) [input≈2,693, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `set_len` (Numeric Relation, pattern 2/2) [in=5,515 out=494 total=6,009, 2.6s, run=237,109]
+LLM → Evaluate `start_receiver` against `set_len` (Initialized, pattern 1/3) [input≈5,306, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `add` (Numeric Relation, pattern 2/2) [in=2,654 out=577 total=3,231, 3.4s, run=240,340]
+LLM → Evaluate `remove_prefix` against `add` (Dereferencable, pattern 1/2) [input≈2,699, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `set_len` (Initialized, pattern 1/3) [in=5,060 out=696 total=5,756, 3.9s, run=246,096]
+LLM → Evaluate `start_receiver` against `set_len` (Initialized, pattern 2/3) [input≈5,140, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `add` (Dereferencable, pattern 1/2) [in=2,649 out=417 total=3,066, 2.6s, run=249,162]
+LLM → Evaluate `remove_prefix` against `add` (Dereferencable, pattern 2/2) [input≈2,754, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `set_len` (Initialized, pattern 2/3) [in=4,871 out=563 total=5,434, 3.5s, run=254,596]
+LLM → Evaluate `start_receiver` against `set_len` (Initialized, pattern 3/3) [input≈5,307, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `add` (Dereferencable, pattern 2/2) [in=2,733 out=375 total=3,108, 3.2s, run=257,704]
+LLM → Evaluate `remove_prefix` against `add` (Overflow, pattern 1/2) [input≈2,593, max_out=4,096]
+LLM ✓ Evaluate `remove_prefix` against `add` (Overflow, pattern 1/2) [in=2,560 out=326 total=2,886, 2.8s, run=260,590]
+LLM → Evaluate `remove_prefix` against `add` (Overflow, pattern 2/2) [input≈2,688, max_out=4,096]
+LLM ✓ Evaluate `start_receiver` against `set_len` (Initialized, pattern 3/3) [in=5,053 out=663 total=5,716, 3.5s, run=266,306]
+↻ Checking samples: ████████████████░░░░░░ 3/4 (75%) sound | everscale-network-0.5.5/src/adnl/node/receiver.rs/start_receiver/23
+LLM ✓ Evaluate `remove_prefix` against `add` (Overflow, pattern 2/2) [in=2,686 out=347 total=3,033, 2.4s, run=269,339]
+✗ Unsound candidate: everscale-network-0.5.5/src/adnl/packet_view.rs/remove_prefix/22 (callee=add, type=Overflow); details in final summary.
+↻ Checking samples: ██████████████████████ 4/4 (100%) unsound | everscale-network-0.5.5/src/adnl/packet_view.rs/remove_prefix/22
+
+▸ Summary
+  sound 2 | unsound 2 | unknown 0 | total 4
+  requests 68 | input 242,350 | output 26,989 | total 269,339
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt4o/everscale-network-0.5.5/results.json
+• Elapsed: 253.7s
+
+Unsatisfied contracts:
+  1. everscale-network-0.5.5/src/adnl/queries_cache.rs/wait/51 (1 failed contract)
+  call site: src/adnl/queries_cache.rs:54
+  nearby code
+      52 │ pub async fn wait(mut self) -> Option<Vec<u8>> {
+      53 │         // SAFETY: `data_rx` is guaranteed to be `Some`
+  >   54 │         let data_rx = unsafe { self.data_rx.take().unwrap_unchecked() };
+      55 │         let data = data_rx.await.ok();
+      56 │         self.finished = true;
+     - unwrap_unchecked / Type Constraint: `self` must be `Some`.
+       LLM evidence:
+       1. **Initial State of `self.data_rx`**:
+          - The function `wait` is called on an instance of `PendingAdnlQuery`. We need to ensure that `self.data_rx` is `Some` when `unwrap_unchecked` is called.
+          
+       2. **Usage of `self.data_rx.take()`**:
+          - The method `take` is called on `self.data_rx`, which will replace `self.data_rx` with `None` and return the original value of `self.data_rx`.
+          - If `self.data_rx` was `None` before calling `take`, `take` would return `None`.
+       
+       3. **Call to `unwrap_unchecked`**:
+          - The result of `self.data_rx.take()` is passed to `unwrap_unchecked`.
+          - For `unwrap_unchecked` to be safe, the result of `self.data_rx.take()` must be `Some`.
+       
+       4. **Ensuring `self.data_rx` is `Some`**:
+          - The function does not contain any checks or guarantees that `self.data_rx` is `Some` before calling `take`.
+          - There is no information provided about the initial state of `self.data_rx` or any invariants that ensure `self.data_rx` is `Some` when `wait` is called.
+  2. everscale-network-0.5.5/src/adnl/packet_view.rs/remove_prefix/22 (1 failed contract)
+  call site: src/adnl/packet_view.rs:28
+  nearby code
+      26 │         // SAFETY: `bytes` is already a reference bounded by a lifetime
+      27 │         self.bytes =
+  >   28 │             unsafe { std::slice::from_raw_parts_mut(ptr.add(prefix_len), len - prefix_len) };
+      29 │     }
+     - add / Overflow: The memory range between `self` and the result must not "wrap around" the edge of the address space.
+       LLM evidence:
+       1. `ptr` is obtained from `self.bytes.as_mut_ptr()`, which points to the start of the mutable slice `self.bytes`.
+       2. `prefix_len` is the offset added to `ptr` using the `add` method.
+       3. The contract of `add` requires that the memory range between `ptr` and `ptr.add(prefix_len)` must not wrap around the edge of the address space.
+       
+       To ensure the contract is satisfied:
+       - `prefix_len` must be such that `ptr.add(prefix_len)` does not exceed the bounds of the original slice `self.bytes`.
+       - The length of the original slice `self.bytes` is `len`, so `prefix_len` must be less than or equal to `len` to avoid wrapping around.
+       
+       In the function `remove_prefix`, there is no explicit check to ensure that `prefix_len` is less than or equal to `len`. If `prefix_len` is greater than `len`, the resulting pointer `ptr.add(prefix_len)` could wrap around the address space, violating the contract.

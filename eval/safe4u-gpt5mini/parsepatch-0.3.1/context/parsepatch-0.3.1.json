@@ -1,0 +1,104 @@
+[
+  {
+    "sample_label": "parsepatch-0.3.1/src/parser.rs/parse_numbers/179",
+    "repo_name": "parsepatch-0.3.1",
+    "relative_file": "src/parser.rs",
+    "start_line": 179,
+    "end_line": 218,
+    "start_byte": 4521,
+    "end_byte": 5935,
+    "name": "parse_numbers",
+    "raw_code": "pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {\n        // we know that line is beginning with \"@@ -\"\n        let buf = unsafe { self.buf.get_unchecked(4..) };\n\n        // NUMS_PAT = re.compile(r'^@@ -([0-9]+),?([0-9]+)? \\+([0-9]+),?([0-9]+)? @@')\n        let iter = &mut buf.iter();\n        let old_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let old_lines = if c.is_ascii_digit() {\n            iter.take_while(|&&c| c.is_ascii_digit())\n                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        if c != b'+' {\n            iter.find(|&&c| c == b'+');\n        }\n\n        let new_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let new_lines = if c.is_ascii_digit() {\n            iter.take_while(|&&c| c.is_ascii_digit())\n                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        Ok((old_start, old_lines, new_start, new_lines))\n    }",
+    "code_with_hints": "pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {\n        // we know that line is beginning with \"@@ -\"\n        let buf = unsafe { self.buf.get_unchecked(4..) };\n\n        // NUMS_PAT = re.compile(r'^@@ -([0-9]+),?([0-9]+)? \\+([0-9]+),?([0-9]+)? @@')\n        let iter = &mut buf.iter();\n        let old_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let old_lines = if c.is_ascii_digit() {\n            iter.take_while(|&&c| c.is_ascii_digit())\n                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        if c != b'+' {\n            iter.find(|&&c| c == b'+');\n        }\n\n        let new_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(err: || -> ParsepatchError ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let new_lines: u32 = if c.is_ascii_digit() {\n            iter.take_while(|&&c: u8| -> bool c.is_ascii_digit())\n                .fold(init: u32::from(c - b'0'), f: |r: u32, &c: u8| -> u32 r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        Ok((old_start, old_lines, new_start, new_lines))\n    }",
+    "code_with_type": "pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {\n        // we know that line is beginning with \"@@ -\"\n        let buf = unsafe { self.buf.get_unchecked(4..) };\n\n        // NUMS_PAT = re.compile(r'^@@ -([0-9]+),?([0-9]+)? \\+([0-9]+),?([0-9]+)? @@')\n        let iter = &mut buf.iter();\n        let old_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let old_lines = if c.is_ascii_digit() {\n            iter.take_while(|&&c| c.is_ascii_digit())\n                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        if c != b'+' {\n            iter.find(|&&c| c == b'+');\n        }\n\n        let new_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(|| -> ParsepatchError ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let new_lines: u32 = if c.is_ascii_digit() {\n            iter.take_while(|&&c: u8| -> bool c.is_ascii_digit())\n                .fold(u32::from(c - b'0'), |r: u32, &c: u8| -> u32 r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        Ok((old_start, old_lines, new_start, new_lines))\n    }",
+    "code_with_param": "pub fn parse_numbers(&self) -> Result<(u32, u32, u32, u32)> {\n        // we know that line is beginning with \"@@ -\"\n        let buf = unsafe { self.buf.get_unchecked(4..) };\n\n        // NUMS_PAT = re.compile(r'^@@ -([0-9]+),?([0-9]+)? \\+([0-9]+),?([0-9]+)? @@')\n        let iter = &mut buf.iter();\n        let old_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(|| ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let old_lines = if c.is_ascii_digit() {\n            iter.take_while(|&&c| c.is_ascii_digit())\n                .fold(u32::from(c - b'0'), |r, &c| r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        if c != b'+' {\n            iter.find(|&&c| c == b'+');\n        }\n\n        let new_start = iter\n            .take_while(|&&c| c.is_ascii_digit())\n            .fold(0, |r, &c| r * 10 + u32::from(c - b'0'));\n\n        let c = *iter\n            .next()\n            .ok_or_else(err: || ParsepatchError::InvalidHunkHeader(self.get_line()))?;\n        let new_lines = if c.is_ascii_digit() {\n            iter.take_while(|&&c| c.is_ascii_digit())\n                .fold(init: u32::from(c - b'0'), f: |r, &c| r * 10 + u32::from(c - b'0'))\n        } else {\n            1\n        };\n\n        Ok((old_start, old_lines, new_start, new_lines))\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<(u32, u32, u32, u32)>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "get_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 152,
+        "declaration": "pub unsafe fn get_unchecked<I>(&self, index: I) -> &I::Output\nwhere\n    I: SliceIndex<Self>,",
+        "documentation": "Returns a reference to an element or subslice, without doing bounds\nchecking.\n\nFor a safe alternative see [`get`].\n\n# Safety\n\nCalling this method with an out-of-bounds index is *[undefined behavior]*\neven if the resulting reference is not used.\n\nYou can think of this like `.get(index).unwrap_unchecked()`.  It's UB\nto call `.get_unchecked(len)`, even if you immediately convert to a\npointer.  And it's UB to call `.get_unchecked(..len + 1)`,\n`.get_unchecked(..=len)`, or similar.\n\n[`get`]: slice::get\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = &[1, 2, 4];\n\nunsafe {\n    assert_eq!(x.get_unchecked(1), &2);\n}\n```"
+      },
+      {
+        "src_mod": "Iterator",
+        "name": "take_while",
+        "item_type": "function",
+        "offset_in_fn": 340,
+        "declaration": "pub fn take_while<P>(self, predicate: P) -> TakeWhile<Self, P>\nwhere\n    Self: Sized,\n    P: FnMut(&Self::Item) -> bool,",
+        "documentation": "Creates an iterator that yields elements based on a predicate.\n\n`take_while()` takes a closure as an argument. It will call this\nclosure on each element of the iterator, and yield elements\nwhile it returns `true`.\n\nAfter `false` is returned, `take_while()`'s job is over, and the\nrest of the elements are ignored.\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [-1i32, 0, 1];\n\nlet mut iter = a.iter().take_while(|x| x.is_negative());\n\nassert_eq!(iter.next(), Some(&-1));\nassert_eq!(iter.next(), None);\n```\n\nBecause the closure passed to `take_while()` takes a reference, and many\niterators iterate over references, this leads to a possibly confusing\nsituation, where the type of the closure is a double reference:\n\n```\nlet a = [-1, 0, 1];\n\nlet mut iter = a.iter().take_while(|x| **x < 0); // need two *s!\n\nassert_eq!(iter.next(), Some(&-1));\nassert_eq!(iter.next(), None);\n```\n\nStopping after an initial `false`:\n\n```\nlet a = [-1, 0, 1, -2];\n\nlet mut iter = a.iter().take_while(|x| **x < 0);\n\nassert_eq!(iter.next(), Some(&-1));\n\n// We have more elements that are less than zero, but since we already\n// got a false, take_while() isn't used any more\nassert_eq!(iter.next(), None);\n```\n\nBecause `take_while()` needs to look at the value in order to see if it\nshould be included or not, consuming iterators will see that it is\nremoved:\n\n```\nlet a = [1, 2, 3, 4];\nlet mut iter = a.iter();\n\nlet result: Vec<i32> = iter.by_ref()\n                           .take_while(|n| **n != 3)\n                           .cloned()\n                           .collect();\n\nassert_eq!(result, &[1, 2]);\n\nlet result: Vec<i32> = iter.cloned().collect();\n\nassert_eq!(result, &[4]);\n```\n\nThe `3` is no longer there, because it was consumed in order to see if\nthe iteration should stop, but wasn't placed back into the iterator."
+      },
+      {
+        "src_mod": "",
+        "name": "is_ascii_digit",
+        "item_type": "function",
+        "offset_in_fn": 359,
+        "declaration": "pub const fn is_ascii_digit(&self) -> bool",
+        "documentation": "Checks if the value is an ASCII decimal digit:\nU+0030 '0' ..= U+0039 '9'.\n\n# Examples\n\n```\nlet uppercase_a = b'A';\nlet uppercase_g = b'G';\nlet a = b'a';\nlet g = b'g';\nlet zero = b'0';\nlet percent = b'%';\nlet space = b' ';\nlet lf = b'\\n';\nlet esc = b'\\x1b';\n\nassert!(!uppercase_a.is_ascii_digit());\nassert!(!uppercase_g.is_ascii_digit());\nassert!(!a.is_ascii_digit());\nassert!(!g.is_ascii_digit());\nassert!(zero.is_ascii_digit());\nassert!(!percent.is_ascii_digit());\nassert!(!space.is_ascii_digit());\nassert!(!lf.is_ascii_digit());\nassert!(!esc.is_ascii_digit());\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "fold",
+        "item_type": "function",
+        "offset_in_fn": 390,
+        "declaration": "fn fold<AAA, FFF>(self, init: AAA, fold: FFF) -> AAA\nwhere\n    FFF: FnMut(AAA, Self::Item) -> AAA,",
+        "documentation": "This needs to be up here in order to be usable in the child modules"
+      },
+      {
+        "src_mod": "",
+        "name": "next",
+        "item_type": "function",
+        "offset_in_fn": 473,
+        "declaration": "fn next(&mut self) -> Option<&'a T>",
+        "documentation": "The shared definition of the `Iter` and `IterMut` iterators"
+      },
+      {
+        "src_mod": "",
+        "name": "ok_or_else",
+        "item_type": "function",
+        "offset_in_fn": 493,
+        "declaration": "pub fn ok_or_else<E, F>(self, err: F) -> Result<T, E>\nwhere\n    F: FnOnce() -> E,",
+        "documentation": "Transforms the `Option<T>` into a [`Result<T, E>`], mapping [`Some(v)`] to\n[`Ok(v)`] and [`None`] to [`Err(err())`].\n\n[`Ok(v)`]: Ok\n[`Err(err())`]: Err\n[`Some(v)`]: Some\n\n# Examples\n\n```\nlet x = Some(\"foo\");\nassert_eq!(x.ok_or_else(|| 0), Ok(\"foo\"));\n\nlet x: Option<&str> = None;\nassert_eq!(x.ok_or_else(|| 0), Err(0));\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "InvalidHunkHeader",
+        "item_type": "variant",
+        "offset_in_fn": 524,
+        "declaration": "InvalidHunkHeader(usize)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "get_line",
+        "item_type": "function",
+        "offset_in_fn": 547,
+        "declaration": "fn get_line(&self) -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "find",
+        "item_type": "function",
+        "offset_in_fn": 828,
+        "declaration": "fn find<P>(&mut self, predicate: P) -> Option<Self::Item>\nwhere\n    Self: Sized,\n    P: FnMut(&Self::Item) -> bool,",
+        "documentation": "The shared definition of the `Iter` and `IterMut` iterators"
+      }
+    ],
+    "self_info": {
+      "src_mod": "parser",
+      "name": "LineReader",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "LineReader<'a> {\n    pub buf: &'a [u8],\n    line: usize,\n}",
+      "documentation": ""
+    }
+  }
+]

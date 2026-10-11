@@ -1,0 +1,51 @@
+[package]
+name = "blade-graphics"
+version = "0.4.0"
+edition = "2021"
+description = "Graphics abstraction for Blade"
+keywords = ["graphics"]
+license = "MIT"
+repository = "https://github.com/kvark/blade"
+
+[lib]
+
+[dependencies]
+bitflags = { workspace = true }
+bytemuck = { workspace = true }
+codespan-reporting = "0.11"
+hidden-trait = "0.1"
+log = { workspace = true }
+mint = { workspace = true }
+naga = { workspace = true, features = ["clone"] }
+raw-window-handle = "0.5"
+
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+block = "0.1"
+core-graphics-types = "0.1"
+metal = "0.25"
+objc = "0.2.5"
+naga = { workspace = true, features = ["msl-out"] }
+
+[target.'cfg(any(vulkan, windows, target_os = "linux", target_os = "android"))'.dependencies]
+ash = "0.37"
+ash-window = "0.12"
+gpu-alloc = "0.6"
+gpu-alloc-ash = "0.6"
+naga = { workspace = true, features = ["spv-out"] }
+slab = { workspace = true }
+
+[target.'cfg(any(gles, target_arch = "wasm32"))'.dependencies]
+glow = "0.13"
+naga = { workspace = true, features = ["glsl-out"] }
+
+[target.'cfg(all(gles, not(target_arch = "wasm32")))'.dependencies]
+egl = { package = "khronos-egl", version = "5.0", features = ["dynamic"] }
+libloading = { version = "0.8" }
+
+[target.'cfg(all(target_arch = "wasm32"))'.dependencies]
+wasm-bindgen = "0.2.83"
+web-sys = { workspace = true, features = ["HtmlCanvasElement", "WebGl2RenderingContext"] }
+js-sys = "0.3.60"
+
+[package.metadata.cargo_check_external_types]
+allowed_external_types = ["bitflags::*", "mint::*", "naga::*", "raw_window_handle::*"]

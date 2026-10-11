@@ -1286,13 +1286,13 @@ fn lift_method_call_parts(
         };
         lift_stmts.push(lift_len_stmt);
         let bind_len_stmt: syn::Stmt = parse_quote! {
-            klee_ext_bind::bind_arg_u64(1, #len_ident);
+            klee_ext_bind::bind_arg_field_u64(0, b"len\0", #len_ident);
         };
         lift_stmts.push(bind_len_stmt);
         if let Some(index_arg) = tail_arg_names.first().filter(|name| !name.is_empty()) {
             let index_ident = syn::Ident::new(index_arg, Span::call_site());
             let bind_stmt: syn::Stmt = parse_quote! {
-                klee_ext_bind::bind_arg_rustrange_value(2, &#index_ident, #len_ident);
+                klee_ext_bind::bind_arg_slice_index_value(1, &#index_ident, #len_ident);
             };
             lift_stmts.push(bind_stmt);
         }
@@ -1956,8 +1956,8 @@ impl Rank {
             "unexpected injection:\n{injected}"
         );
         assert!(compact.contains("let__klee_len"));
-        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,__klee_len"));
-        assert!(compact.contains("klee_ext_bind::bind_arg_rustrange_value(2,&block,__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_field_u64(0,b\"len\\0\",__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_slice_index_value(1,&block,__klee_len"));
         assert!(compact.contains("=__klee_arg0.get_unchecked(block);"));
         Ok(())
     }
@@ -2462,8 +2462,8 @@ impl D {
             "unexpected injection:\n{injected}"
         );
         assert!(compact.contains("let__klee_len"));
-        assert!(compact.contains("klee_ext_bind::bind_arg_u64(1,__klee_len"));
-        assert!(compact.contains("klee_ext_bind::bind_arg_rustrange_value(2,&i,__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_field_u64(0,b\"len\\0\",__klee_len"));
+        assert!(compact.contains("klee_ext_bind::bind_arg_slice_index_value(1,&i,__klee_len"));
         assert!(compact.contains("=self.xs.get_unchecked_mut(i);"));
         Ok(())
     }

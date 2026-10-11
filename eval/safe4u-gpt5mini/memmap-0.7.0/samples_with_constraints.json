@@ -1,0 +1,278 @@
+[
+  {
+    "sample_label": "memmap-0.7.0/src/windows.rs/new/29",
+    "repo_name": "memmap-0.7.0",
+    "relative_file": "src/windows.rs",
+    "start_line": 29,
+    "end_line": 74,
+    "start_byte": 931,
+    "end_byte": 2285,
+    "name": "new",
+    "raw_code": "pub fn new(\n        file: &File,\n        protect: DWORD,\n        access: DWORD,\n        offset: u64,\n        len: usize,\n        copy: bool,\n    ) -> io::Result<MmapInner> {\n        let alignment = offset % allocation_granularity() as u64;\n        let aligned_offset = offset - alignment as u64;\n        let aligned_len = len + alignment as usize;\n\n        unsafe {\n            let handle = CreateFileMappingW(\n                file.as_raw_handle(),\n                ptr::null_mut(),\n                protect,\n                0,\n                0,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let ptr = MapViewOfFile(\n                handle,\n                access,\n                (aligned_offset >> 16 >> 16) as DWORD,\n                (aligned_offset & 0xffffffff) as DWORD,\n                aligned_len as SIZE_T,\n            );\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                Err(io::Error::last_os_error())\n            } else {\n                Ok(MmapInner {\n                    file: Some(file.try_clone()?),\n                    ptr: ptr.offset(alignment as isize),\n                    len: len as usize,\n                    copy: copy,\n                })\n            }\n        }\n    }",
+    "code_with_hints": "pub fn new(\n        file: &File,\n        protect: DWORD,\n        access: DWORD,\n        offset: u64,\n        len: usize,\n        copy: bool,\n    ) -> io::Result<MmapInner> {\n        let alignment = offset % allocation_granularity() as u64;\n        let aligned_offset = offset - alignment as u64;\n        let aligned_len = len + alignment as usize;\n\n        unsafe {\n            let handle = CreateFileMappingW(\n                file.as_raw_handle(),\n                ptr::null_mut(),\n                protect,\n                0,\n                0,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let ptr = MapViewOfFile(\n                handle,\n                access,\n                (aligned_offset >> 16 >> 16) as DWORD,\n                (aligned_offset & 0xffffffff) as DWORD,\n                aligned_len as SIZE_T,\n            );\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                Err(io::Error::last_os_error())\n            } else {\n                Ok(MmapInner {\n                    file: Some(file.try_clone()?),\n                    ptr: ptr.offset(alignment as isize),\n                    len: len as usize,\n                    copy: copy,\n                })\n            }\n        }\n    }",
+    "code_with_type": "pub fn new(\n        file: &File,\n        protect: DWORD,\n        access: DWORD,\n        offset: u64,\n        len: usize,\n        copy: bool,\n    ) -> io::Result<MmapInner> {\n        let alignment = offset % allocation_granularity() as u64;\n        let aligned_offset = offset - alignment as u64;\n        let aligned_len = len + alignment as usize;\n\n        unsafe {\n            let handle = CreateFileMappingW(\n                file.as_raw_handle(),\n                ptr::null_mut(),\n                protect,\n                0,\n                0,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let ptr = MapViewOfFile(\n                handle,\n                access,\n                (aligned_offset >> 16 >> 16) as DWORD,\n                (aligned_offset & 0xffffffff) as DWORD,\n                aligned_len as SIZE_T,\n            );\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                Err(io::Error::last_os_error())\n            } else {\n                Ok(MmapInner {\n                    file: Some(file.try_clone()?),\n                    ptr: ptr.offset(alignment as isize),\n                    len: len as usize,\n                    copy: copy,\n                })\n            }\n        }\n    }",
+    "code_with_param": "pub fn new(\n        file: &File,\n        protect: DWORD,\n        access: DWORD,\n        offset: u64,\n        len: usize,\n        copy: bool,\n    ) -> io::Result<MmapInner> {\n        let alignment = offset % allocation_granularity() as u64;\n        let aligned_offset = offset - alignment as u64;\n        let aligned_len = len + alignment as usize;\n\n        unsafe {\n            let handle = CreateFileMappingW(\n                file.as_raw_handle(),\n                ptr::null_mut(),\n                protect,\n                0,\n                0,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let ptr = MapViewOfFile(\n                handle,\n                access,\n                (aligned_offset >> 16 >> 16) as DWORD,\n                (aligned_offset & 0xffffffff) as DWORD,\n                aligned_len as SIZE_T,\n            );\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                Err(io::Error::last_os_error())\n            } else {\n                Ok(MmapInner {\n                    file: Some(file.try_clone()?),\n                    ptr: ptr.offset(alignment as isize),\n                    len: len as usize,\n                    copy: copy,\n                })\n            }\n        }\n    }",
+    "params": [
+      "file",
+      "protect",
+      "access",
+      "offset",
+      "len",
+      "copy"
+    ],
+    "return_type": "io::Result<MmapInner>",
+    "comment": "/// Creates a new `MmapInner`.\n///\n/// This is a thin wrapper around the `CreateFileMappingW` and `MapViewOfFile` system calls.\n",
+    "attributes": "",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "memmap-0.7.0/src/windows.rs/map_anon/154",
+    "repo_name": "memmap-0.7.0",
+    "relative_file": "src/windows.rs",
+    "start_line": 154,
+    "end_line": 193,
+    "start_byte": 4921,
+    "end_byte": 6436,
+    "name": "map_anon",
+    "raw_code": "pub fn map_anon(len: usize, _stack: bool) -> io::Result<MmapInner> {\n        unsafe {\n            // Create a mapping and view with maximum access permissions, then use `VirtualProtect`\n            // to set the actual `Protection`. This way, we can set more permissive protection later\n            // on.\n            // Also see https://msdn.microsoft.com/en-us/library/windows/desktop/aa366537.aspx\n\n            let handle = CreateFileMappingW(\n                INVALID_HANDLE_VALUE,\n                ptr::null_mut(),\n                PAGE_EXECUTE_READWRITE,\n                (len >> 16 >> 16) as DWORD,\n                (len & 0xffffffff) as DWORD,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n            let access = FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE;\n            let ptr = MapViewOfFile(handle, access, 0, 0, len as SIZE_T);\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let mut old = 0;\n            let result = VirtualProtect(ptr, len as SIZE_T, PAGE_READWRITE, &mut old);\n            if result != 0 {\n                Ok(MmapInner {\n                    file: None,\n                    ptr: ptr,\n                    len: len as usize,\n                    copy: false,\n                })\n            } else {\n                Err(io::Error::last_os_error())\n            }\n        }\n    }",
+    "code_with_hints": "pub fn map_anon(len: usize, _stack: bool) -> io::Result<MmapInner> {\n        unsafe {\n            // Create a mapping and view with maximum access permissions, then use `VirtualProtect`\n            // to set the actual `Protection`. This way, we can set more permissive protection later\n            // on.\n            // Also see https://msdn.microsoft.com/en-us/library/windows/desktop/aa366537.aspx\n\n            let handle = CreateFileMappingW(\n                INVALID_HANDLE_VALUE,\n                ptr::null_mut(),\n                PAGE_EXECUTE_READWRITE,\n                (len >> 16 >> 16) as DWORD,\n                (len & 0xffffffff) as DWORD,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n            let access = FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE;\n            let ptr = MapViewOfFile(handle, access, 0, 0, len as SIZE_T);\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let mut old = 0;\n            let result = VirtualProtect(ptr, len as SIZE_T, PAGE_READWRITE, &mut old);\n            if result != 0 {\n                Ok(MmapInner {\n                    file: None,\n                    ptr: ptr,\n                    len: len as usize,\n                    copy: false,\n                })\n            } else {\n                Err(io::Error::last_os_error())\n            }\n        }\n    }",
+    "code_with_type": "pub fn map_anon(len: usize, _stack: bool) -> io::Result<MmapInner> {\n        unsafe {\n            // Create a mapping and view with maximum access permissions, then use `VirtualProtect`\n            // to set the actual `Protection`. This way, we can set more permissive protection later\n            // on.\n            // Also see https://msdn.microsoft.com/en-us/library/windows/desktop/aa366537.aspx\n\n            let handle = CreateFileMappingW(\n                INVALID_HANDLE_VALUE,\n                ptr::null_mut(),\n                PAGE_EXECUTE_READWRITE,\n                (len >> 16 >> 16) as DWORD,\n                (len & 0xffffffff) as DWORD,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n            let access = FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE;\n            let ptr = MapViewOfFile(handle, access, 0, 0, len as SIZE_T);\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let mut old = 0;\n            let result = VirtualProtect(ptr, len as SIZE_T, PAGE_READWRITE, &mut old);\n            if result != 0 {\n                Ok(MmapInner {\n                    file: None,\n                    ptr: ptr,\n                    len: len as usize,\n                    copy: false,\n                })\n            } else {\n                Err(io::Error::last_os_error())\n            }\n        }\n    }",
+    "code_with_param": "pub fn map_anon(len: usize, _stack: bool) -> io::Result<MmapInner> {\n        unsafe {\n            // Create a mapping and view with maximum access permissions, then use `VirtualProtect`\n            // to set the actual `Protection`. This way, we can set more permissive protection later\n            // on.\n            // Also see https://msdn.microsoft.com/en-us/library/windows/desktop/aa366537.aspx\n\n            let handle = CreateFileMappingW(\n                INVALID_HANDLE_VALUE,\n                ptr::null_mut(),\n                PAGE_EXECUTE_READWRITE,\n                (len >> 16 >> 16) as DWORD,\n                (len & 0xffffffff) as DWORD,\n                ptr::null(),\n            );\n            if handle == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n            let access = FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE;\n            let ptr = MapViewOfFile(handle, access, 0, 0, len as SIZE_T);\n            CloseHandle(handle);\n\n            if ptr == ptr::null_mut() {\n                return Err(io::Error::last_os_error());\n            }\n\n            let mut old = 0;\n            let result = VirtualProtect(ptr, len as SIZE_T, PAGE_READWRITE, &mut old);\n            if result != 0 {\n                Ok(MmapInner {\n                    file: None,\n                    ptr: ptr,\n                    len: len as usize,\n                    copy: false,\n                })\n            } else {\n                Err(io::Error::last_os_error())\n            }\n        }\n    }",
+    "params": [
+      "len",
+      "_stack"
+    ],
+    "return_type": "io::Result<MmapInner>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "memmap-0.7.0/src/windows.rs/flush_async/203",
+    "repo_name": "memmap-0.7.0",
+    "relative_file": "src/windows.rs",
+    "start_line": 203,
+    "end_line": 210,
+    "start_byte": 6660,
+    "end_byte": 6951,
+    "name": "flush_async",
+    "raw_code": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let result = unsafe { FlushViewOfFile(self.ptr.offset(offset as isize), len as SIZE_T) };\n        if result != 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_hints": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let result = unsafe { FlushViewOfFile(self.ptr.offset(offset as isize), len as SIZE_T) };\n        if result != 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_type": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let result = unsafe { FlushViewOfFile(self.ptr.offset(offset as isize), len as SIZE_T) };\n        if result != 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_param": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let result = unsafe { FlushViewOfFile(self.ptr.offset(offset as isize), len as SIZE_T) };\n        if result != 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "params": [
+      "self",
+      "offset",
+      "len"
+    ],
+    "return_type": "io::Result<()>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "memmap-0.7.0/src/unix.rs/flush/120",
+    "repo_name": "memmap-0.7.0",
+    "relative_file": "src/unix.rs",
+    "start_line": 120,
+    "end_line": 131,
+    "start_byte": 3181,
+    "end_byte": 3648,
+    "name": "flush",
+    "raw_code": "pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment = (self.ptr as usize + offset) % page_size();\n        let offset = offset as isize - alignment as isize;\n        let len = len + alignment;\n        let result =\n            unsafe { libc::msync(self.ptr.offset(offset), len as libc::size_t, libc::MS_SYNC) };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_hints": "pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment: usize = (self.ptr as usize + offset) % page_size();\n        let offset: isize = offset as isize - alignment as isize;\n        let len: usize = len + alignment;\n        let result: i32 =\n            unsafe { libc::msync(addr: self.ptr.offset(count: offset), len as libc::size_t, flags: libc::MS_SYNC) };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_type": "pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment: usize = (self.ptr as usize + offset) % page_size();\n        let offset: isize = offset as isize - alignment as isize;\n        let len: usize = len + alignment;\n        let result: i32 =\n            unsafe { libc::msync(self.ptr.offset(offset), len as libc::size_t, libc::MS_SYNC) };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_param": "pub fn flush(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment = (self.ptr as usize + offset) % page_size();\n        let offset = offset as isize - alignment as isize;\n        let len = len + alignment;\n        let result =\n            unsafe { libc::msync(addr: self.ptr.offset(count: offset), len as libc::size_t, flags: libc::MS_SYNC) };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "params": [
+      "self",
+      "offset",
+      "len"
+    ],
+    "return_type": "io::Result<()>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "unix",
+        "name": "page_size",
+        "item_type": "function",
+        "offset_in_fn": 122,
+        "declaration": "fn page_size() -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "msync",
+        "item_type": "function",
+        "offset_in_fn": 277,
+        "declaration": "pub unsafe fn msync(addr: *mut c_void, len: size_t, flags: c_int) -> c_int",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 292,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      },
+      {
+        "src_mod": "unix",
+        "name": "size_t",
+        "item_type": "type_alias",
+        "offset_in_fn": 321,
+        "declaration": "size_t = usize;",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "last_os_error",
+        "item_type": "function",
+        "offset_in_fn": 435,
+        "declaration": "pub fn last_os_error() -> Error",
+        "documentation": "Returns an error representing the last OS error which occurred.\n\nThis function reads the value of `errno` for the target platform (e.g.\n`GetLastError` on Windows) and will return a corresponding instance of\n[`Error`] for the error code.\n\nThis should be called immediately after a call to a platform function,\notherwise the state of the error value is indeterminate. In particular,\nother standard library functions may call platform functions that may\n(or may not) reset the error value even if they succeed.\n\n# Examples\n\n```\nuse std::io::Error;\n\nlet os_error = Error::last_os_error();\nprintln!(\"last OS error: {os_error:?}\");\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "unix",
+      "name": "MmapInner",
+      "item_type": "struct",
+      "offset_in_fn": 14,
+      "declaration": "MmapInner {\n    ptr: *mut libc::c_void,\n    len: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.",
+        "fn_name": "offset",
+        "type": "Overflow"
+      },
+      {
+        "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+        "fn_name": "offset",
+        "type": "Workflow"
+      },
+      {
+        "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.",
+        "fn_name": "offset",
+        "type": "Dereferencable"
+      }
+    ]
+  },
+  {
+    "sample_label": "memmap-0.7.0/src/unix.rs/flush_async/133",
+    "repo_name": "memmap-0.7.0",
+    "relative_file": "src/unix.rs",
+    "start_line": 133,
+    "end_line": 149,
+    "start_byte": 3654,
+    "end_byte": 4200,
+    "name": "flush_async",
+    "raw_code": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment = offset % page_size();\n        let aligned_offset = offset - alignment;\n        let aligned_len = len + alignment;\n        let result = unsafe {\n            libc::msync(\n                self.ptr.offset(aligned_offset as isize),\n                aligned_len as libc::size_t,\n                libc::MS_ASYNC,\n            )\n        };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_hints": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment: usize = offset % page_size();\n        let aligned_offset: usize = offset - alignment;\n        let aligned_len: usize = len + alignment;\n        let result: i32 = unsafe {\n            libc::msync(\n                addr: self.ptr.offset(count: aligned_offset as isize),\n                aligned_len as libc::size_t,\n                flags: libc::MS_ASYNC,\n            )\n        };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_type": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment: usize = offset % page_size();\n        let aligned_offset: usize = offset - alignment;\n        let aligned_len: usize = len + alignment;\n        let result: i32 = unsafe {\n            libc::msync(\n                self.ptr.offset(aligned_offset as isize),\n                aligned_len as libc::size_t,\n                libc::MS_ASYNC,\n            )\n        };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "code_with_param": "pub fn flush_async(&self, offset: usize, len: usize) -> io::Result<()> {\n        let alignment = offset % page_size();\n        let aligned_offset = offset - alignment;\n        let aligned_len = len + alignment;\n        let result = unsafe {\n            libc::msync(\n                addr: self.ptr.offset(count: aligned_offset as isize),\n                aligned_len as libc::size_t,\n                flags: libc::MS_ASYNC,\n            )\n        };\n        if result == 0 {\n            Ok(())\n        } else {\n            Err(io::Error::last_os_error())\n        }\n    }",
+    "params": [
+      "self",
+      "offset",
+      "len"
+    ],
+    "return_type": "io::Result<()>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "unix",
+        "name": "page_size",
+        "item_type": "function",
+        "offset_in_fn": 106,
+        "declaration": "fn page_size() -> usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "msync",
+        "item_type": "function",
+        "offset_in_fn": 259,
+        "declaration": "pub unsafe fn msync(addr: *mut c_void, len: size_t, flags: c_int) -> c_int",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 291,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      },
+      {
+        "src_mod": "unix",
+        "name": "size_t",
+        "item_type": "type_alias",
+        "offset_in_fn": 361,
+        "declaration": "size_t = usize;",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "last_os_error",
+        "item_type": "function",
+        "offset_in_fn": 514,
+        "declaration": "pub fn last_os_error() -> Error",
+        "documentation": "Returns an error representing the last OS error which occurred.\n\nThis function reads the value of `errno` for the target platform (e.g.\n`GetLastError` on Windows) and will return a corresponding instance of\n[`Error`] for the error code.\n\nThis should be called immediately after a call to a platform function,\notherwise the state of the error value is indeterminate. In particular,\nother standard library functions may call platform functions that may\n(or may not) reset the error value even if they succeed.\n\n# Examples\n\n```\nuse std::io::Error;\n\nlet os_error = Error::last_os_error();\nprintln!(\"last OS error: {os_error:?}\");\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "unix",
+      "name": "MmapInner",
+      "item_type": "struct",
+      "offset_in_fn": 20,
+      "declaration": "MmapInner {\n    ptr: *mut libc::c_void,\n    len: usize,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.",
+        "fn_name": "offset",
+        "type": "Overflow"
+      },
+      {
+        "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+        "fn_name": "offset",
+        "type": "Workflow"
+      },
+      {
+        "content": "If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.",
+        "fn_name": "offset",
+        "type": "Dereferencable"
+      }
+    ]
+  }
+]

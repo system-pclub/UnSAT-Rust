@@ -126,12 +126,21 @@ def lint_rule_semantics(rule: str, ast: Expression) -> list[DSLLintIssue]:
             "span a single allocation",
         )
     )
-    if allocation_bounds and "within" not in calls and "cstr" not in text:
+    explicit_range_bounds = (
+        {"start", "end"}.issubset(fields)
+        and bool({"memory_range", "memory_between"} & calls)
+    )
+    if (
+        allocation_bounds
+        and "within" not in calls
+        and not explicit_range_bounds
+        and "cstr" not in text
+    ):
         issues.append(
             DSLLintIssue(
                 "error",
                 "missing-within",
-                "an allocation-containment rule must be expressed with within",
+                "an allocation-containment rule must compare MemoryRange start/end bounds",
             )
         )
     if (
@@ -230,6 +239,21 @@ def lint_dsl_ast(
                     f"{node.name} expects {expected} arguments, got {len(node.args)}",
                 )
 
+            if node.name == "get_field" and len(node.args) == 2:
+                base, field = node.args
+                if not isinstance(field, Literal) or not isinstance(field.value, str):
+                    add(
+                        "error",
+                        "field-name-literal",
+                        "get_field field name must be a string literal",
+                    )
+                elif isinstance(base, CallExpression) and base.name == "get_arg":
+                    # get_arg is intentionally typed as Value in operators.json.
+                    # Its concrete Rust type is available only at the callsite,
+                    # so fields such as slice.len and SliceIndex.start/end cannot
+                    # be checked by this source-independent linter yet.
+                    pass
+
             if node.name == "is_valid_for" and len(node.args) == 2:
                 access = node.args[1]
                 if not isinstance(access, Literal) or not isinstance(access.value, str):
@@ -250,13 +274,6 @@ def lint_dsl_ast(
                         "unsupported-access-kind",
                         f"is_valid_for access kind {access.value!r} is not translated by KLEE",
                     )
-
-            if node.name == "is_initialized":
-                add(
-                    "warning",
-                    "untyped-initialization",
-                    "use is_initialized_for_type(range, type_info) for Rust value validity",
-                )
 
             if node.name == "is_valid_for_c_str":
                 add(

@@ -1,0 +1,588 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/stackvector-1.1.1
+  model: gpt-5.4-mini-2026-03-17
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt5mini/stackvector-1.1.1
+  evaluation jobs: 4
+
+▸ Extract Candidates
+↻ Scanning Rust files: ███████████░░░░░░░░░░░ 1/2 (50%) 0 candidates | build.rs
+↻ Scanning Rust files: ██████████████████████ 2/2 (100%) 15 candidates | src/lib.rs
+✓ Detected 15 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "stackvector-1.1.1"
+✓ Context ready.
+• Context samples: 15
+  src/lib.rs
+    ● from_vec:352 | unsafe callees: from_vec_unchecked | context refs: 3
+      - from_vec_unchecked: pub unsafe fn from_vec_unchecked(vec: Vec<A::Item>) -> StackVec<A>
+    ● from_buf_and_len:403 | unsafe callees: from_buf_and_len_unchecked | context refs: 2
+      - from_buf_and_len_unchecked: pub unsafe fn from_buf_and_len_unchecked(buf: A, len: usize) -> StackVec<A>
+    ● drain:459 | unsafe callees: from_raw_parts_mut, set_len | context refs: 2
+      - from_raw_parts_mut: pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]
+      - set_len: pub unsafe fn set_len(&mut self, new_len: usize)
+    ● push:472 | unsafe callees: padd | context refs: 1
+      - padd: unsafe fn padd(self, count: usize) -> Self
+    ● pop:482 | unsafe callees: read, padd | context refs: 1
+      - read: pub const unsafe fn read<T>(src: *const T) -> T
+      - padd: unsafe fn padd(self, count: usize) -> Self
+    ● truncate:498 | unsafe callees: drop_in_place, padd | context refs: 0
+      - drop_in_place: pub unsafe fn drop_in_place<T>(to_drop: *mut T) where T: ?Sized,
+      - padd: unsafe fn padd(self, count: usize) -> Self
+    ● swap_remove:529 | unsafe callees: unchecked_unwrap | context refs: 2
+      - unchecked_unwrap: unsafe fn unchecked_unwrap(self) -> T
+    ● remove:545 | unsafe callees: padd, read, copy, offset | context refs: 1
+      - padd: unsafe fn padd(self, count: usize) -> Self
+      - read: pub const unsafe fn read<T>(src: *const T) -> T
+      - copy: pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+    ● insert:559 | unsafe callees: padd, copy, offset | context refs: 1
+      - padd: unsafe fn padd(self, count: usize) -> Self
+      - copy: pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+    ● insert_many:571 | unsafe callees: add, copy, padd, set_len | context refs: 7
+      - add: pub const unsafe fn add(self, count: usize) -> Self where T: Sized,
+      - copy: pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)
+      - padd: unsafe fn padd(self, count: usize) -> Self
+      - set_len: pub unsafe fn set_len(&mut self, new_len: usize)
+    ● into_inner:643 | unsafe callees: read | context refs: 2
+      - read: pub const unsafe fn read<T>(src: *const T) -> T
+    ● dedup_by:682 | unsafe callees: offset | context refs: 6
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+    ● from_slice:730 | unsafe callees: copy_nonoverlapping | context refs: 4
+      - copy_nonoverlapping: pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)
+    ● insert_from_slice:747 | unsafe callees: padd, copy, copy_nonoverlapping, set_len | context refs: 1
+      - padd: unsafe fn padd(self, count: usize) -> Self
+      - copy: pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)
+      - copy_nonoverlapping: pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)
+      - set_len: pub unsafe fn set_len(&mut self, new_len: usize)
+    ● from_elem:796 | unsafe callees: offset | context refs: 3
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+↻ Decomposing samples: █░░░░░░░░░░░░░░░░░░░░░ 1/15 ( 7%) 0 constraints | stackvector-1.1.1/src/lib.rs/from_vec/351
+↻ Decomposing samples: ███░░░░░░░░░░░░░░░░░░░ 2/15 (13%) 0 constraints | stackvector-1.1.1/src/lib.rs/from_buf_and_len/402
+LLM → Decompose safety contracts for `from_raw_parts_mut` [input≈4,840, max_out=4,096]
+LLM ✓ Decompose safety contracts for `from_raw_parts_mut` [in=4,581 out=211 total=4,792, 2.4s, run=4,792]
+LLM → Critique decomposed safety contracts for `from_raw_parts_mut` [input≈1,894, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `from_raw_parts_mut` [in=1,627 out=1,904 total=3,531, 10.9s, run=8,323]
+LLM → Refine decomposed safety contracts for `from_raw_parts_mut` [input≈1,701, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `from_raw_parts_mut` [in=1,488 out=208 total=1,696, 1.8s, run=10,019]
+LLM → Critique decomposed safety contracts for `from_raw_parts_mut` [input≈1,889, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `from_raw_parts_mut` [in=1,624 out=1,829 total=3,453, 10.6s, run=13,472]
+LLM → Refine decomposed safety contracts for `from_raw_parts_mut` [input≈1,697, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `from_raw_parts_mut` [in=1,485 out=196 total=1,681, 1.4s, run=15,153]
+LLM → Critique decomposed safety contracts for `from_raw_parts_mut` [input≈1,883, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `from_raw_parts_mut` [in=1,612 out=1,810 total=3,422, 9.9s, run=18,575]
+LLM → Refine decomposed safety contracts for `from_raw_parts_mut` [input≈1,690, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `from_raw_parts_mut` [in=1,473 out=193 total=1,666, 1.4s, run=20,241]
+↻ Decomposing samples: ████░░░░░░░░░░░░░░░░░░ 3/15 (20%) 7 constraints | stackvector-1.1.1/src/lib.rs/drain/458
+↻ Decomposing samples: ██████░░░░░░░░░░░░░░░░ 4/15 (27%) 0 constraints | stackvector-1.1.1/src/lib.rs/push/471
+LLM → Decompose safety contracts for `read` [input≈4,566, max_out=4,096]
+LLM ✓ Decompose safety contracts for `read` [in=4,330 out=83 total=4,413, 1.0s, run=24,654]
+LLM → Critique decomposed safety contracts for `read` [input≈1,471, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `read` [in=1,251 out=729 total=1,980, 4.6s, run=26,634]
+↻ Decomposing samples: ███████░░░░░░░░░░░░░░░ 5/15 (33%) 4 constraints | stackvector-1.1.1/src/lib.rs/pop/481
+LLM → Decompose safety contracts for `drop_in_place` [input≈4,983, max_out=4,096]
+LLM ✓ Decompose safety contracts for `drop_in_place` [in=4,765 out=171 total=4,936, 1.4s, run=31,570]
+LLM → Critique decomposed safety contracts for `drop_in_place` [input≈1,975, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `drop_in_place` [in=1,772 out=1,293 total=3,065, 7.8s, run=34,635]
+LLM → Refine decomposed safety contracts for `drop_in_place` [input≈1,782, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `drop_in_place` [in=1,633 out=171 total=1,804, 1.7s, run=36,439]
+LLM → Critique decomposed safety contracts for `drop_in_place` [input≈1,974, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `drop_in_place` [in=1,772 out=1,671 total=3,443, 10.0s, run=39,882]
+LLM → Refine decomposed safety contracts for `drop_in_place` [input≈1,781, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `drop_in_place` [in=1,633 out=191 total=1,824, 5.3s, run=41,706]
+LLM → Critique decomposed safety contracts for `drop_in_place` [input≈1,994, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `drop_in_place` [in=1,792 out=1,329 total=3,121, 8.2s, run=44,827]
+LLM → Refine decomposed safety contracts for `drop_in_place` [input≈1,802, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `drop_in_place` [in=1,653 out=191 total=1,844, 1.4s, run=46,671]
+↻ Decomposing samples: █████████░░░░░░░░░░░░░ 6/15 (40%) 6 constraints | stackvector-1.1.1/src/lib.rs/truncate/497
+↻ Decomposing samples: ██████████░░░░░░░░░░░░ 7/15 (47%) 0 constraints | stackvector-1.1.1/src/lib.rs/swap_remove/528
+↻ Decomposing samples: ████████████░░░░░░░░░░ 8/15 (53%) 12 constraints | stackvector-1.1.1/src/lib.rs/remove/544
+↻ Decomposing samples: █████████████░░░░░░░░░ 9/15 (60%) 8 constraints | stackvector-1.1.1/src/lib.rs/insert/558
+↻ Decomposing samples: ███████████████░░░░░░░ 10/15 (67%) 9 constraints | stackvector-1.1.1/src/lib.rs/insert_many/570
+↻ Decomposing samples: ████████████████░░░░░░ 11/15 (73%) 4 constraints | stackvector-1.1.1/src/lib.rs/into_inner/642
+↻ Decomposing samples: ██████████████████░░░░ 12/15 (80%) 3 constraints | stackvector-1.1.1/src/lib.rs/dedup_by/681
+↻ Decomposing samples: ███████████████████░░░ 13/15 (87%) 5 constraints | stackvector-1.1.1/src/lib.rs/from_slice/729
+↻ Decomposing samples: █████████████████████░ 14/15 (93%) 10 constraints | stackvector-1.1.1/src/lib.rs/insert_from_slice/746
+↻ Decomposing samples: ██████████████████████ 15/15 (100%) 3 constraints | stackvector-1.1.1/src/lib.rs/from_elem/795
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 15
+• Resolved unsafe callees: 29
+  src/lib.rs
+    ● from_vec:352 (0 constraints) | unsafe: from_vec_unchecked
+      - no safety constraints found
+    ● from_buf_and_len:403 (0 constraints) | unsafe: from_buf_and_len_unchecked
+      - no safety constraints found
+    ● drain:459 (7 constraints) | unsafe: from_raw_parts_mut, set_len
+      - from_raw_parts_mut / Not Null, Aligned: `data` must be non-null and properly aligned, including for zero-length slices and slices of zero-sized types.
+      - from_raw_parts_mut / Dereferencable: `data` must be valid for reads and writes for `len * size_of::<T>()` bytes.
+      - from_raw_parts_mut / Dereferencable: The referenced memory must be contained within a single allocated object and must not span multiple allocations.
+      - from_raw_parts_mut / Initialized: `data` must point to `len` consecutive properly initialized values of type `T`.
+      - from_raw_parts_mut / Exclusive: For the lifetime `'a`, the memory referenced by the returned slice must not be accessed through any other pointer not derived from the returned slice, for either reads or writes.
+      - from_raw_parts_mut / Numeric Relation: `len * size_of::<T>()` must be no larger than `isize::MAX`.
+      - from_raw_parts_mut / Overflow: Adding the slice size to `data` must not wrap around the address space.
+    ● push:472 (0 constraints) | unsafe: padd
+      - no safety constraints found
+    ● pop:482 (4 constraints) | unsafe: read, padd
+      - read / Dereferencable: `src` must be valid for reads.
+      - read / Aligned: `src` must be properly aligned, even if `T` has size 0.
+      - read / Initialized: `src` must point to a properly initialized value of type `T`.
+      - read / Not Null: `src` must be non-null, even if `T` has size 0.
+    ● truncate:498 (6 constraints) | unsafe: drop_in_place, padd
+      - drop_in_place / Dereferencable: `to_drop` must be valid for both reads and writes.
+      - drop_in_place / Aligned: `to_drop` must be properly aligned, even if `T` has size 0.
+      - drop_in_place / Not Null: `to_drop` must be nonnull, even if `T` has size 0.
+      - drop_in_place / Type Constraint: The value pointed to by `to_drop` must be valid for dropping, including any type-specific invariants required by that value.
+      - drop_in_place / Exclusive: While `drop_in_place` is executing, `to_drop` must not be accessed except through the `&mut self` references passed to `Drop::drop`.
+      - drop_in_place / End of Use: If `T` is not `Copy`, the pointed-to value must not be used after calling `drop_in_place`; for example, writing `*to_drop = foo` would be a use because it drops the old value agai…
+    ● swap_remove:529 (0 constraints) | unsafe: unchecked_unwrap
+      - no safety constraints found
+    ● remove:545 (12 constraints) | unsafe: padd, read, copy, offset
+      - read / Dereferencable: `src` must be valid for reads.
+      - read / Aligned: `src` must be properly aligned, even if `T` has size 0.
+      - read / Initialized: `src` must point to a properly initialized value of type `T`.
+      - read / Not Null: `src` must be non-null, even if `T` has size 0.
+      - copy / Dereferencable: `src` must be valid for reads of `count * size_of::<T>()` bytes, and it must remain valid even when `dst` is written for `count * size_of::<T>()` bytes. If the memory ranges overl…
+      - copy / Allocated: `dst` must be valid for writes of `count * size_of::<T>()` bytes, and it must remain valid even when `src` is read for `count * size_of::<T>()` bytes.
+      - copy / Aligned: `src` and `dst` must be properly aligned.
+      - copy / End of Use: If `T` is not `Copy`, the values in both the source region starting at `*src` and the destination region starting at `*dst` must not both be used afterward.
+      - copy / Not Null: `src` and `dst` must be non-null even when `count * size_of::<T>() == 0`.
+      - offset / Overflow: The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+      - offset / Workflow: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+      - offset / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge…
+    ● insert:559 (8 constraints) | unsafe: padd, copy, offset
+      - copy / Dereferencable: `src` must be valid for reads of `count * size_of::<T>()` bytes, and it must remain valid even when `dst` is written for `count * size_of::<T>()` bytes. If the memory ranges overl…
+      - copy / Allocated: `dst` must be valid for writes of `count * size_of::<T>()` bytes, and it must remain valid even when `src` is read for `count * size_of::<T>()` bytes.
+      - copy / Aligned: `src` and `dst` must be properly aligned.
+      - copy / End of Use: If `T` is not `Copy`, the values in both the source region starting at `*src` and the destination region starting at `*dst` must not both be used afterward.
+      - copy / Not Null: `src` and `dst` must be non-null even when `count * size_of::<T>() == 0`.
+      - offset / Overflow: The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+      - offset / Workflow: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+      - offset / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge…
+    ● insert_many:571 (9 constraints) | unsafe: add, copy, padd, set_len
+      - add / Overflow: The computed byte offset `count * size_of::<T>()` must fit in `isize` without overflowing.
+      - add / Allocated: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+      - add / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must lie within that allocated object.
+      - add / Overflow: If the computed offset is non-zero, the pointer range between `self` and the result must not wrap around the edge of the address space.
+      - copy / Dereferencable: `src` must be valid for reads of `count * size_of::<T>()` bytes, and it must remain valid even when `dst` is written for `count * size_of::<T>()` bytes. If the memory ranges overl…
+      - copy / Allocated: `dst` must be valid for writes of `count * size_of::<T>()` bytes, and it must remain valid even when `src` is read for `count * size_of::<T>()` bytes.
+      - copy / Aligned: `src` and `dst` must be properly aligned.
+      - copy / End of Use: If `T` is not `Copy`, the values in both the source region starting at `*src` and the destination region starting at `*dst` must not both be used afterward.
+      - copy / Not Null: `src` and `dst` must be non-null even when `count * size_of::<T>() == 0`.
+    ● into_inner:643 (4 constraints) | unsafe: read
+      - read / Dereferencable: `src` must be valid for reads.
+      - read / Aligned: `src` must be properly aligned, even if `T` has size 0.
+      - read / Initialized: `src` must point to a properly initialized value of type `T`.
+      - read / Not Null: `src` must be non-null, even if `T` has size 0.
+    ● dedup_by:682 (3 constraints) | unsafe: offset
+      - offset / Overflow: The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+      - offset / Workflow: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+      - offset / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge…
+    ● from_slice:730 (5 constraints) | unsafe: copy_nonoverlapping
+      - copy_nonoverlapping / Dereferencable: `src` must be valid for reads of `count * size_of::<T>()` bytes.
+      - copy_nonoverlapping / Allocated: `dst` must be valid for writes of `count * size_of::<T>()` bytes.
+      - copy_nonoverlapping / Aligned: `src` and `dst` must be properly aligned.
+      - copy_nonoverlapping / Exclusive: The memory region beginning at `src` with size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `dst` with the same size.
+      - copy_nonoverlapping / Not Null: `src` and `dst` must be non-null, even when `count * size_of::<T>() == 0`.
+    ● insert_from_slice:747 (10 constraints) | unsafe: padd, copy, copy_nonoverlapping, set_len
+      - copy / Dereferencable: `src` must be valid for reads of `count * size_of::<T>()` bytes, and it must remain valid even when `dst` is written for `count * size_of::<T>()` bytes. If the memory ranges overl…
+      - copy / Allocated: `dst` must be valid for writes of `count * size_of::<T>()` bytes, and it must remain valid even when `src` is read for `count * size_of::<T>()` bytes.
+      - copy / Aligned: `src` and `dst` must be properly aligned.
+      - copy / End of Use: If `T` is not `Copy`, the values in both the source region starting at `*src` and the destination region starting at `*dst` must not both be used afterward.
+      - copy / Not Null: `src` and `dst` must be non-null even when `count * size_of::<T>() == 0`.
+      - copy_nonoverlapping / Dereferencable: `src` must be valid for reads of `count * size_of::<T>()` bytes.
+      - copy_nonoverlapping / Allocated: `dst` must be valid for writes of `count * size_of::<T>()` bytes.
+      - copy_nonoverlapping / Aligned: `src` and `dst` must be properly aligned.
+      - copy_nonoverlapping / Exclusive: The memory region beginning at `src` with size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `dst` with the same size.
+      - copy_nonoverlapping / Not Null: `src` and `dst` must be non-null, even when `count * size_of::<T>() == 0`.
+    ● from_elem:796 (3 constraints) | unsafe: offset
+      - offset / Overflow: The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+      - offset / Workflow: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+      - offset / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge…
+
+▸ Evaluate Encapsulations
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Not Null, Aligned, pattern 1/2) [input≈2,445, max_out=4,096]
+LLM → Evaluate `pop` against `read` (Dereferencable, pattern 1/2) [input≈2,727, max_out=4,096]
+LLM → Evaluate `truncate` against `drop_in_place` (Dereferencable, pattern 1/2) [input≈2,976, max_out=4,096]
+LLM → Evaluate `remove` against `read` (Dereferencable, pattern 1/2) [input≈3,051, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Dereferencable, pattern 1/2) [in=2,925 out=316 total=3,241, 2.7s, run=49,912]
+LLM → Evaluate `truncate` against `drop_in_place` (Dereferencable, pattern 2/2) [input≈3,031, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Dereferencable, pattern 1/2) [in=2,675 out=312 total=2,987, 2.8s, run=52,899]
+LLM → Evaluate `pop` against `read` (Dereferencable, pattern 2/2) [input≈2,782, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Dereferencable, pattern 1/2) [in=3,018 out=380 total=3,398, 2.7s, run=56,297]
+LLM → Evaluate `remove` against `read` (Dereferencable, pattern 2/2) [input≈3,106, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Not Null, Aligned, pattern 1/2) [in=2,430 out=380 total=2,810, 4.4s, run=59,107]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Not Null, Aligned, pattern 2/2) [input≈2,374, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Dereferencable, pattern 2/2) [in=3,102 out=248 total=3,350, 2.2s, run=62,457]
+LLM → Evaluate `remove` against `read` (Aligned, pattern 1/2) [input≈2,914, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Dereferencable, pattern 2/2) [in=3,009 out=321 total=3,330, 2.8s, run=65,787]
+LLM → Evaluate `truncate` against `drop_in_place` (Aligned, pattern 1/2) [input≈2,835, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Dereferencable, pattern 2/2) [in=2,759 out=330 total=3,089, 3.0s, run=68,876]
+LLM → Evaluate `pop` against `read` (Aligned, pattern 1/2) [input≈2,590, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Not Null, Aligned, pattern 2/2) [in=2,312 out=369 total=2,681, 2.5s, run=71,557]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈2,896, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Aligned, pattern 1/2) [in=2,888 out=341 total=3,229, 2.7s, run=74,786]
+LLM → Evaluate `remove` against `read` (Aligned, pattern 2/2) [input≈2,507, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Aligned, pattern 1/2) [in=2,792 out=304 total=3,096, 2.7s, run=77,882]
+LLM → Evaluate `truncate` against `drop_in_place` (Aligned, pattern 2/2) [input≈2,428, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Aligned, pattern 1/2) [in=2,545 out=363 total=2,908, 2.5s, run=80,790]
+LLM → Evaluate `pop` against `read` (Aligned, pattern 2/2) [input≈2,183, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=2,851 out=396 total=3,247, 2.9s, run=84,037]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈2,951, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Aligned, pattern 2/2) [in=2,435 out=336 total=2,771, 2.4s, run=86,808]
+LLM → Evaluate `remove` against `read` (Initialized, pattern 1/3) [input≈2,609, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Aligned, pattern 2/2) [in=2,092 out=291 total=2,383, 2.4s, run=89,191]
+LLM → Evaluate `pop` against `read` (Initialized, pattern 1/3) [input≈2,285, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Aligned, pattern 2/2) [in=2,339 out=296 total=2,635, 2.4s, run=91,826]
+LLM → Evaluate `truncate` against `drop_in_place` (Not Null, pattern 1/2) [input≈2,516, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=2,935 out=344 total=3,279, 2.3s, run=95,105]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [input≈2,905, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Initialized, pattern 1/3) [in=2,586 out=267 total=2,853, 2.0s, run=97,958]
+LLM → Evaluate `remove` against `read` (Initialized, pattern 2/3) [input≈2,443, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Initialized, pattern 1/3) [in=2,243 out=298 total=2,541, 2.2s, run=100,499]
+LLM → Evaluate `pop` against `read` (Initialized, pattern 2/3) [input≈2,119, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Not Null, pattern 1/2) [in=2,509 out=399 total=2,908, 3.0s, run=103,407]
+LLM → Evaluate `truncate` against `drop_in_place` (Not Null, pattern 2/2) [input≈2,445, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 1/2) [in=2,847 out=365 total=3,212, 2.7s, run=106,619]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [input≈2,960, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Initialized, pattern 2/3) [in=2,397 out=393 total=2,790, 2.9s, run=109,409]
+LLM → Evaluate `remove` against `read` (Initialized, pattern 3/3) [input≈2,610, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Not Null, pattern 2/2) [in=2,391 out=290 total=2,681, 2.3s, run=112,090]
+LLM → Evaluate `truncate` against `drop_in_place` (Type Constraint, pattern 1/3) [input≈4,690, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Dereferencable, pattern 2/2) [in=2,931 out=303 total=3,234, 2.5s, run=115,324]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Initialized, pattern 1/3) [input≈2,447, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Initialized, pattern 2/3) [in=2,054 out=332 total=2,386, 4.9s, run=117,710]
+LLM → Evaluate `pop` against `read` (Initialized, pattern 3/3) [input≈2,286, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Initialized, pattern 3/3) [in=2,579 out=455 total=3,034, 3.1s, run=120,744]
+LLM → Evaluate `remove` against `read` (Not Null, pattern 1/2) [input≈2,596, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Type Constraint, pattern 1/3) [in=4,502 out=353 total=4,855, 3.3s, run=125,599]
+LLM → Evaluate `truncate` against `drop_in_place` (Type Constraint, pattern 2/3) [input≈5,135, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Initialized, pattern 3/3) [in=2,236 out=346 total=2,582, 2.4s, run=128,181]
+LLM → Evaluate `pop` against `read` (Not Null, pattern 1/2) [input≈2,272, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Initialized, pattern 1/3) [in=2,409 out=380 total=2,789, 2.9s, run=130,970]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Initialized, pattern 2/3) [input≈2,281, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Not Null, pattern 1/2) [in=2,605 out=285 total=2,890, 2.3s, run=133,860]
+LLM → Evaluate `remove` against `read` (Not Null, pattern 2/2) [input≈2,525, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Type Constraint, pattern 2/3) [in=4,917 out=375 total=5,292, 3.5s, run=139,152]
+LLM → Evaluate `truncate` against `drop_in_place` (Type Constraint, pattern 3/3) [input≈5,011, max_out=4,096]
+LLM ✓ Evaluate `remove` against `read` (Not Null, pattern 2/2) [in=2,487 out=309 total=2,796, 2.5s, run=141,948]
+LLM → Evaluate `remove` against `copy` (Dereferencable, pattern 1/2) [input≈3,110, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Not Null, pattern 1/2) [in=2,262 out=309 total=2,571, 3.1s, run=144,519]
+LLM → Evaluate `pop` against `read` (Not Null, pattern 2/2) [input≈2,201, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Initialized, pattern 2/3) [in=2,220 out=507 total=2,727, 3.6s, run=147,246]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Initialized, pattern 3/3) [input≈2,449, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Dereferencable, pattern 1/2) [in=3,079 out=394 total=3,473, 2.8s, run=150,719]
+LLM → Evaluate `remove` against `copy` (Dereferencable, pattern 2/2) [input≈3,165, max_out=4,096]
+LLM ✓ Evaluate `pop` against `read` (Not Null, pattern 2/2) [in=2,144 out=404 total=2,548, 2.6s, run=153,267]
+LLM → Evaluate `insert` against `copy` (Dereferencable, pattern 1/2) [input≈3,053, max_out=4,096]
+↻ Checking samples: ██░░░░░░░░░░░░░░░░░░░░ 1/11 ( 9%) sound | stackvector-1.1.1/src/lib.rs/pop/481
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Type Constraint, pattern 3/3) [in=4,735 out=413 total=5,148, 3.5s, run=158,415]
+LLM → Evaluate `truncate` against `drop_in_place` (Exclusive, pattern 1/2) [input≈2,659, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Initialized, pattern 3/3) [in=2,402 out=423 total=2,825, 2.7s, run=161,240]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [input≈2,584, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Dereferencable, pattern 1/2) [in=3,018 out=341 total=3,359, 2.7s, run=164,599]
+LLM → Evaluate `insert` against `copy` (Dereferencable, pattern 2/2) [input≈3,108, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Dereferencable, pattern 2/2) [in=3,163 out=434 total=3,597, 2.9s, run=168,196]
+LLM → Evaluate `remove` against `copy` (Allocated, pattern 1/2) [input≈3,497, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Exclusive, pattern 1/2) [in=2,550 out=411 total=2,961, 3.0s, run=171,157]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [input≈2,802, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Exclusive, pattern 1/2) [in=2,634 out=464 total=3,098, 4.3s, run=174,255]
+LLM → Evaluate `truncate` against `drop_in_place` (Exclusive, pattern 2/2) [input≈2,876, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Allocated, pattern 1/2) [in=3,415 out=417 total=3,832, 2.8s, run=178,087]
+LLM → Evaluate `remove` against `copy` (Allocated, pattern 2/2) [input≈3,401, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Dereferencable, pattern 2/2) [in=3,102 out=503 total=3,605, 4.3s, run=181,692]
+LLM → Evaluate `insert` against `copy` (Allocated, pattern 1/2) [input≈3,440, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (Exclusive, pattern 2/2) [in=2,802 out=441 total=3,243, 3.0s, run=184,935]
+LLM → Evaluate `truncate` against `drop_in_place` (End of Use, pattern 1/2) [input≈2,888, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Allocated, pattern 2/2) [in=3,327 out=343 total=3,670, 2.5s, run=188,605]
+LLM → Evaluate `remove` against `copy` (Aligned, pattern 1/2) [input≈2,911, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Exclusive, pattern 2/2) [in=2,718 out=386 total=3,104, 4.9s, run=191,709]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [input≈2,392, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Allocated, pattern 1/2) [in=3,354 out=431 total=3,785, 3.1s, run=195,494]
+LLM → Evaluate `insert` against `copy` (Allocated, pattern 2/2) [input≈3,344, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (End of Use, pattern 1/2) [in=2,825 out=324 total=3,149, 2.4s, run=198,643]
+LLM → Evaluate `truncate` against `drop_in_place` (End of Use, pattern 2/2) [input≈2,888, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Numeric Relation, pattern 1/2) [in=2,296 out=342 total=2,638, 2.3s, run=201,281]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [input≈2,904, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Aligned, pattern 1/2) [in=2,882 out=370 total=3,252, 2.8s, run=204,533]
+LLM → Evaluate `remove` against `copy` (Aligned, pattern 2/2) [input≈2,503, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Aligned, pattern 2/2) [in=2,429 out=328 total=2,757, 3.4s, run=207,290]
+LLM ✓ Evaluate `insert` against `copy` (Allocated, pattern 2/2) [in=3,266 out=324 total=3,590, 4.3s, run=210,880]
+LLM → Evaluate `insert` against `copy` (Aligned, pattern 1/2) [input≈2,853, max_out=4,096]
+LLM → Evaluate `remove` against `copy` (End of Use, pattern 1/2) [input≈2,932, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Numeric Relation, pattern 2/2) [in=2,865 out=300 total=3,165, 4.7s, run=214,045]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Overflow, pattern 1/2) [input≈2,815, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Aligned, pattern 1/2) [in=2,821 out=375 total=3,196, 3.0s, run=217,241]
+LLM → Evaluate `insert` against `copy` (Aligned, pattern 2/2) [input≈2,446, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Overflow, pattern 1/2) [in=2,778 out=328 total=3,106, 2.6s, run=220,347]
+LLM → Evaluate `drain` against `from_raw_parts_mut` (Overflow, pattern 2/2) [input≈2,911, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (End of Use, pattern 1/2) [in=2,899 out=565 total=3,464, 3.8s, run=223,811]
+LLM → Evaluate `remove` against `copy` (End of Use, pattern 2/2) [input≈2,525, max_out=4,096]
+LLM ✓ Evaluate `truncate` against `drop_in_place` (End of Use, pattern 2/2) [in=2,814 out=349 total=3,163, 8.2s, run=226,974]
+↻ Checking samples: ████░░░░░░░░░░░░░░░░░░ 2/11 (18%) sound | stackvector-1.1.1/src/lib.rs/truncate/497
+LLM → Evaluate `insert_many` against `add` (Overflow, pattern 1/2) [input≈3,892, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Aligned, pattern 2/2) [in=2,368 out=298 total=2,666, 2.5s, run=229,640]
+LLM → Evaluate `insert` against `copy` (End of Use, pattern 1/2) [input≈2,875, max_out=4,096]
+LLM ✓ Evaluate `drain` against `from_raw_parts_mut` (Overflow, pattern 2/2) [in=2,904 out=359 total=3,263, 2.7s, run=232,903]
+LLM → Evaluate `into_inner` against `read` (Dereferencable, pattern 1/2) [input≈2,715, max_out=4,096]
+↻ Checking samples: ██████░░░░░░░░░░░░░░░░ 3/11 (27%) sound | stackvector-1.1.1/src/lib.rs/drain/458
+LLM ✓ Evaluate `remove` against `copy` (End of Use, pattern 2/2) [in=2,446 out=342 total=2,788, 2.8s, run=235,691]
+LLM → Evaluate `remove` against `copy` (Not Null, pattern 1/2) [input≈2,602, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Overflow, pattern 1/2) [in=3,821 out=571 total=4,392, 4.3s, run=240,083]
+LLM → Evaluate `insert_many` against `add` (Overflow, pattern 2/2) [input≈3,988, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (End of Use, pattern 1/2) [in=2,838 out=392 total=3,230, 2.9s, run=243,313]
+LLM → Evaluate `insert` against `copy` (End of Use, pattern 2/2) [input≈2,467, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Dereferencable, pattern 1/2) [in=2,663 out=375 total=3,038, 3.0s, run=246,351]
+LLM → Evaluate `into_inner` against `read` (Dereferencable, pattern 2/2) [input≈2,770, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Not Null, pattern 1/2) [in=2,613 out=498 total=3,111, 3.4s, run=249,462]
+LLM → Evaluate `remove` against `copy` (Not Null, pattern 2/2) [input≈2,531, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (End of Use, pattern 2/2) [in=2,385 out=382 total=2,767, 2.7s, run=252,229]
+LLM → Evaluate `insert` against `copy` (Not Null, pattern 1/2) [input≈2,545, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Dereferencable, pattern 2/2) [in=2,747 out=383 total=3,130, 2.8s, run=255,359]
+LLM → Evaluate `into_inner` against `read` (Aligned, pattern 1/2) [input≈2,578, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Overflow, pattern 2/2) [in=3,947 out=540 total=4,487, 3.8s, run=259,846]
+LLM → Evaluate `insert_many` against `add` (Allocated, pattern 1/2) [input≈4,390, max_out=4,096]
+LLM ✓ Evaluate `remove` against `copy` (Not Null, pattern 2/2) [in=2,495 out=474 total=2,969, 3.0s, run=262,815]
+LLM → Evaluate `remove` against `offset` (Overflow, pattern 1/2) [input≈2,987, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Not Null, pattern 1/2) [in=2,552 out=441 total=2,993, 3.2s, run=265,808]
+LLM → Evaluate `insert` against `copy` (Not Null, pattern 2/2) [input≈2,474, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Allocated, pattern 1/2) [in=4,250 out=292 total=4,542, 2.5s, run=270,350]
+LLM → Evaluate `insert_many` against `add` (Allocated, pattern 2/2) [input≈4,294, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Aligned, pattern 1/2) [in=2,533 out=303 total=2,836, 2.7s, run=273,186]
+LLM → Evaluate `into_inner` against `read` (Aligned, pattern 2/2) [input≈2,171, max_out=4,096]
+LLM ✓ Evaluate `remove` against `offset` (Overflow, pattern 1/2) [in=2,965 out=406 total=3,371, 3.1s, run=276,557]
+LLM → Evaluate `remove` against `offset` (Overflow, pattern 2/2) [input≈3,082, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Allocated, pattern 2/2) [in=4,162 out=438 total=4,600, 2.8s, run=281,157]
+LLM → Evaluate `insert_many` against `add` (Dereferencable, pattern 1/2) [input≈3,981, max_out=4,096]
+LLM ✓ Evaluate `insert` against `copy` (Not Null, pattern 2/2) [in=2,434 out=486 total=2,920, 3.5s, run=284,077]
+LLM → Evaluate `insert` against `offset` (Overflow, pattern 1/2) [input≈2,929, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Aligned, pattern 2/2) [in=2,080 out=430 total=2,510, 3.6s, run=286,587]
+LLM → Evaluate `into_inner` against `read` (Initialized, pattern 1/3) [input≈2,273, max_out=4,096]
+LLM ✓ Evaluate `remove` against `offset` (Overflow, pattern 2/2) [in=3,091 out=472 total=3,563, 3.3s, run=290,150]
+LLM → Evaluate `remove` against `offset` (Workflow, pattern 1/1) [input≈3,926, max_out=4,096]
+LLM ✓ Evaluate `insert` against `offset` (Overflow, pattern 1/2) [in=2,904 out=348 total=3,252, 2.5s, run=293,402]
+LLM → Evaluate `insert` against `offset` (Overflow, pattern 2/2) [input≈3,025, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Initialized, pattern 1/3) [in=2,231 out=334 total=2,565, 3.0s, run=295,967]
+LLM → Evaluate `into_inner` against `read` (Initialized, pattern 2/3) [input≈2,106, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Dereferencable, pattern 1/2) [in=3,892 out=606 total=4,498, 4.4s, run=300,465]
+LLM → Evaluate `insert_many` against `add` (Dereferencable, pattern 2/2) [input≈4,037, max_out=4,096]
+LLM ✓ Evaluate `remove` against `offset` (Workflow, pattern 1/1) [in=3,898 out=528 total=4,426, 3.5s, run=304,891]
+LLM → Evaluate `remove` against `offset` (Dereferencable, pattern 1/2) [input≈3,094, max_out=4,096]
+LLM ✓ Evaluate `insert` against `offset` (Overflow, pattern 2/2) [in=3,030 out=310 total=3,340, 2.5s, run=308,231]
+LLM → Evaluate `insert` against `offset` (Workflow, pattern 1/1) [input≈3,868, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Initialized, pattern 2/3) [in=2,042 out=350 total=2,392, 3.1s, run=310,623]
+LLM → Evaluate `into_inner` against `read` (Initialized, pattern 3/3) [input≈2,274, max_out=4,096]
+LLM ✓ Evaluate `insert` against `offset` (Workflow, pattern 1/1) [in=3,837 out=385 total=4,222, 2.9s, run=314,845]
+LLM → Evaluate `insert` against `offset` (Dereferencable, pattern 1/2) [input≈3,036, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Dereferencable, pattern 2/2) [in=3,976 out=743 total=4,719, 4.5s, run=319,564]
+LLM → Evaluate `insert_many` against `add` (Overflow, pattern 1/2) [input≈3,903, max_out=4,096]
+LLM ✓ Evaluate `remove` against `offset` (Dereferencable, pattern 1/2) [in=3,049 out=523 total=3,572, 4.2s, run=323,136]
+LLM → Evaluate `remove` against `offset` (Dereferencable, pattern 2/2) [input≈3,149, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Initialized, pattern 3/3) [in=2,224 out=437 total=2,661, 3.1s, run=325,797]
+LLM → Evaluate `into_inner` against `read` (Not Null, pattern 1/2) [input≈2,259, max_out=4,096]
+LLM ✓ Evaluate `insert` against `offset` (Dereferencable, pattern 1/2) [in=2,988 out=472 total=3,460, 3.1s, run=329,257]
+LLM → Evaluate `insert` against `offset` (Dereferencable, pattern 2/2) [input≈3,092, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Overflow, pattern 1/2) [in=3,827 out=375 total=4,202, 3.2s, run=333,459]
+LLM → Evaluate `insert_many` against `add` (Overflow, pattern 2/2) [input≈3,999, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Not Null, pattern 1/2) [in=2,250 out=387 total=2,637, 2.8s, run=336,096]
+LLM → Evaluate `into_inner` against `read` (Not Null, pattern 2/2) [input≈2,189, max_out=4,096]
+LLM ✓ Evaluate `remove` against `offset` (Dereferencable, pattern 2/2) [in=3,133 out=469 total=3,602, 3.4s, run=339,698]
+LLM → Evaluate `dedup_by` against `offset` (Overflow, pattern 1/2) [input≈3,376, max_out=4,096]
+↻ Checking samples: ████████░░░░░░░░░░░░░░ 4/11 (36%) sound | stackvector-1.1.1/src/lib.rs/remove/544
+LLM ✓ Evaluate `insert` against `offset` (Dereferencable, pattern 2/2) [in=3,072 out=386 total=3,458, 2.7s, run=343,156]
+↻ Checking samples: ██████████░░░░░░░░░░░░ 5/11 (45%) sound | stackvector-1.1.1/src/lib.rs/insert/558
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 1/2) [input≈3,046, max_out=4,096]
+LLM ✓ Evaluate `into_inner` against `read` (Not Null, pattern 2/2) [in=2,132 out=252 total=2,384, 1.9s, run=345,540]
+↻ Checking samples: ████████████░░░░░░░░░░ 6/11 (55%) sound | stackvector-1.1.1/src/lib.rs/into_inner/642
+LLM → Evaluate `insert_from_slice` against `copy` (Dereferencable, pattern 1/2) [input≈3,297, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `add` (Overflow, pattern 2/2) [in=3,953 out=429 total=4,382, 3.1s, run=349,922]
+LLM → Evaluate `insert_many` against `copy` (Dereferencable, pattern 1/2) [input≈4,016, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 1/2) [in=3,003 out=266 total=3,269, 2.3s, run=353,191]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 2/2) [input≈3,101, max_out=4,096]
+LLM ✓ Evaluate `dedup_by` against `offset` (Overflow, pattern 1/2) [in=3,401 out=490 total=3,891, 3.7s, run=357,082]
+LLM → Evaluate `dedup_by` against `offset` (Overflow, pattern 2/2) [input≈3,471, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 2/2) [in=3,087 out=268 total=3,355, 2.0s, run=360,437]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Allocated, pattern 1/2) [input≈3,463, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Dereferencable, pattern 1/2) [in=3,238 out=542 total=3,780, 4.0s, run=364,217]
+LLM → Evaluate `insert_from_slice` against `copy` (Dereferencable, pattern 2/2) [input≈3,352, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Dereferencable, pattern 1/2) [in=3,936 out=720 total=4,656, 4.8s, run=368,873]
+LLM → Evaluate `insert_many` against `copy` (Dereferencable, pattern 2/2) [input≈4,072, max_out=4,096]
+LLM ✓ Evaluate `dedup_by` against `offset` (Overflow, pattern 2/2) [in=3,527 out=464 total=3,991, 4.2s, run=372,864]
+LLM → Evaluate `dedup_by` against `offset` (Workflow, pattern 1/1) [input≈4,315, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Allocated, pattern 1/2) [in=3,365 out=391 total=3,756, 2.7s, run=376,620]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Allocated, pattern 2/2) [input≈3,367, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Dereferencable, pattern 2/2) [in=3,322 out=651 total=3,973, 4.3s, run=380,593]
+LLM → Evaluate `insert_from_slice` against `copy` (Allocated, pattern 1/2) [input≈3,684, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Allocated, pattern 2/2) [in=3,277 out=322 total=3,599, 2.3s, run=384,192]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Aligned, pattern 1/2) [input≈2,897, max_out=4,096]
+LLM ✓ Evaluate `dedup_by` against `offset` (Workflow, pattern 1/1) [in=4,334 out=396 total=4,730, 2.8s, run=388,922]
+LLM → Evaluate `dedup_by` against `offset` (Dereferencable, pattern 1/2) [input≈3,483, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Dereferencable, pattern 2/2) [in=4,020 out=785 total=4,805, 4.9s, run=393,727]
+LLM → Evaluate `insert_many` against `copy` (Allocated, pattern 1/2) [input≈4,403, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Aligned, pattern 1/2) [in=2,856 out=295 total=3,151, 2.2s, run=396,878]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Aligned, pattern 2/2) [input≈2,490, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Allocated, pattern 1/2) [in=3,574 out=430 total=4,004, 3.2s, run=400,882]
+LLM → Evaluate `insert_from_slice` against `copy` (Allocated, pattern 2/2) [input≈3,588, max_out=4,096]
+LLM ✓ Evaluate `dedup_by` against `offset` (Dereferencable, pattern 1/2) [in=3,485 out=460 total=3,945, 3.2s, run=404,827]
+LLM → Evaluate `dedup_by` against `offset` (Dereferencable, pattern 2/2) [input≈3,538, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Aligned, pattern 2/2) [in=2,403 out=349 total=2,752, 2.5s, run=407,579]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Exclusive, pattern 1/2) [input≈2,730, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Allocated, pattern 2/2) [in=3,486 out=503 total=3,989, 3.2s, run=411,568]
+LLM → Evaluate `insert_from_slice` against `copy` (Aligned, pattern 1/2) [input≈3,097, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Allocated, pattern 1/2) [in=4,272 out=876 total=5,148, 5.5s, run=416,716]
+LLM → Evaluate `insert_many` against `copy` (Allocated, pattern 2/2) [input≈4,308, max_out=4,096]
+LLM ✓ Evaluate `dedup_by` against `offset` (Dereferencable, pattern 2/2) [in=3,569 out=508 total=4,077, 3.3s, run=420,793]
+LLM → Evaluate `from_elem` against `offset` (Overflow, pattern 1/2) [input≈2,744, max_out=4,096]
+↻ Checking samples: ██████████████░░░░░░░░ 7/11 (64%) sound | stackvector-1.1.1/src/lib.rs/dedup_by/681
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Exclusive, pattern 1/2) [in=2,706 out=378 total=3,084, 2.8s, run=423,877]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Exclusive, pattern 2/2) [input≈2,948, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Aligned, pattern 1/2) [in=3,041 out=526 total=3,567, 3.5s, run=427,444]
+LLM → Evaluate `insert_from_slice` against `copy` (Aligned, pattern 2/2) [input≈2,690, max_out=4,096]
+LLM ✓ Evaluate `from_elem` against `offset` (Overflow, pattern 1/2) [in=2,748 out=364 total=3,112, 2.8s, run=430,556]
+LLM → Evaluate `from_elem` against `offset` (Overflow, pattern 2/2) [input≈2,840, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Exclusive, pattern 2/2) [in=2,874 out=305 total=3,179, 2.4s, run=433,735]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Not Null, pattern 1/2) [input≈2,589, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Allocated, pattern 2/2) [in=4,184 out=627 total=4,811, 4.1s, run=438,546]
+LLM → Evaluate `insert_many` against `copy` (Aligned, pattern 1/2) [input≈3,817, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Aligned, pattern 2/2) [in=2,588 out=282 total=2,870, 2.2s, run=441,416]
+LLM → Evaluate `insert_from_slice` against `copy` (End of Use, pattern 1/2) [input≈3,119, max_out=4,096]
+LLM ✓ Evaluate `from_elem` against `offset` (Overflow, pattern 2/2) [in=2,874 out=437 total=3,311, 3.0s, run=444,727]
+LLM → Evaluate `from_elem` against `offset` (Workflow, pattern 1/1) [input≈3,683, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Not Null, pattern 1/2) [in=2,588 out=453 total=3,041, 3.1s, run=447,768]
+LLM → Evaluate `from_slice` against `copy_nonoverlapping` (Not Null, pattern 2/2) [input≈2,518, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Aligned, pattern 1/2) [in=3,739 out=509 total=4,248, 3.2s, run=452,016]
+LLM → Evaluate `insert_many` against `copy` (Aligned, pattern 2/2) [input≈3,410, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (End of Use, pattern 1/2) [in=3,058 out=435 total=3,493, 3.0s, run=455,509]
+LLM → Evaluate `insert_from_slice` against `copy` (End of Use, pattern 2/2) [input≈2,711, max_out=4,096]
+LLM ✓ Evaluate `from_slice` against `copy_nonoverlapping` (Not Null, pattern 2/2) [in=2,470 out=359 total=2,829, 2.4s, run=458,338]
+↻ Checking samples: ████████████████░░░░░░ 8/11 (73%) sound | stackvector-1.1.1/src/lib.rs/from_slice/729
+LLM ✓ Evaluate `insert_many` against `copy` (Aligned, pattern 2/2) [in=3,286 out=310 total=3,596, 2.6s, run=461,934]
+LLM → Evaluate `insert_many` against `copy` (End of Use, pattern 1/2) [input≈3,838, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (End of Use, pattern 2/2) [in=2,605 out=462 total=3,067, 3.2s, run=465,001]
+LLM → Evaluate `insert_from_slice` against `copy` (Not Null, pattern 1/2) [input≈2,789, max_out=4,096]
+LLM ✓ Evaluate `from_elem` against `offset` (Workflow, pattern 1/1) [in=3,681 out=472 total=4,153, 7.3s, run=469,154]
+LLM → Evaluate `from_elem` against `offset` (Dereferencable, pattern 1/2) [input≈2,852, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Not Null, pattern 1/2) [in=2,772 out=356 total=3,128, 2.5s, run=472,282]
+LLM → Evaluate `insert_from_slice` against `copy` (Not Null, pattern 2/2) [input≈2,718, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (End of Use, pattern 1/2) [in=3,756 out=739 total=4,495, 5.3s, run=476,777]
+LLM → Evaluate `insert_many` against `copy` (End of Use, pattern 2/2) [input≈3,431, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy` (Not Null, pattern 2/2) [in=2,654 out=359 total=3,013, 2.6s, run=479,790]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 1/2) [input≈3,250, max_out=4,096]
+LLM ✓ Evaluate `from_elem` against `offset` (Dereferencable, pattern 1/2) [in=2,832 out=324 total=3,156, 4.6s, run=482,946]
+LLM → Evaluate `from_elem` against `offset` (Dereferencable, pattern 2/2) [input≈2,907, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 1/2) [in=3,191 out=348 total=3,539, 2.4s, run=486,485]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 2/2) [input≈3,305, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (End of Use, pattern 2/2) [in=3,303 out=518 total=3,821, 4.0s, run=490,306]
+LLM → Evaluate `insert_many` against `copy` (Not Null, pattern 1/2) [input≈3,508, max_out=4,096]
+LLM ✓ Evaluate `from_elem` against `offset` (Dereferencable, pattern 2/2) [in=2,916 out=389 total=3,305, 2.8s, run=493,611]
+↻ Checking samples: ██████████████████░░░░ 9/11 (82%) sound | stackvector-1.1.1/src/lib.rs/from_elem/795
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Dereferencable, pattern 2/2) [in=3,275 out=275 total=3,550, 2.1s, run=497,161]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Allocated, pattern 1/2) [input≈3,666, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Not Null, pattern 1/2) [in=3,470 out=600 total=4,070, 4.2s, run=501,231]
+LLM → Evaluate `insert_many` against `copy` (Not Null, pattern 2/2) [input≈3,438, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Allocated, pattern 1/2) [in=3,553 out=332 total=3,885, 2.5s, run=505,116]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Allocated, pattern 2/2) [input≈3,570, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Allocated, pattern 2/2) [in=3,465 out=302 total=3,767, 2.6s, run=508,883]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Aligned, pattern 1/2) [input≈3,101, max_out=4,096]
+LLM ✓ Evaluate `insert_many` against `copy` (Not Null, pattern 2/2) [in=3,352 out=688 total=4,040, 4.6s, run=512,923]
+↻ Checking samples: ████████████████████░░ 10/11 (91%) sound | stackvector-1.1.1/src/lib.rs/insert_many/570
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Aligned, pattern 1/2) [in=3,044 out=399 total=3,443, 3.2s, run=516,366]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Aligned, pattern 2/2) [input≈2,694, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Aligned, pattern 2/2) [in=2,591 out=368 total=2,959, 3.0s, run=519,325]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Exclusive, pattern 1/2) [input≈2,934, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Exclusive, pattern 1/2) [in=2,894 out=422 total=3,316, 3.9s, run=522,641]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Exclusive, pattern 2/2) [input≈3,151, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Exclusive, pattern 2/2) [in=3,062 out=444 total=3,506, 3.7s, run=526,147]
+✗ Unsound candidate: stackvector-1.1.1/src/lib.rs/insert_from_slice/746 (callee=copy_nonoverlapping, type=Exclusive); details in final summary.
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Not Null, pattern 1/2) [input≈2,793, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Not Null, pattern 1/2) [in=2,776 out=362 total=3,138, 2.8s, run=529,285]
+LLM → Evaluate `insert_from_slice` against `copy_nonoverlapping` (Not Null, pattern 2/2) [input≈2,722, max_out=4,096]
+LLM ✓ Evaluate `insert_from_slice` against `copy_nonoverlapping` (Not Null, pattern 2/2) [in=2,658 out=304 total=2,962, 2.3s, run=532,247]
+↻ Checking samples: ██████████████████████ 11/11 (100%) unsound | stackvector-1.1.1/src/lib.rs/insert_from_slice/746
+
+▸ Summary
+  sound 10 | unsound 1 | unknown 0 | total 11
+  requests 159 | input 461,984 | output 70,263 | total 532,247
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt5mini/stackvector-1.1.1/results.json
+• Elapsed: 266.9s
+
+Unsatisfied contracts:
+  1. stackvector-1.1.1/src/lib.rs/insert_from_slice/746 (1 failed contract)
+  call site: src/lib.rs:754
+  nearby code
+     752 │             let ptr = self.as_mut_ptr().padd(index);
+     753 │             ptr::copy(ptr, ptr.padd(slice.len()), len - index);
+  >  754 │             ptr::copy_nonoverlapping(slice_ptr, ptr, slice.len());
+     755 │             self.set_len(len + slice.len());
+     756 │         }
+     - copy_nonoverlapping / Exclusive: The memory region beginning at `src` with size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `dst` with the same size.
+       LLM evidence:
+       ## 1. Code snippet that calls the unsafe callee
+       
+       The unsafe call to `copy_nonoverlapping` is:
+       
+       ```rust
+       ptr::copy_nonoverlapping(src: slice_ptr, dst: ptr, count: slice.len());
+       ```
+       
+       ---
+       
+       ## 2. Expressions highly related to the contract
+       
+       - `slice_ptr = slice.as_ptr()`  
+         Source region of the copy.
+       - `ptr = self.as_mut_ptr().padd(count: index)`  
+         Destination region of the copy.
+       - `slice.len()`  
+         Number of elements copied.
+       - The assertion:
+         ```rust
+         assert!(index <= self.len() && self.len() + slice.len() <= self.capacity());
+         ```
+       
+       ---
+       
+       ## 3. Step-by-step analysis of the contract
+       
+       The contract for `copy_nonoverlapping` requires that the memory region at `src` and the memory region at `dst` do **not overlap**.
+       
+       ### Source region
+       `src` is `slice_ptr`, which points to the contents of the input slice `slice`.
+       
+       ### Destination region
+       `dst` is `ptr`, which points into the vector's internal buffer at position `index`.
+       
+       ### Are they guaranteed not to overlap?
+       No.
+       
+       This function accepts:
+       - `&mut self`
+       - `index: usize`
+       - `slice: &[A::Item]`
+       
+       The source slice is arbitrary and untrusted. Nothing in the code prevents `slice` from referring to memory inside `self`'s storage. For example, a caller could potentially pass a slice derived from the same vector or from overlapping memory.
+       
+       The preceding `ptr::copy(...)` shifts the tail of the vector within `self`, but it does not establish any non-overlap relationship between `slice_ptr` and `ptr`. The later `copy_nonoverlapping` assumes the input slice is separate from the destination, but this is not enforced by the function’s signature or by any runtime check.
+       
+       Therefore, the required non-overlap contract is **not guaranteed**.
+       
+       ---
+       
+       ## 4. Final determination
+       
+       **No**

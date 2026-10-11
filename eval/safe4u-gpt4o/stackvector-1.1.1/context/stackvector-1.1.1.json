@@ -1,0 +1,985 @@
+[
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/from_vec/351",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 351,
+    "end_line": 354,
+    "start_byte": 9291,
+    "end_byte": 9438,
+    "name": "from_vec",
+    "raw_code": "pub fn from_vec(vec: Vec<A::Item>) -> StackVec<A> {\n        assert!(vec.len() <= A::size());\n        unsafe { Self::from_vec_unchecked(vec) }\n    }",
+    "code_with_hints": "pub fn from_vec(vec: Vec<A::Item>) -> StackVec<A> {\n        assert!(vec.len() <= A::size());\n        unsafe { Self::from_vec_unchecked(vec) }\n    }",
+    "code_with_type": "pub fn from_vec(vec: Vec<A::Item>) -> StackVec<A> {\n        assert!(vec.len() <= A::size());\n        unsafe { Self::from_vec_unchecked(vec) }\n    }",
+    "code_with_param": "pub fn from_vec(vec: Vec<A::Item>) -> StackVec<A> {\n        assert!(vec.len() <= A::size());\n        unsafe { Self::from_vec_unchecked(vec) }\n    }",
+    "params": [
+      "vec"
+    ],
+    "return_type": "StackVec<A>",
+    "comment": "/// Construct a new `StackVec` from a `Vec<A::Item>`.\n///\n/// Elements will be copied to the inline buffer if vec.len() <= A::size().\n///\n/// ```rust\n/// use stackvector::StackVec;\n///\n/// let vec = vec![1, 2, 3, 4, 5];\n/// let stack_vec: StackVec<[_; 5]> = StackVec::from_vec(vec);\n///\n/// assert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 28,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "StackVec",
+        "item_type": "struct",
+        "offset_in_fn": 38,
+        "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+        "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "A",
+        "item_type": "type_param",
+        "offset_in_fn": 47,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "from_vec_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 116,
+        "declaration": "pub unsafe fn from_vec_unchecked(vec: Vec<A::Item>) -> StackVec<A>",
+        "documentation": "Construct a new `StackVec` from a `Vec<A::Item>` without bounds checking."
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/from_buf_and_len/402",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 402,
+    "end_line": 405,
+    "start_byte": 10853,
+    "end_byte": 11020,
+    "name": "from_buf_and_len",
+    "raw_code": "pub fn from_buf_and_len(buf: A, len: usize) -> StackVec<A> {\n        assert!(len <= A::size());\n        unsafe { StackVec::from_buf_and_len_unchecked(buf, len) }\n    }",
+    "code_with_hints": "pub fn from_buf_and_len(buf: A, len: usize) -> StackVec<A> {\n        assert!(len <= A::size());\n        unsafe { StackVec::from_buf_and_len_unchecked(buf, len) }\n    }",
+    "code_with_type": "pub fn from_buf_and_len(buf: A, len: usize) -> StackVec<A> {\n        assert!(len <= A::size());\n        unsafe { StackVec::from_buf_and_len_unchecked(buf, len) }\n    }",
+    "code_with_param": "pub fn from_buf_and_len(buf: A, len: usize) -> StackVec<A> {\n        assert!(len <= A::size());\n        unsafe { StackVec::from_buf_and_len_unchecked(buf, len) }\n    }",
+    "params": [
+      "buf",
+      "len"
+    ],
+    "return_type": "StackVec<A>",
+    "comment": "/// Constructs a new `StackVec` on the stack from an `A` without\n/// copying elements. Also sets the length, which must be less or\n/// equal to the size of `buf`.\n///\n/// ```rust\n/// use stackvector::StackVec;\n///\n/// let buf = [1, 2, 3, 4, 5, 0, 0, 0];\n/// let stack_vec: StackVec<_> = StackVec::from_buf_and_len(buf, 5);\n///\n/// assert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "A",
+        "item_type": "type_param",
+        "offset_in_fn": 29,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "StackVec",
+        "item_type": "struct",
+        "offset_in_fn": 47,
+        "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+        "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "from_buf_and_len_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 123,
+        "declaration": "pub unsafe fn from_buf_and_len_unchecked(buf: A, len: usize) -> StackVec<A>",
+        "documentation": "Constructs a new `StackVec` on the stack from an `A` without\ncopying elements. Also sets the length. The user is responsible\nfor ensuring that `len <= A::size()`.\n\n```rust\nuse stackvector::StackVec;\n\nlet buf = [1, 2, 3, 4, 5, 0, 0, 0];\nlet stack_vec: StackVec<_> = unsafe {\n    StackVec::from_buf_and_len_unchecked(buf, 5)\n};\n\nassert_eq!(&*stack_vec, &[1, 2, 3, 4, 5]);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/drain/458",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 458,
+    "end_line": 467,
+    "start_byte": 12502,
+    "end_byte": 12764,
+    "name": "drain",
+    "raw_code": "pub fn drain(&mut self) -> Drain<A::Item> {\n        unsafe {\n            let slice = slice::from_raw_parts_mut(self.as_mut_ptr(), self.len());\n            self.set_len(0);\n\n            Drain {\n                iter: slice.iter_mut(),\n            }\n        }\n    }",
+    "code_with_hints": "pub fn drain(&mut self) -> Drain<A::Item> {\n        unsafe {\n            let slice: &mut [<A as Array>::Item] = slice::from_raw_parts_mut(data: self.as_mut_ptr(), self.len());\n            self.set_len(new_len: 0);\n\n            Drain {\n                iter: slice.iter_mut(),\n            }\n        }\n    }",
+    "code_with_type": "pub fn drain(&mut self) -> Drain<A::Item> {\n        unsafe {\n            let slice: &mut [<A as Array>::Item] = slice::from_raw_parts_mut(self.as_mut_ptr(), self.len());\n            self.set_len(0);\n\n            Drain {\n                iter: slice.iter_mut(),\n            }\n        }\n    }",
+    "code_with_param": "pub fn drain(&mut self) -> Drain<A::Item> {\n        unsafe {\n            let slice = slice::from_raw_parts_mut(data: self.as_mut_ptr(), self.len());\n            self.set_len(new_len: 0);\n\n            Drain {\n                iter: slice.iter_mut(),\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Drain<A::Item>",
+    "comment": "/// Empty the vector and return an iterator over its former contents.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "Drain",
+        "item_type": "struct",
+        "offset_in_fn": 27,
+        "declaration": "Drain<'a, T: 'a> {\n    iter: slice::IterMut<'a, T>,\n}",
+        "documentation": "An iterator that removes the items from a `StackVec` and yields them by value.\n\nReturned from [`StackVec::drain`][1].\n\n[1]: struct.StackVec.html#method.drain"
+      },
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 36,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts_mut",
+        "item_type": "function",
+        "offset_in_fn": 92,
+        "declaration": "pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]",
+        "documentation": "Performs the same functionality as [`from_raw_parts`], except that a\nmutable slice is returned.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for both reads and writes for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be accessed through any other pointer\n  (not derived from the return value) for the duration of lifetime `'a`.\n  Both read and write accesses are forbidden.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "set_len",
+        "item_type": "function",
+        "offset_in_fn": 160,
+        "declaration": "pub unsafe fn set_len(&mut self, new_len: usize)",
+        "documentation": "Sets the length of a vector.\n\nThis will explicitly set the size of the vector, without actually\nmodifying its buffers, so it is up to the caller to ensure that the\nvector is actually the specified size."
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 18,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/push/471",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 471,
+    "end_line": 477,
+    "start_byte": 12822,
+    "end_byte": 13040,
+    "name": "push",
+    "raw_code": "pub fn push(&mut self, value: A::Item) {\n        assert!(self.len() < self.capacity());\n        unsafe {\n            ptr::write(self.as_mut_ptr().padd(self.length), value);\n            self.length += 1;\n        }\n    }",
+    "code_with_hints": "pub fn push(&mut self, value: A::Item) {\n        assert!(self.len() < self.capacity());\n        unsafe {\n            ptr::write(dst: self.as_mut_ptr().padd(count: self.length), src: value);\n            self.length += 1;\n        }\n    }",
+    "code_with_type": "pub fn push(&mut self, value: A::Item) {\n        assert!(self.len() < self.capacity());\n        unsafe {\n            ptr::write(self.as_mut_ptr().padd(self.length), value);\n            self.length += 1;\n        }\n    }",
+    "code_with_param": "pub fn push(&mut self, value: A::Item) {\n        assert!(self.len() < self.capacity());\n        unsafe {\n            ptr::write(dst: self.as_mut_ptr().padd(count: self.length), src: value);\n            self.length += 1;\n        }\n    }",
+    "params": [
+      "self",
+      "value"
+    ],
+    "return_type": "",
+    "comment": "/// Append an item to the vector.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 33,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 146,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/pop/481",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 481,
+    "end_line": 490,
+    "start_byte": 13143,
+    "end_byte": 13410,
+    "name": "pop",
+    "raw_code": "pub fn pop(&mut self) -> Option<A::Item> {\n        unsafe {\n            if self.len() == 0 {\n                None\n            } else {\n                self.length -= 1;\n                Some(ptr::read(self.as_mut_ptr().padd(self.length)))\n            }\n        }\n    }",
+    "code_with_hints": "pub fn pop(&mut self) -> Option<A::Item> {\n        unsafe {\n            if self.len() == 0 {\n                None\n            } else {\n                self.length -= 1;\n                Some(ptr::read(src: self.as_mut_ptr().padd(count: self.length)))\n            }\n        }\n    }",
+    "code_with_type": "pub fn pop(&mut self) -> Option<A::Item> {\n        unsafe {\n            if self.len() == 0 {\n                None\n            } else {\n                self.length -= 1;\n                Some(ptr::read(self.as_mut_ptr().padd(self.length)))\n            }\n        }\n    }",
+    "code_with_param": "pub fn pop(&mut self) -> Option<A::Item> {\n        unsafe {\n            if self.len() == 0 {\n                None\n            } else {\n                self.length -= 1;\n                Some(ptr::read(src: self.as_mut_ptr().padd(count: self.length)))\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Option<A::Item>",
+    "comment": "/// Remove an item from the end of the vector and return it, or None if empty.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 35,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "ptr",
+        "name": "read",
+        "item_type": "function",
+        "offset_in_fn": 195,
+        "declaration": "pub const unsafe fn read<T>(src: *const T) -> T",
+        "documentation": "Reads the value from `src` without moving it. This leaves the\nmemory in `src` unchanged.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads.\n\n* `src` must be properly aligned. Use [`read_unaligned`] if this is not the\n  case.\n\n* `src` must point to a properly initialized value of type `T`.\n\nNote that even if `T` has size `0`, the pointer must be non-null and properly aligned.\n\n# Examples\n\nBasic usage:\n\n```\nlet x = 12;\nlet y = &x as *const i32;\n\nunsafe {\n    assert_eq!(std::ptr::read(y), 12);\n}\n```\n\nManually implement [`mem::swap`]:\n\n```\nuse std::ptr;\n\nfn swap<T>(a: &mut T, b: &mut T) {\n    unsafe {\n        // Create a bitwise copy of the value at `a` in `tmp`.\n        let tmp = ptr::read(a);\n\n        // Exiting at this point (either by explicitly returning or by\n        // calling a function which panics) would cause the value in `tmp` to\n        // be dropped while the same value is still referenced by `a`. This\n        // could trigger undefined behavior if `T` is not `Copy`.\n\n        // Create a bitwise copy of the value at `b` in `a`.\n        // This is safe because mutable references cannot alias.\n        ptr::copy_nonoverlapping(b, a, 1);\n\n        // As above, exiting here could trigger undefined behavior because\n        // the same value is referenced by `a` and `b`.\n\n        // Move `tmp` into `b`.\n        ptr::write(b, tmp);\n\n        // `tmp` has been moved (`write` takes ownership of its second argument),\n        // so nothing is dropped implicitly here.\n    }\n}\n\nlet mut foo = \"foo\".to_owned();\nlet mut bar = \"bar\".to_owned();\n\nswap(&mut foo, &mut bar);\n\nassert_eq!(foo, \"bar\");\nassert_eq!(bar, \"foo\");\n```\n\n## Ownership of the Returned Value\n\n`read` creates a bitwise copy of `T`, regardless of whether `T` is [`Copy`].\nIf `T` is not [`Copy`], using both the returned value and the value at\n`*src` can violate memory safety. Note that assigning to `*src` counts as a\nuse because it will attempt to drop the value at `*src`.\n\n[`write()`] can be used to overwrite data without causing it to be dropped.\n\n```\nuse std::ptr;\n\nlet mut s = String::from(\"foo\");\nunsafe {\n    // `s2` now points to the same underlying memory as `s`.\n    let mut s2: String = ptr::read(&s);\n\n    assert_eq!(s2, \"foo\");\n\n    // Assigning to `s2` causes its original value to be dropped. Beyond\n    // this point, `s` must no longer be used, as the underlying memory has\n    // been freed.\n    s2 = String::default();\n    assert_eq!(s2, \"\");\n\n    // Assigning to `s` would cause the old value to be dropped again,\n    // resulting in undefined behavior.\n    // s = String::from(\"bar\"); // ERROR\n\n    // `ptr::write` can be used to overwrite a value without dropping it.\n    ptr::write(&mut s, String::from(\"bar\"));\n}\n\nassert_eq!(s, \"bar\");\n```\n\n[valid]: self#safety"
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 218,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 16,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/truncate/497",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 497,
+    "end_line": 504,
+    "start_byte": 13652,
+    "end_byte": 13884,
+    "name": "truncate",
+    "raw_code": "pub fn truncate(&mut self, len: usize) {\n        unsafe {\n            while len < self.length {\n                self.length -= 1;\n                ptr::drop_in_place(self.as_mut_ptr().padd(self.length));\n            }\n        }\n    }",
+    "code_with_hints": "pub fn truncate(&mut self, len: usize) {\n        unsafe {\n            while len < self.length {\n                self.length -= 1;\n                ptr::drop_in_place(to_drop: self.as_mut_ptr().padd(count: self.length));\n            }\n        }\n    }",
+    "code_with_type": "pub fn truncate(&mut self, len: usize) {\n        unsafe {\n            while len < self.length {\n                self.length -= 1;\n                ptr::drop_in_place(self.as_mut_ptr().padd(self.length));\n            }\n        }\n    }",
+    "code_with_param": "pub fn truncate(&mut self, len: usize) {\n        unsafe {\n            while len < self.length {\n                self.length -= 1;\n                ptr::drop_in_place(to_drop: self.as_mut_ptr().padd(count: self.length));\n            }\n        }\n    }",
+    "params": [
+      "self",
+      "len"
+    ],
+    "return_type": "",
+    "comment": "/// Shorten the vector, keeping the first `len` elements and dropping the rest.\n///\n/// If `len` is greater than or equal to the vector's current length, this has no\n/// effect.\n/// `shrink_to_fit` after truncating.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "ptr",
+        "name": "drop_in_place",
+        "item_type": "function",
+        "offset_in_fn": 151,
+        "declaration": "pub unsafe fn drop_in_place<T>(to_drop: *mut T)\nwhere\n    T: ?Sized,",
+        "documentation": "Executes the destructor (if any) of the pointed-to value.\n\nThis is almost the same as calling [`ptr::read`] and discarding\nthe result, but has the following advantages:\n\n* It is *required* to use `drop_in_place` to drop unsized types like\n  trait objects, because they can't be read out onto the stack and\n  dropped normally.\n\n* It is friendlier to the optimizer to do this over [`ptr::read`] when\n  dropping manually allocated memory (e.g., in the implementations of\n  `Box`/`Rc`/`Vec`), as the compiler doesn't need to prove that it's\n  sound to elide the copy.\n\n* It can be used to drop [pinned] data when `T` is not `repr(packed)`\n  (pinned data must not be moved before it is dropped).\n\nUnaligned values cannot be dropped in place, they must be copied to an aligned\nlocation first using [`ptr::read_unaligned`]. For packed structs, this move is\ndone automatically by the compiler. This means the fields of packed structs\nare not dropped in-place.\n\n[`ptr::read`]: self::read\n[`ptr::read_unaligned`]: self::read_unaligned\n[pinned]: crate::pin\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `to_drop` must be [valid] for both reads and writes.\n\n* `to_drop` must be properly aligned, even if `T` has size 0.\n\n* `to_drop` must be nonnull, even if `T` has size 0.\n\n* The value `to_drop` points to must be valid for dropping, which may mean\n  it must uphold additional invariants. These invariants depend on the type\n  of the value being dropped. For instance, when dropping a Box, the box's\n  pointer to the heap must be valid.\n\n* While `drop_in_place` is executing, the only way to access parts of\n  `to_drop` is through the `&mut self` references supplied to the\n  `Drop::drop` methods that `drop_in_place` invokes.\n\nAdditionally, if `T` is not [`Copy`], using the pointed-to value after\ncalling `drop_in_place` can cause undefined behavior. Note that `*to_drop =\nfoo` counts as a use because it will cause the value to be dropped\nagain. [`write()`] can be used to overwrite data without causing it to be\ndropped.\n\n[valid]: self#safety\n\n# Examples\n\nManually remove the last item from a vector:\n\n```\nuse std::ptr;\nuse std::rc::Rc;\n\nlet last = Rc::new(1);\nlet weak = Rc::downgrade(&last);\n\nlet mut v = vec![Rc::new(0), last];\n\nunsafe {\n    // Get a raw pointer to the last element in `v`.\n    let ptr = &mut v[1] as *mut _;\n    // Shorten `v` to prevent the last item from being dropped. We do that first,\n    // to prevent issues if the `drop_in_place` below panics.\n    v.set_len(1);\n    // Without a call `drop_in_place`, the last item would never be dropped,\n    // and the memory it manages would be leaked.\n    ptr::drop_in_place(ptr);\n}\n\nassert_eq!(v, &[0.into()]);\n\n// Ensure that the last item was dropped.\nassert!(weak.upgrade().is_none());\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 183,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 21,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/swap_remove/528",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 528,
+    "end_line": 532,
+    "start_byte": 14462,
+    "end_byte": 14638,
+    "name": "swap_remove",
+    "raw_code": "pub fn swap_remove(&mut self, index: usize) -> A::Item {\n        let len = self.len();\n        self.swap(len - 1, index);\n        unsafe { self.pop().unchecked_unwrap() }\n    }",
+    "code_with_hints": "pub fn swap_remove(&mut self, index: usize) -> A::Item {\n        let len: usize = self.len();\n        self.swap(a: len - 1, b: index);\n        unsafe { self.pop().unchecked_unwrap() }\n    }",
+    "code_with_type": "pub fn swap_remove(&mut self, index: usize) -> A::Item {\n        let len: usize = self.len();\n        self.swap(len - 1, index);\n        unsafe { self.pop().unchecked_unwrap() }\n    }",
+    "code_with_param": "pub fn swap_remove(&mut self, index: usize) -> A::Item {\n        let len = self.len();\n        self.swap(a: len - 1, b: index);\n        unsafe { self.pop().unchecked_unwrap() }\n    }",
+    "params": [
+      "self",
+      "index"
+    ],
+    "return_type": "A::Item",
+    "comment": "/// Remove the element at position `index`, replacing it with the last element.\n///\n/// This does not preserve ordering, but is O(1).\n///\n/// Panics if `index` is out of bounds.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 50,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "swap",
+        "item_type": "function",
+        "offset_in_fn": 100,
+        "declaration": "pub const fn swap(&mut self, a: usize, b: usize)",
+        "documentation": "Swaps two elements in the slice.\n\nIf `a` equals to `b`, it's guaranteed that elements won't change value.\n\n# Arguments\n\n* a - The index of the first element\n* b - The index of the second element\n\n# Panics\n\nPanics if `a` or `b` are out of bounds.\n\n# Examples\n\n```\nlet mut v = [\"a\", \"b\", \"c\", \"d\", \"e\"];\nv.swap(2, 4);\nassert!(v == [\"a\", \"b\", \"e\", \"d\", \"c\"]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "unchecked_unwrap",
+        "item_type": "function",
+        "offset_in_fn": 150,
+        "declaration": "unsafe fn unchecked_unwrap(self) -> T",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 24,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/remove/544",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 544,
+    "end_line": 553,
+    "start_byte": 14929,
+    "end_byte": 15253,
+    "name": "remove",
+    "raw_code": "pub fn remove(&mut self, index: usize) -> A::Item {\n        assert!(index < self.len());\n        unsafe {\n            self.length -= 1;\n            let ptr = self.as_mut_ptr().padd(index);\n            let item = ptr::read(ptr);\n            ptr::copy(ptr.offset(1), ptr, self.length - index);\n            item\n        }\n    }",
+    "code_with_hints": "pub fn remove(&mut self, index: usize) -> A::Item {\n        assert!(index < self.len());\n        unsafe {\n            self.length -= 1;\n            let ptr: *mut <A as Array>::Item = self.as_mut_ptr().padd(count: index);\n            let item: <A as Array>::Item = ptr::read(src: ptr);\n            ptr::copy(src: ptr.offset(count: 1), dst: ptr, count: self.length - index);\n            item\n        }\n    }",
+    "code_with_type": "pub fn remove(&mut self, index: usize) -> A::Item {\n        assert!(index < self.len());\n        unsafe {\n            self.length -= 1;\n            let ptr: *mut <A as Array>::Item = self.as_mut_ptr().padd(index);\n            let item: <A as Array>::Item = ptr::read(ptr);\n            ptr::copy(ptr.offset(1), ptr, self.length - index);\n            item\n        }\n    }",
+    "code_with_param": "pub fn remove(&mut self, index: usize) -> A::Item {\n        assert!(index < self.len());\n        unsafe {\n            self.length -= 1;\n            let ptr = self.as_mut_ptr().padd(count: index);\n            let item = ptr::read(src: ptr);\n            ptr::copy(src: ptr.offset(count: 1), dst: ptr, count: self.length - index);\n            item\n        }\n    }",
+    "params": [
+      "self",
+      "index"
+    ],
+    "return_type": "A::Item",
+    "comment": "/// Remove and return the element at position `index`, shifting all elements after it to the\n/// left.\n///\n/// Panics if `index` is out of bounds.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 45,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 176,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      },
+      {
+        "src_mod": "ptr",
+        "name": "read",
+        "item_type": "function",
+        "offset_in_fn": 217,
+        "declaration": "pub const unsafe fn read<T>(src: *const T) -> T",
+        "documentation": "Reads the value from `src` without moving it. This leaves the\nmemory in `src` unchanged.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads.\n\n* `src` must be properly aligned. Use [`read_unaligned`] if this is not the\n  case.\n\n* `src` must point to a properly initialized value of type `T`.\n\nNote that even if `T` has size `0`, the pointer must be non-null and properly aligned.\n\n# Examples\n\nBasic usage:\n\n```\nlet x = 12;\nlet y = &x as *const i32;\n\nunsafe {\n    assert_eq!(std::ptr::read(y), 12);\n}\n```\n\nManually implement [`mem::swap`]:\n\n```\nuse std::ptr;\n\nfn swap<T>(a: &mut T, b: &mut T) {\n    unsafe {\n        // Create a bitwise copy of the value at `a` in `tmp`.\n        let tmp = ptr::read(a);\n\n        // Exiting at this point (either by explicitly returning or by\n        // calling a function which panics) would cause the value in `tmp` to\n        // be dropped while the same value is still referenced by `a`. This\n        // could trigger undefined behavior if `T` is not `Copy`.\n\n        // Create a bitwise copy of the value at `b` in `a`.\n        // This is safe because mutable references cannot alias.\n        ptr::copy_nonoverlapping(b, a, 1);\n\n        // As above, exiting here could trigger undefined behavior because\n        // the same value is referenced by `a` and `b`.\n\n        // Move `tmp` into `b`.\n        ptr::write(b, tmp);\n\n        // `tmp` has been moved (`write` takes ownership of its second argument),\n        // so nothing is dropped implicitly here.\n    }\n}\n\nlet mut foo = \"foo\".to_owned();\nlet mut bar = \"bar\".to_owned();\n\nswap(&mut foo, &mut bar);\n\nassert_eq!(foo, \"bar\");\nassert_eq!(bar, \"foo\");\n```\n\n## Ownership of the Returned Value\n\n`read` creates a bitwise copy of `T`, regardless of whether `T` is [`Copy`].\nIf `T` is not [`Copy`], using both the returned value and the value at\n`*src` can violate memory safety. Note that assigning to `*src` counts as a\nuse because it will attempt to drop the value at `*src`.\n\n[`write()`] can be used to overwrite data without causing it to be dropped.\n\n```\nuse std::ptr;\n\nlet mut s = String::from(\"foo\");\nunsafe {\n    // `s2` now points to the same underlying memory as `s`.\n    let mut s2: String = ptr::read(&s);\n\n    assert_eq!(s2, \"foo\");\n\n    // Assigning to `s2` causes its original value to be dropped. Beyond\n    // this point, `s` must no longer be used, as the underlying memory has\n    // been freed.\n    s2 = String::default();\n    assert_eq!(s2, \"\");\n\n    // Assigning to `s` would cause the old value to be dropped again,\n    // resulting in undefined behavior.\n    // s = String::from(\"bar\"); // ERROR\n\n    // `ptr::write` can be used to overwrite a value without dropping it.\n    ptr::write(&mut s, String::from(\"bar\"));\n}\n\nassert_eq!(s, \"bar\");\n```\n\n[valid]: self#safety"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy",
+        "item_type": "function",
+        "offset_in_fn": 245,
+        "declaration": "pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination may overlap.\n\nIf the source and destination will *never* overlap,\n[`copy_nonoverlapping`] can be used instead.\n\n`copy` is semantically equivalent to C's [`memmove`], but with the argument\norder swapped. Copying takes place as if the bytes were copied from `src`\nto a temporary array and then copied from the array to `dst`.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes, and must remain valid even\n  when `dst` is written for `count * size_of::<T>()` bytes. (This means if the memory ranges\n  overlap, the two pointers must not be subject to aliasing restrictions relative to each\n  other.)\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes, and must remain valid even\n  when `src` is read for `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\nLike [`read`], `copy` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using both the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nEfficiently create a Rust vector from an unsafe buffer:\n\n```\nuse std::ptr;\n\n/// # Safety\n///\n/// * `ptr` must be correctly aligned for its type and non-zero.\n/// * `ptr` must be valid for reads of `elts` contiguous elements of type `T`.\n/// * Those elements must not be used after calling this function unless `T: Copy`.\n# #[allow(dead_code)]\nunsafe fn from_buf_raw<T>(ptr: *const T, elts: usize) -> Vec<T> {\n    let mut dst = Vec::with_capacity(elts);\n\n    // SAFETY: Our precondition ensures the source is aligned and valid,\n    // and `Vec::with_capacity` ensures that we have usable space to write them.\n    ptr::copy(ptr, dst.as_mut_ptr(), elts);\n\n    // SAFETY: We created it with this much capacity earlier,\n    // and the previous `copy` has initialized these elements.\n    dst.set_len(elts);\n    dst\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 254,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 19,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/insert/558",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 558,
+    "end_line": 566,
+    "start_byte": 15403,
+    "end_byte": 15748,
+    "name": "insert",
+    "raw_code": "pub fn insert(&mut self, index: usize, element: A::Item) {\n        assert!(index < self.len() && self.len() < self.capacity());\n        unsafe {\n            let ptr = self.as_mut_ptr().padd(index);\n            ptr::copy(ptr, ptr.offset(1), self.length - index);\n            ptr::write(ptr, element);\n            self.length += 1;\n        }\n    }",
+    "code_with_hints": "pub fn insert(&mut self, index: usize, element: A::Item) {\n        assert!(index < self.len() && self.len() < self.capacity());\n        unsafe {\n            let ptr: *mut <A as Array>::Item = self.as_mut_ptr().padd(count: index);\n            ptr::copy(src: ptr, dst: ptr.offset(count: 1), count: self.length - index);\n            ptr::write(dst: ptr, src: element);\n            self.length += 1;\n        }\n    }",
+    "code_with_type": "pub fn insert(&mut self, index: usize, element: A::Item) {\n        assert!(index < self.len() && self.len() < self.capacity());\n        unsafe {\n            let ptr: *mut <A as Array>::Item = self.as_mut_ptr().padd(index);\n            ptr::copy(ptr, ptr.offset(1), self.length - index);\n            ptr::write(ptr, element);\n            self.length += 1;\n        }\n    }",
+    "code_with_param": "pub fn insert(&mut self, index: usize, element: A::Item) {\n        assert!(index < self.len() && self.len() < self.capacity());\n        unsafe {\n            let ptr = self.as_mut_ptr().padd(count: index);\n            ptr::copy(src: ptr, dst: ptr.offset(count: 1), count: self.length - index);\n            ptr::write(dst: ptr, src: element);\n            self.length += 1;\n        }\n    }",
+    "params": [
+      "self",
+      "index",
+      "element"
+    ],
+    "return_type": "",
+    "comment": "/// Insert an element at position `index`, shifting all elements after it to the right.\n///\n/// Panics if `index` is out of bounds.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 51,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 185,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy",
+        "item_type": "function",
+        "offset_in_fn": 215,
+        "declaration": "pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination may overlap.\n\nIf the source and destination will *never* overlap,\n[`copy_nonoverlapping`] can be used instead.\n\n`copy` is semantically equivalent to C's [`memmove`], but with the argument\norder swapped. Copying takes place as if the bytes were copied from `src`\nto a temporary array and then copied from the array to `dst`.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes, and must remain valid even\n  when `dst` is written for `count * size_of::<T>()` bytes. (This means if the memory ranges\n  overlap, the two pointers must not be subject to aliasing restrictions relative to each\n  other.)\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes, and must remain valid even\n  when `src` is read for `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\nLike [`read`], `copy` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using both the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nEfficiently create a Rust vector from an unsafe buffer:\n\n```\nuse std::ptr;\n\n/// # Safety\n///\n/// * `ptr` must be correctly aligned for its type and non-zero.\n/// * `ptr` must be valid for reads of `elts` contiguous elements of type `T`.\n/// * Those elements must not be used after calling this function unless `T: Copy`.\n# #[allow(dead_code)]\nunsafe fn from_buf_raw<T>(ptr: *const T, elts: usize) -> Vec<T> {\n    let mut dst = Vec::with_capacity(elts);\n\n    // SAFETY: Our precondition ensures the source is aligned and valid,\n    // and `Vec::with_capacity` ensures that we have usable space to write them.\n    ptr::copy(ptr, dst.as_mut_ptr(), elts);\n\n    // SAFETY: We created it with this much capacity earlier,\n    // and the previous `copy` has initialized these elements.\n    dst.set_len(elts);\n    dst\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 229,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 19,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/insert_many/570",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 570,
+    "end_line": 634,
+    "start_byte": 15865,
+    "end_byte": 18112,
+    "name": "insert_many",
+    "raw_code": "pub fn insert_many<I: iter::IntoIterator<Item = A::Item>>(\n        &mut self,\n        index: usize,\n        iterable: I,\n    ) {\n        let mut iter = iterable.into_iter();\n        if index == self.len() {\n            return self.extend(iter);\n        }\n\n        let (lower_size_bound, _) = iter.size_hint();\n        assert!(lower_size_bound <= lib::isize::MAX as usize); // Ensure offset is indexable\n        assert!(index + lower_size_bound >= index); // Protect against overflow\n        assert!(self.len() + lower_size_bound <= self.capacity());\n\n        let mut num_added = 0;\n        let old_len = self.len();\n        assert!(index <= old_len);\n\n\n        unsafe {\n            let start = self.as_mut_ptr();\n            let ptr = start.add(index);\n\n            // Move the trailing elements.\n            ptr::copy(ptr, ptr.padd(lower_size_bound), old_len - index);\n\n            // In case the iterator panics, don't double-drop the items we just copied above.\n            self.set_len(0);\n            let mut guard = DropOnPanic {\n                start,\n                skip: index..(index + lower_size_bound),\n                len: old_len + lower_size_bound,\n            };\n\n            while num_added < lower_size_bound {\n                let element = match iter.next() {\n                    Some(x) => x,\n                    None => break,\n                };\n                let cur = ptr.add(num_added);\n                ptr::write(cur, element);\n                guard.skip.start += 1;\n                num_added += 1;\n            }\n\n            if num_added < lower_size_bound {\n                // Iterator provided fewer elements than the hint. Move the tail backward.\n                ptr::copy(\n                    ptr.add(lower_size_bound),\n                    ptr.add(num_added),\n                    old_len - index,\n                );\n            }\n            // There are no more duplicate or uninitialized slots, so the guard is not needed.\n            self.set_len(old_len + num_added);\n            mem::forget(guard);\n\n            // Insert any remaining elements one-by-one.\n            for element in iter {\n                self.insert(index + num_added, element);\n                num_added += 1;\n            }\n        }\n    }",
+    "code_with_hints": "pub fn insert_many<I: iter::IntoIterator<Item = A::Item>>(\n        &mut self,\n        index: usize,\n        iterable: I,\n    ) {\n        let mut iter: <I as IntoIterator>::IntoIter = iterable.into_iter();\n        if index == self.len() {\n            return self.extend(iter);\n        }\n\n        let (lower_size_bound: usize, _) = iter.size_hint();\n        assert!(lower_size_bound <= lib::isize::MAX as usize); // Ensure offset is indexable\n        assert!(index + lower_size_bound >= index); // Protect against overflow\n        assert!(self.len() + lower_size_bound <= self.capacity());\n\n        let mut num_added: usize = 0;\n        let old_len: usize = self.len();\n        assert!(index <= old_len);\n\n\n        unsafe {\n            let start: *mut <A as Array>::Item = self.as_mut_ptr();\n            let ptr: *mut <A as Array>::Item = start.add(count: index);\n\n            // Move the trailing elements.\n            ptr::copy(src: ptr, dst: ptr.padd(count: lower_size_bound), count: old_len - index);\n\n            // In case the iterator panics, don't double-drop the items we just copied above.\n            self.set_len(new_len: 0);\n            let mut guard: DropOnPanic<<A as Array>::Item> = DropOnPanic {\n                start,\n                skip: index..(index + lower_size_bound),\n                len: old_len + lower_size_bound,\n            };\n\n            while num_added < lower_size_bound {\n                let element: <A as Array>::Item = match iter.next() {\n                    Some(x: <A as Array>::Item) => x,\n                    None => break,\n                };\n                let cur: *mut <A as Array>::Item = ptr.add(count: num_added);\n                ptr::write(dst: cur, src: element);\n                guard.skip.start += 1;\n                num_added += 1;\n            }\n\n            if num_added < lower_size_bound {\n                // Iterator provided fewer elements than the hint. Move the tail backward.\n                ptr::copy(\n                    src: ptr.add(count: lower_size_bound),\n                    dst: ptr.add(count: num_added),\n                    count: old_len - index,\n                );\n            }\n            // There are no more duplicate or uninitialized slots, so the guard is not needed.\n            self.set_len(new_len: old_len + num_added);\n            mem::forget(guard);\n\n            // Insert any remaining elements one-by-one.\n            for element: <A as Array>::Item in iter {\n                self.insert(index: index + num_added, element);\n                num_added += 1;\n            }\n        }\n    }",
+    "code_with_type": "pub fn insert_many<I: iter::IntoIterator<Item = A::Item>>(\n        &mut self,\n        index: usize,\n        iterable: I,\n    ) {\n        let mut iter: <I as IntoIterator>::IntoIter = iterable.into_iter();\n        if index == self.len() {\n            return self.extend(iter);\n        }\n\n        let (lower_size_bound: usize, _) = iter.size_hint();\n        assert!(lower_size_bound <= lib::isize::MAX as usize); // Ensure offset is indexable\n        assert!(index + lower_size_bound >= index); // Protect against overflow\n        assert!(self.len() + lower_size_bound <= self.capacity());\n\n        let mut num_added: usize = 0;\n        let old_len: usize = self.len();\n        assert!(index <= old_len);\n\n\n        unsafe {\n            let start: *mut <A as Array>::Item = self.as_mut_ptr();\n            let ptr: *mut <A as Array>::Item = start.add(index);\n\n            // Move the trailing elements.\n            ptr::copy(ptr, ptr.padd(lower_size_bound), old_len - index);\n\n            // In case the iterator panics, don't double-drop the items we just copied above.\n            self.set_len(0);\n            let mut guard: DropOnPanic<<A as Array>::Item> = DropOnPanic {\n                start,\n                skip: index..(index + lower_size_bound),\n                len: old_len + lower_size_bound,\n            };\n\n            while num_added < lower_size_bound {\n                let element: <A as Array>::Item = match iter.next() {\n                    Some(x: <A as Array>::Item) => x,\n                    None => break,\n                };\n                let cur: *mut <A as Array>::Item = ptr.add(num_added);\n                ptr::write(cur, element);\n                guard.skip.start += 1;\n                num_added += 1;\n            }\n\n            if num_added < lower_size_bound {\n                // Iterator provided fewer elements than the hint. Move the tail backward.\n                ptr::copy(\n                    ptr.add(lower_size_bound),\n                    ptr.add(num_added),\n                    old_len - index,\n                );\n            }\n            // There are no more duplicate or uninitialized slots, so the guard is not needed.\n            self.set_len(old_len + num_added);\n            mem::forget(guard);\n\n            // Insert any remaining elements one-by-one.\n            for element: <A as Array>::Item in iter {\n                self.insert(index + num_added, element);\n                num_added += 1;\n            }\n        }\n    }",
+    "code_with_param": "pub fn insert_many<I: iter::IntoIterator<Item = A::Item>>(\n        &mut self,\n        index: usize,\n        iterable: I,\n    ) {\n        let mut iter = iterable.into_iter();\n        if index == self.len() {\n            return self.extend(iter);\n        }\n\n        let (lower_size_bound, _) = iter.size_hint();\n        assert!(lower_size_bound <= lib::isize::MAX as usize); // Ensure offset is indexable\n        assert!(index + lower_size_bound >= index); // Protect against overflow\n        assert!(self.len() + lower_size_bound <= self.capacity());\n\n        let mut num_added = 0;\n        let old_len = self.len();\n        assert!(index <= old_len);\n\n\n        unsafe {\n            let start = self.as_mut_ptr();\n            let ptr = start.add(count: index);\n\n            // Move the trailing elements.\n            ptr::copy(src: ptr, dst: ptr.padd(count: lower_size_bound), count: old_len - index);\n\n            // In case the iterator panics, don't double-drop the items we just copied above.\n            self.set_len(new_len: 0);\n            let mut guard = DropOnPanic {\n                start,\n                skip: index..(index + lower_size_bound),\n                len: old_len + lower_size_bound,\n            };\n\n            while num_added < lower_size_bound {\n                let element = match iter.next() {\n                    Some(x) => x,\n                    None => break,\n                };\n                let cur = ptr.add(count: num_added);\n                ptr::write(dst: cur, src: element);\n                guard.skip.start += 1;\n                num_added += 1;\n            }\n\n            if num_added < lower_size_bound {\n                // Iterator provided fewer elements than the hint. Move the tail backward.\n                ptr::copy(\n                    src: ptr.add(count: lower_size_bound),\n                    dst: ptr.add(count: num_added),\n                    count: old_len - index,\n                );\n            }\n            // There are no more duplicate or uninitialized slots, so the guard is not needed.\n            self.set_len(new_len: old_len + num_added);\n            mem::forget(guard);\n\n            // Insert any remaining elements one-by-one.\n            for element in iter {\n                self.insert(index: index + num_added, element);\n                num_added += 1;\n            }\n        }\n    }",
+    "params": [
+      "self",
+      "index",
+      "iterable"
+    ],
+    "return_type": "",
+    "comment": "/// Insert multiple elements at position `index`, shifting all following elements toward the\n/// back.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "I",
+        "item_type": "type_param",
+        "offset_in_fn": 19,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "IntoIterator",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 41,
+        "declaration": "Item;",
+        "documentation": "The type of the elements being iterated over."
+      },
+      {
+        "src_mod": "",
+        "name": "extend",
+        "item_type": "function",
+        "offset_in_fn": 231,
+        "declaration": "fn extend<I>(&mut self, iterable: I)\nwhere\n    I: iter::IntoIterator<Item = A::Item>,",
+        "documentation": ""
+      },
+      {
+        "src_mod": "Iterator",
+        "name": "size_hint",
+        "item_type": "function",
+        "offset_in_fn": 297,
+        "declaration": "pub fn size_hint(&self) -> (usize, Option<usize>)",
+        "documentation": "Returns the bounds on the remaining length of the iterator.\n\nSpecifically, `size_hint()` returns a tuple where the first element\nis the lower bound, and the second element is the upper bound.\n\nThe second half of the tuple that is returned is an <code>[Option]<[usize]></code>.\nA [`None`] here means that either there is no known upper bound, or the\nupper bound is larger than [`usize`].\n\n# Implementation notes\n\nIt is not enforced that an iterator implementation yields the declared\nnumber of elements. A buggy iterator may yield less than the lower bound\nor more than the upper bound of elements.\n\n`size_hint()` is primarily intended to be used for optimizations such as\nreserving space for the elements of the iterator, but must not be\ntrusted to e.g., omit bounds checks in unsafe code. An incorrect\nimplementation of `size_hint()` should not lead to memory safety\nviolations.\n\nThat said, the implementation should provide a correct estimation,\nbecause otherwise it would be a violation of the trait's protocol.\n\nThe default implementation returns <code>(0, [None])</code> which is correct for any\niterator.\n\n# Examples\n\nBasic usage:\n\n```\nlet a = [1, 2, 3];\nlet mut iter = a.iter();\n\nassert_eq!((3, Some(3)), iter.size_hint());\nlet _ = iter.next();\nassert_eq!((2, Some(2)), iter.size_hint());\n```\n\nA more complex example:\n\n```\n// The even numbers in the range of zero to nine.\nlet iter = (0..10).filter(|x| x % 2 == 0);\n\n// We might iterate from zero to ten times. Knowing that it's five\n// exactly wouldn't be possible without executing filter().\nassert_eq!((0, Some(10)), iter.size_hint());\n\n// Let's add five more numbers with chain()\nlet iter = (0..10).filter(|x| x % 2 == 0).chain(15..20);\n\n// now both bounds are increased by five\nassert_eq!((5, Some(15)), iter.size_hint());\n```\n\nReturning `None` for an upper bound:\n\n```\n// an infinite iterator has no upper bound\n// and the maximum possible lower bound\nlet iter = 0..;\n\nassert_eq!((usize::MAX, None), iter.size_hint());\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 741,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!('2', *ptr.add(1) as char);\n    assert_eq!('3', *ptr.add(2) as char);\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy",
+        "item_type": "function",
+        "offset_in_fn": 814,
+        "declaration": "pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination may overlap.\n\nIf the source and destination will *never* overlap,\n[`copy_nonoverlapping`] can be used instead.\n\n`copy` is semantically equivalent to C's [`memmove`], but with the argument\norder swapped. Copying takes place as if the bytes were copied from `src`\nto a temporary array and then copied from the array to `dst`.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes, and must remain valid even\n  when `dst` is written for `count * size_of::<T>()` bytes. (This means if the memory ranges\n  overlap, the two pointers must not be subject to aliasing restrictions relative to each\n  other.)\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes, and must remain valid even\n  when `src` is read for `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\nLike [`read`], `copy` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using both the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nEfficiently create a Rust vector from an unsafe buffer:\n\n```\nuse std::ptr;\n\n/// # Safety\n///\n/// * `ptr` must be correctly aligned for its type and non-zero.\n/// * `ptr` must be valid for reads of `elts` contiguous elements of type `T`.\n/// * Those elements must not be used after calling this function unless `T: Copy`.\n# #[allow(dead_code)]\nunsafe fn from_buf_raw<T>(ptr: *const T, elts: usize) -> Vec<T> {\n    let mut dst = Vec::with_capacity(elts);\n\n    // SAFETY: Our precondition ensures the source is aligned and valid,\n    // and `Vec::with_capacity` ensures that we have usable space to write them.\n    ptr::copy(ptr, dst.as_mut_ptr(), elts);\n\n    // SAFETY: We created it with this much capacity earlier,\n    // and the previous `copy` has initialized these elements.\n    dst.set_len(elts);\n    dst\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 828,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "set_len",
+        "item_type": "function",
+        "offset_in_fn": 982,
+        "declaration": "pub unsafe fn set_len(&mut self, new_len: usize)",
+        "documentation": "Sets the length of a vector.\n\nThis will explicitly set the size of the vector, without actually\nmodifying its buffers, so it is up to the caller to ensure that the\nvector is actually the specified size."
+      },
+      {
+        "src_mod": "",
+        "name": "DropOnPanic",
+        "item_type": "struct",
+        "offset_in_fn": 1022,
+        "declaration": "DropOnPanic<T> {\n    start: *mut T,\n    skip: ops::Range<usize>,\n    len: usize,\n}",
+        "documentation": ""
+      },
+      {
+        "src_mod": "Iterator",
+        "name": "next",
+        "item_type": "function",
+        "offset_in_fn": 1271,
+        "declaration": "pub fn next(&mut self) -> Option<Self::Item>",
+        "documentation": "Advances the iterator and returns the next value.\n\nReturns [`None`] when iteration is finished. Individual iterator\nimplementations may choose to resume iteration, and so calling `next()`\nagain may or may not eventually start returning [`Some(Item)`] again at some\npoint.\n\n[`Some(Item)`]: Some\n\n# Examples\n\n```\nlet a = [1, 2, 3];\n\nlet mut iter = a.iter();\n\n// A call to next() returns the next value...\nassert_eq!(Some(&1), iter.next());\nassert_eq!(Some(&2), iter.next());\nassert_eq!(Some(&3), iter.next());\n\n// ... and then None once it's over.\nassert_eq!(None, iter.next());\n\n// More calls may or may not return `None`. Here, they always will.\nassert_eq!(None, iter.next());\nassert_eq!(None, iter.next());\n```"
+      },
+      {
+        "src_mod": "mem",
+        "name": "forget",
+        "item_type": "function",
+        "offset_in_fn": 2022,
+        "declaration": "pub const fn forget<T>(t: T)",
+        "documentation": "Takes ownership and \"forgets\" about the value **without running its destructor**.\n\nAny resources the value manages, such as heap memory or a file handle, will linger\nforever in an unreachable state. However, it does not guarantee that pointers\nto this memory will remain valid.\n\n* If you want to leak memory, see [`Box::leak`].\n* If you want to obtain a raw pointer to the memory, see [`Box::into_raw`].\n* If you want to dispose of a value properly, running its destructor, see\n[`mem::drop`].\n\n# Safety\n\n`forget` is not marked as `unsafe`, because Rust's safety guarantees\ndo not include a guarantee that destructors will always run. For example,\na program can create a reference cycle using [`Rc`][rc], or call\n[`process::exit`][exit] to exit without running destructors. Thus, allowing\n`mem::forget` from safe code does not fundamentally change Rust's safety\nguarantees.\n\nThat said, leaking resources such as memory or I/O objects is usually undesirable.\nThe need comes up in some specialized use cases for FFI or unsafe code, but even\nthen, [`ManuallyDrop`] is typically preferred.\n\nBecause forgetting a value is allowed, any `unsafe` code you write must\nallow for this possibility. You cannot return a value and expect that the\ncaller will necessarily run the value's destructor.\n\n[rc]: ../../std/rc/struct.Rc.html\n[exit]: ../../std/process/fn.exit.html\n\n# Examples\n\nThe canonical safe use of `mem::forget` is to circumvent a value's destructor\nimplemented by the `Drop` trait. For example, this will leak a `File`, i.e. reclaim\nthe space taken by the variable but never close the underlying system resource:\n\n```no_run\nuse std::mem;\nuse std::fs::File;\n\nlet file = File::open(\"foo.txt\").unwrap();\nmem::forget(file);\n```\n\nThis is useful when the ownership of the underlying resource was previously\ntransferred to code outside of Rust, for example by transmitting the raw\nfile descriptor to C code.\n\n# Relationship with `ManuallyDrop`\n\nWhile `mem::forget` can also be used to transfer *memory* ownership, doing so is error-prone.\n[`ManuallyDrop`] should be used instead. Consider, for example, this code:\n\n```\nuse std::mem;\n\nlet mut v = vec![65, 122];\n// Build a `String` using the contents of `v`\nlet s = unsafe { String::from_raw_parts(v.as_mut_ptr(), v.len(), v.capacity()) };\n// leak `v` because its memory is now managed by `s`\nmem::forget(v);  // ERROR - v is invalid and must not be passed to a function\nassert_eq!(s, \"Az\");\n// `s` is implicitly dropped and its memory deallocated.\n```\n\nThere are two issues with the above example:\n\n* If more code were added between the construction of `String` and the invocation of\n  `mem::forget()`, a panic within it would cause a double free because the same memory\n  is handled by both `v` and `s`.\n* After calling `v.as_mut_ptr()` and transmitting the ownership of the data to `s`,\n  the `v` value is invalid. Even when a value is just moved to `mem::forget` (which won't\n  inspect it), some types have strict requirements on their values that\n  make them invalid when dangling or no longer owned. Using invalid values in any\n  way, including passing them to or returning them from functions, constitutes\n  undefined behavior and may break the assumptions made by the compiler.\n\nSwitching to `ManuallyDrop` avoids both issues:\n\n```\nuse std::mem::ManuallyDrop;\n\nlet v = vec![65, 122];\n// Before we disassemble `v` into its raw parts, make sure it\n// does not get dropped!\nlet mut v = ManuallyDrop::new(v);\n// Now disassemble `v`. These operations cannot panic, so there cannot be a leak.\nlet (ptr, len, cap) = (v.as_mut_ptr(), v.len(), v.capacity());\n// Finally, build a `String`.\nlet s = unsafe { String::from_raw_parts(ptr, len, cap) };\nassert_eq!(s, \"Az\");\n// `s` is implicitly dropped and its memory deallocated.\n```\n\n`ManuallyDrop` robustly prevents double-free because we disable `v`'s destructor\nbefore doing anything else. `mem::forget()` doesn't allow this because it consumes its\nargument, forcing us to call it only after extracting anything we need from `v`. Even\nif a panic were introduced between construction of `ManuallyDrop` and building the\nstring (which cannot happen in the code as shown), it would result in a leak and not a\ndouble free. In other words, `ManuallyDrop` errs on the side of leaking instead of\nerring on the side of (double-)dropping.\n\nAlso, `ManuallyDrop` prevents us from having to \"touch\" `v` after transferring the\nownership to `s` — the final step of interacting with `v` to dispose of it without\nrunning its destructor is entirely avoided.\n\n[`Box`]: ../../std/boxed/struct.Box.html\n[`Box::leak`]: ../../std/boxed/struct.Box.html#method.leak\n[`Box::into_raw`]: ../../std/boxed/struct.Box.html#method.into_raw\n[`mem::drop`]: drop\n[ub]: ../../reference/behavior-considered-undefined.html"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 72,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/into_inner/642",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 642,
+    "end_line": 652,
+    "start_byte": 18283,
+    "end_byte": 18603,
+    "name": "into_inner",
+    "raw_code": "pub fn into_inner(self) -> Result<A, Self> {\n        if self.len() != A::size() {\n            Err(self)\n        } else {\n            unsafe {\n                let this = mem::ManuallyDrop::new(self);\n                let array = ptr::read(this.as_ptr() as *const A);\n                Ok(array)\n            }\n        }\n    }",
+    "code_with_hints": "pub fn into_inner(self) -> Result<A, Self> {\n        if self.len() != A::size() {\n            Err(self)\n        } else {\n            unsafe {\n                let this: ManuallyDrop<StackVec<A>> = mem::ManuallyDrop::new(self);\n                let array: A = ptr::read(src: this.as_ptr() as *const A);\n                Ok(array)\n            }\n        }\n    }",
+    "code_with_type": "pub fn into_inner(self) -> Result<A, Self> {\n        if self.len() != A::size() {\n            Err(self)\n        } else {\n            unsafe {\n                let this: ManuallyDrop<StackVec<A>> = mem::ManuallyDrop::new(self);\n                let array: A = ptr::read(this.as_ptr() as *const A);\n                Ok(array)\n            }\n        }\n    }",
+    "code_with_param": "pub fn into_inner(self) -> Result<A, Self> {\n        if self.len() != A::size() {\n            Err(self)\n        } else {\n            unsafe {\n                let this = mem::ManuallyDrop::new(self);\n                let array = ptr::read(src: this.as_ptr() as *const A);\n                Ok(array)\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<A, Self>",
+    "comment": "/// Convert the StackVec into an `A`.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "A",
+        "item_type": "type_param",
+        "offset_in_fn": 34,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "Array",
+        "name": "size",
+        "item_type": "function",
+        "offset_in_fn": 73,
+        "declaration": "pub fn size() -> usize",
+        "documentation": "Returns the number of items the array can hold."
+      },
+      {
+        "src_mod": "ptr",
+        "name": "read",
+        "item_type": "function",
+        "offset_in_fn": 232,
+        "declaration": "pub const unsafe fn read<T>(src: *const T) -> T",
+        "documentation": "Reads the value from `src` without moving it. This leaves the\nmemory in `src` unchanged.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads.\n\n* `src` must be properly aligned. Use [`read_unaligned`] if this is not the\n  case.\n\n* `src` must point to a properly initialized value of type `T`.\n\nNote that even if `T` has size `0`, the pointer must be non-null and properly aligned.\n\n# Examples\n\nBasic usage:\n\n```\nlet x = 12;\nlet y = &x as *const i32;\n\nunsafe {\n    assert_eq!(std::ptr::read(y), 12);\n}\n```\n\nManually implement [`mem::swap`]:\n\n```\nuse std::ptr;\n\nfn swap<T>(a: &mut T, b: &mut T) {\n    unsafe {\n        // Create a bitwise copy of the value at `a` in `tmp`.\n        let tmp = ptr::read(a);\n\n        // Exiting at this point (either by explicitly returning or by\n        // calling a function which panics) would cause the value in `tmp` to\n        // be dropped while the same value is still referenced by `a`. This\n        // could trigger undefined behavior if `T` is not `Copy`.\n\n        // Create a bitwise copy of the value at `b` in `a`.\n        // This is safe because mutable references cannot alias.\n        ptr::copy_nonoverlapping(b, a, 1);\n\n        // As above, exiting here could trigger undefined behavior because\n        // the same value is referenced by `a` and `b`.\n\n        // Move `tmp` into `b`.\n        ptr::write(b, tmp);\n\n        // `tmp` has been moved (`write` takes ownership of its second argument),\n        // so nothing is dropped implicitly here.\n    }\n}\n\nlet mut foo = \"foo\".to_owned();\nlet mut bar = \"bar\".to_owned();\n\nswap(&mut foo, &mut bar);\n\nassert_eq!(foo, \"bar\");\nassert_eq!(bar, \"foo\");\n```\n\n## Ownership of the Returned Value\n\n`read` creates a bitwise copy of `T`, regardless of whether `T` is [`Copy`].\nIf `T` is not [`Copy`], using both the returned value and the value at\n`*src` can violate memory safety. Note that assigning to `*src` counts as a\nuse because it will attempt to drop the value at `*src`.\n\n[`write()`] can be used to overwrite data without causing it to be dropped.\n\n```\nuse std::ptr;\n\nlet mut s = String::from(\"foo\");\nunsafe {\n    // `s2` now points to the same underlying memory as `s`.\n    let mut s2: String = ptr::read(&s);\n\n    assert_eq!(s2, \"foo\");\n\n    // Assigning to `s2` causes its original value to be dropped. Beyond\n    // this point, `s` must no longer be used, as the underlying memory has\n    // been freed.\n    s2 = String::default();\n    assert_eq!(s2, \"\");\n\n    // Assigning to `s` would cause the old value to be dropped again,\n    // resulting in undefined behavior.\n    // s = String::from(\"bar\"); // ERROR\n\n    // `ptr::write` can be used to overwrite a value without dropping it.\n    ptr::write(&mut s, String::from(\"bar\"));\n}\n\nassert_eq!(s, \"bar\");\n```\n\n[valid]: self#safety"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 18,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/dedup_by/681",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 681,
+    "end_line": 710,
+    "start_byte": 19464,
+    "end_byte": 20336,
+    "name": "dedup_by",
+    "raw_code": "pub fn dedup_by<F>(&mut self, mut same_bucket: F)\n    where\n        F: FnMut(&mut A::Item, &mut A::Item) -> bool,\n    {\n        // See the implementation of Vec::dedup_by in the\n        // standard library for an explanation of this algorithm.\n        let len = self.len();\n        if len <= 1 {\n            return;\n        }\n\n        let ptr = self.as_mut_ptr();\n        let mut w: usize = 1;\n\n        unsafe {\n            for r in 1..len {\n                let p_r = ptr.offset(r as isize);\n                let p_wm1 = ptr.offset((w - 1) as isize);\n                if !same_bucket(&mut *p_r, &mut *p_wm1) {\n                    if r != w {\n                        let p_w = p_wm1.offset(1);\n                        mem::swap(&mut *p_r, &mut *p_w);\n                    }\n                    w += 1;\n                }\n            }\n        }\n\n        self.truncate(w);\n    }",
+    "code_with_hints": "pub fn dedup_by<F>(&mut self, mut same_bucket: F)\n    where\n        F: FnMut(&mut A::Item, &mut A::Item) -> bool,\n    {\n        // See the implementation of Vec::dedup_by in the\n        // standard library for an explanation of this algorithm.\n        let len: usize = self.len();\n        if len <= 1 {\n            return;\n        }\n\n        let ptr: *mut <A as Array>::Item = self.as_mut_ptr();\n        let mut w: usize = 1;\n\n        unsafe {\n            for r: usize in 1..len {\n                let p_r: *mut <A as Array>::Item = ptr.offset(count: r as isize);\n                let p_wm1: *mut <A as Array>::Item = ptr.offset(count: (w - 1) as isize);\n                if !same_bucket(&mut *p_r, &mut *p_wm1) {\n                    if r != w {\n                        let p_w: *mut <A as Array>::Item = p_wm1.offset(count: 1);\n                        mem::swap(x: &mut *p_r, y: &mut *p_w);\n                    }\n                    w += 1;\n                }\n            }\n        }\n\n        self.truncate(len: w);\n    }",
+    "code_with_type": "pub fn dedup_by<F>(&mut self, mut same_bucket: F)\n    where\n        F: FnMut(&mut A::Item, &mut A::Item) -> bool,\n    {\n        // See the implementation of Vec::dedup_by in the\n        // standard library for an explanation of this algorithm.\n        let len: usize = self.len();\n        if len <= 1 {\n            return;\n        }\n\n        let ptr: *mut <A as Array>::Item = self.as_mut_ptr();\n        let mut w: usize = 1;\n\n        unsafe {\n            for r: usize in 1..len {\n                let p_r: *mut <A as Array>::Item = ptr.offset(r as isize);\n                let p_wm1: *mut <A as Array>::Item = ptr.offset((w - 1) as isize);\n                if !same_bucket(&mut *p_r, &mut *p_wm1) {\n                    if r != w {\n                        let p_w: *mut <A as Array>::Item = p_wm1.offset(1);\n                        mem::swap(&mut *p_r, &mut *p_w);\n                    }\n                    w += 1;\n                }\n            }\n        }\n\n        self.truncate(w);\n    }",
+    "code_with_param": "pub fn dedup_by<F>(&mut self, mut same_bucket: F)\n    where\n        F: FnMut(&mut A::Item, &mut A::Item) -> bool,\n    {\n        // See the implementation of Vec::dedup_by in the\n        // standard library for an explanation of this algorithm.\n        let len = self.len();\n        if len <= 1 {\n            return;\n        }\n\n        let ptr = self.as_mut_ptr();\n        let mut w: usize = 1;\n\n        unsafe {\n            for r in 1..len {\n                let p_r = ptr.offset(count: r as isize);\n                let p_wm1 = ptr.offset(count: (w - 1) as isize);\n                if !same_bucket(&mut *p_r, &mut *p_wm1) {\n                    if r != w {\n                        let p_w = p_wm1.offset(count: 1);\n                        mem::swap(x: &mut *p_r, y: &mut *p_w);\n                    }\n                    w += 1;\n                }\n            }\n        }\n\n        self.truncate(len: w);\n    }",
+    "params": [
+      "self",
+      "same_bucket"
+    ],
+    "return_type": "",
+    "comment": "/// Removes consecutive duplicate elements using the given equality relation.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "F",
+        "item_type": "type_param",
+        "offset_in_fn": 16,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "function",
+        "name": "FnMut",
+        "item_type": "trait",
+        "offset_in_fn": 71,
+        "declaration": "pub trait FnMut<Args>\nwhere\n    Self: FnOnce<Args>,\n    Args: Tuple,",
+        "documentation": "The version of the call operator that takes a mutable receiver.\n\nInstances of `FnMut` can be called repeatedly and may mutate state.\n\n`FnMut` is implemented automatically by closures which take mutable\nreferences to captured variables, as well as all types that implement\n[`Fn`], e.g., (safe) [function pointers] (since `FnMut` is a supertrait of\n[`Fn`]). Additionally, for any type `F` that implements `FnMut`, `&mut F`\nimplements `FnMut`, too.\n\nSince [`FnOnce`] is a supertrait of `FnMut`, any instance of `FnMut` can be\nused where a [`FnOnce`] is expected, and since [`Fn`] is a subtrait of\n`FnMut`, any instance of [`Fn`] can be used where `FnMut` is expected.\n\nUse `FnMut` as a bound when you want to accept a parameter of function-like\ntype and need to call it repeatedly, while allowing it to mutate state.\nIf you don't want the parameter to mutate state, use [`Fn`] as a\nbound; if you don't need to call it repeatedly, use [`FnOnce`].\n\nSee the [chapter on closures in *The Rust Programming Language*][book] for\nsome more information on this topic.\n\nAlso of note is the special syntax for `Fn` traits (e.g.\n`Fn(usize, bool) -> usize`). Those interested in the technical details of\nthis can refer to [the relevant section in the *Rustonomicon*][nomicon].\n\n[book]: ../../book/ch13-01-closures.html\n[function pointers]: fn\n[nomicon]: ../../nomicon/hrtb.html\n\n# Examples\n\n## Calling a mutably capturing closure\n\n```\nlet mut x = 5;\n{\n    let mut square_x = || x *= x;\n    square_x();\n}\nassert_eq!(x, 25);\n```\n\n## Using a `FnMut` parameter\n\n```\nfn do_twice<F>(mut func: F)\n    where F: FnMut()\n{\n    func();\n    func();\n}\n\nlet mut x: usize = 1;\n{\n    let add_two_to_x = || x += 2;\n    do_twice(add_two_to_x);\n}\n\nassert_eq!(x, 5);\n```"
+      },
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 85,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 472,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "same_bucket",
+        "item_type": "value_param",
+        "offset_in_fn": 570,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "mem",
+        "name": "swap",
+        "item_type": "function",
+        "offset_in_fn": 720,
+        "declaration": "pub const fn swap<T>(x: &mut T, y: &mut T)",
+        "documentation": "Swaps the values at two mutable locations, without deinitializing either one.\n\n* If you want to swap with a default or dummy value, see [`take`].\n* If you want to swap with a passed value, returning the old value, see [`replace`].\n\n# Examples\n\n```\nuse std::mem;\n\nlet mut x = 5;\nlet mut y = 42;\n\nmem::swap(&mut x, &mut y);\n\nassert_eq!(42, x);\nassert_eq!(5, y);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "truncate",
+        "item_type": "function",
+        "offset_in_fn": 854,
+        "declaration": "pub fn truncate(&mut self, len: usize)",
+        "documentation": "Shorten the vector, keeping the first `len` elements and dropping the rest.\n\nIf `len` is greater than or equal to the vector's current length, this has no\neffect.\n`shrink_to_fit` after truncating."
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 24,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/from_slice/729",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 729,
+    "end_line": 740,
+    "start_byte": 20806,
+    "end_byte": 21243,
+    "name": "from_slice",
+    "raw_code": "pub fn from_slice(slice: &[A::Item]) -> Self {\n        assert!(slice.len() <= A::size());\n        StackVec {\n            length: slice.len(),\n            data: unsafe {\n                let mut data: mem::MaybeUninit<A> = mem::MaybeUninit::uninit();\n                let ptr = data.as_mut_ptr() as *mut A::Item;\n                ptr::copy_nonoverlapping(slice.as_ptr(), ptr, slice.len());\n                data\n            },\n        }\n    }",
+    "code_with_hints": "pub fn from_slice(slice: &[A::Item]) -> Self {\n        assert!(slice.len() <= A::size());\n        StackVec {\n            length: slice.len(),\n            data: unsafe {\n                let mut data: mem::MaybeUninit<A> = mem::MaybeUninit::uninit();\n                let ptr: *mut <A as Array>::Item = data.as_mut_ptr() as *mut A::Item;\n                ptr::copy_nonoverlapping(src: slice.as_ptr(), dst: ptr, count: slice.len());\n                data\n            },\n        }\n    }",
+    "code_with_type": "pub fn from_slice(slice: &[A::Item]) -> Self {\n        assert!(slice.len() <= A::size());\n        StackVec {\n            length: slice.len(),\n            data: unsafe {\n                let mut data: mem::MaybeUninit<A> = mem::MaybeUninit::uninit();\n                let ptr: *mut <A as Array>::Item = data.as_mut_ptr() as *mut A::Item;\n                ptr::copy_nonoverlapping(slice.as_ptr(), ptr, slice.len());\n                data\n            },\n        }\n    }",
+    "code_with_param": "pub fn from_slice(slice: &[A::Item]) -> Self {\n        assert!(slice.len() <= A::size());\n        StackVec {\n            length: slice.len(),\n            data: unsafe {\n                let mut data: mem::MaybeUninit<A> = mem::MaybeUninit::uninit();\n                let ptr = data.as_mut_ptr() as *mut A::Item;\n                ptr::copy_nonoverlapping(src: slice.as_ptr(), dst: ptr, count: slice.len());\n                data\n            },\n        }\n    }",
+    "params": [
+      "slice"
+    ],
+    "return_type": "Self",
+    "comment": "/// Copy the elements from a slice into a new `StackVec`.\n///\n/// For slices of `Copy` types, this is more efficient than `StackVec::from(slice)`.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 30,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "maybe_uninit",
+        "name": "MaybeUninit",
+        "item_type": "union",
+        "offset_in_fn": 204,
+        "declaration": "MaybeUninit<T> {\n    uninit: (),\n    value: ManuallyDrop<T>,\n}",
+        "documentation": "A wrapper type to construct uninitialized instances of `T`.\n\n# Initialization invariant\n\nThe compiler, in general, assumes that a variable is properly initialized\naccording to the requirements of the variable's type. For example, a variable of\nreference type must be aligned and non-null. This is an invariant that must\n*always* be upheld, even in unsafe code. As a consequence, zero-initializing a\nvariable of reference type causes instantaneous [undefined behavior][ub],\nno matter whether that reference ever gets used to access memory:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet x: &i32 = unsafe { mem::zeroed() }; // undefined behavior! ⚠️\n// The equivalent code with `MaybeUninit<&i32>`:\nlet x: &i32 = unsafe { MaybeUninit::zeroed().assume_init() }; // undefined behavior! ⚠️\n```\n\nThis is exploited by the compiler for various optimizations, such as eliding\nrun-time checks and optimizing `enum` layout.\n\nSimilarly, entirely uninitialized memory may have any content, while a `bool` must\nalways be `true` or `false`. Hence, creating an uninitialized `bool` is undefined behavior:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet b: bool = unsafe { mem::uninitialized() }; // undefined behavior! ⚠️\n// The equivalent code with `MaybeUninit<bool>`:\nlet b: bool = unsafe { MaybeUninit::uninit().assume_init() }; // undefined behavior! ⚠️\n```\n\nMoreover, uninitialized memory is special in that it does not have a fixed value (\"fixed\"\nmeaning \"it won't change without being written to\"). Reading the same uninitialized byte\nmultiple times can give different results. This makes it undefined behavior to have\nuninitialized data in a variable even if that variable has an integer type, which otherwise can\nhold any *fixed* bit pattern:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet x: i32 = unsafe { mem::uninitialized() }; // undefined behavior! ⚠️\n// The equivalent code with `MaybeUninit<i32>`:\nlet x: i32 = unsafe { MaybeUninit::uninit().assume_init() }; // undefined behavior! ⚠️\n```\nOn top of that, remember that most types have additional invariants beyond merely\nbeing considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]\nis considered initialized (under the current implementation; this does not constitute\na stable guarantee) because the only requirement the compiler knows about it\nis that the data pointer must be non-null. Creating such a `Vec<T>` does not cause\n*immediate* undefined behavior, but will cause undefined behavior with most\nsafe operations (including dropping it).\n\n[`Vec<T>`]: ../../std/vec/struct.Vec.html\n\n# Examples\n\n`MaybeUninit<T>` serves to enable unsafe code to deal with uninitialized data.\nIt is a signal to the compiler indicating that the data here might *not*\nbe initialized:\n\n```rust\nuse std::mem::MaybeUninit;\n\n// Create an explicitly uninitialized reference. The compiler knows that data inside\n// a `MaybeUninit<T>` may be invalid, and hence this is not UB:\nlet mut x = MaybeUninit::<&i32>::uninit();\n// Set it to a valid value.\nx.write(&0);\n// Extract the initialized data -- this is only allowed *after* properly\n// initializing `x`!\nlet x = unsafe { x.assume_init() };\n```\n\nThe compiler then knows to not make any incorrect assumptions or optimizations on this code.\n\nYou can think of `MaybeUninit<T>` as being a bit like `Option<T>` but without\nany of the run-time tracking and without any of the safety checks.\n\n## out-pointers\n\nYou can use `MaybeUninit<T>` to implement \"out-pointers\": instead of returning data\nfrom a function, pass it a pointer to some (uninitialized) memory to put the\nresult into. This can be useful when it is important for the caller to control\nhow the memory the result is stored in gets allocated, and you want to avoid\nunnecessary moves.\n\n```\nuse std::mem::MaybeUninit;\n\nunsafe fn make_vec(out: *mut Vec<i32>) {\n    // `write` does not drop the old contents, which is important.\n    out.write(vec![1, 2, 3]);\n}\n\nlet mut v = MaybeUninit::uninit();\nunsafe { make_vec(v.as_mut_ptr()); }\n// Now we know `v` is initialized! This also makes sure the vector gets\n// properly dropped.\nlet v = unsafe { v.assume_init() };\nassert_eq!(&v, &[1, 2, 3]);\n```\n\n## Initializing an array element-by-element\n\n`MaybeUninit<T>` can be used to initialize a large array element-by-element:\n\n```\nuse std::mem::{self, MaybeUninit};\n\nlet data = {\n    // Create an uninitialized array of `MaybeUninit`.\n    let mut data: [MaybeUninit<Vec<u32>>; 1000] = [const { MaybeUninit::uninit() }; 1000];\n\n    // Dropping a `MaybeUninit` does nothing, so if there is a panic during this loop,\n    // we have a memory leak, but there is no memory safety issue.\n    for elem in &mut data[..] {\n        elem.write(vec![42]);\n    }\n\n    // Everything is initialized. Transmute the array to the\n    // initialized type.\n    unsafe { mem::transmute::<_, [Vec<u32>; 1000]>(data) }\n};\n\nassert_eq!(&data[0], &[42]);\n```\n\nYou can also work with partially initialized arrays, which could\nbe found in low-level datastructures.\n\n```\nuse std::mem::MaybeUninit;\n\n// Create an uninitialized array of `MaybeUninit`.\nlet mut data: [MaybeUninit<String>; 1000] = [const { MaybeUninit::uninit() }; 1000];\n// Count the number of elements we have assigned.\nlet mut data_len: usize = 0;\n\nfor elem in &mut data[0..500] {\n    elem.write(String::from(\"hello\"));\n    data_len += 1;\n}\n\n// For each item in the array, drop if we allocated it.\nfor elem in &mut data[0..data_len] {\n    unsafe { elem.assume_init_drop(); }\n}\n```\n\n## Initializing a struct field-by-field\n\nYou can use `MaybeUninit<T>`, and the [`std::ptr::addr_of_mut`] macro, to initialize structs field by field:\n\n```rust\nuse std::mem::MaybeUninit;\nuse std::ptr::addr_of_mut;\n\n#[derive(Debug, PartialEq)]\npub struct Foo {\n    name: String,\n    list: Vec<u8>,\n}\n\nlet foo = {\n    let mut uninit: MaybeUninit<Foo> = MaybeUninit::uninit();\n    let ptr = uninit.as_mut_ptr();\n\n    // Initializing the `name` field\n    // Using `write` instead of assignment via `=` to not call `drop` on the\n    // old, uninitialized value.\n    unsafe { addr_of_mut!((*ptr).name).write(\"Bob\".to_string()); }\n\n    // Initializing the `list` field\n    // If there is a panic here, then the `String` in the `name` field leaks.\n    unsafe { addr_of_mut!((*ptr).list).write(vec![0, 1, 2]); }\n\n    // All the fields are initialized, so we call `assume_init` to get an initialized Foo.\n    unsafe { uninit.assume_init() }\n};\n\nassert_eq!(\n    foo,\n    Foo {\n        name: \"Bob\".to_string(),\n        list: vec![0, 1, 2]\n    }\n);\n```\n[`std::ptr::addr_of_mut`]: crate::ptr::addr_of_mut\n[ub]: ../../reference/behavior-considered-undefined.html\n\n# Layout\n\n`MaybeUninit<T>` is guaranteed to have the same size, alignment, and ABI as `T`:\n\n```rust\nuse std::mem::{MaybeUninit, size_of, align_of};\nassert_eq!(size_of::<MaybeUninit<u64>>(), size_of::<u64>());\nassert_eq!(align_of::<MaybeUninit<u64>>(), align_of::<u64>());\n```\n\nHowever remember that a type *containing* a `MaybeUninit<T>` is not necessarily the same\nlayout; Rust does not in general guarantee that the fields of a `Foo<T>` have the same order as\na `Foo<U>` even if `T` and `U` have the same size and alignment. Furthermore because any bit\nvalue is valid for a `MaybeUninit<T>` the compiler can't apply non-zero/niche-filling\noptimizations, potentially resulting in a larger size:\n\n```rust\n# use std::mem::{MaybeUninit, size_of};\nassert_eq!(size_of::<Option<bool>>(), 1);\nassert_eq!(size_of::<Option<MaybeUninit<bool>>>(), 2);\n```\n\nIf `T` is FFI-safe, then so is `MaybeUninit<T>`.\n\nWhile `MaybeUninit` is `#[repr(transparent)]` (indicating it guarantees the same size,\nalignment, and ABI as `T`), this does *not* change any of the previous caveats. `Option<T>` and\n`Option<MaybeUninit<T>>` may still have different sizes, and types containing a field of type\n`T` may be laid out (and sized) differently than if that field were `MaybeUninit<T>`.\n`MaybeUninit` is a union type, and `#[repr(transparent)]` on unions is unstable (see [the\ntracking issue](https://github.com/rust-lang/rust/issues/60405)). Over time, the exact\nguarantees of `#[repr(transparent)]` on unions may evolve, and `MaybeUninit` may or may not\nremain `#[repr(transparent)]`. That said, `MaybeUninit<T>` will *always* guarantee that it has\nthe same size, alignment, and ABI as `T`; it's just that the way `MaybeUninit` implements that\nguarantee may evolve."
+      },
+      {
+        "src_mod": "",
+        "name": "A",
+        "item_type": "type_param",
+        "offset_in_fn": 216,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "uninit",
+        "item_type": "function",
+        "offset_in_fn": 239,
+        "declaration": "pub const fn uninit() -> MaybeUninit<T>",
+        "documentation": "Creates a new `MaybeUninit<T>` in an uninitialized state.\n\nNote that dropping a `MaybeUninit<T>` will never call `T`'s drop code.\nIt is your responsibility to make sure `T` gets dropped if it got initialized.\n\nSee the [type-level documentation][MaybeUninit] for some examples.\n\n# Example\n\n```\nuse std::mem::MaybeUninit;\n\nlet v: MaybeUninit<String> = MaybeUninit::uninit();\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 331,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 40,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/insert_from_slice/746",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 746,
+    "end_line": 756,
+    "start_byte": 21460,
+    "end_byte": 21955,
+    "name": "insert_from_slice",
+    "raw_code": "pub fn insert_from_slice(&mut self, index: usize, slice: &[A::Item]) {\n        assert!(index <= self.len() && self.len() + slice.len() <= self.capacity());\n        unsafe {\n            let len = self.len();\n            let slice_ptr = slice.as_ptr();\n            let ptr = self.as_mut_ptr().padd(index);\n            ptr::copy(ptr, ptr.padd(slice.len()), len - index);\n            ptr::copy_nonoverlapping(slice_ptr, ptr, slice.len());\n            self.set_len(len + slice.len());\n        }\n    }",
+    "code_with_hints": "pub fn insert_from_slice(&mut self, index: usize, slice: &[A::Item]) {\n        assert!(index <= self.len() && self.len() + slice.len() <= self.capacity());\n        unsafe {\n            let len: usize = self.len();\n            let slice_ptr: *const <A as Array>::Item = slice.as_ptr();\n            let ptr: *mut <A as Array>::Item = self.as_mut_ptr().padd(count: index);\n            ptr::copy(src: ptr, dst: ptr.padd(count: slice.len()), count: len - index);\n            ptr::copy_nonoverlapping(src: slice_ptr, dst: ptr, count: slice.len());\n            self.set_len(new_len: len + slice.len());\n        }\n    }",
+    "code_with_type": "pub fn insert_from_slice(&mut self, index: usize, slice: &[A::Item]) {\n        assert!(index <= self.len() && self.len() + slice.len() <= self.capacity());\n        unsafe {\n            let len: usize = self.len();\n            let slice_ptr: *const <A as Array>::Item = slice.as_ptr();\n            let ptr: *mut <A as Array>::Item = self.as_mut_ptr().padd(index);\n            ptr::copy(ptr, ptr.padd(slice.len()), len - index);\n            ptr::copy_nonoverlapping(slice_ptr, ptr, slice.len());\n            self.set_len(len + slice.len());\n        }\n    }",
+    "code_with_param": "pub fn insert_from_slice(&mut self, index: usize, slice: &[A::Item]) {\n        assert!(index <= self.len() && self.len() + slice.len() <= self.capacity());\n        unsafe {\n            let len = self.len();\n            let slice_ptr = slice.as_ptr();\n            let ptr = self.as_mut_ptr().padd(count: index);\n            ptr::copy(src: ptr, dst: ptr.padd(count: slice.len()), count: len - index);\n            ptr::copy_nonoverlapping(src: slice_ptr, dst: ptr, count: slice.len());\n            self.set_len(new_len: len + slice.len());\n        }\n    }",
+    "params": [
+      "self",
+      "index",
+      "slice"
+    ],
+    "return_type": "",
+    "comment": "/// Copy elements from a slice into the vector at position `index`, shifting any following\n/// elements toward the back.\n///\n/// For slices of `Copy` types, this is more efficient than `insert`.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 62,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "padd",
+        "item_type": "function",
+        "offset_in_fn": 291,
+        "declaration": "unsafe fn padd(self, count: usize) -> Self",
+        "documentation": ""
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy",
+        "item_type": "function",
+        "offset_in_fn": 321,
+        "declaration": "pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination may overlap.\n\nIf the source and destination will *never* overlap,\n[`copy_nonoverlapping`] can be used instead.\n\n`copy` is semantically equivalent to C's [`memmove`], but with the argument\norder swapped. Copying takes place as if the bytes were copied from `src`\nto a temporary array and then copied from the array to `dst`.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes, and must remain valid even\n  when `dst` is written for `count * size_of::<T>()` bytes. (This means if the memory ranges\n  overlap, the two pointers must not be subject to aliasing restrictions relative to each\n  other.)\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes, and must remain valid even\n  when `src` is read for `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\nLike [`read`], `copy` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using both the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nEfficiently create a Rust vector from an unsafe buffer:\n\n```\nuse std::ptr;\n\n/// # Safety\n///\n/// * `ptr` must be correctly aligned for its type and non-zero.\n/// * `ptr` must be valid for reads of `elts` contiguous elements of type `T`.\n/// * Those elements must not be used after calling this function unless `T: Copy`.\n# #[allow(dead_code)]\nunsafe fn from_buf_raw<T>(ptr: *const T, elts: usize) -> Vec<T> {\n    let mut dst = Vec::with_capacity(elts);\n\n    // SAFETY: Our precondition ensures the source is aligned and valid,\n    // and `Vec::with_capacity` ensures that we have usable space to write them.\n    ptr::copy(ptr, dst.as_mut_ptr(), elts);\n\n    // SAFETY: We created it with this much capacity earlier,\n    // and the previous `copy` has initialized these elements.\n    dst.set_len(elts);\n    dst\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 385,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be non-null and properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "set_len",
+        "item_type": "function",
+        "offset_in_fn": 452,
+        "declaration": "pub unsafe fn set_len(&mut self, new_len: usize)",
+        "documentation": "Sets the length of a vector.\n\nThis will explicitly set the size of the vector, without actually\nmodifying its buffers, so it is up to the caller to ensure that the\nvector is actually the specified size."
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 30,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  },
+  {
+    "sample_label": "stackvector-1.1.1/src/lib.rs/from_elem/795",
+    "repo_name": "stackvector-1.1.1",
+    "relative_file": "src/lib.rs",
+    "start_line": 795,
+    "end_line": 807,
+    "start_byte": 23139,
+    "end_byte": 23564,
+    "name": "from_elem",
+    "raw_code": "pub fn from_elem(elem: A::Item, n: usize) -> Self {\n        assert!(n <= A::size());\n        let mut v = StackVec::<A>::new();\n        unsafe {\n            let ptr = v.as_mut_ptr();\n            let mut local_len = SetLenOnDrop::new(&mut v.length);\n            for i in 0..n as isize {\n                ptr::write(ptr.offset(i), elem.clone());\n                local_len.increment_len(1);\n            }\n        }\n        v\n    }",
+    "code_with_hints": "pub fn from_elem(elem: A::Item, n: usize) -> Self {\n        assert!(n <= A::size());\n        let mut v: StackVec<A> = StackVec::<A>::new();\n        unsafe {\n            let ptr: *mut <A as Array>::Item = v.as_mut_ptr();\n            let mut local_len: SetLenOnDrop = SetLenOnDrop::new(len: &mut v.length);\n            for i: isize in 0..n as isize {\n                ptr::write(dst: ptr.offset(count: i), src: elem.clone());\n                local_len.increment_len(increment: 1);\n            }\n        }\n        v\n    }",
+    "code_with_type": "pub fn from_elem(elem: A::Item, n: usize) -> Self {\n        assert!(n <= A::size());\n        let mut v: StackVec<A> = StackVec::<A>::new();\n        unsafe {\n            let ptr: *mut <A as Array>::Item = v.as_mut_ptr();\n            let mut local_len: SetLenOnDrop = SetLenOnDrop::new(&mut v.length);\n            for i: isize in 0..n as isize {\n                ptr::write(ptr.offset(i), elem.clone());\n                local_len.increment_len(1);\n            }\n        }\n        v\n    }",
+    "code_with_param": "pub fn from_elem(elem: A::Item, n: usize) -> Self {\n        assert!(n <= A::size());\n        let mut v = StackVec::<A>::new();\n        unsafe {\n            let ptr = v.as_mut_ptr();\n            let mut local_len = SetLenOnDrop::new(len: &mut v.length);\n            for i in 0..n as isize {\n                ptr::write(dst: ptr.offset(count: i), src: elem.clone());\n                local_len.increment_len(increment: 1);\n            }\n        }\n        v\n    }",
+    "params": [
+      "elem",
+      "n"
+    ],
+    "return_type": "Self",
+    "comment": "/// Creates a `StackVec` with `n` copies of `elem`.\n/// ```\n/// use stackvector::StackVec;\n///\n/// let v = StackVec::<[char; 128]>::from_elem('d', 2);\n/// assert_eq!(v, StackVec::from_buf(['d', 'd']));\n/// ```\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "Array",
+        "name": "Item",
+        "item_type": "type_alias",
+        "offset_in_fn": 26,
+        "declaration": "Item;",
+        "documentation": "The type of the array's elements."
+      },
+      {
+        "src_mod": "",
+        "name": "A",
+        "item_type": "type_param",
+        "offset_in_fn": 116,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "offset",
+        "item_type": "function",
+        "offset_in_fn": 316,
+        "declaration": "pub const unsafe fn offset(self, count: isize) -> *mut T\nwhere\n    T: Sized,",
+        "documentation": "Adds a signed offset to a pointer.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be derived from a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_offset`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_offset`]: #method.wrapping_offset\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet mut s = [1, 2, 3];\nlet ptr: *mut u32 = s.as_mut_ptr();\n\nunsafe {\n    assert_eq!(2, *ptr.offset(1));\n    assert_eq!(3, *ptr.offset(2));\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "increment_len",
+        "item_type": "function",
+        "offset_in_fn": 368,
+        "declaration": "fn increment_len(&mut self, increment: usize)",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "StackVec",
+      "item_type": "struct",
+      "offset_in_fn": 45,
+      "declaration": "StackVec<A: Array> {\n    // The capacity field is used for iteration and other optimizations.\n    // Publicly expose the fields, so they may be used in constant\n    // initialization.\n    pub data: mem::MaybeUninit<A>,\n    pub length: usize,\n}",
+      "documentation": "A `Vec`-like container that stores elements on the stack.\n\nThe amount of data that a `StackVec` can store inline depends on its backing store. The backing\nstore can be any type that implements the `Array` trait; usually it is a small fixed-sized\narray.  For example a `StackVec<[u64; 8]>` can hold up to eight 64-bit integers inline.\n\n## Example\n\n```rust,should_panic\nuse stackvector::StackVec;\nlet mut v = StackVec::<[u8; 4]>::new(); // initialize an empty vector\n\n// The vector can hold up to 4 items without spilling onto the heap.\nv.extend(0..4);\nassert_eq!(v.len(), 4);\n\n// Pushing another element will force the buffer to spill and panic:\nv.push(4);\n```"
+    }
+  }
+]

@@ -1,0 +1,930 @@
+[
+  {
+    "sample_label": "musli-0.0.149/src/fixed.rs/new/36",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/fixed.rs",
+    "start_line": 36,
+    "end_line": 42,
+    "start_byte": 867,
+    "end_byte": 1100,
+    "name": "new",
+    "raw_code": "pub const fn new() -> Self {\n        Self {\n            // SAFETY: MaybeUnint::uninit_array is not stable.\n            data: unsafe { MaybeUninit::<[MaybeUninit<u8>; N]>::uninit().assume_init() },\n            init: 0,\n        }\n    }",
+    "code_with_hints": "pub const fn new() -> Self {\n        Self {\n            // SAFETY: MaybeUnint::uninit_array is not stable.\n            data: unsafe { MaybeUninit::<[MaybeUninit<u8>; N]>::uninit().assume_init() },\n            init: 0,\n        }\n    }",
+    "code_with_type": "pub const fn new() -> Self {\n        Self {\n            // SAFETY: MaybeUnint::uninit_array is not stable.\n            data: unsafe { MaybeUninit::<[MaybeUninit<u8>; N]>::uninit().assume_init() },\n            init: 0,\n        }\n    }",
+    "code_with_param": "pub const fn new() -> Self {\n        Self {\n            // SAFETY: MaybeUnint::uninit_array is not stable.\n            data: unsafe { MaybeUninit::<[MaybeUninit<u8>; N]>::uninit().assume_init() },\n            init: 0,\n        }\n    }",
+    "params": [],
+    "return_type": "Self",
+    "comment": "/// Construct a new fixed bytes array storage.\n///\n/// # Examples\n///\n/// ```\n/// use musli::fixed::FixedBytes;\n///\n/// let mut buffer = FixedBytes::<128>::new();\n/// assert_eq!(buffer.len(), 0);\n/// assert!(buffer.is_empty());\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "maybe_uninit",
+        "name": "MaybeUninit",
+        "item_type": "union",
+        "offset_in_fn": 134,
+        "declaration": "MaybeUninit<T> {\n    uninit: (),\n    value: ManuallyDrop<T>,\n}",
+        "documentation": "A wrapper type to construct uninitialized instances of `T`.\n\n# Initialization invariant\n\nThe compiler, in general, assumes that a variable is properly initialized\naccording to the requirements of the variable's type. For example, a variable of\nreference type must be aligned and non-null. This is an invariant that must\n*always* be upheld, even in unsafe code. As a consequence, zero-initializing a\nvariable of reference type causes instantaneous [undefined behavior][ub],\nno matter whether that reference ever gets used to access memory:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet x: &i32 = unsafe { mem::zeroed() }; // undefined behavior! ⚠️\n// The equivalent code with `MaybeUninit<&i32>`:\nlet x: &i32 = unsafe { MaybeUninit::zeroed().assume_init() }; // undefined behavior! ⚠️\n```\n\nThis is exploited by the compiler for various optimizations, such as eliding\nrun-time checks and optimizing `enum` layout.\n\nSimilarly, entirely uninitialized memory may have any content, while a `bool` must\nalways be `true` or `false`. Hence, creating an uninitialized `bool` is undefined behavior:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet b: bool = unsafe { mem::uninitialized() }; // undefined behavior! ⚠️\n// The equivalent code with `MaybeUninit<bool>`:\nlet b: bool = unsafe { MaybeUninit::uninit().assume_init() }; // undefined behavior! ⚠️\n```\n\nMoreover, uninitialized memory is special in that it does not have a fixed value (\"fixed\"\nmeaning \"it won't change without being written to\"). Reading the same uninitialized byte\nmultiple times can give different results. This makes it undefined behavior to have\nuninitialized data in a variable even if that variable has an integer type, which otherwise can\nhold any *fixed* bit pattern:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet x: i32 = unsafe { mem::uninitialized() }; // undefined behavior! ⚠️\n// The equivalent code with `MaybeUninit<i32>`:\nlet x: i32 = unsafe { MaybeUninit::uninit().assume_init() }; // undefined behavior! ⚠️\n```\nOn top of that, remember that most types have additional invariants beyond merely\nbeing considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]\nis considered initialized (under the current implementation; this does not constitute\na stable guarantee) because the only requirement the compiler knows about it\nis that the data pointer must be non-null. Creating such a `Vec<T>` does not cause\n*immediate* undefined behavior, but will cause undefined behavior with most\nsafe operations (including dropping it).\n\n[`Vec<T>`]: ../../std/vec/struct.Vec.html\n\n# Examples\n\n`MaybeUninit<T>` serves to enable unsafe code to deal with uninitialized data.\nIt is a signal to the compiler indicating that the data here might *not*\nbe initialized:\n\n```rust\nuse std::mem::MaybeUninit;\n\n// Create an explicitly uninitialized reference. The compiler knows that data inside\n// a `MaybeUninit<T>` may be invalid, and hence this is not UB:\nlet mut x = MaybeUninit::<&i32>::uninit();\n// Set it to a valid value.\nx.write(&0);\n// Extract the initialized data -- this is only allowed *after* properly\n// initializing `x`!\nlet x = unsafe { x.assume_init() };\n```\n\nThe compiler then knows to not make any incorrect assumptions or optimizations on this code.\n\nYou can think of `MaybeUninit<T>` as being a bit like `Option<T>` but without\nany of the run-time tracking and without any of the safety checks.\n\n## out-pointers\n\nYou can use `MaybeUninit<T>` to implement \"out-pointers\": instead of returning data\nfrom a function, pass it a pointer to some (uninitialized) memory to put the\nresult into. This can be useful when it is important for the caller to control\nhow the memory the result is stored in gets allocated, and you want to avoid\nunnecessary moves.\n\n```\nuse std::mem::MaybeUninit;\n\nunsafe fn make_vec(out: *mut Vec<i32>) {\n    // `write` does not drop the old contents, which is important.\n    out.write(vec![1, 2, 3]);\n}\n\nlet mut v = MaybeUninit::uninit();\nunsafe { make_vec(v.as_mut_ptr()); }\n// Now we know `v` is initialized! This also makes sure the vector gets\n// properly dropped.\nlet v = unsafe { v.assume_init() };\nassert_eq!(&v, &[1, 2, 3]);\n```\n\n## Initializing an array element-by-element\n\n`MaybeUninit<T>` can be used to initialize a large array element-by-element:\n\n```\nuse std::mem::{self, MaybeUninit};\n\nlet data = {\n    // Create an uninitialized array of `MaybeUninit`.\n    let mut data: [MaybeUninit<Vec<u32>>; 1000] = [const { MaybeUninit::uninit() }; 1000];\n\n    // Dropping a `MaybeUninit` does nothing, so if there is a panic during this loop,\n    // we have a memory leak, but there is no memory safety issue.\n    for elem in &mut data[..] {\n        elem.write(vec![42]);\n    }\n\n    // Everything is initialized. Transmute the array to the\n    // initialized type.\n    unsafe { mem::transmute::<_, [Vec<u32>; 1000]>(data) }\n};\n\nassert_eq!(&data[0], &[42]);\n```\n\nYou can also work with partially initialized arrays, which could\nbe found in low-level datastructures.\n\n```\nuse std::mem::MaybeUninit;\n\n// Create an uninitialized array of `MaybeUninit`.\nlet mut data: [MaybeUninit<String>; 1000] = [const { MaybeUninit::uninit() }; 1000];\n// Count the number of elements we have assigned.\nlet mut data_len: usize = 0;\n\nfor elem in &mut data[0..500] {\n    elem.write(String::from(\"hello\"));\n    data_len += 1;\n}\n\n// For each item in the array, drop if we allocated it.\nfor elem in &mut data[0..data_len] {\n    unsafe { elem.assume_init_drop(); }\n}\n```\n\n## Initializing a struct field-by-field\n\nYou can use `MaybeUninit<T>`, and the [`std::ptr::addr_of_mut`] macro, to initialize structs field by field:\n\n```rust\nuse std::mem::MaybeUninit;\nuse std::ptr::addr_of_mut;\n\n#[derive(Debug, PartialEq)]\npub struct Foo {\n    name: String,\n    list: Vec<u8>,\n}\n\nlet foo = {\n    let mut uninit: MaybeUninit<Foo> = MaybeUninit::uninit();\n    let ptr = uninit.as_mut_ptr();\n\n    // Initializing the `name` field\n    // Using `write` instead of assignment via `=` to not call `drop` on the\n    // old, uninitialized value.\n    unsafe { addr_of_mut!((*ptr).name).write(\"Bob\".to_string()); }\n\n    // Initializing the `list` field\n    // If there is a panic here, then the `String` in the `name` field leaks.\n    unsafe { addr_of_mut!((*ptr).list).write(vec![0, 1, 2]); }\n\n    // All the fields are initialized, so we call `assume_init` to get an initialized Foo.\n    unsafe { uninit.assume_init() }\n};\n\nassert_eq!(\n    foo,\n    Foo {\n        name: \"Bob\".to_string(),\n        list: vec![0, 1, 2]\n    }\n);\n```\n[`std::ptr::addr_of_mut`]: crate::ptr::addr_of_mut\n[ub]: ../../reference/behavior-considered-undefined.html\n\n# Layout\n\n`MaybeUninit<T>` is guaranteed to have the same size, alignment, and ABI as `T`:\n\n```rust\nuse std::mem::{MaybeUninit, size_of, align_of};\nassert_eq!(size_of::<MaybeUninit<u64>>(), size_of::<u64>());\nassert_eq!(align_of::<MaybeUninit<u64>>(), align_of::<u64>());\n```\n\nHowever remember that a type *containing* a `MaybeUninit<T>` is not necessarily the same\nlayout; Rust does not in general guarantee that the fields of a `Foo<T>` have the same order as\na `Foo<U>` even if `T` and `U` have the same size and alignment. Furthermore because any bit\nvalue is valid for a `MaybeUninit<T>` the compiler can't apply non-zero/niche-filling\noptimizations, potentially resulting in a larger size:\n\n```rust\n# use std::mem::{MaybeUninit, size_of};\nassert_eq!(size_of::<Option<bool>>(), 1);\nassert_eq!(size_of::<Option<MaybeUninit<bool>>>(), 2);\n```\n\nIf `T` is FFI-safe, then so is `MaybeUninit<T>`.\n\nWhile `MaybeUninit` is `#[repr(transparent)]` (indicating it guarantees the same size,\nalignment, and ABI as `T`), this does *not* change any of the previous caveats. `Option<T>` and\n`Option<MaybeUninit<T>>` may still have different sizes, and types containing a field of type\n`T` may be laid out (and sized) differently than if that field were `MaybeUninit<T>`.\n`MaybeUninit` is a union type, and `#[repr(transparent)]` on unions is unstable (see [the\ntracking issue](https://github.com/rust-lang/rust/issues/60405)). Over time, the exact\nguarantees of `#[repr(transparent)]` on unions may evolve, and `MaybeUninit` may or may not\nremain `#[repr(transparent)]`. That said, `MaybeUninit<T>` will *always* guarantee that it has\nthe same size, alignment, and ABI as `T`; it's just that the way `MaybeUninit` implements that\nguarantee may evolve.\n\nNote that even though `T` and `MaybeUninit<T>` are ABI compatible it is still unsound to\ntransmute `&mut T` to `&mut MaybeUninit<T>` and expose that to safe code because it would allow\nsafe code to access uninitialized memory:\n\n```rust,no_run\nuse core::mem::MaybeUninit;\n\nfn unsound_transmute<T>(val: &mut T) -> &mut MaybeUninit<T> {\n    unsafe { core::mem::transmute(val) }\n}\n\nfn main() {\n    let mut code = 0;\n    let code = &mut code;\n    let code2 = unsound_transmute(code);\n    *code2 = MaybeUninit::uninit();\n    std::process::exit(*code); // UB! Accessing uninitialized memory.\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "uninit",
+        "item_type": "function",
+        "offset_in_fn": 171,
+        "declaration": "pub const fn uninit() -> MaybeUninit<T>",
+        "documentation": "Creates a new `MaybeUninit<T>` in an uninitialized state.\n\nNote that dropping a `MaybeUninit<T>` will never call `T`'s drop code.\nIt is your responsibility to make sure `T` gets dropped if it got initialized.\n\nSee the [type-level documentation][MaybeUninit] for some examples.\n\n# Example\n\n```\nuse std::mem::MaybeUninit;\n\nlet v: MaybeUninit<String> = MaybeUninit::uninit();\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "assume_init",
+        "item_type": "function",
+        "offset_in_fn": 180,
+        "declaration": "pub const unsafe fn assume_init(self) -> T",
+        "documentation": "Extracts the value from the `MaybeUninit<T>` container. This is a great way\nto ensure that the data will get dropped, because the resulting `T` is\nsubject to the usual drop handling.\n\n# Safety\n\nIt is up to the caller to guarantee that the `MaybeUninit<T>` really is in an initialized\nstate. Calling this when the content is not yet fully initialized causes immediate undefined\nbehavior. The [type-level documentation][inv] contains more information about\nthis initialization invariant.\n\n[inv]: #initialization-invariant\n\nOn top of that, remember that most types have additional invariants beyond merely\nbeing considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]\nis considered initialized (under the current implementation; this does not constitute\na stable guarantee) because the only requirement the compiler knows about it\nis that the data pointer must be non-null. Creating such a `Vec<T>` does not cause\n*immediate* undefined behavior, but will cause undefined behavior with most\nsafe operations (including dropping it).\n\n[`Vec<T>`]: ../../std/vec/struct.Vec.html\n\n# Examples\n\nCorrect usage of this method:\n\n```rust\nuse std::mem::MaybeUninit;\n\nlet mut x = MaybeUninit::<bool>::uninit();\nx.write(true);\nlet x_init = unsafe { x.assume_init() };\nassert_eq!(x_init, true);\n```\n\n*Incorrect* usage of this method:\n\n```rust,no_run\nuse std::mem::MaybeUninit;\n\nlet x = MaybeUninit::<Vec<u32>>::uninit();\nlet x_init = unsafe { x.assume_init() };\n// `x` had not been initialized yet, so this last line caused undefined behavior. ⚠️\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "fixed",
+      "name": "FixedBytes",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "FixedBytes<const N: usize> {\n    /// Data storage.\n    data: [MaybeUninit<u8>; N],\n    /// How many bytes have been initialized.\n    init: usize,\n}",
+      "documentation": "A fixed-size bytes storage which keeps track of how much has been\ninitialized."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/fixed.rs/into_bytes/166",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/fixed.rs",
+    "start_line": 166,
+    "end_line": 177,
+    "start_byte": 4210,
+    "end_byte": 4692,
+    "name": "into_bytes",
+    "raw_code": "pub fn into_bytes(self) -> Option<[u8; N]> {\n        if self.init == N {\n            // SAFETY: All of the bytes in the sequence have been initialized\n            // and can be safety transmuted.\n            //\n            // Method of transmuting comes from the implementation of\n            // `MaybeUninit::array_assume_init` which is not yet stable.\n            unsafe { Some((&self.data as *const _ as *const [u8; N]).read()) }\n        } else {\n            None\n        }\n    }",
+    "code_with_hints": "pub fn into_bytes(self) -> Option<[u8; N]> {\n        if self.init == N {\n            // SAFETY: All of the bytes in the sequence have been initialized\n            // and can be safety transmuted.\n            //\n            // Method of transmuting comes from the implementation of\n            // `MaybeUninit::array_assume_init` which is not yet stable.\n            unsafe { Some((&self.data as *const _ as *const [u8; N]).read()) }\n        } else {\n            None\n        }\n    }",
+    "code_with_type": "pub fn into_bytes(self) -> Option<[u8; N]> {\n        if self.init == N {\n            // SAFETY: All of the bytes in the sequence have been initialized\n            // and can be safety transmuted.\n            //\n            // Method of transmuting comes from the implementation of\n            // `MaybeUninit::array_assume_init` which is not yet stable.\n            unsafe { Some((&self.data as *const _ as *const [u8; N]).read()) }\n        } else {\n            None\n        }\n    }",
+    "code_with_param": "pub fn into_bytes(self) -> Option<[u8; N]> {\n        if self.init == N {\n            // SAFETY: All of the bytes in the sequence have been initialized\n            // and can be safety transmuted.\n            //\n            // Method of transmuting comes from the implementation of\n            // `MaybeUninit::array_assume_init` which is not yet stable.\n            unsafe { Some((&self.data as *const _ as *const [u8; N]).read()) }\n        } else {\n            None\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Option<[u8; N]>",
+    "comment": "/// Coerce into the underlying bytes if all of them have been initialized.\n///\n/// # Examples\n///\n/// ```\n/// use musli::fixed::FixedBytes;\n///\n/// // Converting a full buffer returns the complete array\n/// let mut buffer = FixedBytes::<3>::new();\n/// buffer.extend_from_slice(&[1, 2, 3]);\n///\n/// let bytes = buffer.into_bytes().expect(\"Buffer should be full\");\n/// assert_eq!(bytes, [1, 2, 3]);\n///\n/// // Partial buffers cannot be converted to arrays\n/// let partial_buffer = FixedBytes::<3>::new();\n/// assert_eq!(partial_buffer.into_bytes(), None);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "read",
+        "item_type": "function",
+        "offset_in_fn": 423,
+        "declaration": "pub const unsafe fn read(self) -> T\nwhere\n    T: Sized,",
+        "documentation": "Reads the value from `self` without moving it. This leaves the\nmemory in `self` unchanged.\n\nSee [`ptr::read`] for safety concerns and examples.\n\n[`ptr::read`]: crate::ptr::read()"
+      }
+    ],
+    "self_info": {
+      "src_mod": "fixed",
+      "name": "FixedBytes",
+      "item_type": "struct",
+      "offset_in_fn": 18,
+      "declaration": "FixedBytes<const N: usize> {\n    /// Data storage.\n    data: [MaybeUninit<u8>; N],\n    /// How many bytes have been initialized.\n    init: usize,\n}",
+      "documentation": "A fixed-size bytes storage which keeps track of how much has been\ninitialized."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/fixed.rs/as_slice/193",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/fixed.rs",
+    "start_line": 193,
+    "end_line": 201,
+    "start_byte": 5069,
+    "end_byte": 5381,
+    "name": "as_slice",
+    "raw_code": "pub fn as_slice(&self) -> &[u8] {\n        if self.init == 0 {\n            return &[];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts(self.data.as_ptr().cast(), self.init) }\n    }",
+    "code_with_hints": "pub fn as_slice(&self) -> &[u8] {\n        if self.init == 0 {\n            return &[];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts(data: self.data.as_ptr().cast(), len: self.init) }\n    }",
+    "code_with_type": "pub fn as_slice(&self) -> &[u8] {\n        if self.init == 0 {\n            return &[];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts(self.data.as_ptr().cast(), self.init) }\n    }",
+    "code_with_param": "pub fn as_slice(&self) -> &[u8] {\n        if self.init == 0 {\n            return &[];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts(data: self.data.as_ptr().cast(), len: self.init) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "&[u8]",
+    "comment": "/// Coerce into the slice of initialized memory which is present.\n///\n/// # Examples\n///\n/// ```\n/// use musli::fixed::FixedBytes;\n///\n/// let mut buffer = FixedBytes::<10>::new();\n/// buffer.extend_from_slice(&[1, 2, 3]);\n///\n/// let slice = buffer.as_slice();\n/// assert_eq!(slice, &[1, 2, 3]);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 252,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** ⚠️\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "cast",
+        "item_type": "function",
+        "offset_in_fn": 286,
+        "declaration": "pub const fn cast<U>(self) -> *const U",
+        "documentation": "Casts to a pointer of another type."
+      }
+    ],
+    "self_info": {
+      "src_mod": "fixed",
+      "name": "FixedBytes",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "FixedBytes<const N: usize> {\n    /// Data storage.\n    data: [MaybeUninit<u8>; N],\n    /// How many bytes have been initialized.\n    init: usize,\n}",
+      "documentation": "A fixed-size bytes storage which keeps track of how much has been\ninitialized."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/fixed.rs/as_mut_slice/218",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/fixed.rs",
+    "start_line": 218,
+    "end_line": 226,
+    "start_byte": 5806,
+    "end_byte": 6142,
+    "name": "as_mut_slice",
+    "raw_code": "pub fn as_mut_slice(&mut self) -> &mut [u8] {\n        if self.init == 0 {\n            return &mut [];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts_mut(self.data.as_mut_ptr().cast(), self.init) }\n    }",
+    "code_with_hints": "pub fn as_mut_slice(&mut self) -> &mut [u8] {\n        if self.init == 0 {\n            return &mut [];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts_mut(data: self.data.as_mut_ptr().cast(), len: self.init) }\n    }",
+    "code_with_type": "pub fn as_mut_slice(&mut self) -> &mut [u8] {\n        if self.init == 0 {\n            return &mut [];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts_mut(self.data.as_mut_ptr().cast(), self.init) }\n    }",
+    "code_with_param": "pub fn as_mut_slice(&mut self) -> &mut [u8] {\n        if self.init == 0 {\n            return &mut [];\n        }\n\n        // SAFETY: We've asserted that `initialized` accounts for the number of\n        // bytes that have been initialized.\n        unsafe { core::slice::from_raw_parts_mut(data: self.data.as_mut_ptr().cast(), len: self.init) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "&mut [u8]",
+    "comment": "/// Coerce into the mutable slice of initialized memory which is present.\n///\n/// # Examples\n///\n/// ```\n/// use musli::fixed::FixedBytes;\n///\n/// let mut buffer = FixedBytes::<10>::new();\n/// buffer.extend_from_slice(&[1, 2, 3]);\n///\n/// let slice = buffer.as_mut_slice();\n/// slice[0] = 42;\n/// assert_eq!(buffer.as_slice(), &[42, 2, 3]);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts_mut",
+        "item_type": "function",
+        "offset_in_fn": 268,
+        "declaration": "pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]",
+        "documentation": "Performs the same functionality as [`from_raw_parts`], except that a\nmutable slice is returned.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for both reads and writes for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be accessed through any other pointer\n  (not derived from the return value) for the duration of lifetime `'a`.\n  Both read and write accesses are forbidden.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "cast",
+        "item_type": "function",
+        "offset_in_fn": 310,
+        "declaration": "pub const fn cast<U>(self) -> *mut U",
+        "documentation": "Casts to a pointer of another type."
+      }
+    ],
+    "self_info": {
+      "src_mod": "fixed",
+      "name": "FixedBytes",
+      "item_type": "struct",
+      "offset_in_fn": 25,
+      "declaration": "FixedBytes<const N: usize> {\n    /// Data storage.\n    data: [MaybeUninit<u8>; N],\n    /// How many bytes have been initialized.\n    init: usize,\n}",
+      "documentation": "A fixed-size bytes storage which keeps track of how much has been\ninitialized."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/fixed.rs/push/245",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/fixed.rs",
+    "start_line": 245,
+    "end_line": 260,
+    "start_byte": 6570,
+    "end_byte": 6911,
+    "name": "push",
+    "raw_code": "pub fn push(&mut self, value: u8) -> bool {\n        if N.saturating_sub(self.init) == 0 {\n            return false;\n        }\n\n        unsafe {\n            self.data\n                .as_mut_ptr()\n                .cast::<u8>()\n                .add(self.init)\n                .write(value)\n        }\n\n        self.init += 1;\n        true\n    }",
+    "code_with_hints": "pub fn push(&mut self, value: u8) -> bool {\n        if N.saturating_sub(self.init) == 0 {\n            return false;\n        }\n\n        unsafe {\n            self.data\n                .as_mut_ptr()\n                .cast::<u8>()\n                .add(count: self.init)\n                .write(val: value)\n        }\n\n        self.init += 1;\n        true\n    }",
+    "code_with_type": "pub fn push(&mut self, value: u8) -> bool {\n        if N.saturating_sub(self.init) == 0 {\n            return false;\n        }\n\n        unsafe {\n            self.data\n                .as_mut_ptr()\n                .cast::<u8>()\n                .add(self.init)\n                .write(value)\n        }\n\n        self.init += 1;\n        true\n    }",
+    "code_with_param": "pub fn push(&mut self, value: u8) -> bool {\n        if N.saturating_sub(self.init) == 0 {\n            return false;\n        }\n\n        unsafe {\n            self.data\n                .as_mut_ptr()\n                .cast::<u8>()\n                .add(count: self.init)\n                .write(val: value)\n        }\n\n        self.init += 1;\n        true\n    }",
+    "params": [
+      "self",
+      "value"
+    ],
+    "return_type": "bool",
+    "comment": "/// Try and push a single byte.\n///\n/// # Examples\n///\n/// ```\n/// use musli::fixed::FixedBytes;\n///\n/// let mut buffer = FixedBytes::<3>::new();\n/// assert!(buffer.push(1));\n/// assert!(buffer.push(2));\n/// assert!(buffer.push(3));\n/// // Buffer is full\n/// assert!(!buffer.push(4));\n///\n/// assert_eq!(buffer.as_slice(), &[1, 2, 3]);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "saturating_sub",
+        "item_type": "function",
+        "offset_in_fn": 57,
+        "declaration": "pub const fn saturating_sub(self, rhs: Self) -> Self",
+        "documentation": "Saturating integer subtraction. Computes `self - rhs`, saturating\nat the numeric bounds instead of overflowing.\n\n# Examples\n\nBasic usage:\n\n```\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 243,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!('2', *ptr.add(1) as char);\n    assert_eq!('3', *ptr.add(2) as char);\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "fixed",
+      "name": "FixedBytes",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "FixedBytes<const N: usize> {\n    /// Data storage.\n    data: [MaybeUninit<u8>; N],\n    /// How many bytes have been initialized.\n    init: usize,\n}",
+      "documentation": "A fixed-size bytes storage which keeps track of how much has been\ninitialized."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/fixed.rs/extend_from_slice/278",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/fixed.rs",
+    "start_line": 278,
+    "end_line": 290,
+    "start_byte": 7403,
+    "end_byte": 7809,
+    "name": "extend_from_slice",
+    "raw_code": "pub fn extend_from_slice(&mut self, source: &[u8]) -> bool {\n        if source.len() > N.saturating_sub(self.init) {\n            return false;\n        }\n\n        unsafe {\n            let dst = (self.data.as_mut_ptr() as *mut u8).add(self.init);\n            ptr::copy_nonoverlapping(source.as_ptr(), dst, source.len());\n        }\n\n        self.init = self.init.wrapping_add(source.len());\n        true\n    }",
+    "code_with_hints": "pub fn extend_from_slice(&mut self, source: &[u8]) -> bool {\n        if source.len() > N.saturating_sub(self.init) {\n            return false;\n        }\n\n        unsafe {\n            let dst: *mut u8 = (self.data.as_mut_ptr() as *mut u8).add(count: self.init);\n            ptr::copy_nonoverlapping(src: source.as_ptr(), dst, count: source.len());\n        }\n\n        self.init = self.init.wrapping_add(source.len());\n        true\n    }",
+    "code_with_type": "pub fn extend_from_slice(&mut self, source: &[u8]) -> bool {\n        if source.len() > N.saturating_sub(self.init) {\n            return false;\n        }\n\n        unsafe {\n            let dst: *mut u8 = (self.data.as_mut_ptr() as *mut u8).add(self.init);\n            ptr::copy_nonoverlapping(source.as_ptr(), dst, source.len());\n        }\n\n        self.init = self.init.wrapping_add(source.len());\n        true\n    }",
+    "code_with_param": "pub fn extend_from_slice(&mut self, source: &[u8]) -> bool {\n        if source.len() > N.saturating_sub(self.init) {\n            return false;\n        }\n\n        unsafe {\n            let dst = (self.data.as_mut_ptr() as *mut u8).add(count: self.init);\n            ptr::copy_nonoverlapping(src: source.as_ptr(), dst, count: source.len());\n        }\n\n        self.init = self.init.wrapping_add(source.len());\n        true\n    }",
+    "params": [
+      "self",
+      "source"
+    ],
+    "return_type": "bool",
+    "comment": "/// Try and extend from the given slice.\n///\n/// # Examples\n///\n/// ```\n/// use musli::fixed::FixedBytes;\n///\n/// let mut buffer = FixedBytes::<10>::new();\n/// assert!(buffer.extend_from_slice(&[1, 2, 3]));\n/// assert!(buffer.extend_from_slice(&[4, 5]));\n/// // Would exceed capacity\n/// assert!(!buffer.extend_from_slice(&[6, 7, 8, 9, 10, 11]));\n///\n/// assert_eq!(buffer.as_slice(), &[1, 2, 3, 4, 5]);\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "saturating_sub",
+        "item_type": "function",
+        "offset_in_fn": 89,
+        "declaration": "pub const fn saturating_sub(self, rhs: Self) -> Self",
+        "documentation": "Saturating integer subtraction. Computes `self - rhs`, saturating\nat the numeric bounds instead of overflowing.\n\n# Examples\n\nBasic usage:\n\n```\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 229,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!('2', *ptr.add(1) as char);\n    assert_eq!('3', *ptr.add(2) as char);\n}\n```"
+      },
+      {
+        "src_mod": "intrinsics",
+        "name": "copy_nonoverlapping",
+        "item_type": "function",
+        "offset_in_fn": 262,
+        "declaration": "pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize)",
+        "documentation": "Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source\nand destination must *not* overlap.\n\nFor regions of memory which might overlap, use [`copy`] instead.\n\n`copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but\nwith the argument order swapped.\n\nThe copy is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\nrequirements of `T`. The initialization state is preserved exactly.\n\n[`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `src` must be [valid] for reads of `count * size_of::<T>()` bytes.\n\n* `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.\n\n* Both `src` and `dst` must be properly aligned.\n\n* The region of memory beginning at `src` with a size of `count *\n  size_of::<T>()` bytes must *not* overlap with the region of memory\n  beginning at `dst` with the same size.\n\nLike [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of\nwhether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values\nin the region beginning at `*src` and the region beginning at `*dst` can\n[violate memory safety][read-ownership].\n\nNote that even if the effectively copied size (`count * size_of::<T>()`) is\n`0`, the pointers must be properly aligned.\n\n[`read`]: crate::ptr::read\n[read-ownership]: crate::ptr::read#ownership-of-the-returned-value\n[valid]: crate::ptr#safety\n\n# Examples\n\nManually implement [`Vec::append`]:\n\n```\nuse std::ptr;\n\n/// Moves all the elements of `src` into `dst`, leaving `src` empty.\nfn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {\n    let src_len = src.len();\n    let dst_len = dst.len();\n\n    // Ensure that `dst` has enough capacity to hold all of `src`.\n    dst.reserve(src_len);\n\n    unsafe {\n        // The call to add is always safe because `Vec` will never\n        // allocate more than `isize::MAX` bytes.\n        let dst_ptr = dst.as_mut_ptr().add(dst_len);\n        let src_ptr = src.as_ptr();\n\n        // Truncate `src` without dropping its contents. We do this first,\n        // to avoid problems in case something further down panics.\n        src.set_len(0);\n\n        // The two regions cannot overlap because mutable references do\n        // not alias, and two different vectors cannot own the same\n        // memory.\n        ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);\n\n        // Notify `dst` that it now holds the contents of `src`.\n        dst.set_len(dst_len + src_len);\n    }\n}\n\nlet mut a = vec!['r'];\nlet mut b = vec!['u', 's', 't'];\n\nappend(&mut a, &mut b);\n\nassert_eq!(a, &['r', 'u', 's', 't']);\nassert!(b.is_empty());\n```\n\n[`Vec::append`]: ../../std/vec/struct.Vec.html#method.append"
+      },
+      {
+        "src_mod": "",
+        "name": "wrapping_add",
+        "item_type": "function",
+        "offset_in_fn": 360,
+        "declaration": "pub const fn wrapping_add(self, rhs: Self) -> Self",
+        "documentation": "Wrapping (modular) addition. Computes `self + rhs`,\nwrapping around at the boundary of the type.\n\n# Examples\n\nBasic usage:\n\n```\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "fixed",
+      "name": "FixedBytes",
+      "item_type": "struct",
+      "offset_in_fn": 30,
+      "declaration": "FixedBytes<const N: usize> {\n    /// Data storage.\n    data: [MaybeUninit<u8>; N],\n    /// How many bytes have been initialized.\n    init: usize,\n}",
+      "documentation": "A fixed-size bytes storage which keeps track of how much has been\ninitialized."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/reader.rs/as_slice/373",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/reader.rs",
+    "start_line": 373,
+    "end_line": 375,
+    "start_byte": 9721,
+    "end_byte": 9841,
+    "name": "as_slice",
+    "raw_code": "pub fn as_slice(&self) -> &'de [u8] {\n        unsafe { slice::from_raw_parts(self.range.start, self.remaining()) }\n    }",
+    "code_with_hints": "pub fn as_slice(&self) -> &'de [u8] {\n        unsafe { slice::from_raw_parts(data: self.range.start, len: self.remaining()) }\n    }",
+    "code_with_type": "pub fn as_slice(&self) -> &'de [u8] {\n        unsafe { slice::from_raw_parts(self.range.start, self.remaining()) }\n    }",
+    "code_with_param": "pub fn as_slice(&self) -> &'de [u8] {\n        unsafe { slice::from_raw_parts(data: self.range.start, len: self.remaining()) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "&'de [u8]",
+    "comment": "/// Get the remaining contents of the reader as a slice.\n///\n/// # Examples\n///\n/// ```\n/// use musli::Context;\n/// use musli::reader::{Reader, SliceReader};\n///\n/// fn process<C>(cx: C) -> Result<(), C::Error>\n/// where\n///     C: Context\n/// {\n///     let mut reader = SliceReader::new(&[1, 2, 3, 4]);\n///     assert_eq!(reader.as_slice(), &[1, 2, 3, 4]);\n///     reader.skip(cx, 2)?;\n///     assert_eq!(reader.as_slice(), &[3, 4]);\n///     Ok(())\n/// }\n/// ```\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts",
+        "item_type": "function",
+        "offset_in_fn": 62,
+        "declaration": "pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]",
+        "documentation": "Forms a slice from a pointer and a length.\n\nThe `len` argument is the number of **elements**, not the number of bytes.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for reads for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects. See [below](#incorrect-usage)\n      for an example incorrectly not taking this into account.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be mutated for the duration\n  of lifetime `'a`, except inside an `UnsafeCell`.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n# Caveat\n\nThe lifetime for the returned slice is inferred from its usage. To\nprevent accidental misuse, it's suggested to tie the lifetime to whichever\nsource lifetime is safe in the context, such as by providing a helper\nfunction taking the lifetime of a host value for the slice, or by explicit\nannotation.\n\n# Examples\n\n```\nuse std::slice;\n\n// manifest a slice for a single element\nlet x = 42;\nlet ptr = &x as *const _;\nlet slice = unsafe { slice::from_raw_parts(ptr, 1) };\nassert_eq!(slice[0], 42);\n```\n\n### Incorrect usage\n\nThe following `join_slices` function is **unsound** ⚠️\n\n```rust,no_run\nuse std::slice;\n\nfn join_slices<'a, T>(fst: &'a [T], snd: &'a [T]) -> &'a [T] {\n    let fst_end = fst.as_ptr().wrapping_add(fst.len());\n    let snd_start = snd.as_ptr();\n    assert_eq!(fst_end, snd_start, \"Slices must be contiguous!\");\n    unsafe {\n        // The assertion above ensures `fst` and `snd` are contiguous, but they might\n        // still be contained within _different allocated objects_, in which case\n        // creating this slice is undefined behavior.\n        slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())\n    }\n}\n\nfn main() {\n    // `a` and `b` are different allocated objects...\n    let a = 42;\n    let b = 27;\n    // ... which may nevertheless be laid out contiguously in memory: | a | b |\n    let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB\n}\n```\n\n### FFI: Handling null pointers\n\nIn languages such as C++, pointers to empty collections are not guaranteed to be non-null.\nWhen accepting such pointers, they have to be checked for null-ness to avoid undefined\nbehavior.\n\n```\nuse std::slice;\n\n/// Sum the elements of an FFI slice.\n///\n/// # Safety\n///\n/// If ptr is not NULL, it must be correctly aligned and\n/// point to `len` initialized items of type `f32`.\nunsafe extern \"C\" fn sum_slice(ptr: *const f32, len: usize) -> f32 {\n    let data = if ptr.is_null() {\n        // `len` is assumed to be 0.\n        &[]\n    } else {\n        // SAFETY: see function docstring.\n        unsafe { slice::from_raw_parts(ptr, len) }\n    };\n    data.into_iter().sum()\n}\n\n// This could be the result of C++'s std::vector::data():\nlet ptr = std::ptr::null();\n// And this could be std::vector::size():\nlet len = 0;\nassert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);\n```\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "remaining",
+        "item_type": "function",
+        "offset_in_fn": 100,
+        "declaration": "pub fn remaining(&self) -> usize",
+        "documentation": "Get remaining bytes in the reader.\n\n# Examples\n\n```\nuse musli::Context;\nuse musli::reader::{Reader, SliceReader};\n\nfn process<C>(cx: C) -> Result<(), C::Error>\nwhere\n    C: Context\n{\n    let mut reader = SliceReader::new(&[1, 2, 3, 4]);\n    assert_eq!(reader.remaining(), 4);\n    reader.skip(cx, 2);\n    assert_eq!(reader.remaining(), 2);\n    Ok(())\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "reader",
+      "name": "SliceReader",
+      "item_type": "struct",
+      "offset_in_fn": 17,
+      "declaration": "SliceReader<'de> {\n    range: Range<*const u8>,\n    _marker: marker::PhantomData<&'de [u8]>,\n}",
+      "documentation": "An efficient [`Reader`] wrapper around a slice."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/str.rs/from_utf8_owned/55",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/str.rs",
+    "start_line": 55,
+    "end_line": 65,
+    "start_byte": 1455,
+    "end_byte": 1745,
+    "name": "from_utf8_owned",
+    "raw_code": "pub fn from_utf8_owned<A>(bytes: Vec<u8, A>) -> Result<String<A>, Utf8Error>\nwhere\n    A: Allocator,\n{\n    if simdutf8::basic::from_utf8(&bytes).is_err() {\n        return Err(Utf8Error);\n    }\n\n    // SAFETY: String was checked above.\n    Ok(unsafe { String::from_utf8_unchecked(bytes) })\n}",
+    "code_with_hints": "pub fn from_utf8_owned<A>(bytes: Vec<u8, A>) -> Result<String<A>, Utf8Error>\nwhere\n    A: Allocator,\n{\n    if simdutf8::basic::from_utf8(&bytes).is_err() {\n        return Err(Utf8Error);\n    }\n\n    // SAFETY: String was checked above.\n    Ok(unsafe { String::from_utf8_unchecked(bytes) })\n}",
+    "code_with_type": "pub fn from_utf8_owned<A>(bytes: Vec<u8, A>) -> Result<String<A>, Utf8Error>\nwhere\n    A: Allocator,\n{\n    if simdutf8::basic::from_utf8(&bytes).is_err() {\n        return Err(Utf8Error);\n    }\n\n    // SAFETY: String was checked above.\n    Ok(unsafe { String::from_utf8_unchecked(bytes) })\n}",
+    "code_with_param": "pub fn from_utf8_owned<A>(bytes: Vec<u8, A>) -> Result<String<A>, Utf8Error>\nwhere\n    A: Allocator,\n{\n    if simdutf8::basic::from_utf8(&bytes).is_err() {\n        return Err(Utf8Error);\n    }\n\n    // SAFETY: String was checked above.\n    Ok(unsafe { String::from_utf8_unchecked(bytes) })\n}",
+    "params": [
+      "bytes"
+    ],
+    "return_type": "Result<String<A>, Utf8Error>",
+    "comment": "/// The same as [`String::from_utf8`], but the implementation can different\n/// depending on if the `simdutf8` feature is enabled.\n///\n/// [`String::from_utf8`]: rust_alloc::string::String::from_utf8\n",
+    "attributes": "#[inline]\n#[cfg(feature = \"simdutf8\")]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/context/trace.rs/errors/194",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/context/trace.rs",
+    "start_line": 194,
+    "end_line": 203,
+    "start_byte": 4353,
+    "end_byte": 4669,
+    "name": "errors",
+    "raw_code": "pub(super) fn errors(&self) -> Errors<'_, A> {\n        let access = self.access.shared();\n\n        Errors {\n            path: unsafe { (*self.path.get()).as_slice() },\n            errors: unsafe { (*self.errors.get()).as_slice().iter() },\n            cap: self.cap.get(),\n            _access: access,\n        }\n    }",
+    "code_with_hints": "pub(super) fn errors(&self) -> Errors<'_, A> {\n        let access: Shared = self.access.shared();\n\n        Errors {\n            path: unsafe { (*self.path.get()).as_slice() },\n            errors: unsafe { (*self.errors.get()).as_slice().iter() },\n            cap: self.cap.get(),\n            _access: access,\n        }\n    }",
+    "code_with_type": "pub(super) fn errors(&self) -> Errors<'_, A> {\n        let access: Shared = self.access.shared();\n\n        Errors {\n            path: unsafe { (*self.path.get()).as_slice() },\n            errors: unsafe { (*self.errors.get()).as_slice().iter() },\n            cap: self.cap.get(),\n            _access: access,\n        }\n    }",
+    "code_with_param": "pub(super) fn errors(&self) -> Errors<'_, A> {\n        let access = self.access.shared();\n\n        Errors {\n            path: unsafe { (*self.path.get()).as_slice() },\n            errors: unsafe { (*self.errors.get()).as_slice().iter() },\n            cap: self.cap.get(),\n            _access: access,\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Errors<'_, A>",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "trace",
+        "name": "Errors",
+        "item_type": "struct",
+        "offset_in_fn": 31,
+        "declaration": "Errors<'a, A>\nwhere\n    A: Allocator,\n{\n    path: &'a [Step<A>],\n    cap: usize,\n    errors: slice::Iter<'a, (Range<usize>, String<A>)>,\n    _access: Shared<'a>,\n}",
+        "documentation": "An iterator over available errors.\n\nSee [`DefaultContext::errors`].\n\n[`DefaultContext::errors`]: super::DefaultContext::errors"
+      },
+      {
+        "src_mod": "",
+        "name": "A",
+        "item_type": "type_param",
+        "offset_in_fn": 42,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "shared",
+        "item_type": "function",
+        "offset_in_fn": 80,
+        "declaration": "pub(crate) fn shared(&self) -> Shared<'_>",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "as_slice",
+        "item_type": "function",
+        "offset_in_fn": 154,
+        "declaration": "pub fn as_slice(&self) -> &[T]",
+        "documentation": "Get the initialized part of the buffer as a slice.\n\n## Examples\n\n```\nuse musli::alloc::{AllocError, Vec};\n\nmusli::alloc::default(|alloc| {\n    let mut a = Vec::new_in(alloc);\n    assert_eq!(a.as_slice(), b\"\");\n    a.extend_from_slice(b\"Hello\")?;\n    assert_eq!(a.as_slice(), b\"Hello\");\n    Ok::<_, AllocError>(())\n});\n# Ok::<_, musli::alloc::AllocError>(())\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "trace",
+      "name": "WithTraceImpl",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "WithTraceImpl<A>\nwhere\n    A: Allocator,\n{\n    mark: Cell<usize>,\n    errors: UnsafeCell<Vec<(Range<usize>, String<A>), A>>,\n    path: UnsafeCell<Vec<Step<A>, A>>,\n    // How many elements of `path` we've gone over capacity.\n    cap: Cell<usize>,\n    include_type: bool,\n    access: Access,\n}",
+      "documentation": "Trace configuration indicating that tracing is enabled through the allocator\n`A`."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/context/capture.rs/unwrap/148",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/context/capture.rs",
+    "start_line": 148,
+    "end_line": 157,
+    "start_byte": 3272,
+    "end_byte": 3584,
+    "name": "unwrap",
+    "raw_code": "pub(super) fn unwrap(&self) -> E {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error) => error,\n                None => panic!(\"no error captured\"),\n            }\n        }\n    }",
+    "code_with_hints": "pub(super) fn unwrap(&self) -> E {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error: E) => error,\n                None => panic!(\"no error captured\"),\n            }\n        }\n    }",
+    "code_with_type": "pub(super) fn unwrap(&self) -> E {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error: E) => error,\n                None => panic!(\"no error captured\"),\n            }\n        }\n    }",
+    "code_with_param": "pub(super) fn unwrap(&self) -> E {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error) => error,\n                None => panic!(\"no error captured\"),\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "E",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "E",
+        "item_type": "type_param",
+        "offset_in_fn": 31,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "take",
+        "item_type": "function",
+        "offset_in_fn": 183,
+        "declaration": "pub const fn take(&mut self) -> Option<T>",
+        "documentation": "Takes the value out of the option, leaving a [`None`] in its place.\n\n# Examples\n\n```\nlet mut x = Some(2);\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, Some(2));\n\nlet mut x: Option<u32> = None;\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, None);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "capture",
+      "name": "Capture",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "Capture<E> {\n    error: UnsafeCell<Option<E>>,\n}",
+      "documentation": "Capture an error of the specified type `E`.\n\nSee [`DefaultContext::with_capture`] for more information.\n\n[`DefaultContext::with_capture`]: super::DefaultContext::with_capture"
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/context/capture.rs/result/160",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/context/capture.rs",
+    "start_line": 160,
+    "end_line": 169,
+    "start_byte": 3604,
+    "end_byte": 3912,
+    "name": "result",
+    "raw_code": "pub(super) fn result(&self) -> Result<(), E> {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error) => Err(error),\n                None => Ok(()),\n            }\n        }\n    }",
+    "code_with_hints": "pub(super) fn result(&self) -> Result<(), E> {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error: E) => Err(error),\n                None => Ok(()),\n            }\n        }\n    }",
+    "code_with_type": "pub(super) fn result(&self) -> Result<(), E> {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error: E) => Err(error),\n                None => Ok(()),\n            }\n        }\n    }",
+    "code_with_param": "pub(super) fn result(&self) -> Result<(), E> {\n        // SAFETY: We're restricting access to the context, so that this is\n        // safe.\n        unsafe {\n            match (*self.error.get()).take() {\n                Some(error) => Err(error),\n                None => Ok(()),\n            }\n        }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Result<(), E>",
+    "comment": "",
+    "attributes": "#[inline]\n",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "E",
+        "item_type": "type_param",
+        "offset_in_fn": 42,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "take",
+        "item_type": "function",
+        "offset_in_fn": 195,
+        "declaration": "pub const fn take(&mut self) -> Option<T>",
+        "documentation": "Takes the value out of the option, leaving a [`None`] in its place.\n\n# Examples\n\n```\nlet mut x = Some(2);\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, Some(2));\n\nlet mut x: Option<u32> = None;\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, None);\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "capture",
+      "name": "Capture",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "Capture<E> {\n    error: UnsafeCell<Option<E>>,\n}",
+      "documentation": "Capture an error of the specified type `E`.\n\nSee [`DefaultContext::with_capture`] for more information.\n\n[`DefaultContext::with_capture`]: super::DefaultContext::with_capture"
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/dec2flt/fpu.rs/set_precision/58",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/dec2flt/fpu.rs",
+    "start_line": 58,
+    "end_line": 85,
+    "start_byte": 3025,
+    "end_byte": 4070,
+    "name": "set_precision",
+    "raw_code": "pub(crate) fn set_precision<T>() -> FPUControlWord {\n        let mut cw = 0_u16;\n\n        // Compute the value for the Precision Control field that is appropriate for `T`.\n        let cw_precision = match size_of::<T>() {\n            4 => 0x0000, // 32 bits\n            8 => 0x0200, // 64 bits\n            _ => 0x0300, // default, 80 bits\n        };\n\n        // Get the original value of the control word to restore it later, when the\n        // `FPUControlWord` structure is dropped\n        // SAFETY: the `fnstcw` instruction has been audited to be able to work correctly with\n        // any `u16`\n        unsafe {\n            asm!(\n                \"fnstcw word ptr [{}]\",\n                in(reg) &mut cw,\n                options(nostack),\n            )\n        }\n\n        // Set the control word to the desired precision. This is achieved by masking away the old\n        // precision (bits 8 and 9, 0x300) and replacing it with the precision flag computed above.\n        set_cw((cw & 0xFCFF) | cw_precision);\n\n        FPUControlWord(cw)\n    }",
+    "code_with_hints": "pub(crate) fn set_precision<T>() -> FPUControlWord {\n        let mut cw = 0_u16;\n\n        // Compute the value for the Precision Control field that is appropriate for `T`.\n        let cw_precision = match size_of::<T>() {\n            4 => 0x0000, // 32 bits\n            8 => 0x0200, // 64 bits\n            _ => 0x0300, // default, 80 bits\n        };\n\n        // Get the original value of the control word to restore it later, when the\n        // `FPUControlWord` structure is dropped\n        // SAFETY: the `fnstcw` instruction has been audited to be able to work correctly with\n        // any `u16`\n        unsafe {\n            asm!(\n                \"fnstcw word ptr [{}]\",\n                in(reg) &mut cw,\n                options(nostack),\n            )\n        }\n\n        // Set the control word to the desired precision. This is achieved by masking away the old\n        // precision (bits 8 and 9, 0x300) and replacing it with the precision flag computed above.\n        set_cw((cw & 0xFCFF) | cw_precision);\n\n        FPUControlWord(cw)\n    }",
+    "code_with_type": "pub(crate) fn set_precision<T>() -> FPUControlWord {\n        let mut cw = 0_u16;\n\n        // Compute the value for the Precision Control field that is appropriate for `T`.\n        let cw_precision = match size_of::<T>() {\n            4 => 0x0000, // 32 bits\n            8 => 0x0200, // 64 bits\n            _ => 0x0300, // default, 80 bits\n        };\n\n        // Get the original value of the control word to restore it later, when the\n        // `FPUControlWord` structure is dropped\n        // SAFETY: the `fnstcw` instruction has been audited to be able to work correctly with\n        // any `u16`\n        unsafe {\n            asm!(\n                \"fnstcw word ptr [{}]\",\n                in(reg) &mut cw,\n                options(nostack),\n            )\n        }\n\n        // Set the control word to the desired precision. This is achieved by masking away the old\n        // precision (bits 8 and 9, 0x300) and replacing it with the precision flag computed above.\n        set_cw((cw & 0xFCFF) | cw_precision);\n\n        FPUControlWord(cw)\n    }",
+    "code_with_param": "pub(crate) fn set_precision<T>() -> FPUControlWord {\n        let mut cw = 0_u16;\n\n        // Compute the value for the Precision Control field that is appropriate for `T`.\n        let cw_precision = match size_of::<T>() {\n            4 => 0x0000, // 32 bits\n            8 => 0x0200, // 64 bits\n            _ => 0x0300, // default, 80 bits\n        };\n\n        // Get the original value of the control word to restore it later, when the\n        // `FPUControlWord` structure is dropped\n        // SAFETY: the `fnstcw` instruction has been audited to be able to work correctly with\n        // any `u16`\n        unsafe {\n            asm!(\n                \"fnstcw word ptr [{}]\",\n                in(reg) &mut cw,\n                options(nostack),\n            )\n        }\n\n        // Set the control word to the desired precision. This is achieved by masking away the old\n        // precision (bits 8 and 9, 0x300) and replacing it with the precision flag computed above.\n        set_cw((cw & 0xFCFF) | cw_precision);\n\n        FPUControlWord(cw)\n    }",
+    "params": [],
+    "return_type": "FPUControlWord",
+    "comment": "/// Sets the precision field of the FPU to `T` and returns a `FPUControlWord`.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "fpu_precision",
+        "name": "FPUControlWord",
+        "item_type": "struct",
+        "offset_in_fn": 36,
+        "declaration": "FPUControlWord;",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/json/encoding.rs/to_string_with/260",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/json/encoding.rs",
+    "start_line": 260,
+    "end_line": 270,
+    "start_byte": 6348,
+    "end_byte": 6761,
+    "name": "to_string_with",
+    "raw_code": "pub fn to_string_with<T, C>(self, cx: C, value: &T) -> Result<String, C::Error>\n    where\n        C: Context,\n        T: ?Sized + Encode<M>,\n    {\n        cx.clear();\n        let mut data = Vec::with_capacity(128);\n        T::encode(value, JsonEncoder::<_, _, M>::new(cx, &mut data))?;\n        // SAFETY: Encoder is guaranteed to produce valid UTF-8.\n        Ok(unsafe { String::from_utf8_unchecked(data) })\n    }",
+    "code_with_hints": "pub fn to_string_with<T, C>(self, cx: C, value: &T) -> Result<String, C::Error>\n    where\n        C: Context,\n        T: ?Sized + Encode<M>,\n    {\n        cx.clear();\n        let mut data = Vec::with_capacity(128);\n        T::encode(value, JsonEncoder::<_, _, M>::new(cx, &mut data))?;\n        // SAFETY: Encoder is guaranteed to produce valid UTF-8.\n        Ok(unsafe { String::from_utf8_unchecked(data) })\n    }",
+    "code_with_type": "pub fn to_string_with<T, C>(self, cx: C, value: &T) -> Result<String, C::Error>\n    where\n        C: Context,\n        T: ?Sized + Encode<M>,\n    {\n        cx.clear();\n        let mut data = Vec::with_capacity(128);\n        T::encode(value, JsonEncoder::<_, _, M>::new(cx, &mut data))?;\n        // SAFETY: Encoder is guaranteed to produce valid UTF-8.\n        Ok(unsafe { String::from_utf8_unchecked(data) })\n    }",
+    "code_with_param": "pub fn to_string_with<T, C>(self, cx: C, value: &T) -> Result<String, C::Error>\n    where\n        C: Context,\n        T: ?Sized + Encode<M>,\n    {\n        cx.clear();\n        let mut data = Vec::with_capacity(128);\n        T::encode(value, JsonEncoder::<_, _, M>::new(cx, &mut data))?;\n        // SAFETY: Encoder is guaranteed to produce valid UTF-8.\n        Ok(unsafe { String::from_utf8_unchecked(data) })\n    }",
+    "params": [
+      "self",
+      "cx",
+      "value"
+    ],
+    "return_type": "Result<String, C::Error>",
+    "comment": "/// Encode the given value to the given value to a [`String`] using the\n/// current [`Encoding`].\n///\n/// This is the same as [`Encoding::to_string`] but allows for using a\n/// configurable [`Context`].\n///\n/// # Examples\n///\n/// ```\n/// use musli::{Decode, Encode};\n/// use musli::json;\n/// use musli::alloc::Global;\n/// # use musli::json::Error;\n///\n/// const ENCODING: json::Encoding = json::Encoding::new();\n///\n/// #[derive(Decode, Encode)]\n/// struct Person {\n///     name: String,\n///     age: u32,\n/// }\n///\n/// let cx = musli::context::new().with_error();\n///\n/// let mut data = ENCODING.to_string_with(&cx, &Person {\n///     name: \"Aristotle\".to_string(),\n///     age: 61,\n/// })?;\n///\n/// let person: Person = ENCODING.from_str_with(&cx, &data[..])?;\n/// assert_eq!(person.name, \"Aristotle\");\n/// assert_eq!(person.age, 61);\n/// # Ok::<_, Error>(())\n/// ```\n",
+    "attributes": "#[cfg(feature = \"alloc\")]\n#[cfg_attr(doc_cfg, doc(cfg(feature = \"alloc\")))]\n#[inline]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/json/parser/string.rs/parse_string/292",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/json/parser/string.rs",
+    "start_line": 292,
+    "end_line": 373,
+    "start_byte": 11492,
+    "end_byte": 14750,
+    "name": "parse_string",
+    "raw_code": "pub(crate) fn parse_string<'scratch>(\n        &mut self,\n        validate: bool,\n        start: &C::Mark,\n        scratch: &'scratch mut Vec<u8, C::Allocator>,\n    ) -> Result<StringReference<'de, 'scratch>, C::Error> {\n        // Index of the first byte not yet copied into the scratch space.\n        let mut open_mark = self.cx.mark();\n        let mut open = self.index;\n\n        loop {\n            while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {\n                self.index = self.index.wrapping_add(1);\n                self.cx.advance(1);\n            }\n\n            if self.index == self.slice.len() {\n                return Err(self.cx.message(\"End of input\"));\n            }\n\n            match self.slice[self.index] {\n                b'\"' => {\n                    if scratch.is_empty() {\n                        // Fast path: return a slice of the raw JSON without any\n                        // copying.\n                        let borrowed = &self.slice[open..self.index];\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        self.check_utf8(borrowed, start)?;\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let borrowed = unsafe { core::str::from_utf8_unchecked(borrowed) };\n                        return Ok(StringReference::Borrowed(borrowed));\n                    } else {\n                        let slice = &self.slice[open..self.index];\n                        self.check_utf8(slice, start)?;\n\n                        if scratch.extend_from_slice(slice).is_err() {\n                            return Err(self.cx.message(\"Scratch buffer overflow\"));\n                        }\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let scratch = unsafe { core::str::from_utf8_unchecked(scratch.as_slice()) };\n                        return Ok(StringReference::Scratch(scratch));\n                    }\n                }\n                b'\\\\' => {\n                    let slice = &self.slice[open..self.index];\n                    self.check_utf8(slice, start)?;\n\n                    if scratch.extend_from_slice(slice).is_err() {\n                        return Err(self.cx.message(\"Scratch buffer overflow\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n\n                    if !self.parse_escape(validate, scratch)? {\n                        return Err(self.cx.message_at(&open_mark, \"Buffer overflow\"));\n                    }\n\n                    open = self.index;\n                    open_mark = self.cx.mark();\n                }\n                _ => {\n                    if validate {\n                        return Err(self\n                            .cx\n                            .message_at(&open_mark, \"Control character while parsing string\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n                }\n            }\n        }\n    }",
+    "code_with_hints": "pub(crate) fn parse_string<'scratch>(\n        &mut self,\n        validate: bool,\n        start: &C::Mark,\n        scratch: &'scratch mut Vec<u8, C::Allocator>,\n    ) -> Result<StringReference<'de, 'scratch>, C::Error> {\n        // Index of the first byte not yet copied into the scratch space.\n        let mut open_mark = self.cx.mark();\n        let mut open = self.index;\n\n        loop {\n            while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {\n                self.index = self.index.wrapping_add(1);\n                self.cx.advance(1);\n            }\n\n            if self.index == self.slice.len() {\n                return Err(self.cx.message(\"End of input\"));\n            }\n\n            match self.slice[self.index] {\n                b'\"' => {\n                    if scratch.is_empty() {\n                        // Fast path: return a slice of the raw JSON without any\n                        // copying.\n                        let borrowed = &self.slice[open..self.index];\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        self.check_utf8(borrowed, start)?;\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let borrowed = unsafe { core::str::from_utf8_unchecked(borrowed) };\n                        return Ok(StringReference::Borrowed(borrowed));\n                    } else {\n                        let slice = &self.slice[open..self.index];\n                        self.check_utf8(slice, start)?;\n\n                        if scratch.extend_from_slice(slice).is_err() {\n                            return Err(self.cx.message(\"Scratch buffer overflow\"));\n                        }\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let scratch = unsafe { core::str::from_utf8_unchecked(scratch.as_slice()) };\n                        return Ok(StringReference::Scratch(scratch));\n                    }\n                }\n                b'\\\\' => {\n                    let slice = &self.slice[open..self.index];\n                    self.check_utf8(slice, start)?;\n\n                    if scratch.extend_from_slice(slice).is_err() {\n                        return Err(self.cx.message(\"Scratch buffer overflow\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n\n                    if !self.parse_escape(validate, scratch)? {\n                        return Err(self.cx.message_at(&open_mark, \"Buffer overflow\"));\n                    }\n\n                    open = self.index;\n                    open_mark = self.cx.mark();\n                }\n                _ => {\n                    if validate {\n                        return Err(self\n                            .cx\n                            .message_at(&open_mark, \"Control character while parsing string\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n                }\n            }\n        }\n    }",
+    "code_with_type": "pub(crate) fn parse_string<'scratch>(\n        &mut self,\n        validate: bool,\n        start: &C::Mark,\n        scratch: &'scratch mut Vec<u8, C::Allocator>,\n    ) -> Result<StringReference<'de, 'scratch>, C::Error> {\n        // Index of the first byte not yet copied into the scratch space.\n        let mut open_mark = self.cx.mark();\n        let mut open = self.index;\n\n        loop {\n            while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {\n                self.index = self.index.wrapping_add(1);\n                self.cx.advance(1);\n            }\n\n            if self.index == self.slice.len() {\n                return Err(self.cx.message(\"End of input\"));\n            }\n\n            match self.slice[self.index] {\n                b'\"' => {\n                    if scratch.is_empty() {\n                        // Fast path: return a slice of the raw JSON without any\n                        // copying.\n                        let borrowed = &self.slice[open..self.index];\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        self.check_utf8(borrowed, start)?;\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let borrowed = unsafe { core::str::from_utf8_unchecked(borrowed) };\n                        return Ok(StringReference::Borrowed(borrowed));\n                    } else {\n                        let slice = &self.slice[open..self.index];\n                        self.check_utf8(slice, start)?;\n\n                        if scratch.extend_from_slice(slice).is_err() {\n                            return Err(self.cx.message(\"Scratch buffer overflow\"));\n                        }\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let scratch = unsafe { core::str::from_utf8_unchecked(scratch.as_slice()) };\n                        return Ok(StringReference::Scratch(scratch));\n                    }\n                }\n                b'\\\\' => {\n                    let slice = &self.slice[open..self.index];\n                    self.check_utf8(slice, start)?;\n\n                    if scratch.extend_from_slice(slice).is_err() {\n                        return Err(self.cx.message(\"Scratch buffer overflow\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n\n                    if !self.parse_escape(validate, scratch)? {\n                        return Err(self.cx.message_at(&open_mark, \"Buffer overflow\"));\n                    }\n\n                    open = self.index;\n                    open_mark = self.cx.mark();\n                }\n                _ => {\n                    if validate {\n                        return Err(self\n                            .cx\n                            .message_at(&open_mark, \"Control character while parsing string\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n                }\n            }\n        }\n    }",
+    "code_with_param": "pub(crate) fn parse_string<'scratch>(\n        &mut self,\n        validate: bool,\n        start: &C::Mark,\n        scratch: &'scratch mut Vec<u8, C::Allocator>,\n    ) -> Result<StringReference<'de, 'scratch>, C::Error> {\n        // Index of the first byte not yet copied into the scratch space.\n        let mut open_mark = self.cx.mark();\n        let mut open = self.index;\n\n        loop {\n            while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {\n                self.index = self.index.wrapping_add(1);\n                self.cx.advance(1);\n            }\n\n            if self.index == self.slice.len() {\n                return Err(self.cx.message(\"End of input\"));\n            }\n\n            match self.slice[self.index] {\n                b'\"' => {\n                    if scratch.is_empty() {\n                        // Fast path: return a slice of the raw JSON without any\n                        // copying.\n                        let borrowed = &self.slice[open..self.index];\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        self.check_utf8(borrowed, start)?;\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let borrowed = unsafe { core::str::from_utf8_unchecked(borrowed) };\n                        return Ok(StringReference::Borrowed(borrowed));\n                    } else {\n                        let slice = &self.slice[open..self.index];\n                        self.check_utf8(slice, start)?;\n\n                        if scratch.extend_from_slice(slice).is_err() {\n                            return Err(self.cx.message(\"Scratch buffer overflow\"));\n                        }\n\n                        self.index = self.index.wrapping_add(1);\n                        self.cx.advance(1);\n\n                        // SAFETY: we've checked each segment to be valid UTF-8.\n                        let scratch = unsafe { core::str::from_utf8_unchecked(scratch.as_slice()) };\n                        return Ok(StringReference::Scratch(scratch));\n                    }\n                }\n                b'\\\\' => {\n                    let slice = &self.slice[open..self.index];\n                    self.check_utf8(slice, start)?;\n\n                    if scratch.extend_from_slice(slice).is_err() {\n                        return Err(self.cx.message(\"Scratch buffer overflow\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n\n                    if !self.parse_escape(validate, scratch)? {\n                        return Err(self.cx.message_at(&open_mark, \"Buffer overflow\"));\n                    }\n\n                    open = self.index;\n                    open_mark = self.cx.mark();\n                }\n                _ => {\n                    if validate {\n                        return Err(self\n                            .cx\n                            .message_at(&open_mark, \"Control character while parsing string\"));\n                    }\n\n                    self.index = self.index.wrapping_add(1);\n                    self.cx.advance(1);\n                }\n            }\n        }\n    }",
+    "params": [
+      "self",
+      "validate",
+      "start",
+      "scratch"
+    ],
+    "return_type": "Result<StringReference<'de, 'scratch>, C::Error>",
+    "comment": "/// Reader implementation from a slice.\n",
+    "attributes": "",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/wire/tag.rs/kind/85",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/wire/tag.rs",
+    "start_line": 85,
+    "end_line": 89,
+    "start_byte": 2592,
+    "end_byte": 2829,
+    "name": "kind",
+    "raw_code": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "code_with_hints": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "code_with_type": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "code_with_param": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Kind",
+    "comment": "/// Access the kind of the tag.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/descriptive/tag.rs/mark/191",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/descriptive/tag.rs",
+    "start_line": 191,
+    "end_line": 195,
+    "start_byte": 5865,
+    "end_byte": 6078,
+    "name": "mark",
+    "raw_code": "pub(crate) const fn mark(&self) -> Mark {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & MARK_MASK) }\n    }",
+    "code_with_hints": "pub(crate) const fn mark(&self) -> Mark {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & MARK_MASK) }\n    }",
+    "code_with_type": "pub(crate) const fn mark(&self) -> Mark {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & MARK_MASK) }\n    }",
+    "code_with_param": "pub(crate) const fn mark(&self) -> Mark {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & MARK_MASK) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Mark",
+    "comment": "/// Access the mark this byte corresponds to.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/descriptive/tag.rs/number_kind/199",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/descriptive/tag.rs",
+    "start_line": 199,
+    "end_line": 203,
+    "start_byte": 6154,
+    "end_byte": 6387,
+    "name": "number_kind",
+    "raw_code": "pub(crate) const fn number_kind(&self) -> NumberKind {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & NUMBER_KIND_MASK) }\n    }",
+    "code_with_hints": "pub(crate) const fn number_kind(&self) -> NumberKind {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & NUMBER_KIND_MASK) }\n    }",
+    "code_with_type": "pub(crate) const fn number_kind(&self) -> NumberKind {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & NUMBER_KIND_MASK) }\n    }",
+    "code_with_param": "pub(crate) const fn number_kind(&self) -> NumberKind {\n        // SAFETY: The representation used by `Mark` is exhaustive over all\n        // emitted bit-patterns.\n        unsafe { mem::transmute(self.repr & NUMBER_KIND_MASK) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "NumberKind",
+    "comment": "/// Access the number kind this tag corresponds to.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/descriptive/tag.rs/kind/219",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/descriptive/tag.rs",
+    "start_line": 219,
+    "end_line": 223,
+    "start_byte": 6691,
+    "end_byte": 6928,
+    "name": "kind",
+    "raw_code": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "code_with_hints": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "code_with_type": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "code_with_param": "pub(crate) const fn kind(self) -> Kind {\n        // SAFETY: this is safe because we've ensured that all available Kind\n        // variants occupy all available bit patterns.\n        unsafe { mem::transmute(self.repr & !DATA_MASK) }\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Kind",
+    "comment": "/// Access the kind of the tag.\n",
+    "attributes": "#[inline]\n",
+    "detail_info": [],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/alloc/slice.rs/new/141",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/alloc/slice.rs",
+    "start_line": 141,
+    "end_line": 185,
+    "start_byte": 4379,
+    "end_byte": 5760,
+    "name": "new",
+    "raw_code": "pub fn new<B>(buffer: &'a mut B) -> Self\n    where\n        B: ?Sized + SliceBuffer,\n    {\n        let buffer = buffer.as_uninit_bytes();\n        let size = buffer.len();\n\n        assert!(\n            size <= MAX_BYTES,\n            \"Buffer of {size} bytes is larger than the maximum {MAX_BYTES}\"\n        );\n\n        let mut data = Range::new(buffer.as_mut_ptr_range());\n\n        // The region of allocated headers grows downwards from the end of the\n        // buffer, so in order to ensure headers are aligned, we simply align\n        // the end pointer of the buffer preemptively here. Then we don't have\n        // to worry about it.\n        let align = data.end.align_offset(align_of::<Header>());\n\n        if align != 0 {\n            let sub = align_of::<Header>() - align;\n\n            if sub <= size {\n                // SAFETY: We've ensured that the adjustment is less than the\n                // size of the buffer.\n                unsafe {\n                    data.end = data.end.sub(sub);\n                }\n            } else {\n                data.end = data.start;\n            }\n        }\n\n        Self {\n            internal: UnsafeCell::new(Internal {\n                free_head: None,\n                tail: None,\n                occupied: None,\n                full: data,\n                free: data,\n            }),\n            _marker: PhantomData,\n        }\n    }",
+    "code_with_hints": "pub fn new<B>(buffer: &'a mut B) -> Self\n    where\n        B: ?Sized + SliceBuffer,\n    {\n        let buffer: &mut [MaybeUninit<u8>] = buffer.as_uninit_bytes();\n        let size: usize = buffer.len();\n\n        assert!(\n            size <= MAX_BYTES,\n            \"Buffer of {size} bytes is larger than the maximum {MAX_BYTES}\"\n        );\n\n        let mut data: Range = Range::new(buffer.as_mut_ptr_range());\n\n        // The region of allocated headers grows downwards from the end of the\n        // buffer, so in order to ensure headers are aligned, we simply align\n        // the end pointer of the buffer preemptively here. Then we don't have\n        // to worry about it.\n        let align: usize = data.end.align_offset(align: align_of::<Header>());\n\n        if align != 0 {\n            let sub: usize = align_of::<Header>() - align;\n\n            if sub <= size {\n                // SAFETY: We've ensured that the adjustment is less than the\n                // size of the buffer.\n                unsafe {\n                    data.end = data.end.sub(count: sub);\n                }\n            } else {\n                data.end = data.start;\n            }\n        }\n\n        Self {\n            internal: UnsafeCell::new(Internal {\n                free_head: None,\n                tail: None,\n                occupied: None,\n                full: data,\n                free: data,\n            }),\n            _marker: PhantomData,\n        }\n    }",
+    "code_with_type": "pub fn new<B>(buffer: &'a mut B) -> Self\n    where\n        B: ?Sized + SliceBuffer,\n    {\n        let buffer: &mut [MaybeUninit<u8>] = buffer.as_uninit_bytes();\n        let size: usize = buffer.len();\n\n        assert!(\n            size <= MAX_BYTES,\n            \"Buffer of {size} bytes is larger than the maximum {MAX_BYTES}\"\n        );\n\n        let mut data: Range = Range::new(buffer.as_mut_ptr_range());\n\n        // The region of allocated headers grows downwards from the end of the\n        // buffer, so in order to ensure headers are aligned, we simply align\n        // the end pointer of the buffer preemptively here. Then we don't have\n        // to worry about it.\n        let align: usize = data.end.align_offset(align_of::<Header>());\n\n        if align != 0 {\n            let sub: usize = align_of::<Header>() - align;\n\n            if sub <= size {\n                // SAFETY: We've ensured that the adjustment is less than the\n                // size of the buffer.\n                unsafe {\n                    data.end = data.end.sub(sub);\n                }\n            } else {\n                data.end = data.start;\n            }\n        }\n\n        Self {\n            internal: UnsafeCell::new(Internal {\n                free_head: None,\n                tail: None,\n                occupied: None,\n                full: data,\n                free: data,\n            }),\n            _marker: PhantomData,\n        }\n    }",
+    "code_with_param": "pub fn new<B>(buffer: &'a mut B) -> Self\n    where\n        B: ?Sized + SliceBuffer,\n    {\n        let buffer = buffer.as_uninit_bytes();\n        let size = buffer.len();\n\n        assert!(\n            size <= MAX_BYTES,\n            \"Buffer of {size} bytes is larger than the maximum {MAX_BYTES}\"\n        );\n\n        let mut data = Range::new(buffer.as_mut_ptr_range());\n\n        // The region of allocated headers grows downwards from the end of the\n        // buffer, so in order to ensure headers are aligned, we simply align\n        // the end pointer of the buffer preemptively here. Then we don't have\n        // to worry about it.\n        let align = data.end.align_offset(align: align_of::<Header>());\n\n        if align != 0 {\n            let sub = align_of::<Header>() - align;\n\n            if sub <= size {\n                // SAFETY: We've ensured that the adjustment is less than the\n                // size of the buffer.\n                unsafe {\n                    data.end = data.end.sub(count: sub);\n                }\n            } else {\n                data.end = data.start;\n            }\n        }\n\n        Self {\n            internal: UnsafeCell::new(Internal {\n                free_head: None,\n                tail: None,\n                occupied: None,\n                full: data,\n                free: data,\n            }),\n            _marker: PhantomData,\n        }\n    }",
+    "params": [
+      "buffer"
+    ],
+    "return_type": "Self",
+    "comment": "/// Construct a new slice allocator around a [`SliceBuffer`].\n///\n/// See [type-level documentation][Slice] for more information.\n///\n/// # Examples\n///\n/// ```\n/// use musli::alloc::{ArrayBuffer, Slice, Vec};\n///\n/// let mut buf = ArrayBuffer::new();\n/// let alloc = Slice::new(&mut buf);\n/// let mut vec = Vec::new_in(&alloc);\n/// vec.push(42u32).unwrap();\n/// assert_eq!(vec.as_slice(), &[42]);\n/// ```\n///\n/// # Panics\n///\n/// This panics if called with a buffer larger than `2^31` bytes.\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "B",
+        "item_type": "type_param",
+        "offset_in_fn": 11,
+        "declaration": "",
+        "documentation": ""
+      },
+      {
+        "src_mod": "marker",
+        "name": "Sized",
+        "item_type": "trait",
+        "offset_in_fn": 63,
+        "declaration": "pub trait Sized",
+        "documentation": "Types with a constant size known at compile time.\n\nAll type parameters have an implicit bound of `Sized`. The special syntax\n`?Sized` can be used to remove this bound if it's not appropriate.\n\n```\n# #![allow(dead_code)]\nstruct Foo<T>(T);\nstruct Bar<T: ?Sized>(T);\n\n// struct FooUse(Foo<[i32]>); // error: Sized is not implemented for [i32]\nstruct BarUse(Bar<[i32]>); // OK\n```\n\nThe one exception is the implicit `Self` type of a trait. A trait does not\nhave an implicit `Sized` bound as this is incompatible with [trait object]s\nwhere, by definition, the trait needs to work with all possible implementors,\nand thus could be any size.\n\nAlthough Rust will let you bind `Sized` to a trait, you won't\nbe able to use it to form a trait object later:\n\n```\n# #![allow(unused_variables)]\ntrait Foo { }\ntrait Bar: Sized { }\n\nstruct Impl;\nimpl Foo for Impl { }\nimpl Bar for Impl { }\n\nlet x: &dyn Foo = &Impl;    // OK\n// let y: &dyn Bar = &Impl; // error: the trait `Bar` cannot\n                            // be made into an object\n```\n\n[trait object]: ../../book/ch17-02-trait-objects.html"
+      },
+      {
+        "src_mod": "slice_buffer",
+        "name": "SliceBuffer",
+        "item_type": "trait",
+        "offset_in_fn": 71,
+        "declaration": "pub trait SliceBuffer\nwhere\n    Self: self::sealed::Sealed,",
+        "documentation": "The trait over anything that can be treated as a buffer by the [`Slice`]\nallocator.\n\n[`Slice`]: super::Slice"
+      },
+      {
+        "src_mod": "SliceBuffer",
+        "name": "as_uninit_bytes",
+        "item_type": "function",
+        "offset_in_fn": 118,
+        "declaration": "pub fn as_uninit_bytes(&mut self) -> &mut [MaybeUninit<u8>]",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "as_mut_ptr_range",
+        "item_type": "function",
+        "offset_in_fn": 348,
+        "declaration": "pub const fn as_mut_ptr_range(&mut self) -> Range<*mut T>",
+        "documentation": "Returns the two unsafe mutable pointers spanning the slice.\n\nThe returned range is half-open, which means that the end pointer\npoints *one past* the last element of the slice. This way, an empty\nslice is represented by two equal pointers, and the difference between\nthe two pointers represents the size of the slice.\n\nSee [`as_mut_ptr`] for warnings on using these pointers. The end\npointer requires extra caution, as it does not point to a valid element\nin the slice.\n\nThis function is useful for interacting with foreign interfaces which\nuse two pointers to refer to a range of elements in memory, as is\ncommon in C++.\n\n[`as_mut_ptr`]: slice::as_mut_ptr"
+      },
+      {
+        "src_mod": "",
+        "name": "align_offset",
+        "item_type": "function",
+        "offset_in_fn": 665,
+        "declaration": "pub fn align_offset(self, align: usize) -> usize\nwhere\n    T: Sized,",
+        "documentation": "Computes the offset that needs to be applied to the pointer in order to make it aligned to\n`align`.\n\nIf it is not possible to align the pointer, the implementation returns\n`usize::MAX`.\n\nThe offset is expressed in number of `T` elements, and not bytes. The value returned can be\nused with the `wrapping_add` method.\n\nThere are no guarantees whatsoever that offsetting the pointer will not overflow or go\nbeyond the allocation that the pointer points into. It is up to the caller to ensure that\nthe returned offset is correct in all terms other than alignment.\n\n# Panics\n\nThe function panics if `align` is not a power-of-two.\n\n# Examples\n\nAccessing adjacent `u8` as `u16`\n\n```\nuse std::mem::align_of;\n\n# unsafe {\nlet mut x = [5_u8, 6, 7, 8, 9];\nlet ptr = x.as_mut_ptr();\nlet offset = ptr.align_offset(align_of::<u16>());\n\nif offset < x.len() - 1 {\n    let u16_ptr = ptr.add(offset).cast::<u16>();\n    *u16_ptr = 0;\n\n    assert!(x == [0, 0, 7, 8, 9] || x == [5, 0, 0, 8, 9]);\n} else {\n    // while the pointer can be aligned via `offset`, it would point\n    // outside the allocation\n}\n# }\n```"
+      },
+      {
+        "src_mod": "slice",
+        "name": "Header",
+        "item_type": "struct",
+        "offset_in_fn": 689,
+        "declaration": "Header {\n    // The range of the allocated region.\n    range: Range,\n    // The previous region.\n    prev: Option<HeaderId>,\n    // The next region.\n    next: Option<HeaderId>,\n}",
+        "documentation": "The header of a region."
+      },
+      {
+        "src_mod": "",
+        "name": "sub",
+        "item_type": "function",
+        "offset_in_fn": 990,
+        "declaration": "pub const unsafe fn sub(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Subtracts an unsigned offset from a pointer.\n\nThis can only move the pointer backward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_sub`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_sub`]: #method.wrapping_sub\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\n\nunsafe {\n    let end: *const u8 = s.as_ptr().add(3);\n    assert_eq!('3', *end.sub(1) as char);\n    assert_eq!('2', *end.sub(2) as char);\n}\n```"
+      },
+      {
+        "src_mod": "slice",
+        "name": "Internal",
+        "item_type": "struct",
+        "offset_in_fn": 1156,
+        "declaration": "Internal {\n    // The first free region.\n    free_head: Option<HeaderId>,\n    // Pointer to the tail region.\n    tail: Option<HeaderId>,\n    // The occupied header region\n    occupied: Option<HeaderId>,\n    // The full range used by the allocator.\n    full: Range,\n    // The free range available to the allocator.\n    free: Range,\n}",
+        "documentation": ""
+      }
+    ],
+    "self_info": {
+      "src_mod": "slice",
+      "name": "Slice",
+      "item_type": "struct",
+      "offset_in_fn": 36,
+      "declaration": "Slice<'a> {\n    // This must be an unsafe cell, since it's mutably accessed through an\n    // immutable pointers. We simply make sure that those accesses do not\n    // clobber each other, which we can do since the API is restricted through\n    // the `Alloc` trait.\n    internal: UnsafeCell<Internal>,\n    // The underlying vector being borrowed.\n    _marker: PhantomData<&'a mut [MaybeUninit<u8>]>,\n}",
+      "documentation": "A no-std compatible slice-based allocator that can be used with the `musli`\ncrate.\n\nIt is geared towards handling few allocations, but they can be arbitrarily\nlarge. It is optimized to work best when allocations are short lived and\n\"merged back\" into one previously allocated region through\n`Buffer::extend`.\n\nIt's also optimized to write to one allocation \"at a time\". So once an\nallocation has been grown once, it will be put in a region where it is\nunlikely to need to be moved again, usually the last region which has access\nto the remainder of the provided buffer.\n\nFor the moment, this allocator only supports 65535 unique allocations, which\nis fine for use with the `musli` crate, but might be a limitation for other\nuse-cases.\n\n## Examples\n\n```\nuse musli::alloc::{ArrayBuffer, Slice, Vec};\n\nlet mut buf = ArrayBuffer::new();\nlet alloc = Slice::new(&mut buf);\n\nlet mut a = Vec::new_in(&alloc);\nlet mut b = Vec::new_in(&alloc);\n\nb.extend_from_slice(b\"He11o\")?;\na.extend_from_slice(b.as_slice())?;\n\nassert_eq!(a.as_slice(), b\"He11o\");\nassert_eq!(a.len(), 5);\n\na.extend_from_slice(b\" W0rld\")?;\n\nassert_eq!(a.as_slice(), b\"He11o W0rld\");\nassert_eq!(a.len(), 11);\n\nlet mut c = Vec::new_in(&alloc);\nc.extend_from_slice(b\"!\")?;\na.extend_from_slice(c.as_slice())?;\n\nassert_eq!(a.as_slice(), b\"He11o W0rld!\");\nassert_eq!(a.len(), 12);\n# Ok::<_, musli::alloc::AllocError>(())\n```\n\n## Design\n\nThe allocator takes a buffer of contiguous memory. This is dynamically\ndiviced into two parts:\n\n* One part which grows upwards from the base, constituting the memory being\n  allocated.\n* Its metadata growing downward from the end of the buffer, containing\n  headers for all allocated region.\n\nBy designing the allocator so that the memory allocated and its metadata is\nseparate, neighbouring regions can efficiently be merged as they are written\nor freed.\n\nEach allocation is sparse, meaning it does not try to over-allocate memory.\nThis ensures that subsequent regions with initialized memory can be merged\nefficiently, but degrades performance for many small writes performed across\nmultiple allocations concurrently.\n\nBelow is an illustration of this, where `a` and `b` are two allocations\nwhere we write one byte at a time to each. Here `x` below indicates an\noccupied `gap` in memory regions.\n\n```text\na\nab\n# a moved to end\nxbaa\n# b moved to 0\nbbaa\n# aa not moved\nbbaaa\n# bb moved to end\nxxaaabbb\n# aaa moved to 0\naaaaxbbb\n# bbb not moved\naaaaxbbbb\n# aaaa not moved\naaaaabbbb\n# bbbbb not moved\naaaaabbbbb\n# aaaaa moved to end\nxxxxxbbbbbaaaaaa\n# bbbbb moved to 0\nbbbbbbxxxxaaaaaa\n```"
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/alloc/array_buffer.rs/with_size/52",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/alloc/array_buffer.rs",
+    "start_line": 52,
+    "end_line": 58,
+    "start_byte": 1271,
+    "end_byte": 1529,
+    "name": "with_size",
+    "raw_code": "pub const fn with_size() -> Self {\n        Self {\n            // SAFETY: This is safe to initialize, since it's just an array of\n            // contiguous uninitialized memory.\n            data: unsafe { MaybeUninit::uninit().assume_init() },\n        }\n    }",
+    "code_with_hints": "pub const fn with_size() -> Self {\n        Self {\n            // SAFETY: This is safe to initialize, since it's just an array of\n            // contiguous uninitialized memory.\n            data: unsafe { MaybeUninit::uninit().assume_init() },\n        }\n    }",
+    "code_with_type": "pub const fn with_size() -> Self {\n        Self {\n            // SAFETY: This is safe to initialize, since it's just an array of\n            // contiguous uninitialized memory.\n            data: unsafe { MaybeUninit::uninit().assume_init() },\n        }\n    }",
+    "code_with_param": "pub const fn with_size() -> Self {\n        Self {\n            // SAFETY: This is safe to initialize, since it's just an array of\n            // contiguous uninitialized memory.\n            data: unsafe { MaybeUninit::uninit().assume_init() },\n        }\n    }",
+    "params": [],
+    "return_type": "Self",
+    "comment": "/// Construct a new buffer with a custom size.\n///\n/// # Examples\n///\n/// ```\n/// use musli::alloc::ArrayBuffer;\n///\n/// let buffer = ArrayBuffer::<1024>::with_size();\n/// assert_eq!(buffer.len(), 1024);\n/// ```\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "uninit",
+        "item_type": "function",
+        "offset_in_fn": 217,
+        "declaration": "pub const fn uninit() -> MaybeUninit<T>",
+        "documentation": "Creates a new `MaybeUninit<T>` in an uninitialized state.\n\nNote that dropping a `MaybeUninit<T>` will never call `T`'s drop code.\nIt is your responsibility to make sure `T` gets dropped if it got initialized.\n\nSee the [type-level documentation][MaybeUninit] for some examples.\n\n# Example\n\n```\nuse std::mem::MaybeUninit;\n\nlet v: MaybeUninit<String> = MaybeUninit::uninit();\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "assume_init",
+        "item_type": "function",
+        "offset_in_fn": 226,
+        "declaration": "pub const unsafe fn assume_init(self) -> T",
+        "documentation": "Extracts the value from the `MaybeUninit<T>` container. This is a great way\nto ensure that the data will get dropped, because the resulting `T` is\nsubject to the usual drop handling.\n\n# Safety\n\nIt is up to the caller to guarantee that the `MaybeUninit<T>` really is in an initialized\nstate. Calling this when the content is not yet fully initialized causes immediate undefined\nbehavior. The [type-level documentation][inv] contains more information about\nthis initialization invariant.\n\n[inv]: #initialization-invariant\n\nOn top of that, remember that most types have additional invariants beyond merely\nbeing considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]\nis considered initialized (under the current implementation; this does not constitute\na stable guarantee) because the only requirement the compiler knows about it\nis that the data pointer must be non-null. Creating such a `Vec<T>` does not cause\n*immediate* undefined behavior, but will cause undefined behavior with most\nsafe operations (including dropping it).\n\n[`Vec<T>`]: ../../std/vec/struct.Vec.html\n\n# Examples\n\nCorrect usage of this method:\n\n```rust\nuse std::mem::MaybeUninit;\n\nlet mut x = MaybeUninit::<bool>::uninit();\nx.write(true);\nlet x_init = unsafe { x.assume_init() };\nassert_eq!(x_init, true);\n```\n\n*Incorrect* usage of this method:\n\n```rust,no_run\nuse std::mem::MaybeUninit;\n\nlet x = MaybeUninit::<Vec<u32>>::uninit();\nlet x_init = unsafe { x.assume_init() };\n// `x` had not been initialized yet, so this last line caused undefined behavior. ⚠️\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "array_buffer",
+      "name": "ArrayBuffer",
+      "item_type": "struct",
+      "offset_in_fn": 28,
+      "declaration": "ArrayBuffer<const N: usize = DEFAULT_ARRAY_BUFFER> {\n    data: [MaybeUninit<u8>; N],\n}",
+      "documentation": "An array that can conveniently be used as a buffer, by default this is\n[`DEFAULT_ARRAY_BUFFER`] bytes large.\n\nThis is aligned to 8 bytes, since that's an alignment which works with many\ncommon Rust types.\n\nSee the [module level documentation][super] for more information."
+    }
+  },
+  {
+    "sample_label": "musli-0.0.149/src/writer/slice_mut_writer.rs/new/39",
+    "repo_name": "musli-0.0.149",
+    "relative_file": "src/writer/slice_mut_writer.rs",
+    "start_line": 39,
+    "end_line": 51,
+    "start_byte": 958,
+    "end_byte": 1392,
+    "name": "new",
+    "raw_code": "pub(super) fn new(slice: &'a mut [u8]) -> Self {\n        // SAFETY: The slice is valid for the duration of the writer.\n        unsafe {\n            let range = slice.as_mut_ptr_range();\n            let start = NonNull::new_unchecked(range.start);\n            let end = NonNull::new_unchecked(range.end);\n            Self {\n                start,\n                end,\n                _marker: PhantomData,\n            }\n        }\n    }",
+    "code_with_hints": "pub(super) fn new(slice: &'a mut [u8]) -> Self {\n        // SAFETY: The slice is valid for the duration of the writer.\n        unsafe {\n            let range: Range<*mut u8> = slice.as_mut_ptr_range();\n            let start: NonNull<u8> = NonNull::new_unchecked(ptr: range.start);\n            let end: NonNull<u8> = NonNull::new_unchecked(ptr: range.end);\n            Self {\n                start,\n                end,\n                _marker: PhantomData,\n            }\n        }\n    }",
+    "code_with_type": "pub(super) fn new(slice: &'a mut [u8]) -> Self {\n        // SAFETY: The slice is valid for the duration of the writer.\n        unsafe {\n            let range: Range<*mut u8> = slice.as_mut_ptr_range();\n            let start: NonNull<u8> = NonNull::new_unchecked(range.start);\n            let end: NonNull<u8> = NonNull::new_unchecked(range.end);\n            Self {\n                start,\n                end,\n                _marker: PhantomData,\n            }\n        }\n    }",
+    "code_with_param": "pub(super) fn new(slice: &'a mut [u8]) -> Self {\n        // SAFETY: The slice is valid for the duration of the writer.\n        unsafe {\n            let range = slice.as_mut_ptr_range();\n            let start = NonNull::new_unchecked(ptr: range.start);\n            let end = NonNull::new_unchecked(ptr: range.end);\n            Self {\n                start,\n                end,\n                _marker: PhantomData,\n            }\n        }\n    }",
+    "params": [
+      "slice"
+    ],
+    "return_type": "Self",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "as_mut_ptr_range",
+        "item_type": "function",
+        "offset_in_fn": 166,
+        "declaration": "pub const fn as_mut_ptr_range(&mut self) -> Range<*mut T>",
+        "documentation": "Returns the two unsafe mutable pointers spanning the slice.\n\nThe returned range is half-open, which means that the end pointer\npoints *one past* the last element of the slice. This way, an empty\nslice is represented by two equal pointers, and the difference between\nthe two pointers represents the size of the slice.\n\nSee [`as_mut_ptr`] for warnings on using these pointers. The end\npointer requires extra caution, as it does not point to a valid element\nin the slice.\n\nThis function is useful for interacting with foreign interfaces which\nuse two pointers to refer to a range of elements in memory, as is\ncommon in C++.\n\n[`as_mut_ptr`]: slice::as_mut_ptr"
+      },
+      {
+        "src_mod": "",
+        "name": "new_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 219,
+        "declaration": "pub const unsafe fn new_unchecked(ptr: *mut T) -> Self",
+        "documentation": "Creates a new `NonNull`.\n\n# Safety\n\n`ptr` must be non-null.\n\n# Examples\n\n```\nuse std::ptr::NonNull;\n\nlet mut x = 0u32;\nlet ptr = unsafe { NonNull::new_unchecked(&mut x as *mut _) };\n```\n\n*Incorrect* usage of this function:\n\n```rust,no_run\nuse std::ptr::NonNull;\n\n// NEVER DO THAT!!! This is undefined behavior. ⚠️\nlet ptr = unsafe { NonNull::<u32>::new_unchecked(std::ptr::null_mut()) };\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "slice_mut_writer",
+      "name": "SliceMutWriter",
+      "item_type": "struct",
+      "offset_in_fn": 42,
+      "declaration": "SliceMutWriter<'a> {\n    start: NonNull<u8>,\n    end: NonNull<u8>,\n    _marker: PhantomData<&'a mut [u8]>,\n}",
+      "documentation": "A writer into a slice.\n\nThis is typically created by using a mutable slice as a writer through\nthe [`IntoWriter`] trait.\n\n[`IntoWriter`]: crate::writer::IntoWriter\n\n# Examples\n\n```\nuse musli::writer::{IntoWriter, Writer};\nuse musli::context;\n\nlet mut buffer = [0u8; 10];\nlet mut writer = buffer.as_mut_slice().into_writer();\nlet cx = context::new();\n\nwriter.write_bytes(&cx, b\"Hello\")?;\nlet remaining = writer.finish(&cx)?;\n\nassert_eq!(&buffer[..5], b\"Hello\");\nassert_eq!(remaining, 5); // 5 bytes remaining in the 10-byte buffer\n# Ok::<_, musli::context::ErrorMarker>(())\n```"
+    }
+  }
+]

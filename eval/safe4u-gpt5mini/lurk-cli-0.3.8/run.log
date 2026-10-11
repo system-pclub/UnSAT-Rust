@@ -1,0 +1,224 @@
+/workspaces/UnSAT-Rust/tools/safe4u/.venv/lib/python3.12/site-packages/tree_sitter/__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Safe4U Scan
+  Rust unsafe-wrapper audit with model-assisted contract checking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  crate: /workspaces/UnSAT-Rust/benchmark/safe4u/lurk-cli-0.3.8
+  model: gpt-5.4-mini-2026-03-17
+  prompt: Safe4U
+  output: /workspaces/UnSAT-Rust/eval/safe4u-gpt5mini/lurk-cli-0.3.8
+  evaluation jobs: 4
+
+▸ Extract Candidates
+↻ Scanning Rust files: ██░░░░░░░░░░░░░░░░░░░░ 1/9 (11%) 0 candidates | src/syscall_info.rs
+↻ Scanning Rust files: █████░░░░░░░░░░░░░░░░░ 2/9 (22%) 0 candidates | src/args.rs
+↻ Scanning Rust files: ███████░░░░░░░░░░░░░░░ 3/9 (33%) 0 candidates | src/main.rs
+↻ Scanning Rust files: ██████████░░░░░░░░░░░░ 4/9 (44%) 0 candidates | src/style.rs
+↻ Scanning Rust files: ████████████░░░░░░░░░░ 5/9 (56%) 0 candidates | src/lib.rs
+↻ Scanning Rust files: ███████████████░░░░░░░ 6/9 (67%) 1 candidates | src/arch/mod.rs
+↻ Scanning Rust files: █████████████████░░░░░ 7/9 (78%) 1 candidates | src/arch/x86_64.rs
+↻ Scanning Rust files: ████████████████████░░ 8/9 (89%) 1 candidates | src/arch/riscv64.rs
+↻ Scanning Rust files: ██████████████████████ 9/9 (100%) 1 candidates | src/arch/aarch64.rs
+✓ Detected 1 public safe encapsulation candidates.
+
+▸ Retrieve Context
+• Running Rust context retriever.
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+  warning: the following packages contain code that will be rejected by a future version of Rust: ra_ap_stdx v0.0.216
+  note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+       Running `target/debug/rust_fn_extender scan`
+  INFO - Processing file: "lurk-cli-0.3.8"
+✓ Context ready.
+• Context samples: 1
+  src/arch/mod.rs
+    ● read_string:70 | unsafe callees: offset | context refs: 5
+      - offset: pub const unsafe fn offset(self, count: isize) -> *mut T where T: Sized,
+
+▸ Decompose Safety
+• Prompt: decompose_with_self_check
+LLM → Decompose safety contracts for `offset` [input≈4,607, max_out=4,096]
+LLM ✓ Decompose safety contracts for `offset` [in=4,364 out=102 total=4,466, 1.8s, run=4,466]
+LLM → Critique decomposed safety contracts for `offset` [input≈1,553, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `offset` [in=1,304 out=1,602 total=2,906, 9.6s, run=7,372]
+LLM → Refine decomposed safety contracts for `offset` [input≈1,360, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `offset` [in=1,165 out=104 total=1,269, 1.1s, run=8,641]
+LLM → Critique decomposed safety contracts for `offset` [input≈1,555, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `offset` [in=1,306 out=1,399 total=2,705, 8.0s, run=11,346]
+LLM → Refine decomposed safety contracts for `offset` [input≈1,362, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `offset` [in=1,167 out=104 total=1,271, 0.8s, run=12,617]
+LLM → Critique decomposed safety contracts for `offset` [input≈1,555, max_out=4,096]
+LLM ✓ Critique decomposed safety contracts for `offset` [in=1,306 out=1,315 total=2,621, 8.8s, run=15,238]
+LLM → Refine decomposed safety contracts for `offset` [input≈1,362, max_out=4,096]
+LLM ✓ Refine decomposed safety contracts for `offset` [in=1,167 out=104 total=1,271, 0.9s, run=16,509]
+↻ Decomposing samples: ██████████████████████ 1/1 (100%) 3 constraints | lurk-cli-0.3.8/src/arch/mod.rs/read_string/69
+✓ Constraints ready.
+• Public safe encapsulations of unsafe code: 1
+• Resolved unsafe callees: 1
+  src/arch/mod.rs
+    ● read_string:70 (3 constraints) | unsafe: offset
+      - offset / Overflow: The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+      - offset / Workflow: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+      - offset / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge…
+
+▸ Evaluate Encapsulations
+↻ Checking samples: ██████████████████████ 1/1 (100%) checking | lurk-cli-0.3.8/src/arch/mod.rs/read_string/69
+LLM → Evaluate `read_string` against `offset` (Overflow, pattern 1/2) [input≈4,299, max_out=4,096]
+LLM ✓ Evaluate `read_string` against `offset` (Overflow, pattern 1/2) [in=4,359 out=337 total=4,696, 2.9s, run=21,205]
+LLM → Evaluate `read_string` against `offset` (Overflow, pattern 2/2) [input≈4,394, max_out=4,096]
+LLM ✓ Evaluate `read_string` against `offset` (Overflow, pattern 2/2) [in=4,485 out=380 total=4,865, 3.3s, run=26,070]
+✗ Unsound candidate: lurk-cli-0.3.8/src/arch/mod.rs/read_string/69 (callee=offset, type=Overflow); details in final summary.
+LLM → Evaluate `read_string` against `offset` (Workflow, pattern 1/1) [input≈5,238, max_out=4,096]
+LLM ✓ Evaluate `read_string` against `offset` (Workflow, pattern 1/1) [in=5,292 out=313 total=5,605, 2.5s, run=31,675]
+✗ Unsound candidate: lurk-cli-0.3.8/src/arch/mod.rs/read_string/69 (callee=offset, type=Workflow); details in final summary.
+LLM → Evaluate `read_string` against `offset` (Dereferencable, pattern 1/2) [input≈4,406, max_out=4,096]
+LLM ✓ Evaluate `read_string` against `offset` (Dereferencable, pattern 1/2) [in=4,443 out=405 total=4,848, 3.0s, run=36,523]
+LLM → Evaluate `read_string` against `offset` (Dereferencable, pattern 2/2) [input≈4,461, max_out=4,096]
+LLM ✓ Evaluate `read_string` against `offset` (Dereferencable, pattern 2/2) [in=4,527 out=467 total=4,994, 4.0s, run=41,517]
+✗ Unsound candidate: lurk-cli-0.3.8/src/arch/mod.rs/read_string/69 (callee=offset, type=Dereferencable); details in final summary.
+↻ Checking samples: ██████████████████████ 1/1 (100%) unsound | lurk-cli-0.3.8/src/arch/mod.rs/read_string/69
+
+▸ Summary
+  sound 0 | unsound 1 | unknown 0 | total 1
+  requests 12 | input 34,885 | output 6,632 | total 41,517
+• Results saved to /workspaces/UnSAT-Rust/eval/safe4u-gpt5mini/lurk-cli-0.3.8/results.json
+• Elapsed: 153.0s
+
+Unsatisfied contracts:
+  1. lurk-cli-0.3.8/src/arch/mod.rs/read_string/69 (3 failed contracts)
+  call site: src/arch/mod.rs:77
+  nearby code
+      75 │ 
+      76 │     'done: loop {
+  >   77 │         let address = unsafe { (address as *mut c_void).offset(count) };
+      78 │ 
+      79 │         let res: c_long = match ptrace::read(pid, address) {
+     - offset / Overflow: The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+       LLM evidence:
+       ## 1. Unsafe callee call site
+       
+       The unsafe call to `offset` is here:
+       
+       ```rust
+       let address = unsafe { (address as *mut c_void).offset(count) };
+       ```
+       
+       ---
+       
+       ## 2. Expressions related to the contract
+       
+       Relevant expressions:
+       - `count`
+       - `(address as *mut c_void).offset(count)`
+       - `word_size = 8`
+       - `count += word_size`
+       
+       ---
+       
+       ## 3. Step-by-step contract analysis
+       
+       The contract for `offset` is:
+       
+       > The computed byte offset `count * size_of::<T>()` must fit in an `isize` without wrapping.
+       
+       Here `T = c_void`, and `size_of::<c_void>()` is effectively 1 for pointer arithmetic purposes on a `*mut c_void`, so the byte offset is essentially `count`.
+       
+       Now examine how `count` changes:
+       
+       - `count` starts at `0`.
+       - On each loop iteration, it is incremented by `word_size = 8`.
+       - There is no upper bound check on `count`.
+       - The loop continues until `ptrace::read` fails or a `0` byte is found.
+       
+       Because `address` is a `u64` input and `count` is an unconstrained integer variable, the code can keep increasing `count` indefinitely in principle. There is nothing ensuring that `count` stays within `isize::MAX`.
+       
+       So the computed offset passed to `offset(count)` is not guaranteed to fit in an `isize` without wrapping. The contract is therefore not satisfied by this function.
+       
+       ---
+       
+       ## 4. Final determination
+       
+       **No**
+     - offset / Workflow: If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.
+       LLM evidence:
+       1. **Code snippet that calls the unsafe callee**
+       ```rust
+       let address = unsafe { (address as *mut c_void).offset(count) };
+       ```
+       
+       2. **Expressions highly related to the contract**
+       - `(address as *mut c_void)`: the base pointer used for `offset`
+       - `count`: the offset amount passed to `offset`
+       - `word_size = 8` and `count += word_size`: `count` becomes non-zero after the first iteration
+       
+       3. **Step-by-step analysis of the contract**
+       - The unsafe function `offset` requires that if the computed offset is non-zero, the base pointer `self` must be derived from a pointer to an allocated object.
+       - In `read_string`, `address` is an arbitrary `c_ulonglong` provided by the caller and is cast directly to `*mut c_void`.
+       - There is no guarantee that this raw pointer comes from an allocated object.
+       - On the first loop iteration, `count` is `0`, so the offset is zero and the contract condition about non-zero offset does not apply yet.
+       - However, the loop increments `count` by `8`, so on subsequent iterations `offset(count)` is called with a non-zero offset.
+       - At that point, the base pointer `(address as *mut c_void)` is still just an arbitrary address, not proven to be derived from an allocated object.
+       - Therefore, when `count != 0`, the contract is violated.
+       
+       4. **Final determination**
+       **No**
+     - offset / Dereferencable: If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge…
+       LLM evidence:
+       ## 1. Code snippet that calls the unsafe callee
+       
+       The unsafe call is here:
+       
+       ```rust
+       let address = unsafe { (address as *mut c_void).offset(count) };
+       ```
+       
+       This calls `offset` on a raw pointer.
+       
+       ---
+       
+       ## 2. Expressions highly related to the contract
+       
+       Relevant expressions are:
+       
+       - `address as *mut c_void`
+       - `count`
+       - `unsafe { ...offset(count) }`
+       - `word_size = 8`
+       - `count += word_size`
+       
+       These determine how far the pointer is moved on each loop iteration.
+       
+       ---
+       
+       ## 3. Step-by-step analysis of the contract
+       
+       The contract for `offset` is:
+       
+       > If the computed offset is non-zero, the entire memory range between `self` and the result must remain within the bounds of that allocated object and must not wrap around the edge of the address space.
+       
+       Now analyze the code:
+       
+       1. `address` is a `c_ulonglong` input parameter, so it is completely untrusted.
+       2. It is cast to `*mut c_void`, producing a raw pointer.
+       3. `count` starts at `0`, then increases by `8` every loop iteration.
+       4. The code computes:
+          ```rust
+          (address as *mut c_void).offset(count)
+          ```
+          This means the pointer is advanced by `count` bytes.
+       5. There is no guarantee that:
+          - the input address points into a valid allocated object,
+          - the object is large enough for the computed offset,
+          - the resulting pointer stays within the same allocation,
+          - or that pointer arithmetic does not wrap around the address space.
+       6. In fact, `address` is just a user-supplied integer, so it may point anywhere or be invalid.
+       7. Therefore the precondition required by `offset` is not established by the function.
+       
+       So the contract is **not satisfied**.
+       
+       ---
+       
+       ## 4. Final determination
+       
+       **No**

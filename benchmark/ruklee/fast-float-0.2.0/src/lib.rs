@@ -134,3 +134,14 @@ pub fn parse<T: FastFloat, S: AsRef<[u8]>>(s: S) -> Result<T> {
 pub fn parse_partial<T: FastFloat, S: AsRef<[u8]>>(s: S) -> Result<(T, usize)> {
     T::parse_float_partial(s)
 }
+
+#[cfg(test)]
+mod unsat_ir_instantiations {
+    #[test]
+    #[ignore = "compile-only LLVM IR instantiation"]
+    fn instantiate_float_parser() {
+        let input = std::hint::black_box(b"1.25e2".as_slice());
+        let _ = super::parse::<f64, _>(input);
+        let _ = super::parse_partial::<f32, _>(input);
+    }
+}

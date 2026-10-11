@@ -1,0 +1,623 @@
+[
+  {
+    "sample_label": "everscale-network-0.5.5/src/adnl/queries_cache.rs/wait/51",
+    "repo_name": "everscale-network-0.5.5",
+    "relative_file": "src/adnl/queries_cache.rs",
+    "start_line": 51,
+    "end_line": 57,
+    "start_byte": 1084,
+    "end_byte": 1349,
+    "name": "wait",
+    "raw_code": "pub async fn wait(mut self) -> Option<Vec<u8>> {\n        // SAFETY: `data_rx` is guaranteed to be `Some`\n        let data_rx = unsafe { self.data_rx.take().unwrap_unchecked() };\n        let data = data_rx.await.ok();\n        self.finished = true;\n        data\n    }",
+    "code_with_hints": "pub async fn wait(mut self) -> Option<Vec<u8>> {\n        // SAFETY: `data_rx` is guaranteed to be `Some`\n        let data_rx: Receiver<Vec<u8>> = unsafe { self.data_rx.take().unwrap_unchecked() };\n        let data: Option<Vec<u8>> = data_rx.await.ok();\n        self.finished = true;\n        data\n    }",
+    "code_with_type": "pub async fn wait(mut self) -> Option<Vec<u8>> {\n        // SAFETY: `data_rx` is guaranteed to be `Some`\n        let data_rx: Receiver<Vec<u8>> = unsafe { self.data_rx.take().unwrap_unchecked() };\n        let data: Option<Vec<u8>> = data_rx.await.ok();\n        self.finished = true;\n        data\n    }",
+    "code_with_param": "pub async fn wait(mut self) -> Option<Vec<u8>> {\n        // SAFETY: `data_rx` is guaranteed to be `Some`\n        let data_rx = unsafe { self.data_rx.take().unwrap_unchecked() };\n        let data = data_rx.await.ok();\n        self.finished = true;\n        data\n    }",
+    "params": [
+      "self"
+    ],
+    "return_type": "Option<Vec<u8>>",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "take",
+        "item_type": "function",
+        "offset_in_fn": 149,
+        "declaration": "pub const fn take(&mut self) -> Option<T>",
+        "documentation": "Takes the value out of the option, leaving a [`None`] in its place.\n\n# Examples\n\n```\nlet mut x = Some(2);\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, Some(2));\n\nlet mut x: Option<u32> = None;\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, None);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "unwrap_unchecked",
+        "item_type": "function",
+        "offset_in_fn": 156,
+        "declaration": "pub const unsafe fn unwrap_unchecked(self) -> T",
+        "documentation": "Returns the contained [`Some`] value, consuming the `self` value,\nwithout checking that the value is not [`None`].\n\n# Safety\n\nCalling this method on [`None`] is *[undefined behavior]*.\n\n[undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n# Examples\n\n```\nlet x = Some(\"air\");\nassert_eq!(unsafe { x.unwrap_unchecked() }, \"air\");\n```\n\n```no_run\nlet x: Option<&str> = None;\nassert_eq!(unsafe { x.unwrap_unchecked() }, \"air\"); // Undefined behavior!\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "queries_cache",
+      "name": "PendingAdnlQuery",
+      "item_type": "struct",
+      "offset_in_fn": 22,
+      "declaration": "PendingAdnlQuery {\n    query_id: QueryId,\n    data_rx: Option<DataRx>,\n    cache: Weak<QueriesCache>,\n    finished: bool,\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "`self` must be `Some`.",
+        "fn_name": "unwrap_unchecked",
+        "type": "Unreachable"
+      }
+    ]
+  },
+  {
+    "sample_label": "everscale-network-0.5.5/src/adnl/handshake.rs/parse_handshake_packet/84",
+    "repo_name": "everscale-network-0.5.5",
+    "relative_file": "src/adnl/handshake.rs",
+    "start_line": 84,
+    "end_line": 165,
+    "start_byte": 2852,
+    "end_byte": 5791,
+    "name": "parse_handshake_packet",
+    "raw_code": "pub fn parse_handshake_packet(\n    keys: &FastHashMap<NodeIdShort, Arc<Key>>,\n    buffer: &mut PacketView<'_>,\n) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {\n    const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;\n\n    // Ordinary data ranges\n    const DATA_START: usize = 96;\n    const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;\n    const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;\n\n    // Data ranges for packets with ADNL version\n    const EXT_DATA_START: usize = 100;\n    const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;\n    const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;\n\n    if buffer.len() < DATA_START {\n        return Err(HandshakeError::BadHandshakePacketLength);\n    }\n\n    // SAFETY: NodeIdShort is 32 (<= 96) bytes and has the same layout as `[u8; 32]`\n    // due to `#[repr(transparent)]`\n    let local_id = unsafe { &*(buffer.as_ptr() as *const NodeIdShort) };\n\n    // Get local id\n    let local_key = match keys.get(local_id) {\n        Some(key) => key,\n        // No local keys found\n        None => return Ok(None),\n    };\n\n    // Compute shared secret\n    let shared_secret =\n        match ed25519::PublicKey::from_bytes(buffer[PUBLIC_KEY_RANGE].try_into().unwrap()) {\n            Some(other_public_key) => local_key\n                .secret_key()\n                .compute_shared_secret(&other_public_key),\n            None => return Err(HandshakeError::InvalidPublicKey),\n        };\n\n    if buffer.len() > EXT_DATA_START {\n        if let Some(version) =\n            decode_version::<EXT_DATA_START>((&buffer[..EXT_DATA_START]).try_into().unwrap())\n        {\n            // Build cipher\n            let mut cipher = build_packet_cipher(\n                &shared_secret,\n                &buffer[EXT_CHECKSUM_RANGE].try_into().unwrap(),\n            );\n\n            // Decode data\n            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);\n\n            // If hash is ok\n            if compute_packet_data_hash(Some(version), &buffer[EXT_DATA_RANGE]).as_slice()\n                == &buffer[EXT_CHECKSUM_RANGE]\n            {\n                // Leave only data in the buffer and return version\n                buffer.remove_prefix(EXT_DATA_START);\n                return Ok(Some((*local_id, Some(version))));\n            }\n\n            // Otherwise restore data\n            cipher.seek(0);\n            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);\n        }\n    }\n\n    // Decode data\n    build_packet_cipher(&shared_secret, &buffer[CHECKSUM_RANGE].try_into().unwrap())\n        .apply_keystream(&mut buffer[DATA_RANGE]);\n\n    // Check checksum\n    if compute_packet_data_hash(None, &buffer[DATA_RANGE]).as_slice() != &buffer[CHECKSUM_RANGE] {\n        return Err(HandshakeError::BadHandshakePacketChecksum);\n    }\n\n    // Leave only data in the buffer\n    buffer.remove_prefix(DATA_START);\n\n    Ok(Some((*local_id, None)))\n}",
+    "code_with_hints": "pub fn parse_handshake_packet(\n    keys: &FastHashMap<NodeIdShort, Arc<Key>>,\n    buffer: &mut PacketView<'_>,\n) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {\n    const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;\n\n    // Ordinary data ranges\n    const DATA_START: usize = 96;\n    const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;\n    const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;\n\n    // Data ranges for packets with ADNL version\n    const EXT_DATA_START: usize = 100;\n    const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;\n    const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;\n\n    if buffer.len() < DATA_START {\n        return Err(HandshakeError::BadHandshakePacketLength);\n    }\n\n    // SAFETY: NodeIdShort is 32 (<= 96) bytes and has the same layout as `[u8; 32]`\n    // due to `#[repr(transparent)]`\n    let local_id: &NodeIdShort = unsafe { &*(buffer.as_ptr() as *const NodeIdShort) };\n\n    // Get local id\n    let local_key: &Arc<Key> = match keys.get(local_id) {\n        Some(key: &Arc<Key>) => key,\n        // No local keys found\n        None => return Ok(None),\n    };\n\n    // Compute shared secret\n    let shared_secret: [u8; 32] =\n        match ed25519::PublicKey::from_bytes(buffer[PUBLIC_KEY_RANGE].try_into().unwrap()) {\n            Some(other_public_key: PublicKey) => local_key\n                .secret_key()\n                .compute_shared_secret(&other_public_key),\n            None => return Err(HandshakeError::InvalidPublicKey),\n        };\n\n    if buffer.len() > EXT_DATA_START {\n        if let Some(version: u16) =\n            decode_version::<EXT_DATA_START>(prefix: (&buffer[..EXT_DATA_START]).try_into().unwrap())\n        {\n            // Build cipher\n            let mut cipher: StreamCipherCoreWrapper<CtrCore<Aes256, Ctr64BE>> = build_packet_cipher(\n                &shared_secret,\n                checksum: &buffer[EXT_CHECKSUM_RANGE].try_into().unwrap(),\n            );\n\n            // Decode data\n            cipher.apply_keystream(buf: &mut buffer[EXT_DATA_RANGE]);\n\n            // If hash is ok\n            if compute_packet_data_hash(version: Some(version), data: &buffer[EXT_DATA_RANGE]).as_slice()\n                == &buffer[EXT_CHECKSUM_RANGE]\n            {\n                // Leave only data in the buffer and return version\n                buffer.remove_prefix(prefix_len: EXT_DATA_START);\n                return Ok(Some((*local_id, Some(version))));\n            }\n\n            // Otherwise restore data\n            cipher.seek(pos: 0);\n            cipher.apply_keystream(buf: &mut buffer[EXT_DATA_RANGE]);\n        }\n    }\n\n    // Decode data\n    build_packet_cipher(&shared_secret, checksum: &buffer[CHECKSUM_RANGE].try_into().unwrap())\n        .apply_keystream(buf: &mut buffer[DATA_RANGE]);\n\n    // Check checksum\n    if compute_packet_data_hash(version: None, data: &buffer[DATA_RANGE]).as_slice() != &buffer[CHECKSUM_RANGE] {\n        return Err(HandshakeError::BadHandshakePacketChecksum);\n    }\n\n    // Leave only data in the buffer\n    buffer.remove_prefix(prefix_len: DATA_START);\n\n    Ok(Some((*local_id, None)))\n}",
+    "code_with_type": "pub fn parse_handshake_packet(\n    keys: &FastHashMap<NodeIdShort, Arc<Key>>,\n    buffer: &mut PacketView<'_>,\n) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {\n    const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;\n\n    // Ordinary data ranges\n    const DATA_START: usize = 96;\n    const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;\n    const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;\n\n    // Data ranges for packets with ADNL version\n    const EXT_DATA_START: usize = 100;\n    const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;\n    const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;\n\n    if buffer.len() < DATA_START {\n        return Err(HandshakeError::BadHandshakePacketLength);\n    }\n\n    // SAFETY: NodeIdShort is 32 (<= 96) bytes and has the same layout as `[u8; 32]`\n    // due to `#[repr(transparent)]`\n    let local_id: &NodeIdShort = unsafe { &*(buffer.as_ptr() as *const NodeIdShort) };\n\n    // Get local id\n    let local_key: &Arc<Key> = match keys.get(local_id) {\n        Some(key: &Arc<Key>) => key,\n        // No local keys found\n        None => return Ok(None),\n    };\n\n    // Compute shared secret\n    let shared_secret: [u8; 32] =\n        match ed25519::PublicKey::from_bytes(buffer[PUBLIC_KEY_RANGE].try_into().unwrap()) {\n            Some(other_public_key: PublicKey) => local_key\n                .secret_key()\n                .compute_shared_secret(&other_public_key),\n            None => return Err(HandshakeError::InvalidPublicKey),\n        };\n\n    if buffer.len() > EXT_DATA_START {\n        if let Some(version: u16) =\n            decode_version::<EXT_DATA_START>((&buffer[..EXT_DATA_START]).try_into().unwrap())\n        {\n            // Build cipher\n            let mut cipher: StreamCipherCoreWrapper<CtrCore<Aes256, Ctr64BE>> = build_packet_cipher(\n                &shared_secret,\n                &buffer[EXT_CHECKSUM_RANGE].try_into().unwrap(),\n            );\n\n            // Decode data\n            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);\n\n            // If hash is ok\n            if compute_packet_data_hash(Some(version), &buffer[EXT_DATA_RANGE]).as_slice()\n                == &buffer[EXT_CHECKSUM_RANGE]\n            {\n                // Leave only data in the buffer and return version\n                buffer.remove_prefix(EXT_DATA_START);\n                return Ok(Some((*local_id, Some(version))));\n            }\n\n            // Otherwise restore data\n            cipher.seek(0);\n            cipher.apply_keystream(&mut buffer[EXT_DATA_RANGE]);\n        }\n    }\n\n    // Decode data\n    build_packet_cipher(&shared_secret, &buffer[CHECKSUM_RANGE].try_into().unwrap())\n        .apply_keystream(&mut buffer[DATA_RANGE]);\n\n    // Check checksum\n    if compute_packet_data_hash(None, &buffer[DATA_RANGE]).as_slice() != &buffer[CHECKSUM_RANGE] {\n        return Err(HandshakeError::BadHandshakePacketChecksum);\n    }\n\n    // Leave only data in the buffer\n    buffer.remove_prefix(DATA_START);\n\n    Ok(Some((*local_id, None)))\n}",
+    "code_with_param": "pub fn parse_handshake_packet(\n    keys: &FastHashMap<NodeIdShort, Arc<Key>>,\n    buffer: &mut PacketView<'_>,\n) -> Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError> {\n    const PUBLIC_KEY_RANGE: std::ops::Range<usize> = 32..64;\n\n    // Ordinary data ranges\n    const DATA_START: usize = 96;\n    const CHECKSUM_RANGE: std::ops::Range<usize> = 64..DATA_START;\n    const DATA_RANGE: std::ops::RangeFrom<usize> = DATA_START..;\n\n    // Data ranges for packets with ADNL version\n    const EXT_DATA_START: usize = 100;\n    const EXT_CHECKSUM_RANGE: std::ops::Range<usize> = 68..EXT_DATA_START;\n    const EXT_DATA_RANGE: std::ops::RangeFrom<usize> = EXT_DATA_START..;\n\n    if buffer.len() < DATA_START {\n        return Err(HandshakeError::BadHandshakePacketLength);\n    }\n\n    // SAFETY: NodeIdShort is 32 (<= 96) bytes and has the same layout as `[u8; 32]`\n    // due to `#[repr(transparent)]`\n    let local_id = unsafe { &*(buffer.as_ptr() as *const NodeIdShort) };\n\n    // Get local id\n    let local_key = match keys.get(local_id) {\n        Some(key) => key,\n        // No local keys found\n        None => return Ok(None),\n    };\n\n    // Compute shared secret\n    let shared_secret =\n        match ed25519::PublicKey::from_bytes(buffer[PUBLIC_KEY_RANGE].try_into().unwrap()) {\n            Some(other_public_key) => local_key\n                .secret_key()\n                .compute_shared_secret(&other_public_key),\n            None => return Err(HandshakeError::InvalidPublicKey),\n        };\n\n    if buffer.len() > EXT_DATA_START {\n        if let Some(version) =\n            decode_version::<EXT_DATA_START>(prefix: (&buffer[..EXT_DATA_START]).try_into().unwrap())\n        {\n            // Build cipher\n            let mut cipher = build_packet_cipher(\n                &shared_secret,\n                checksum: &buffer[EXT_CHECKSUM_RANGE].try_into().unwrap(),\n            );\n\n            // Decode data\n            cipher.apply_keystream(buf: &mut buffer[EXT_DATA_RANGE]);\n\n            // If hash is ok\n            if compute_packet_data_hash(version: Some(version), data: &buffer[EXT_DATA_RANGE]).as_slice()\n                == &buffer[EXT_CHECKSUM_RANGE]\n            {\n                // Leave only data in the buffer and return version\n                buffer.remove_prefix(prefix_len: EXT_DATA_START);\n                return Ok(Some((*local_id, Some(version))));\n            }\n\n            // Otherwise restore data\n            cipher.seek(pos: 0);\n            cipher.apply_keystream(buf: &mut buffer[EXT_DATA_RANGE]);\n        }\n    }\n\n    // Decode data\n    build_packet_cipher(&shared_secret, checksum: &buffer[CHECKSUM_RANGE].try_into().unwrap())\n        .apply_keystream(buf: &mut buffer[DATA_RANGE]);\n\n    // Check checksum\n    if compute_packet_data_hash(version: None, data: &buffer[DATA_RANGE]).as_slice() != &buffer[CHECKSUM_RANGE] {\n        return Err(HandshakeError::BadHandshakePacketChecksum);\n    }\n\n    // Leave only data in the buffer\n    buffer.remove_prefix(prefix_len: DATA_START);\n\n    Ok(Some((*local_id, None)))\n}",
+    "params": [
+      "keys",
+      "buffer"
+    ],
+    "return_type": "Result<Option<(NodeIdShort, Option<u16>)>, HandshakeError>",
+    "comment": "/// Attempts to decode the buffer as an ADNL handshake packet. On a successful nonempty result,\n/// this buffer remains as decrypted packet data.\n///\n/// Expected packet structure (without version):\n///  - 0..=31 - short local node id\n///  - 32..=63 - sender pubkey\n///  - 64..=95 - checksum\n///  - 96..... - encrypted data\n///\n/// Expected packet structure (with version):\n///  - 0..=31 - short local node id\n///  - 32..=63 - sender pubkey\n///  - 64..=68 - XOR'ed ADNL version\n///  - 68..=100 - checksum\n///  - 100..... - encrypted data\n///\n/// **NOTE: even on failure buffer can be modified**\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "util",
+        "name": "FastHashMap",
+        "item_type": "type_alias",
+        "offset_in_fn": 42,
+        "declaration": "FastHashMap<K, V> = HashMap<K, V, FastHasherState>;",
+        "documentation": ""
+      },
+      {
+        "src_mod": "node_id",
+        "name": "NodeIdShort",
+        "item_type": "struct",
+        "offset_in_fn": 54,
+        "declaration": "NodeIdShort([u8; 32]);",
+        "documentation": "Short ADNL node id."
+      },
+      {
+        "src_mod": "keystore",
+        "name": "Key",
+        "item_type": "struct",
+        "offset_in_fn": 71,
+        "declaration": "Key {\n    short_id: NodeIdShort,\n    full_id: NodeIdFull,\n    secret_key: ed25519::ExpandedSecretKey,\n}",
+        "documentation": "ADNL key with precomputed node IDs"
+      },
+      {
+        "src_mod": "packet_view",
+        "name": "PacketView",
+        "item_type": "struct",
+        "offset_in_fn": 95,
+        "declaration": "PacketView<'a> {\n    bytes: &'a mut [u8],\n}",
+        "documentation": ""
+      },
+      {
+        "src_mod": "handshake",
+        "name": "HandshakeError",
+        "item_type": "enum",
+        "offset_in_fn": 159,
+        "declaration": "HandshakeError {\n    #[error(\"Bad handshake packet length\")]\n    BadHandshakePacketLength,\n    #[error(\"Bad handshake packet checksum\")]\n    BadHandshakePacketChecksum,\n    #[error(\"Invalid public key\")]\n    InvalidPublicKey,\n}",
+        "documentation": ""
+      },
+      {
+        "src_mod": "range",
+        "name": "RangeFrom",
+        "item_type": "struct",
+        "offset_in_fn": 400,
+        "declaration": "RangeFrom<Idx> {\n    /// The lower bound of the range (inclusive).\n    #[stable(feature = \"rust1\", since = \"1.0.0\")]\n    pub start: Idx,\n}",
+        "documentation": "A range only bounded inclusively below (`start..`).\n\nThe `RangeFrom` `start..` contains all values with `x >= start`.\n\n*Note*: Overflow in the [`Iterator`] implementation (when the contained\ndata type reaches its numerical limit) is allowed to panic, wrap, or\nsaturate. This behavior is defined by the implementation of the [`Step`]\ntrait. For primitive integers, this follows the normal rules, and respects\nthe overflow checks profile (panic in debug, wrap in release). Note also\nthat overflow happens earlier than you might assume: the overflow happens\nin the call to `next` that yields the maximum value, as the range must be\nset to a state to yield the next value.\n\n[`Step`]: crate::iter::Step\n\n# Examples\n\nThe `start..` syntax is a `RangeFrom`:\n\n```\nassert_eq!((2..), std::ops::RangeFrom { start: 2 });\nassert_eq!(2 + 3 + 4, (2..).take(3).sum());\n```\n\n```\nlet arr = [0, 1, 2, 3, 4];\nassert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]);\nassert_eq!(arr[ .. 3], [0, 1, 2      ]);\nassert_eq!(arr[ ..=3], [0, 1, 2, 3   ]);\nassert_eq!(arr[1..  ], [   1, 2, 3, 4]); // This is a `RangeFrom`\nassert_eq!(arr[1.. 3], [   1, 2      ]);\nassert_eq!(arr[1..=3], [   1, 2, 3   ]);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "from_bytes",
+        "item_type": "function",
+        "offset_in_fn": 1223,
+        "declaration": "pub fn from_bytes(bytes: [u8; 32]) -> Option<Self>",
+        "documentation": "Tries to create public key from"
+      },
+      {
+        "src_mod": "",
+        "name": "try_into",
+        "item_type": "function",
+        "offset_in_fn": 1259,
+        "declaration": "fn try_into(self) -> Result<U, U::Error>",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "secret_key",
+        "item_type": "function",
+        "offset_in_fn": 1347,
+        "declaration": "pub fn secret_key(&self) -> &ed25519::ExpandedSecretKey",
+        "documentation": "Returns inner secret key (as expanded)"
+      },
+      {
+        "src_mod": "",
+        "name": "compute_shared_secret",
+        "item_type": "function",
+        "offset_in_fn": 1377,
+        "declaration": "pub fn compute_shared_secret(&self, other_public_key: &PublicKey) -> [u8; 32]",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "EXT_DATA_START",
+        "item_type": "const",
+        "offset_in_fn": 1596,
+        "declaration": "const EXT_DATA_START: usize",
+        "documentation": ""
+      },
+      {
+        "src_mod": "encryption",
+        "name": "build_packet_cipher",
+        "item_type": "function",
+        "offset_in_fn": 1728,
+        "declaration": "pub fn build_packet_cipher(shared_secret: &[u8; 32], checksum: &[u8; 32]) -> Aes256Ctr",
+        "documentation": ""
+      },
+      {
+        "src_mod": "StreamCipher",
+        "name": "apply_keystream",
+        "item_type": "function",
+        "offset_in_fn": 1908,
+        "declaration": "pub fn apply_keystream(&mut self, buf: &mut [u8])",
+        "documentation": "Apply keystream to data in-place.\n\nIt will XOR generated keystream with `data` and will write result\nto the same buffer.\n\n# Panics\nIf end of the keystream will be reached with the given data length,\nmethod will panic without modifying the provided `data`."
+      },
+      {
+        "src_mod": "encryption",
+        "name": "compute_packet_data_hash",
+        "item_type": "function",
+        "offset_in_fn": 1999,
+        "declaration": "pub fn compute_packet_data_hash(version: Option<u16>, data: &[u8]) -> [u8; 32]",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "as_slice",
+        "item_type": "function",
+        "offset_in_fn": 2064,
+        "declaration": "pub const fn as_slice(&self) -> &[T]",
+        "documentation": "Returns a slice containing the entire array. Equivalent to `&s[..]`."
+      },
+      {
+        "src_mod": "",
+        "name": "remove_prefix",
+        "item_type": "function",
+        "offset_in_fn": 2227,
+        "declaration": "pub fn remove_prefix(&mut self, prefix_len: usize)",
+        "documentation": ""
+      },
+      {
+        "src_mod": "StreamCipherSeek",
+        "name": "seek",
+        "item_type": "function",
+        "offset_in_fn": 2391,
+        "declaration": "pub fn seek<T>(&mut self, pos: T)\nwhere\n    T: SeekNum,",
+        "documentation": "Seek to the given position\n\n# Panics\nIf provided position value is bigger than keystream length"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": []
+  },
+  {
+    "sample_label": "everscale-network-0.5.5/src/adnl/packet_view.rs/remove_prefix/22",
+    "repo_name": "everscale-network-0.5.5",
+    "relative_file": "src/adnl/packet_view.rs",
+    "start_line": 22,
+    "end_line": 28,
+    "start_byte": 429,
+    "end_byte": 753,
+    "name": "remove_prefix",
+    "raw_code": "pub fn remove_prefix(&mut self, prefix_len: usize) {\n        let len = self.bytes.len();\n        let ptr = self.bytes.as_mut_ptr();\n        // SAFETY: `bytes` is already a reference bounded by a lifetime\n        self.bytes =\n            unsafe { std::slice::from_raw_parts_mut(ptr.add(prefix_len), len - prefix_len) };\n    }",
+    "code_with_hints": "pub fn remove_prefix(&mut self, prefix_len: usize) {\n        let len: usize = self.bytes.len();\n        let ptr: *mut u8 = self.bytes.as_mut_ptr();\n        // SAFETY: `bytes` is already a reference bounded by a lifetime\n        self.bytes =\n            unsafe { std::slice::from_raw_parts_mut(data: ptr.add(count: prefix_len), len: len - prefix_len) };\n    }",
+    "code_with_type": "pub fn remove_prefix(&mut self, prefix_len: usize) {\n        let len: usize = self.bytes.len();\n        let ptr: *mut u8 = self.bytes.as_mut_ptr();\n        // SAFETY: `bytes` is already a reference bounded by a lifetime\n        self.bytes =\n            unsafe { std::slice::from_raw_parts_mut(ptr.add(prefix_len), len - prefix_len) };\n    }",
+    "code_with_param": "pub fn remove_prefix(&mut self, prefix_len: usize) {\n        let len = self.bytes.len();\n        let ptr = self.bytes.as_mut_ptr();\n        // SAFETY: `bytes` is already a reference bounded by a lifetime\n        self.bytes =\n            unsafe { std::slice::from_raw_parts_mut(data: ptr.add(count: prefix_len), len: len - prefix_len) };\n    }",
+    "params": [
+      "self",
+      "prefix_len"
+    ],
+    "return_type": "",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts_mut",
+        "item_type": "function",
+        "offset_in_fn": 258,
+        "declaration": "pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]",
+        "documentation": "Performs the same functionality as [`from_raw_parts`], except that a\nmutable slice is returned.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for both reads and writes for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be accessed through any other pointer\n  (not derived from the return value) for the duration of lifetime `'a`.\n  Both read and write accesses are forbidden.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "add",
+        "item_type": "function",
+        "offset_in_fn": 281,
+        "declaration": "pub const unsafe fn add(self, count: usize) -> Self\nwhere\n    T: Sized,",
+        "documentation": "Adds an unsigned offset to a pointer.\n\nThis can only move the pointer forward (or not move it). If you need to move forward or\nbackward depending on the value, then you might want [`offset`](#method.offset) instead\nwhich takes a signed offset.\n\n`count` is in units of T; e.g., a `count` of 3 represents a pointer\noffset of `3 * size_of::<T>()` bytes.\n\n# Safety\n\nIf any of the following conditions are violated, the result is Undefined Behavior:\n\n* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n  \"wrapping around\"), must fit in an `isize`.\n\n* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n  [allocated object], and the entire memory range between `self` and the result must be in\n  bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n  of the address space.\n\nAllocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\nstays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\nThis implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\nsafe.\n\nConsider using [`wrapping_add`] instead if these constraints are\ndifficult to satisfy. The only advantage of this method is that it\nenables more aggressive compiler optimizations.\n\n[`wrapping_add`]: #method.wrapping_add\n[allocated object]: crate::ptr#allocated-object\n\n# Examples\n\n```\nlet s: &str = \"123\";\nlet ptr: *const u8 = s.as_ptr();\n\nunsafe {\n    assert_eq!('2', *ptr.add(1) as char);\n    assert_eq!('3', *ptr.add(2) as char);\n}\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "packet_view",
+      "name": "PacketView",
+      "item_type": "struct",
+      "offset_in_fn": 26,
+      "declaration": "PacketView<'a> {\n    bytes: &'a mut [u8],\n}",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "`data` must be non-null and properly aligned, including for zero-length slices and slices of zero-sized types.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Not Null, Aligned"
+      },
+      {
+        "content": "`data` must be valid for reads and writes for `len * size_of::<T>()` bytes.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The referenced memory must be contained within a single allocated object and must not span multiple allocations.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "`data` must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Initialized"
+      },
+      {
+        "content": "For the lifetime `'a`, the memory referenced by the returned slice must not be accessed through any other pointer not derived from the returned slice, for either reads or writes.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Exclusive"
+      },
+      {
+        "content": "`len * size_of::<T>()` must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the slice size to `data` must not wrap around the address space.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Overflow"
+      },
+      {
+        "content": "The byte offset `count * size_of::<T>()`, computed without wrapping around, must fit in an `isize`.",
+        "fn_name": "add",
+        "type": "Overflow"
+      },
+      {
+        "content": "If the computed offset is non-zero, `self` must be derived from a pointer to an allocated object.",
+        "fn_name": "add",
+        "type": "Workflow"
+      },
+      {
+        "content": "If the computed offset is non-zero, the entire memory range between `self` and the resulting pointer must be within the bounds of that allocated object.",
+        "fn_name": "add",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "If the computed offset is non-zero, the pointer range must not wrap around the edge of the address space.",
+        "fn_name": "add",
+        "type": "Overflow"
+      }
+    ]
+  },
+  {
+    "sample_label": "everscale-network-0.5.5/src/adnl/node/receiver.rs/start_receiver/23",
+    "repo_name": "everscale-network-0.5.5",
+    "relative_file": "src/adnl/node/receiver.rs",
+    "start_line": 23,
+    "end_line": 104,
+    "start_byte": 594,
+    "end_byte": 3664,
+    "name": "start_receiver",
+    "raw_code": "pub(super) fn start_receiver(\n        self: &Arc<Self>,\n        socket: Arc<UdpSocket>,\n        message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n        query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n    ) {\n        use futures_util::future::{select, Either};\n\n        struct ReceiverContext {\n            node: Arc<Node>,\n            message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n            query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n        }\n\n        const RECV_BUFFER_SIZE: usize = 2048;\n\n        let complete_signal = self.cancellation_token.clone();\n        let ctx = Arc::new(ReceiverContext {\n            node: self.clone(),\n            message_subscribers,\n            query_subscribers,\n        });\n\n        tokio::spawn(async move {\n            let mut buffer = None;\n\n            tokio::pin!(let cancelled = complete_signal.cancelled(););\n\n            loop {\n                // SAFETY: buffer capacity is always `RECV_BUFFER_SIZE` at the point of creating slice\n                // NOTE: we don't need to initialize it before writing to it\n                let raw_buffer = unsafe {\n                    let buffer = buffer.get_or_insert_with(|| Vec::with_capacity(RECV_BUFFER_SIZE));\n                    std::slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.capacity())\n                };\n\n                // Receive packet\n                tokio::pin!(let recv = socket.recv_from(raw_buffer););\n                let result = match select(recv, &mut cancelled).await {\n                    Either::Left((left, _)) => left,\n                    Either::Right(_) => break,\n                };\n\n                let len = match result {\n                    Ok((0, _)) => continue,\n                    Ok((len, _)) => len,\n                    Err(e) => {\n                        tracing::warn!(\"failed to receive data: {e}\");\n                        continue;\n                    }\n                };\n\n                let mut buffer = match buffer.take() {\n                    Some(mut buffer) => {\n                        // SAFETY: at this point we have initialized at least `len` bytes of partially\n                        // initialized data of len `RECV_BUFFER_SIZE`\n                        unsafe { buffer.set_len(len) };\n                        buffer\n                    }\n                    None => continue,\n                };\n\n                // Process packet\n                let ctx = ctx.clone();\n                tokio::spawn(async move {\n                    if let Err(error) = ctx\n                        .node\n                        .handle_received_data(\n                            PacketView::from(buffer.as_mut_slice()),\n                            &ctx.message_subscribers,\n                            &ctx.query_subscribers,\n                        )\n                        .await\n                    {\n                        tracing::trace!(?error, \"failed to handle received data\");\n                    }\n                });\n            }\n\n            tracing::debug!(\"receiver loop finished\");\n        });\n    }",
+    "code_with_hints": "pub(super) fn start_receiver(\n        self: &Arc<Self>,\n        socket: Arc<UdpSocket>,\n        message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n        query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n    ) {\n        use futures_util::future::{select, Either};\n\n        struct ReceiverContext {\n            node: Arc<Node>,\n            message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n            query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n        }\n\n        const RECV_BUFFER_SIZE: usize = 2048;\n\n        let complete_signal: CancellationToken = self.cancellation_token.clone();\n        let ctx: Arc<ReceiverContext> = Arc::new(data: ReceiverContext {\n            node: self.clone(),\n            message_subscribers,\n            query_subscribers,\n        });\n\n        tokio::spawn(future: async move {\n            let mut buffer: Option<Vec<u8>> = None;\n\n            tokio::pin!(let cancelled = complete_signal.cancelled(););\n\n            loop {\n                // SAFETY: buffer capacity is always `RECV_BUFFER_SIZE` at the point of creating slice\n                // NOTE: we don't need to initialize it before writing to it\n                let raw_buffer: &mut [u8] = unsafe {\n                    let buffer: &mut Vec<u8> = buffer.get_or_insert_with(|| -> Vec<u8> Vec::with_capacity(RECV_BUFFER_SIZE));\n                    std::slice::from_raw_parts_mut(data: buffer.as_mut_ptr(), len: buffer.capacity())\n                };\n\n                // Receive packet\n                tokio::pin!(let recv = socket.recv_from(raw_buffer););\n                let result: Result<(usize, SocketAddr), Error> = match select(future1: recv, future2: &mut cancelled).await {\n                    Either::Left((left: Result<(usize, SocketAddr), Error>, _)) => left,\n                    Either::Right(_) => break,\n                };\n\n                let len: usize = match result {\n                    Ok((0, _)) => continue,\n                    Ok((len: usize, _)) => len,\n                    Err(e: Error) => {\n                        tracing::warn!(\"failed to receive data: {e}\");\n                        continue;\n                    }\n                };\n\n                let mut buffer: Vec<u8> = match buffer.take() {\n                    Some(mut buffer: Vec<u8>) => {\n                        // SAFETY: at this point we have initialized at least `len` bytes of partially\n                        // initialized data of len `RECV_BUFFER_SIZE`\n                        unsafe { buffer.set_len(new_len: len) };\n                        buffer\n                    }\n                    None => continue,\n                };\n\n                // Process packet\n                let ctx: Arc<ReceiverContext> = ctx.clone();\n                tokio::spawn(future: async move {\n                    if let Err(error: Error) = ctx\n                        .node\n                        .handle_received_data(\n                            data: PacketView::from(buffer.as_mut_slice()),\n                            &ctx.message_subscribers,\n                            &ctx.query_subscribers,\n                        )\n                        .await\n                    {\n                        tracing::trace!(?error, \"failed to handle received data\");\n                    }\n                });\n            }\n\n            tracing::debug!(\"receiver loop finished\");\n        });\n    }",
+    "code_with_type": "pub(super) fn start_receiver(\n        self: &Arc<Self>,\n        socket: Arc<UdpSocket>,\n        message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n        query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n    ) {\n        use futures_util::future::{select, Either};\n\n        struct ReceiverContext {\n            node: Arc<Node>,\n            message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n            query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n        }\n\n        const RECV_BUFFER_SIZE: usize = 2048;\n\n        let complete_signal: CancellationToken = self.cancellation_token.clone();\n        let ctx: Arc<ReceiverContext> = Arc::new(ReceiverContext {\n            node: self.clone(),\n            message_subscribers,\n            query_subscribers,\n        });\n\n        tokio::spawn(async move {\n            let mut buffer: Option<Vec<u8>> = None;\n\n            tokio::pin!(let cancelled = complete_signal.cancelled(););\n\n            loop {\n                // SAFETY: buffer capacity is always `RECV_BUFFER_SIZE` at the point of creating slice\n                // NOTE: we don't need to initialize it before writing to it\n                let raw_buffer: &mut [u8] = unsafe {\n                    let buffer: &mut Vec<u8> = buffer.get_or_insert_with(|| -> Vec<u8> Vec::with_capacity(RECV_BUFFER_SIZE));\n                    std::slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.capacity())\n                };\n\n                // Receive packet\n                tokio::pin!(let recv = socket.recv_from(raw_buffer););\n                let result: Result<(usize, SocketAddr), Error> = match select(recv, &mut cancelled).await {\n                    Either::Left((left: Result<(usize, SocketAddr), Error>, _)) => left,\n                    Either::Right(_) => break,\n                };\n\n                let len: usize = match result {\n                    Ok((0, _)) => continue,\n                    Ok((len: usize, _)) => len,\n                    Err(e: Error) => {\n                        tracing::warn!(\"failed to receive data: {e}\");\n                        continue;\n                    }\n                };\n\n                let mut buffer: Vec<u8> = match buffer.take() {\n                    Some(mut buffer: Vec<u8>) => {\n                        // SAFETY: at this point we have initialized at least `len` bytes of partially\n                        // initialized data of len `RECV_BUFFER_SIZE`\n                        unsafe { buffer.set_len(len) };\n                        buffer\n                    }\n                    None => continue,\n                };\n\n                // Process packet\n                let ctx: Arc<ReceiverContext> = ctx.clone();\n                tokio::spawn(async move {\n                    if let Err(error: Error) = ctx\n                        .node\n                        .handle_received_data(\n                            PacketView::from(buffer.as_mut_slice()),\n                            &ctx.message_subscribers,\n                            &ctx.query_subscribers,\n                        )\n                        .await\n                    {\n                        tracing::trace!(?error, \"failed to handle received data\");\n                    }\n                });\n            }\n\n            tracing::debug!(\"receiver loop finished\");\n        });\n    }",
+    "code_with_param": "pub(super) fn start_receiver(\n        self: &Arc<Self>,\n        socket: Arc<UdpSocket>,\n        message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n        query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n    ) {\n        use futures_util::future::{select, Either};\n\n        struct ReceiverContext {\n            node: Arc<Node>,\n            message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n            query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n        }\n\n        const RECV_BUFFER_SIZE: usize = 2048;\n\n        let complete_signal = self.cancellation_token.clone();\n        let ctx = Arc::new(data: ReceiverContext {\n            node: self.clone(),\n            message_subscribers,\n            query_subscribers,\n        });\n\n        tokio::spawn(future: async move {\n            let mut buffer = None;\n\n            tokio::pin!(let cancelled = complete_signal.cancelled(););\n\n            loop {\n                // SAFETY: buffer capacity is always `RECV_BUFFER_SIZE` at the point of creating slice\n                // NOTE: we don't need to initialize it before writing to it\n                let raw_buffer = unsafe {\n                    let buffer = buffer.get_or_insert_with(|| Vec::with_capacity(RECV_BUFFER_SIZE));\n                    std::slice::from_raw_parts_mut(data: buffer.as_mut_ptr(), len: buffer.capacity())\n                };\n\n                // Receive packet\n                tokio::pin!(let recv = socket.recv_from(raw_buffer););\n                let result = match select(future1: recv, future2: &mut cancelled).await {\n                    Either::Left((left, _)) => left,\n                    Either::Right(_) => break,\n                };\n\n                let len = match result {\n                    Ok((0, _)) => continue,\n                    Ok((len, _)) => len,\n                    Err(e) => {\n                        tracing::warn!(\"failed to receive data: {e}\");\n                        continue;\n                    }\n                };\n\n                let mut buffer = match buffer.take() {\n                    Some(mut buffer) => {\n                        // SAFETY: at this point we have initialized at least `len` bytes of partially\n                        // initialized data of len `RECV_BUFFER_SIZE`\n                        unsafe { buffer.set_len(new_len: len) };\n                        buffer\n                    }\n                    None => continue,\n                };\n\n                // Process packet\n                let ctx = ctx.clone();\n                tokio::spawn(future: async move {\n                    if let Err(error) = ctx\n                        .node\n                        .handle_received_data(\n                            data: PacketView::from(buffer.as_mut_slice()),\n                            &ctx.message_subscribers,\n                            &ctx.query_subscribers,\n                        )\n                        .await\n                    {\n                        tracing::trace!(?error, \"failed to handle received data\");\n                    }\n                });\n            }\n\n            tracing::debug!(\"receiver loop finished\");\n        });\n    }",
+    "params": [
+      "self",
+      "socket",
+      "message_subscribers",
+      "query_subscribers"
+    ],
+    "return_type": "",
+    "comment": "/// Starts a process that listens for and processes packets from the UDP socket\n",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "sync",
+        "name": "Arc",
+        "item_type": "struct",
+        "offset_in_fn": 38,
+        "declaration": "Arc<\n    T: ?Sized,\n    #[unstable(feature = \"allocator_api\", issue = \"32838\")] A: Allocator = Global,\n> {\n    ptr: NonNull<ArcInner<T>>,\n    phantom: PhantomData<ArcInner<T>>,\n    alloc: A,\n}",
+        "documentation": "A thread-safe reference-counting pointer. 'Arc' stands for 'Atomically\nReference Counted'.\n\nThe type `Arc<T>` provides shared ownership of a value of type `T`,\nallocated in the heap. Invoking [`clone`][clone] on `Arc` produces\na new `Arc` instance, which points to the same allocation on the heap as the\nsource `Arc`, while increasing a reference count. When the last `Arc`\npointer to a given allocation is destroyed, the value stored in that allocation (often\nreferred to as \"inner value\") is also dropped.\n\nShared references in Rust disallow mutation by default, and `Arc` is no\nexception: you cannot generally obtain a mutable reference to something\ninside an `Arc`. If you need to mutate through an `Arc`, use\n[`Mutex`][mutex], [`RwLock`][rwlock], or one of the [`Atomic`][atomic]\ntypes.\n\n**Note**: This type is only available on platforms that support atomic\nloads and stores of pointers, which includes all platforms that support\nthe `std` crate but not all those which only support [`alloc`](crate).\nThis may be detected at compile time using `#[cfg(target_has_atomic = \"ptr\")]`.\n\n## Thread Safety\n\nUnlike [`Rc<T>`], `Arc<T>` uses atomic operations for its reference\ncounting. This means that it is thread-safe. The disadvantage is that\natomic operations are more expensive than ordinary memory accesses. If you\nare not sharing reference-counted allocations between threads, consider using\n[`Rc<T>`] for lower overhead. [`Rc<T>`] is a safe default, because the\ncompiler will catch any attempt to send an [`Rc<T>`] between threads.\nHowever, a library might choose `Arc<T>` in order to give library consumers\nmore flexibility.\n\n`Arc<T>` will implement [`Send`] and [`Sync`] as long as the `T` implements\n[`Send`] and [`Sync`]. Why can't you put a non-thread-safe type `T` in an\n`Arc<T>` to make it thread-safe? This may be a bit counter-intuitive at\nfirst: after all, isn't the point of `Arc<T>` thread safety? The key is\nthis: `Arc<T>` makes it thread safe to have multiple ownership of the same\ndata, but it  doesn't add thread safety to its data. Consider\n<code>Arc<[RefCell\\<T>]></code>. [`RefCell<T>`] isn't [`Sync`], and if `Arc<T>` was always\n[`Send`], <code>Arc<[RefCell\\<T>]></code> would be as well. But then we'd have a problem:\n[`RefCell<T>`] is not thread safe; it keeps track of the borrowing count using\nnon-atomic operations.\n\nIn the end, this means that you may need to pair `Arc<T>` with some sort of\n[`std::sync`] type, usually [`Mutex<T>`][mutex].\n\n## Breaking cycles with `Weak`\n\nThe [`downgrade`][downgrade] method can be used to create a non-owning\n[`Weak`] pointer. A [`Weak`] pointer can be [`upgrade`][upgrade]d\nto an `Arc`, but this will return [`None`] if the value stored in the allocation has\nalready been dropped. In other words, `Weak` pointers do not keep the value\ninside the allocation alive; however, they *do* keep the allocation\n(the backing store for the value) alive.\n\nA cycle between `Arc` pointers will never be deallocated. For this reason,\n[`Weak`] is used to break cycles. For example, a tree could have\nstrong `Arc` pointers from parent nodes to children, and [`Weak`]\npointers from children back to their parents.\n\n# Cloning references\n\nCreating a new reference from an existing reference-counted pointer is done using the\n`Clone` trait implemented for [`Arc<T>`][Arc] and [`Weak<T>`][Weak].\n\n```\nuse std::sync::Arc;\nlet foo = Arc::new(vec![1.0, 2.0, 3.0]);\n// The two syntaxes below are equivalent.\nlet a = foo.clone();\nlet b = Arc::clone(&foo);\n// a, b, and foo are all Arcs that point to the same memory location\n```\n\n## `Deref` behavior\n\n`Arc<T>` automatically dereferences to `T` (via the [`Deref`] trait),\nso you can call `T`'s methods on a value of type `Arc<T>`. To avoid name\nclashes with `T`'s methods, the methods of `Arc<T>` itself are associated\nfunctions, called using [fully qualified syntax]:\n\n```\nuse std::sync::Arc;\n\nlet my_arc = Arc::new(());\nlet my_weak = Arc::downgrade(&my_arc);\n```\n\n`Arc<T>`'s implementations of traits like `Clone` may also be called using\nfully qualified syntax. Some people prefer to use fully qualified syntax,\nwhile others prefer using method-call syntax.\n\n```\nuse std::sync::Arc;\n\nlet arc = Arc::new(());\n// Method-call syntax\nlet arc2 = arc.clone();\n// Fully qualified syntax\nlet arc3 = Arc::clone(&arc);\n```\n\n[`Weak<T>`][Weak] does not auto-dereference to `T`, because the inner value may have\nalready been dropped.\n\n[`Rc<T>`]: crate::rc::Rc\n[clone]: Clone::clone\n[mutex]: ../../std/sync/struct.Mutex.html\n[rwlock]: ../../std/sync/struct.RwLock.html\n[atomic]: core::sync::atomic\n[downgrade]: Arc::downgrade\n[upgrade]: Weak::upgrade\n[RefCell\\<T>]: core::cell::RefCell\n[`RefCell<T>`]: core::cell::RefCell\n[`std::sync`]: ../../std/sync/index.html\n[`Arc::clone(&from)`]: Arc::clone\n[fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name\n\n# Examples\n\nSharing some immutable data between threads:\n\n```\nuse std::sync::Arc;\nuse std::thread;\n\nlet five = Arc::new(5);\n\nfor _ in 0..10 {\n    let five = Arc::clone(&five);\n\n    thread::spawn(move || {\n        println!(\"{five:?}\");\n    });\n}\n```\n\nSharing a mutable [`AtomicUsize`]:\n\n[`AtomicUsize`]: core::sync::atomic::AtomicUsize \"sync::atomic::AtomicUsize\"\n\n```\nuse std::sync::Arc;\nuse std::sync::atomic::{AtomicUsize, Ordering};\nuse std::thread;\n\nlet val = Arc::new(AtomicUsize::new(5));\n\nfor _ in 0..10 {\n    let val = Arc::clone(&val);\n\n    thread::spawn(move || {\n        let v = val.fetch_add(1, Ordering::Relaxed);\n        println!(\"{v:?}\");\n    });\n}\n```\n\nSee the [`rc` documentation][rc_examples] for more examples of reference\ncounting in general.\n\n[rc_examples]: crate::rc#examples"
+      },
+      {
+        "src_mod": "node",
+        "name": "Node",
+        "item_type": "struct",
+        "offset_in_fn": 38,
+        "declaration": "Node {\n    /// Socket address of the node\n    socket_addr: SocketAddrV4,\n    /// Immutable keystore\n    keystore: Keystore,\n    /// Configuration\n    options: NodeOptions,\n\n    /// If specified, peers are only accepted if they match the filter\n    peer_filter: Option<Arc<dyn PeerFilter>>,\n\n    /// Known peers for each local node id\n    peers: FastHashMap<NodeIdShort, Peers>,\n\n    /// Channels table used to fast search on incoming packets\n    channels_by_id: FastDashMap<AdnlChannelId, ChannelReceiver>,\n    /// Channels table used to fast search when sending messages\n    channels_by_peers: FastDashMap<NodeIdShort, Arc<Channel>>,\n\n    /// Pending transfers of large messages that were split\n    incoming_transfers: Arc<FastDashMap<TransferId, Arc<Transfer>>>,\n\n    /// Pending queries\n    queries: Arc<QueriesCache>,\n\n    /// Outgoing packets queue\n    sender_queue_tx: SenderQueueTx,\n    /// Stated used during initialization\n    init_state: Mutex<Option<InitializationState>>,\n\n    /// Node start timestamp. Used as reinit date for connections\n    start_time: u32,\n\n    /// Token, used to cancel all spawned tasks\n    cancellation_token: CancellationToken,\n}",
+        "documentation": "Unreliable UDP transport layer"
+      },
+      {
+        "src_mod": "udp",
+        "name": "UdpSocket",
+        "item_type": "struct",
+        "offset_in_fn": 76,
+        "declaration": "UdpSocket {\n        io: PollEvented<mio::net::UdpSocket>,\n    }\n}",
+        "documentation": "A UDP socket.\n\nUDP is \"connectionless\", unlike TCP. Meaning, regardless of what address you've bound to, a `UdpSocket`\nis free to communicate with many different remotes. In tokio there are basically two main ways to use `UdpSocket`:\n\n* one to many: [`bind`](`UdpSocket::bind`) and use [`send_to`](`UdpSocket::send_to`)\n  and [`recv_from`](`UdpSocket::recv_from`) to communicate with many different addresses\n* one to one: [`connect`](`UdpSocket::connect`) and associate with a single address, using [`send`](`UdpSocket::send`)\n  and [`recv`](`UdpSocket::recv`) to communicate only with that remote address\n\nThis type does not provide a `split` method, because this functionality\ncan be achieved by instead wrapping the socket in an [`Arc`]. Note that\nyou do not need a `Mutex` to share the `UdpSocket` \u2014 an `Arc<UdpSocket>`\nis enough. This is because all of the methods take `&self` instead of\n`&mut self`. Once you have wrapped it in an `Arc`, you can call\n`.clone()` on the `Arc<UdpSocket>` to get multiple shared handles to the\nsame socket. An example of such usage can be found further down.\n\n[`Arc`]: std::sync::Arc\n\n# Streams\n\nIf you need to listen over UDP and produce a [`Stream`], you can look\nat [`UdpFramed`].\n\n[`UdpFramed`]: https://docs.rs/tokio-util/latest/tokio_util/udp/struct.UdpFramed.html\n[`Stream`]: https://docs.rs/futures/0.3/futures/stream/trait.Stream.html\n\n# Example: one to many (bind)\n\nUsing `bind` we can create a simple echo server that sends and recv's with many different clients:\n```no_run\nuse tokio::net::UdpSocket;\nuse std::io;\n\n#[tokio::main]\nasync fn main() -> io::Result<()> {\n    let sock = UdpSocket::bind(\"0.0.0.0:8080\").await?;\n    let mut buf = [0; 1024];\n    loop {\n        let (len, addr) = sock.recv_from(&mut buf).await?;\n        println!(\"{:?} bytes received from {:?}\", len, addr);\n\n        let len = sock.send_to(&buf[..len], addr).await?;\n        println!(\"{:?} bytes sent\", len);\n    }\n}\n```\n\n# Example: one to one (connect)\n\nOr using `connect` we can echo with a single remote address using `send` and `recv`:\n```no_run\nuse tokio::net::UdpSocket;\nuse std::io;\n\n#[tokio::main]\nasync fn main() -> io::Result<()> {\n    let sock = UdpSocket::bind(\"0.0.0.0:8080\").await?;\n\n    let remote_addr = \"127.0.0.1:59611\";\n    sock.connect(remote_addr).await?;\n    let mut buf = [0; 1024];\n    loop {\n        let len = sock.recv(&mut buf).await?;\n        println!(\"{:?} bytes received from {:?}\", len, remote_addr);\n\n        let len = sock.send(&buf[..len]).await?;\n        println!(\"{:?} bytes sent\", len);\n    }\n}\n```\n\n# Example: Splitting with `Arc`\n\nBecause `send_to` and `recv_from` take `&self`. It's perfectly alright\nto use an `Arc<UdpSocket>` and share the references to multiple tasks.\nHere is a similar \"echo\" example that supports concurrent\nsending/receiving:\n\n```no_run\nuse tokio::{net::UdpSocket, sync::mpsc};\nuse std::{io, net::SocketAddr, sync::Arc};\n\n#[tokio::main]\nasync fn main() -> io::Result<()> {\n    let sock = UdpSocket::bind(\"0.0.0.0:8080\".parse::<SocketAddr>().unwrap()).await?;\n    let r = Arc::new(sock);\n    let s = r.clone();\n    let (tx, mut rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(1_000);\n\n    tokio::spawn(async move {\n        while let Some((bytes, addr)) = rx.recv().await {\n            let len = s.send_to(&bytes, &addr).await.unwrap();\n            println!(\"{:?} bytes sent\", len);\n        }\n    });\n\n    let mut buf = [0; 1024];\n    loop {\n        let (len, addr) = r.recv_from(&mut buf).await?;\n        println!(\"{:?} bytes received from {:?}\", len, addr);\n        tx.send((buf[..len].to_vec(), addr)).await.unwrap();\n    }\n}\n```\n"
+      },
+      {
+        "src_mod": "subscriber",
+        "name": "MessageSubscriber",
+        "item_type": "trait",
+        "offset_in_fn": 129,
+        "declaration": "pub trait MessageSubscriber\nwhere\n    Self: Send + Sync,",
+        "documentation": "ADNL custom messages subscriber"
+      },
+      {
+        "src_mod": "subscriber",
+        "name": "QuerySubscriber",
+        "item_type": "trait",
+        "offset_in_fn": 189,
+        "declaration": "pub trait QuerySubscriber\nwhere\n    Self: Send + Sync,",
+        "documentation": "ADNL, RLDP or overlay queries subscriber"
+      },
+      {
+        "src_mod": "",
+        "name": "ReceiverContext",
+        "item_type": "struct",
+        "offset_in_fn": 284,
+        "declaration": "ReceiverContext {\n            node: Arc<Node>,\n            message_subscribers: Vec<Arc<dyn MessageSubscriber>>,\n            query_subscribers: Vec<Arc<dyn QuerySubscriber>>,\n        }",
+        "documentation": ""
+      },
+      {
+        "src_mod": "spawn",
+        "name": "spawn",
+        "item_type": "function",
+        "offset_in_fn": 749,
+        "declaration": "pub fn spawn<F>(future: F) -> JoinHandle<F::Output>\nwhere\n    F: Future + Send + 'static,\n    F::Output: Send + 'static,",
+        "documentation": "Spawns a new asynchronous task, returning a\n[`JoinHandle`](JoinHandle) for it.\n\nThe provided future will start running in the background immediately\nwhen `spawn` is called, even if you don't await the returned\n`JoinHandle`.\n\nSpawning a task enables the task to execute concurrently to other tasks. The\nspawned task may execute on the current thread, or it may be sent to a\ndifferent thread to be executed. The specifics depend on the current\n[`Runtime`](crate::runtime::Runtime) configuration.\n\nIt is guaranteed that spawn will not synchronously poll the task being spawned.\nThis means that calling spawn while holding a lock does not pose a risk of\ndeadlocking with the spawned task.\n\nThere is no guarantee that a spawned task will execute to completion.\nWhen a runtime is shutdown, all outstanding tasks are dropped,\nregardless of the lifecycle of that task.\n\nThis function must be called from the context of a Tokio runtime. Tasks running on\nthe Tokio runtime are always inside its context, but you can also enter the context\nusing the [`Runtime::enter`](crate::runtime::Runtime::enter()) method.\n\n# Examples\n\nIn this example, a server is started and `spawn` is used to start a new task\nthat processes each received connection.\n\n```no_run\nuse tokio::net::{TcpListener, TcpStream};\n\nuse std::io;\n\nasync fn process(socket: TcpStream) {\n    // ...\n# drop(socket);\n}\n\n#[tokio::main]\nasync fn main() -> io::Result<()> {\n    let listener = TcpListener::bind(\"127.0.0.1:8080\").await?;\n\n    loop {\n        let (socket, _) = listener.accept().await?;\n\n        tokio::spawn(async move {\n            // Process each socket concurrently.\n            process(socket).await\n        });\n    }\n}\n```\n\nTo run multiple tasks in parallel and receive their results, join\nhandles can be stored in a vector.\n```\n# #[tokio::main(flavor = \"current_thread\")] async fn main() {\nasync fn my_background_op(id: i32) -> String {\n    let s = format!(\"Starting background task {}.\", id);\n    println!(\"{}\", s);\n    s\n}\n\nlet ops = vec![1, 2, 3];\nlet mut tasks = Vec::with_capacity(ops.len());\nfor op in ops {\n    // This call will make them start running in the background\n    // immediately.\n    tasks.push(tokio::spawn(my_background_op(op)));\n}\n\nlet mut outputs = Vec::with_capacity(tasks.len());\nfor task in tasks {\n    outputs.push(task.await.unwrap());\n}\nprintln!(\"{:?}\", outputs);\n# }\n```\nThis example pushes the tasks to `outputs` in the order they were\nstarted in. If you do not care about the ordering of the outputs, then\nyou can also use a [`JoinSet`].\n\n[`JoinSet`]: struct@crate::task::JoinSet\n\n# Panics\n\nPanics if called from **outside** of the Tokio runtime.\n\n# Using `!Send` values from a task\n\nThe task supplied to `spawn` must implement `Send`. However, it is\npossible to **use** `!Send` values from the task as long as they only\nexist between calls to `.await`.\n\nFor example, this will work:\n\n```\nuse tokio::task;\n\nuse std::rc::Rc;\n\nfn use_rc(rc: Rc<()>) {\n    // Do stuff w/ rc\n# drop(rc);\n}\n\n#[tokio::main]\nasync fn main() {\n    tokio::spawn(async {\n        // Force the `Rc` to stay in a scope with no `.await`\n        {\n            let rc = Rc::new(());\n            use_rc(rc.clone());\n        }\n\n        task::yield_now().await;\n    }).await.unwrap();\n}\n```\n\nThis will **not** work:\n\n```compile_fail\nuse tokio::task;\n\nuse std::rc::Rc;\n\nfn use_rc(rc: Rc<()>) {\n    // Do stuff w/ rc\n# drop(rc);\n}\n\n#[tokio::main]\nasync fn main() {\n    tokio::spawn(async {\n        let rc = Rc::new(());\n\n        task::yield_now().await;\n\n        use_rc(rc.clone());\n    }).await.unwrap();\n}\n```\n\nHolding on to a `!Send` value across calls to `.await` will result in\nan unfriendly compile error message similar to:\n\n```text\n`[... some type ...]` cannot be sent between threads safely\n```\n\nor:\n\n```text\nerror[E0391]: cycle detected when processing `main`\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "get_or_insert_with",
+        "item_type": "function",
+        "offset_in_fn": 1157,
+        "declaration": "pub fn get_or_insert_with<F>(&mut self, f: F) -> &mut T\nwhere\n    F: FnOnce() -> T,",
+        "documentation": "Inserts a value computed from `f` into the option if it is [`None`],\nthen returns a mutable reference to the contained value.\n\n# Examples\n\n```\nlet mut x = None;\n\n{\n    let y: &mut u32 = x.get_or_insert_with(|| 5);\n    assert_eq!(y, &5);\n\n    *y = 7;\n}\n\nassert_eq!(x, Some(7));\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "with_capacity",
+        "item_type": "function",
+        "offset_in_fn": 1184,
+        "declaration": "pub fn with_capacity(capacity: usize) -> Self",
+        "documentation": "Constructs a new, empty `Vec<T>` with at least the specified capacity.\n\nThe vector will be able to hold at least `capacity` elements without\nreallocating. This method is allowed to allocate for more elements than\n`capacity`. If `capacity` is zero, the vector will not allocate.\n\nIt is important to note that although the returned vector has the\nminimum *capacity* specified, the vector will have a zero *length*. For\nan explanation of the difference between length and capacity, see\n*[Capacity and reallocation]*.\n\nIf it is important to know the exact allocated capacity of a `Vec`,\nalways use the [`capacity`] method after construction.\n\nFor `Vec<T>` where `T` is a zero-sized type, there will be no allocation\nand the capacity will always be `usize::MAX`.\n\n[Capacity and reallocation]: #capacity-and-reallocation\n[`capacity`]: Vec::capacity\n\n# Panics\n\nPanics if the new capacity exceeds `isize::MAX` _bytes_.\n\n# Examples\n\n```\nlet mut vec = Vec::with_capacity(10);\n\n// The vector contains no items, even though it has capacity for more\nassert_eq!(vec.len(), 0);\nassert!(vec.capacity() >= 10);\n\n// These are all done without reallocating...\nfor i in 0..10 {\n    vec.push(i);\n}\nassert_eq!(vec.len(), 10);\nassert!(vec.capacity() >= 10);\n\n// ...but this may make the vector reallocate\nvec.push(11);\nassert_eq!(vec.len(), 11);\nassert!(vec.capacity() >= 11);\n\n// A vector of a zero-sized type will always over-allocate, since no\n// allocation is necessary\nlet vec_units = Vec::<()>::with_capacity(10);\nassert_eq!(vec_units.capacity(), usize::MAX);\n```"
+      },
+      {
+        "src_mod": "raw",
+        "name": "from_raw_parts_mut",
+        "item_type": "function",
+        "offset_in_fn": 1250,
+        "declaration": "pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T]",
+        "documentation": "Performs the same functionality as [`from_raw_parts`], except that a\nmutable slice is returned.\n\n# Safety\n\nBehavior is undefined if any of the following conditions are violated:\n\n* `data` must be non-null, [valid] for both reads and writes for `len * mem::size_of::<T>()` many bytes,\n  and it must be properly aligned. This means in particular:\n\n    * The entire memory range of this slice must be contained within a single allocated object!\n      Slices can never span across multiple allocated objects.\n    * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n      reason for this is that enum layout optimizations may rely on references\n      (including slices of any length) being aligned and non-null to distinguish\n      them from other data. You can obtain a pointer that is usable as `data`\n      for zero-length slices using [`NonNull::dangling()`].\n\n* `data` must point to `len` consecutive properly initialized values of type `T`.\n\n* The memory referenced by the returned slice must not be accessed through any other pointer\n  (not derived from the return value) for the duration of lifetime `'a`.\n  Both read and write accesses are forbidden.\n\n* The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n  and adding that size to `data` must not \"wrap around\" the address space.\n  See the safety documentation of [`pointer::offset`].\n\n[valid]: ptr#safety\n[`NonNull::dangling()`]: ptr::NonNull::dangling"
+      },
+      {
+        "src_mod": "",
+        "name": "capacity",
+        "item_type": "function",
+        "offset_in_fn": 1297,
+        "declaration": "pub const fn capacity(&self) -> usize",
+        "documentation": "Returns the total number of elements the vector can hold without\nreallocating.\n\n# Examples\n\n```\nlet mut vec: Vec<i32> = Vec::with_capacity(10);\nvec.push(42);\nassert!(vec.capacity() >= 10);\n```"
+      },
+      {
+        "src_mod": "select",
+        "name": "select",
+        "item_type": "function",
+        "offset_in_fn": 1469,
+        "declaration": "pub fn select<A, B>(future1: A, future2: B) -> Select<A, B>\nwhere\n    A: Future + Unpin,\n    B: Future + Unpin,",
+        "documentation": "Waits for either one of two differently-typed futures to complete.\n\nThis function will return a new future which awaits for either one of both\nfutures to complete. The returned future will finish with both the value\nresolved and a future representing the completion of the other work.\n\nNote that this function consumes the receiving futures and returns a\nwrapped version of them.\n\nAlso note that if both this and the second future have the same\noutput type you can use the `Either::factor_first` method to\nconveniently extract out the value at the end.\n\n# Examples\n\nA simple example\n\n```\n# futures::executor::block_on(async {\nuse futures::{\n    pin_mut,\n    future::Either,\n    future::self,\n};\n\n// These two futures have different types even though their outputs have the same type.\nlet future1 = async {\n    future::pending::<()>().await; // will never finish\n    1\n};\nlet future2 = async {\n    future::ready(2).await\n};\n\n// 'select' requires Future + Unpin bounds\npin_mut!(future1);\npin_mut!(future2);\n\nlet value = match future::select(future1, future2).await {\n    Either::Left((value1, _)) => value1,  // `value1` is resolved from `future1`\n                                          // `_` represents `future2`\n    Either::Right((value2, _)) => value2, // `value2` is resolved from `future2`\n                                          // `_` represents `future1`\n};\n\nassert!(value == 2);\n# });\n```\n\nA more complex example\n\n```\nuse futures::future::{self, Either, Future, FutureExt};\n\n// A poor-man's join implemented on top of select\n\nfn join<A, B>(a: A, b: B) -> impl Future<Output=(A::Output, B::Output)>\n    where A: Future + Unpin,\n          B: Future + Unpin,\n{\n    future::select(a, b).then(|either| {\n        match either {\n            Either::Left((x, b)) => b.map(move |y| (x, y)).left_future(),\n            Either::Right((y, a)) => a.map(move |x| (x, y)).right_future(),\n        }\n    })\n}\n```"
+      },
+      {
+        "src_mod": "either",
+        "name": "Either",
+        "item_type": "enum",
+        "offset_in_fn": 1526,
+        "declaration": "Either<A, B> {\n    /// First branch of the type\n    Left(/* #[pin] */ A),\n    /// Second branch of the type\n    Right(/* #[pin] */ B),\n}",
+        "documentation": "Combines two different futures, streams, or sinks having the same associated types into a single type.\n\nThis is useful when conditionally choosing between two distinct future types:\n\n```rust\nuse futures::future::Either;\n\n# futures::executor::block_on(async {\nlet cond = true;\n\nlet fut = if cond {\n    Either::Left(async move { 12 })\n} else {\n    Either::Right(async move { 44 })\n};\n\nassert_eq!(fut.await, 12);\n# })\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "take",
+        "item_type": "function",
+        "offset_in_fn": 1977,
+        "declaration": "pub const fn take(&mut self) -> Option<T>",
+        "documentation": "Takes the value out of the option, leaving a [`None`] in its place.\n\n# Examples\n\n```\nlet mut x = Some(2);\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, Some(2));\n\nlet mut x: Option<u32> = None;\nlet y = x.take();\nassert_eq!(x, None);\nassert_eq!(y, None);\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "set_len",
+        "item_type": "function",
+        "offset_in_fn": 2241,
+        "declaration": "pub unsafe fn set_len(&mut self, new_len: usize)",
+        "documentation": "Forces the length of the vector to `new_len`.\n\nThis is a low-level operation that maintains none of the normal\ninvariants of the type. Normally changing the length of a vector\nis done using one of the safe operations instead, such as\n[`truncate`], [`resize`], [`extend`], or [`clear`].\n\n[`truncate`]: Vec::truncate\n[`resize`]: Vec::resize\n[`extend`]: Extend::extend\n[`clear`]: Vec::clear\n\n# Safety\n\n- `new_len` must be less than or equal to [`capacity()`].\n- The elements at `old_len..new_len` must be initialized.\n\n[`capacity()`]: Vec::capacity\n\n# Examples\n\nSee [`spare_capacity_mut()`] for an example with safe\ninitialization of capacity elements and use of this method.\n\n`set_len()` can be useful for situations in which the vector\nis serving as a buffer for other code, particularly over FFI:\n\n```no_run\n# #![allow(dead_code)]\n# // This is just a minimal skeleton for the doc example;\n# // don't use this as a starting point for a real library.\n# pub struct StreamWrapper { strm: *mut std::ffi::c_void }\n# const Z_OK: i32 = 0;\n# unsafe extern \"C\" {\n#     fn deflateGetDictionary(\n#         strm: *mut std::ffi::c_void,\n#         dictionary: *mut u8,\n#         dictLength: *mut usize,\n#     ) -> i32;\n# }\n# impl StreamWrapper {\npub fn get_dictionary(&self) -> Option<Vec<u8>> {\n    // Per the FFI method's docs, \"32768 bytes is always enough\".\n    let mut dict = Vec::with_capacity(32_768);\n    let mut dict_length = 0;\n    // SAFETY: When `deflateGetDictionary` returns `Z_OK`, it holds that:\n    // 1. `dict_length` elements were initialized.\n    // 2. `dict_length` <= the capacity (32_768)\n    // which makes `set_len` safe to call.\n    unsafe {\n        // Make the FFI call...\n        let r = deflateGetDictionary(self.strm, dict.as_mut_ptr(), &mut dict_length);\n        if r == Z_OK {\n            // ...and update the length to what was initialized.\n            dict.set_len(dict_length);\n            Some(dict)\n        } else {\n            None\n        }\n    }\n}\n# }\n```\n\nWhile the following example is sound, there is a memory leak since\nthe inner vectors were not freed prior to the `set_len` call:\n\n```\nlet mut vec = vec![vec![1, 0, 0],\n                   vec![0, 1, 0],\n                   vec![0, 0, 1]];\n// SAFETY:\n// 1. `old_len..0` is empty so no elements need to be initialized.\n// 2. `0 <= capacity` always holds whatever `capacity` is.\nunsafe {\n    vec.set_len(0);\n#   // FIXME(https://github.com/rust-lang/miri/issues/3670):\n#   // use -Zmiri-disable-leak-check instead of unleaking in tests meant to leak.\n#   vec.set_len(3);\n}\n```\n\nNormally, here, one would use [`clear`] instead to correctly drop\nthe contents and thus not leak memory.\n\n[`spare_capacity_mut()`]: Vec::spare_capacity_mut"
+      },
+      {
+        "src_mod": "",
+        "name": "handle_received_data",
+        "item_type": "function",
+        "offset_in_fn": 2582,
+        "declaration": "async fn handle_received_data(self: &Arc<Self>, data: PacketView<'_>, message_subscribers: &[Arc<dyn MessageSubscriber>], query_subscribers: &[Arc<dyn QuerySubscriber>]) -> Result<()>",
+        "documentation": "Decrypts and processes received data"
+      },
+      {
+        "src_mod": "",
+        "name": "as_mut_slice",
+        "item_type": "function",
+        "offset_in_fn": 2656,
+        "declaration": "pub const fn as_mut_slice(&mut self) -> &mut [T]",
+        "documentation": "Extracts a mutable slice of the entire vector.\n\nEquivalent to `&mut s[..]`.\n\n# Examples\n\n```\nuse std::io::{self, Read};\nlet mut buffer = vec![0; 3];\nio::repeat(0b101).read_exact(buffer.as_mut_slice()).unwrap();\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "alloc",
+      "name": "Global",
+      "item_type": "struct",
+      "offset_in_fn": 38,
+      "declaration": "Global;",
+      "documentation": "The global memory allocator.\n\nThis type implements the [`Allocator`] trait by forwarding calls\nto the allocator registered with the `#[global_allocator]` attribute\nif there is one, or the `std` crate\u2019s default.\n\nNote: while this type is unstable, the functionality it provides can be\naccessed through the [free functions in `alloc`](self#functions)."
+    },
+    "constraints": [
+      {
+        "content": "`data` must be non-null and properly aligned, including for zero-length slices and slices of zero-sized types.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Not Null, Aligned"
+      },
+      {
+        "content": "`data` must be valid for reads and writes for `len * size_of::<T>()` bytes.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "The referenced memory must be contained within a single allocated object and must not span multiple allocations.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Dereferencable"
+      },
+      {
+        "content": "`data` must point to `len` consecutive properly initialized values of type `T`.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Initialized"
+      },
+      {
+        "content": "For the lifetime `'a`, the memory referenced by the returned slice must not be accessed through any other pointer not derived from the returned slice, for either reads or writes.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Exclusive"
+      },
+      {
+        "content": "`len * size_of::<T>()` must be no larger than `isize::MAX`.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "Adding the slice size to `data` must not wrap around the address space.",
+        "fn_name": "from_raw_parts_mut",
+        "type": "Overflow"
+      },
+      {
+        "content": "`new_len` must be less than or equal to `capacity()`.",
+        "fn_name": "set_len",
+        "type": "Numeric Relation"
+      },
+      {
+        "content": "The elements in the range `old_len..new_len` must be initialized.",
+        "fn_name": "set_len",
+        "type": "Initialized"
+      }
+    ]
+  },
+  {
+    "sample_label": "everscale-network-0.5.5/src/util/fast_rand.rs/gen_fast_bytes/19",
+    "repo_name": "everscale-network-0.5.5",
+    "relative_file": "src/util/fast_rand.rs",
+    "start_line": 19,
+    "end_line": 32,
+    "start_byte": 449,
+    "end_byte": 890,
+    "name": "gen_fast_bytes",
+    "raw_code": "pub fn gen_fast_bytes<const N: usize>() -> [u8; N] {\n    THREAD_RNG_KEY.with(|t| {\n        unsafe {\n            // SAFETY: We must make sure to stop using `rng` before anyone else\n            // creates another mutable reference\n            let rng = &mut *t.get();\n\n            let mut id = MaybeUninit::<[u8; N]>::uninit();\n            rng.fill_bytes(&mut *id.as_mut_ptr() as &mut [u8; N]);\n\n            id.assume_init()\n        }\n    })\n}",
+    "code_with_hints": "pub fn gen_fast_bytes<const N: usize>() -> [u8; N] {\n    THREAD_RNG_KEY.with(|t: &Rc<UnsafeCell<SmallRng>>| -> [u8; N] {\n        unsafe {\n            // SAFETY: We must make sure to stop using `rng` before anyone else\n            // creates another mutable reference\n            let rng: &mut SmallRng = &mut *t.get();\n\n            let mut id: MaybeUninit<[u8; N]> = MaybeUninit::<[u8; N]>::uninit();\n            rng.fill_bytes(dest: &mut *id.as_mut_ptr() as &mut [u8; N]);\n\n            id.assume_init()\n        }\n    })\n}",
+    "code_with_type": "pub fn gen_fast_bytes<const N: usize>() -> [u8; N] {\n    THREAD_RNG_KEY.with(|t: &Rc<UnsafeCell<SmallRng>>| -> [u8; N] {\n        unsafe {\n            // SAFETY: We must make sure to stop using `rng` before anyone else\n            // creates another mutable reference\n            let rng: &mut SmallRng = &mut *t.get();\n\n            let mut id: MaybeUninit<[u8; N]> = MaybeUninit::<[u8; N]>::uninit();\n            rng.fill_bytes(&mut *id.as_mut_ptr() as &mut [u8; N]);\n\n            id.assume_init()\n        }\n    })\n}",
+    "code_with_param": "pub fn gen_fast_bytes<const N: usize>() -> [u8; N] {\n    THREAD_RNG_KEY.with(|t| {\n        unsafe {\n            // SAFETY: We must make sure to stop using `rng` before anyone else\n            // creates another mutable reference\n            let rng = &mut *t.get();\n\n            let mut id = MaybeUninit::<[u8; N]>::uninit();\n            rng.fill_bytes(dest: &mut *id.as_mut_ptr() as &mut [u8; N]);\n\n            id.assume_init()\n        }\n    })\n}",
+    "params": [],
+    "return_type": "[u8; N]",
+    "comment": "",
+    "attributes": "",
+    "detail_info": [
+      {
+        "src_mod": "",
+        "name": "with",
+        "item_type": "function",
+        "offset_in_fn": 72,
+        "declaration": "pub fn with<F, R>(&'static self, f: F) -> R\nwhere\n    F: FnOnce(&T) -> R,",
+        "documentation": "Acquires a reference to the value in this TLS key.\n\nThis will lazily initialize the value if this thread has not referenced\nthis key yet.\n\n# Panics\n\nThis function will `panic!()` if the key currently has its\ndestructor running, and it **may** panic if the destructor has\npreviously been run for this thread.\n\n# Examples\n\n```\nthread_local! {\n    pub static STATIC: String = String::from(\"I am\");\n}\n\nassert_eq!(\n    STATIC.with(|original_value| format!(\"{original_value} initialized\")),\n    \"I am initialized\",\n);\n```"
+      },
+      {
+        "src_mod": "maybe_uninit",
+        "name": "MaybeUninit",
+        "item_type": "union",
+        "offset_in_fn": 292,
+        "declaration": "MaybeUninit<T> {\n    uninit: (),\n    value: ManuallyDrop<T>,\n}",
+        "documentation": "A wrapper type to construct uninitialized instances of `T`.\n\n# Initialization invariant\n\nThe compiler, in general, assumes that a variable is properly initialized\naccording to the requirements of the variable's type. For example, a variable of\nreference type must be aligned and non-null. This is an invariant that must\n*always* be upheld, even in unsafe code. As a consequence, zero-initializing a\nvariable of reference type causes instantaneous [undefined behavior][ub],\nno matter whether that reference ever gets used to access memory:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet x: &i32 = unsafe { mem::zeroed() }; // undefined behavior! \u26a0\ufe0f\n// The equivalent code with `MaybeUninit<&i32>`:\nlet x: &i32 = unsafe { MaybeUninit::zeroed().assume_init() }; // undefined behavior! \u26a0\ufe0f\n```\n\nThis is exploited by the compiler for various optimizations, such as eliding\nrun-time checks and optimizing `enum` layout.\n\nSimilarly, entirely uninitialized memory may have any content, while a `bool` must\nalways be `true` or `false`. Hence, creating an uninitialized `bool` is undefined behavior:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet b: bool = unsafe { mem::uninitialized() }; // undefined behavior! \u26a0\ufe0f\n// The equivalent code with `MaybeUninit<bool>`:\nlet b: bool = unsafe { MaybeUninit::uninit().assume_init() }; // undefined behavior! \u26a0\ufe0f\n```\n\nMoreover, uninitialized memory is special in that it does not have a fixed value (\"fixed\"\nmeaning \"it won't change without being written to\"). Reading the same uninitialized byte\nmultiple times can give different results. This makes it undefined behavior to have\nuninitialized data in a variable even if that variable has an integer type, which otherwise can\nhold any *fixed* bit pattern:\n\n```rust,no_run\n# #![allow(invalid_value)]\nuse std::mem::{self, MaybeUninit};\n\nlet x: i32 = unsafe { mem::uninitialized() }; // undefined behavior! \u26a0\ufe0f\n// The equivalent code with `MaybeUninit<i32>`:\nlet x: i32 = unsafe { MaybeUninit::uninit().assume_init() }; // undefined behavior! \u26a0\ufe0f\n```\nOn top of that, remember that most types have additional invariants beyond merely\nbeing considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]\nis considered initialized (under the current implementation; this does not constitute\na stable guarantee) because the only requirement the compiler knows about it\nis that the data pointer must be non-null. Creating such a `Vec<T>` does not cause\n*immediate* undefined behavior, but will cause undefined behavior with most\nsafe operations (including dropping it).\n\n[`Vec<T>`]: ../../std/vec/struct.Vec.html\n\n# Examples\n\n`MaybeUninit<T>` serves to enable unsafe code to deal with uninitialized data.\nIt is a signal to the compiler indicating that the data here might *not*\nbe initialized:\n\n```rust\nuse std::mem::MaybeUninit;\n\n// Create an explicitly uninitialized reference. The compiler knows that data inside\n// a `MaybeUninit<T>` may be invalid, and hence this is not UB:\nlet mut x = MaybeUninit::<&i32>::uninit();\n// Set it to a valid value.\nx.write(&0);\n// Extract the initialized data -- this is only allowed *after* properly\n// initializing `x`!\nlet x = unsafe { x.assume_init() };\n```\n\nThe compiler then knows to not make any incorrect assumptions or optimizations on this code.\n\nYou can think of `MaybeUninit<T>` as being a bit like `Option<T>` but without\nany of the run-time tracking and without any of the safety checks.\n\n## out-pointers\n\nYou can use `MaybeUninit<T>` to implement \"out-pointers\": instead of returning data\nfrom a function, pass it a pointer to some (uninitialized) memory to put the\nresult into. This can be useful when it is important for the caller to control\nhow the memory the result is stored in gets allocated, and you want to avoid\nunnecessary moves.\n\n```\nuse std::mem::MaybeUninit;\n\nunsafe fn make_vec(out: *mut Vec<i32>) {\n    // `write` does not drop the old contents, which is important.\n    out.write(vec![1, 2, 3]);\n}\n\nlet mut v = MaybeUninit::uninit();\nunsafe { make_vec(v.as_mut_ptr()); }\n// Now we know `v` is initialized! This also makes sure the vector gets\n// properly dropped.\nlet v = unsafe { v.assume_init() };\nassert_eq!(&v, &[1, 2, 3]);\n```\n\n## Initializing an array element-by-element\n\n`MaybeUninit<T>` can be used to initialize a large array element-by-element:\n\n```\nuse std::mem::{self, MaybeUninit};\n\nlet data = {\n    // Create an uninitialized array of `MaybeUninit`.\n    let mut data: [MaybeUninit<Vec<u32>>; 1000] = [const { MaybeUninit::uninit() }; 1000];\n\n    // Dropping a `MaybeUninit` does nothing, so if there is a panic during this loop,\n    // we have a memory leak, but there is no memory safety issue.\n    for elem in &mut data[..] {\n        elem.write(vec![42]);\n    }\n\n    // Everything is initialized. Transmute the array to the\n    // initialized type.\n    unsafe { mem::transmute::<_, [Vec<u32>; 1000]>(data) }\n};\n\nassert_eq!(&data[0], &[42]);\n```\n\nYou can also work with partially initialized arrays, which could\nbe found in low-level datastructures.\n\n```\nuse std::mem::MaybeUninit;\n\n// Create an uninitialized array of `MaybeUninit`.\nlet mut data: [MaybeUninit<String>; 1000] = [const { MaybeUninit::uninit() }; 1000];\n// Count the number of elements we have assigned.\nlet mut data_len: usize = 0;\n\nfor elem in &mut data[0..500] {\n    elem.write(String::from(\"hello\"));\n    data_len += 1;\n}\n\n// For each item in the array, drop if we allocated it.\nfor elem in &mut data[0..data_len] {\n    unsafe { elem.assume_init_drop(); }\n}\n```\n\n## Initializing a struct field-by-field\n\nYou can use `MaybeUninit<T>`, and the [`std::ptr::addr_of_mut`] macro, to initialize structs field by field:\n\n```rust\nuse std::mem::MaybeUninit;\nuse std::ptr::addr_of_mut;\n\n#[derive(Debug, PartialEq)]\npub struct Foo {\n    name: String,\n    list: Vec<u8>,\n}\n\nlet foo = {\n    let mut uninit: MaybeUninit<Foo> = MaybeUninit::uninit();\n    let ptr = uninit.as_mut_ptr();\n\n    // Initializing the `name` field\n    // Using `write` instead of assignment via `=` to not call `drop` on the\n    // old, uninitialized value.\n    unsafe { addr_of_mut!((*ptr).name).write(\"Bob\".to_string()); }\n\n    // Initializing the `list` field\n    // If there is a panic here, then the `String` in the `name` field leaks.\n    unsafe { addr_of_mut!((*ptr).list).write(vec![0, 1, 2]); }\n\n    // All the fields are initialized, so we call `assume_init` to get an initialized Foo.\n    unsafe { uninit.assume_init() }\n};\n\nassert_eq!(\n    foo,\n    Foo {\n        name: \"Bob\".to_string(),\n        list: vec![0, 1, 2]\n    }\n);\n```\n[`std::ptr::addr_of_mut`]: crate::ptr::addr_of_mut\n[ub]: ../../reference/behavior-considered-undefined.html\n\n# Layout\n\n`MaybeUninit<T>` is guaranteed to have the same size, alignment, and ABI as `T`:\n\n```rust\nuse std::mem::{MaybeUninit, size_of, align_of};\nassert_eq!(size_of::<MaybeUninit<u64>>(), size_of::<u64>());\nassert_eq!(align_of::<MaybeUninit<u64>>(), align_of::<u64>());\n```\n\nHowever remember that a type *containing* a `MaybeUninit<T>` is not necessarily the same\nlayout; Rust does not in general guarantee that the fields of a `Foo<T>` have the same order as\na `Foo<U>` even if `T` and `U` have the same size and alignment. Furthermore because any bit\nvalue is valid for a `MaybeUninit<T>` the compiler can't apply non-zero/niche-filling\noptimizations, potentially resulting in a larger size:\n\n```rust\n# use std::mem::{MaybeUninit, size_of};\nassert_eq!(size_of::<Option<bool>>(), 1);\nassert_eq!(size_of::<Option<MaybeUninit<bool>>>(), 2);\n```\n\nIf `T` is FFI-safe, then so is `MaybeUninit<T>`.\n\nWhile `MaybeUninit` is `#[repr(transparent)]` (indicating it guarantees the same size,\nalignment, and ABI as `T`), this does *not* change any of the previous caveats. `Option<T>` and\n`Option<MaybeUninit<T>>` may still have different sizes, and types containing a field of type\n`T` may be laid out (and sized) differently than if that field were `MaybeUninit<T>`.\n`MaybeUninit` is a union type, and `#[repr(transparent)]` on unions is unstable (see [the\ntracking issue](https://github.com/rust-lang/rust/issues/60405)). Over time, the exact\nguarantees of `#[repr(transparent)]` on unions may evolve, and `MaybeUninit` may or may not\nremain `#[repr(transparent)]`. That said, `MaybeUninit<T>` will *always* guarantee that it has\nthe same size, alignment, and ABI as `T`; it's just that the way `MaybeUninit` implements that\nguarantee may evolve.\n\nNote that even though `T` and `MaybeUninit<T>` are ABI compatible it is still unsound to\ntransmute `&mut T` to `&mut MaybeUninit<T>` and expose that to safe code because it would allow\nsafe code to access uninitialized memory:\n\n```rust,no_run\nuse core::mem::MaybeUninit;\n\nfn unsound_transmute<T>(val: &mut T) -> &mut MaybeUninit<T> {\n    unsafe { core::mem::transmute(val) }\n}\n\nfn main() {\n    let mut code = 0;\n    let code = &mut code;\n    let code2 = unsound_transmute(code);\n    *code2 = MaybeUninit::uninit();\n    std::process::exit(*code); // UB! Accessing uninitialized memory.\n}\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "uninit",
+        "item_type": "function",
+        "offset_in_fn": 316,
+        "declaration": "pub const fn uninit() -> MaybeUninit<T>",
+        "documentation": "Creates a new `MaybeUninit<T>` in an uninitialized state.\n\nNote that dropping a `MaybeUninit<T>` will never call `T`'s drop code.\nIt is your responsibility to make sure `T` gets dropped if it got initialized.\n\nSee the [type-level documentation][MaybeUninit] for some examples.\n\n# Example\n\n```\nuse std::mem::MaybeUninit;\n\nlet v: MaybeUninit<String> = MaybeUninit::uninit();\n```"
+      },
+      {
+        "src_mod": "",
+        "name": "fill_bytes",
+        "item_type": "function",
+        "offset_in_fn": 342,
+        "declaration": "fn fill_bytes(&mut self, dest: &mut [u8])",
+        "documentation": ""
+      },
+      {
+        "src_mod": "",
+        "name": "assume_init",
+        "item_type": "function",
+        "offset_in_fn": 409,
+        "declaration": "pub const unsafe fn assume_init(self) -> T",
+        "documentation": "Extracts the value from the `MaybeUninit<T>` container. This is a great way\nto ensure that the data will get dropped, because the resulting `T` is\nsubject to the usual drop handling.\n\n# Safety\n\nIt is up to the caller to guarantee that the `MaybeUninit<T>` really is in an initialized\nstate. Calling this when the content is not yet fully initialized causes immediate undefined\nbehavior. The [type-level documentation][inv] contains more information about\nthis initialization invariant.\n\n[inv]: #initialization-invariant\n\nOn top of that, remember that most types have additional invariants beyond merely\nbeing considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]\nis considered initialized (under the current implementation; this does not constitute\na stable guarantee) because the only requirement the compiler knows about it\nis that the data pointer must be non-null. Creating such a `Vec<T>` does not cause\n*immediate* undefined behavior, but will cause undefined behavior with most\nsafe operations (including dropping it).\n\n[`Vec<T>`]: ../../std/vec/struct.Vec.html\n\n# Examples\n\nCorrect usage of this method:\n\n```rust\nuse std::mem::MaybeUninit;\n\nlet mut x = MaybeUninit::<bool>::uninit();\nx.write(true);\nlet x_init = unsafe { x.assume_init() };\nassert_eq!(x_init, true);\n```\n\n*Incorrect* usage of this method:\n\n```rust,no_run\nuse std::mem::MaybeUninit;\n\nlet x = MaybeUninit::<Vec<u32>>::uninit();\nlet x_init = unsafe { x.assume_init() };\n// `x` had not been initialized yet, so this last line caused undefined behavior. \u26a0\ufe0f\n```"
+      }
+    ],
+    "self_info": {
+      "src_mod": "",
+      "name": "",
+      "item_type": "",
+      "offset_in_fn": 0,
+      "declaration": "",
+      "documentation": ""
+    },
+    "constraints": [
+      {
+        "content": "The `MaybeUninit<T>` must really be in an initialized state.",
+        "fn_name": "assume_init",
+        "type": "Initialized"
+      },
+      {
+        "content": "The contained value must satisfy any additional invariants required by `T`, beyond being initialized.",
+        "fn_name": "assume_init",
+        "type": "Type Constraint"
+      }
+    ]
+  }
+]

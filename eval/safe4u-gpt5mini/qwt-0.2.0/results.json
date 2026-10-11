@@ -1,0 +1,120 @@
+[
+  {
+    "sample_label": "qwt-0.2.0/src/bitvector/mod.rs/get_bits/202",
+    "result": "sound",
+    "response": [
+      {
+        "question": {
+          "content": "`index + len` must be within the bounds of the bit vector.",
+          "fn_name": "get_bits_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nSome(unsafe { self.get_bits_unchecked(index, len) })\n```\n\n2. **Contract-relevant expressions**\n- `index`\n- `len`\n- `index + len > self.n_bits`\n- `get_bits_unchecked(index, len)`\n\n3. **Step-by-step analysis**\n- The unsafe callee requires that `index + len` is within the bounds of the bit vector.\n- Before calling `get_bits_unchecked`, the function checks:\n  ```rust\n  if (len == 0) | (len > 64) | (index + len > self.n_bits) {\n      return None;\n  }\n  ```\n- If `index + len > self.n_bits`, it returns `None`, so the unsafe call is only reached when:\n  - `len != 0`\n  - `len <= 64`\n  - `index + len <= self.n_bits`\n- Therefore, the precondition that `index + len` must be within bounds is enforced by the guard.\n- Note: the expression `index + len` could theoretically overflow in Rust in debug contexts, but given the contract being checked, the intended logical bounds condition is satisfied before the unsafe call.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe call site\nThe unsafe callee `get_bits_unchecked` is called here:\n```rust\nSome(unsafe { self.get_bits_unchecked(index, len) })\n```\n\n## 2. Contract-relevant expressions\nThe contract says:\n\n- `index + len` must be within the bounds of the bit vector\n\nRelevant expressions in the function:\n- `index`\n- `len`\n- `self.n_bits`\n- the guard:\n  ```rust\n  if (len == 0) | (len > 64) | (index + len > self.n_bits) {\n      return None;\n  }\n  ```\n\n## 3. Step-by-step analysis\n- The function first checks whether:\n  - `len == 0`\n  - `len > 64`\n  - `index + len > self.n_bits`\n- If any of these are true, it returns `None` and does **not** call the unsafe function.\n- Therefore, the unsafe call is only reached when:\n  - `len` is in `1..=64`\n  - `index + len <= self.n_bits`\n\nThis satisfies the stated contract that `index + len` must be within the bounds of the bit vector.\n\nOne caveat: in Rust, `index + len` can overflow for very large `usize` values, which would panic in debug builds or wrap in release depending on settings. But regarding the given contract, the intended precondition is enforced by the guard before the unsafe call.\n\n## 4. Final determination\n**Yes**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/bitvector/mod.rs/set/975",
+    "result": "sound",
+    "response": [
+      {
+        "question": {
+          "content": "The `index` must be within bounds of the bit vector.",
+          "fn_name": "get_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe callee call site\nThe unsafe callee `get_unchecked` is called here:\n```rust\nunsafe {\n    if bit && !self.get_unchecked(index) {\n        self.n_ones += 1;\n    }\n    if !bit && self.get_unchecked(index) {\n        self.n_ones -= 1;\n    }\n}\n```\n\n## 2. Contract-relevant expressions\n- `index`: the parameter passed into `get_unchecked`\n- `assert!(index < self.n_bits);`: bounds check performed before the unsafe call\n- `self.n_bits`: the bit-vector length used for validation\n\n## 3. Step-by-step analysis\n- `index` is an untrusted input, so by itself it may be any `usize`.\n- Before any call to `get_unchecked`, the function executes:\n  ```rust\n  assert!(index < self.n_bits);\n  ```\n- This assertion guarantees that execution continues only when `index` is strictly less than `self.n_bits`.\n- Since `self.n_bits` represents the number of valid bits, `index < self.n_bits` means `index` is within bounds of the bit vector.\n- The unsafe calls use the same `index` value, and no modification to `index` occurs between the assertion and the calls.\n- Therefore, the precondition for `get_unchecked` is satisfied.\n\n## 4. Final determination\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nunsafe {\n    if bit && !self.get_unchecked(index) {\n        self.n_ones += 1;\n    }\n    if !bit && self.get_unchecked(index) {\n        self.n_ones -= 1;\n    }\n}\n```\n\n2. **Expressions related to the contract**\n- `index`\n- `assert!(index < self.n_bits);`\n- `self.get_unchecked(index)`\n\n3. **Step-by-step analysis**\n- The unsafe callee `get_unchecked` requires that `index` is within bounds of the bit vector.\n- The function `set` begins with:\n  ```rust\n  assert!(index < self.n_bits);\n  ```\n  This checks exactly that `index` is less than `self.n_bits`, i.e. within bounds.\n- After this assertion, all uses of `self.get_unchecked(index)` occur only with the same `index`.\n- Therefore, if the assertion holds, the contract of `get_unchecked` is satisfied.\n- Since the assertion will abort execution if `index` is out of bounds, the unsafe call is not reached with an invalid index.\n\n4. **Final determination**\n**Yes**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/bitvector/mod.rs/get_bits/1020",
+    "result": "sound",
+    "response": [
+      {
+        "question": {
+          "content": "`index + len` must be within the bounds of the bit vector.",
+          "fn_name": "get_bits_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nSome(unsafe { self.get_bits_unchecked(index, len) })\n```\n\n2. **Expressions related to the contract**\n- `index`\n- `len`\n- `index + len >= self.n_bits`\n- the guard:\n```rust\nif (len == 0) | (len > 64) | (index + len >= self.n_bits) {\n    return None;\n}\n```\n\n3. **Step-by-step analysis**\n- The unsafe callee requires that `index + len` be within the bit vector bounds.\n- Before calling `get_bits_unchecked`, the function checks:\n  - `len != 0`\n  - `len <= 64`\n  - `index + len < self.n_bits` because it returns `None` when `index + len >= self.n_bits`\n- Therefore, on the path that reaches the unsafe call, the code ensures `index + len` is strictly less than `self.n_bits`, which means the accessed range is in bounds.\n- So the contract is satisfied.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe callee call site**\n```rust\nSome(unsafe { self.get_bits_unchecked(index, len) })\n```\n\n2. **Expressions related to the contract**\n- `index`\n- `len`\n- `index + len >= self.n_bits` in the guard\n- the call to `self.get_bits_unchecked(index, len)`\n\n3. **Step-by-step analysis**\n- `get_bits_unchecked` requires that `index + len` be within the bounds of the bit vector.\n- The function `get_bits` checks:\n  ```rust\n  if (len == 0) | (len > 64) | (index + len >= self.n_bits) {\n      return None;\n  }\n  ```\n- If this condition is true, the unsafe function is not called.\n- Therefore, when the unsafe call happens, we know:\n  - `len != 0`\n  - `len <= 64`\n  - `index + len < self.n_bits`\n- This means the requested range is strictly within bounds, so the contract for `get_bits_unchecked` is satisfied.\n- Minor note: the expression uses `index + len`, which can theoretically overflow in Rust if extremely large values are passed, but based on the intended bounds check and the contract being about in-bounds access, the function\u2019s logic is clearly meant to prevent out-of-bounds use before the unsafe call.\n\n4. **Final determination**\n**Yes**"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sample_label": "qwt-0.2.0/src/quadwt/mod.rs/rank_prefetch/390",
+    "result": "sound",
+    "response": [
+      {
+        "question": {
+          "content": "`i` must not be larger than the size of the sequence.",
+          "fn_name": "rank_prefetch_unchecked",
+          "type": "Numeric Relation"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "1. **Code snippet calling the unsafe callee**\n```rust\nSome(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n```\n\n2. **Expressions related to the contract**\n- `i`\n- `self.n`\n- the guard condition:\n```rust\nif i > self.n || symbol > self.sigma {\n    return None;\n}\n```\n\n3. **Step-by-step analysis**\n- The unsafe callee `rank_prefetch_unchecked` requires that `i` must not be larger than the size of the sequence.\n- In this type, `self.n` is documented as \u201cThe length of the represented sequence\u201d, so it is the sequence size.\n- Before calling the unsafe function, the code checks `if i > self.n || symbol > self.sigma`.\n- If `i` is larger than `self.n`, the function returns `None` and does **not** call the unsafe function.\n- Therefore, whenever `rank_prefetch_unchecked` is actually called, we know `i <= self.n`, which satisfies the contract.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "## 1. Unsafe callee call site\nThe unsafe call happens here:\n```rust\nSome(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n```\n\n## 2. Contract-relevant expressions\n- `i`\n- `self.n`\n- the guard:\n```rust\nif i > self.n || symbol > self.sigma {\n    return None;\n}\n```\n\n## 3. Step-by-step analysis\n- The unsafe callee requires: **`i` must not be larger than the size of the sequence**.\n- In this type, `self.n` is documented as **the length of the represented sequence**, i.e. the sequence size.\n- Before calling `rank_prefetch_unchecked`, the function checks:\n  - `if i > self.n` then it returns `None`.\n- Therefore, the unsafe call is only reached when `i <= self.n`.\n- That satisfies the contract condition that `i` is not larger than the sequence size.\n- The `symbol` check is unrelated to this specific contract.\n\n## 4. Final determination\n**Yes**"
+          }
+        ]
+      },
+      {
+        "question": {
+          "content": "`symbol` must be a valid symbol for the represented sequence.",
+          "fn_name": "rank_prefetch_unchecked",
+          "type": "Type Constraint"
+        },
+        "result": "Yes",
+        "sub_response": [
+          {
+            "result": "Yes",
+            "content": "## 1. Code snippet that calls the unsafe callee\n\n```rust\nSome(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n```\n\n## 2. Expressions highly related to the contract\n\nThe contract is:\n\n> `symbol` must be a valid symbol for the represented sequence.\n\nThe relevant expressions are:\n- `symbol`\n- `self.sigma`\n- the guard:\n  ```rust\n  if i > self.n || symbol > self.sigma {\n      return None;\n  }\n  ```\n\n## 3. Step-by-step analysis of data flow and contract satisfaction\n\n1. The function receives `symbol: T` from the caller. Since the caller is untrusted, `symbol` may be arbitrary.\n\n2. Before calling the unsafe function, the code checks:\n   ```rust\n   if i > self.n || symbol > self.sigma {\n       return None;\n   }\n   ```\n   So if `symbol` is greater than `self.sigma`, the function returns `None` and does not call the unsafe method.\n\n3. If execution reaches:\n   ```rust\n   unsafe { self.rank_prefetch_unchecked(symbol, i) }\n   ```\n   then we know:\n   - `i <= self.n`\n   - `symbol <= self.sigma`\n\n4. From the provided struct description, `sigma` is:\n   > The largest symbol in the sequence.\n\n   Therefore, requiring `symbol <= self.sigma` is intended to ensure `symbol` is within the valid alphabet range.\n\n5. There is no other transformation of `symbol` before the unsafe call, so the exact value checked is the one passed to `rank_prefetch_unchecked`.\n\n6. Thus, the function enforces the precondition that `symbol` is valid for the represented sequence before invoking the unsafe callee.\n\n## 4. Final determination\n\nYes"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nSome(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n```\n\n2. **Expressions related to the contract**\n- `symbol`\n- `self.sigma`\n- guard: `if i > self.n || symbol > self.sigma { return None; }`\n\n3. **Step-by-step analysis**\n- The unsafe callee requires that `symbol` is a valid symbol for the represented sequence.\n- This function checks `symbol > self.sigma` and returns `None` if true.\n- By the struct\u2019s meaning, `sigma` is the largest symbol in the sequence. Therefore, a valid symbol must satisfy `symbol <= self.sigma`.\n- If the check passes, then `symbol <= self.sigma`, so `symbol` is considered valid under the invariant used by this API.\n- The other condition `i > self.n` is unrelated to symbol validity and does not affect this contract.\n- Since invalid symbols are rejected before the unsafe call, the contract is satisfied.\n\n4. **Final determination**\n**Yes**"
+          },
+          {
+            "result": "Yes",
+            "content": "1. **Unsafe call site**\n```rust\nSome(unsafe { self.rank_prefetch_unchecked(symbol, i) })\n```\n\n2. **Contract-related expressions**\n- `symbol`\n- `self.sigma`\n- `if i > self.n || symbol > self.sigma { return None; }`\n\n3. **Step-by-step analysis**\n- The unsafe callee requires that `symbol` be a valid symbol for the represented sequence.\n- In this wrapper, the only explicit validation is:\n  ```rust\n  symbol > self.sigma\n  ```\n  and it rejects such inputs by returning `None`.\n- However, the required validity condition is stronger than `symbol <= self.sigma` in the general case. The contract says `symbol` must be a valid symbol for the represented sequence, which typically means it must be within the actual alphabet. This function only checks against `self.sigma`, which is described as \u201cthe largest symbol in the sequence.\u201d\n- Given the provided self description, `sigma` is intended to represent the largest valid symbol, so `symbol > self.sigma` implies invalid. Thus, for this code path, any symbol that reaches the unsafe call satisfies `symbol <= self.sigma`, which is consistent with being a valid symbol for the sequence.\n- Therefore, the wrapper enforces the relevant precondition before calling the unsafe function.\n\n4. **Final determination**\n**Yes**"
+          }
+        ]
+      }
+    ]
+  }
+]
