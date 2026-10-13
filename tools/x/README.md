@@ -1,5 +1,21 @@
 # `x` developer commands
 
+## Audit std/core DSL grammar coverage
+
+The grammar supports first-order quantification, finite collection literals,
+membership, and temporal predicates without adding domain-specific operators.
+Run the conservative rule-family audit with an enforced threshold for both
+`core` and `std` (as well as the combined inventory):
+
+```bash
+PYTHONPATH=tools/x/src tools/x/.venv/bin/python -m dsl.coverage \
+  --rules rules.csv --minimum 0.80
+```
+
+This reports grammar expressibility only. It does not claim that KLEE can lower
+quantified or temporal expressions. Rules that cannot be classified from their
+text remain unsupported rather than being counted through an opaque predicate.
+
 ## Generate a Rust exploit example
 
 Set `OPENAI_API_KEY`, then select a callsite from the crate's `report.json` and

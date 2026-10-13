@@ -39,4 +39,34 @@ class BinaryExpression:
     right: Expression
 
 
-Expression = Literal | Identifier | SourceRef | CallExpression | UnaryExpression | BinaryExpression
+@dataclass(frozen=True)
+class CollectionExpression:
+    kind: str
+    items: tuple[Expression, ...]
+
+
+@dataclass(frozen=True)
+class QuantifiedExpression:
+    quantifier: str
+    variable: str
+    domain: Expression
+    predicate: Expression
+
+
+@dataclass(frozen=True)
+class TemporalExpression:
+    operator: str
+    operand: Expression
+
+
+Expression = (
+    Literal
+    | Identifier
+    | SourceRef
+    | CallExpression
+    | UnaryExpression
+    | BinaryExpression
+    | CollectionExpression
+    | QuantifiedExpression
+    | TemporalExpression
+)

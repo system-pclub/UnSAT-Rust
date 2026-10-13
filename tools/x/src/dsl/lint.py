@@ -6,8 +6,11 @@ from typing import Mapping, Sequence
 from dsl.ast import (
     BinaryExpression,
     CallExpression,
+    CollectionExpression,
     Expression,
     Literal,
+    QuantifiedExpression,
+    TemporalExpression,
     UnaryExpression,
 )
 
@@ -41,6 +44,14 @@ def _call_names(node: Expression) -> set[str]:
         names.update(_call_names(node.right))
     elif isinstance(node, UnaryExpression):
         names.update(_call_names(node.operand))
+    elif isinstance(node, CollectionExpression):
+        for item in node.items:
+            names.update(_call_names(item))
+    elif isinstance(node, QuantifiedExpression):
+        names.update(_call_names(node.domain))
+        names.update(_call_names(node.predicate))
+    elif isinstance(node, TemporalExpression):
+        names.update(_call_names(node.operand))
     return names
 
 
@@ -58,6 +69,14 @@ def _access_kinds(node: Expression) -> set[str]:
         kinds.update(_access_kinds(node.right))
     elif isinstance(node, UnaryExpression):
         kinds.update(_access_kinds(node.operand))
+    elif isinstance(node, CollectionExpression):
+        for item in node.items:
+            kinds.update(_access_kinds(item))
+    elif isinstance(node, QuantifiedExpression):
+        kinds.update(_access_kinds(node.domain))
+        kinds.update(_access_kinds(node.predicate))
+    elif isinstance(node, TemporalExpression):
+        kinds.update(_access_kinds(node.operand))
     return kinds
 
 
@@ -74,6 +93,14 @@ def _field_names(node: Expression) -> set[str]:
         fields.update(_field_names(node.left))
         fields.update(_field_names(node.right))
     elif isinstance(node, UnaryExpression):
+        fields.update(_field_names(node.operand))
+    elif isinstance(node, CollectionExpression):
+        for item in node.items:
+            fields.update(_field_names(item))
+    elif isinstance(node, QuantifiedExpression):
+        fields.update(_field_names(node.domain))
+        fields.update(_field_names(node.predicate))
+    elif isinstance(node, TemporalExpression):
         fields.update(_field_names(node.operand))
     return fields
 
@@ -329,6 +356,20 @@ def lint_dsl_ast(
             return
 
         if isinstance(node, UnaryExpression):
+            visit(node.operand, parent_call=parent_call)
+            return
+
+        if isinstance(node, CollectionExpression):
+            for item in node.items:
+                visit(item, parent_call=parent_call)
+            return
+
+        if isinstance(node, QuantifiedExpression):
+            visit(node.domain, parent_call=parent_call)
+            visit(node.predicate, parent_call=parent_call)
+            return
+
+        if isinstance(node, TemporalExpression):
             visit(node.operand, parent_call=parent_call)
 
     visit(ast)

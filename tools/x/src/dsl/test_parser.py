@@ -23,13 +23,14 @@ OPERATORS_PATH = Path(__file__).resolve().parents[4] / "operators.json"
 
 def test_parse_task1_dsl_and_list_operators() -> None:
     ast = parse_dsl(
-        "alloc_id(ptr@329:30) != None && offset_in_alloc(ptr@329:30) + i@329:34 <= alloc_block_size(alloc_id(ptr@329:30))",
+        'get_allocation(ptr@329:30) != None && '
+        'get_field(get_allocation(ptr@329:30), "size") >= i@329:34',
         OPERATORS_PATH,
     )
 
     assert isinstance(ast, BinaryExpression)
-    assert list_operators(ast) == ["alloc_block_size", "alloc_id", "offset_in_alloc"]
-    validate_task1_ast(ast, ["alloc_id", "offset_in_alloc"])
+    assert list_operators(ast) == ["get_allocation", "get_field"]
+    validate_task1_ast(ast, ["get_allocation", "get_field"])
 
 
 def test_parse_task2_dsl_without_configured_operators() -> None:
@@ -60,7 +61,7 @@ def test_allow_unknown_operator_for_discovery() -> None:
 
 
 def test_task2_validation_rejects_operator_usage() -> None:
-    ast = parse_dsl("alloc_id(ptr@329:30) != None", OPERATORS_PATH)
+    ast = parse_dsl("get_allocation(ptr@329:30) != None", OPERATORS_PATH)
 
     with pytest.raises(DSLValidationError, match="must not contain configured operators"):
         validate_task2_ast(ast)
@@ -74,12 +75,14 @@ def test_task1_validation_requires_operators() -> None:
 
 
 def test_parse_reports_position_for_syntax_error() -> None:
-    with pytest.raises(DSLParseError, match=r"line 1, column 15"):
-        parse_dsl("alloc_id(ptr@1)", OPERATORS_PATH)
+    with pytest.raises(DSLParseError, match=r"line 1, column 14"):
+        parse_dsl("get_arg(ptr@1)", OPERATORS_PATH)
 
 
 def test_nested_calls_are_preserved() -> None:
-    ast = parse_dsl("alloc_block_size(alloc_id(ptr@329:30))", OPERATORS_PATH)
+    ast = parse_dsl(
+        'get_field(get_allocation(ptr@329:30), "size")', OPERATORS_PATH
+    )
 
     assert isinstance(ast, CallExpression)
     assert isinstance(ast.args[0], CallExpression)

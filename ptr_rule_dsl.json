@@ -23,7 +23,7 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:1257",
       "name": "const unsafe fn read",
       "rule": "`src` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-253": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1257",
@@ -47,13 +47,13 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
       "name": "unsafe fn read_volatile",
       "rule": "Even if T has size 0, src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-257": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
       "name": "unsafe fn read_volatile",
       "rule": "src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-258": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1275",
@@ -83,7 +83,7 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:1316",
       "name": "const unsafe fn copy_to",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-263": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1316",
@@ -107,25 +107,25 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-267": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-268": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "The source and destination may not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-269": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "The source and destination must not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-270": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1336",
@@ -155,19 +155,19 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The entire memory range of this slice must be contained within a single allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-275": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The pointer must be aligned even for zero-length slices.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-276": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The pointer must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-277": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
@@ -185,7 +185,7 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "When calling this method, you have to ensure that either the pointer is null or all of the following is true.",
-      "dsl": "(get_field(get_arg(0), \"is_null\") || (is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"read\") && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && mul_fits(get_arg(1), get_field(get_type_at_func(0), \"size\"), \"isize\") && is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"shared_borrow\")))"
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"read\") && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && mul_fits(get_arg(1), get_field(get_type_at_func(0), \"size\"), \"isize\") && is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"shared_borrow\")))"
     },
     "rule-280": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:1585",
@@ -239,13 +239,13 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:374",
       "name": "const unsafe fn offset",
       "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-289": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:374",
       "name": "const unsafe fn offset",
       "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-290": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:374",
@@ -275,7 +275,7 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:597",
       "name": "const unsafe fn offset_from",
       "rule": "`self` and `origin` must either point to the same address or both be derived from a pointer to the same allocated object, and the memory range between the two pointers must be in bounds of that object.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-292-rustc-1_87-line637": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:637",
@@ -293,7 +293,7 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:637",
       "name": "const unsafe fn offset_from",
       "rule": "`self` and `origin` must either point to the same address or both be derived from a pointer to the same allocated object, and the memory range between the two pointers must be in bounds of that object.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-295": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:692",
@@ -305,7 +305,7 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:710",
       "name": "const unsafe fn offset_from_unsigned",
       "rule": "All the safety conditions of `offset_from` apply to this method as well.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (!get_field(get_type_at_func(0), \"is_zst\") && get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && (get_field(memory_between(get_arg(0), get_arg(1)), \"size\") % get_field(get_type_at_func(0), \"size\") == 0) && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (!get_field(get_type_at_func(0), \"is_zst\") && get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && (get_field(memory_between(get_arg(0), get_arg(1)), \"size\") % get_field(get_type_at_func(0), \"size\") == 0) && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-297": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:710",
@@ -329,13 +329,13 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:881",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-301": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:881",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-302": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:881",
@@ -353,13 +353,13 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:880",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-301-rustc-1_87-line880": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:880",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-302-rustc-1_87-line880": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:880",
@@ -377,13 +377,13 @@
       "path": "rust/library/core/src/ptr/const_ptr.rs:987",
       "name": "const unsafe fn sub",
       "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-305": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:987",
       "name": "const unsafe fn sub",
       "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-306": {
       "path": "rust/library/core/src/ptr/const_ptr.rs:987",
@@ -401,7 +401,7 @@
       "path": "rust/library/core/src/ptr/mod.rs:1026",
       "name": "const unsafe fn swap_nonoverlapping < T >",
       "rule": "Both `x` and `y` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-309": {
       "path": "rust/library/core/src/ptr/mod.rs:1026",
@@ -413,19 +413,19 @@
       "path": "rust/library/core/src/ptr/mod.rs:1026",
       "name": "const unsafe fn swap_nonoverlapping < T >",
       "rule": "Even if the effectively copied size (`count * size_of::<T>()`) is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-311": {
       "path": "rust/library/core/src/ptr/mod.rs:1026",
       "name": "const unsafe fn swap_nonoverlapping < T >",
       "rule": "The region of memory beginning at `x` with a size of `count * size_of::<T>()` bytes must not overlap with the region of memory beginning at `y` with the same size.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-312": {
       "path": "rust/library/core/src/ptr/mod.rs:1134",
       "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
       "rule": "Both `x` and `y` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-313": {
       "path": "rust/library/core/src/ptr/mod.rs:1134",
@@ -437,25 +437,25 @@
       "path": "rust/library/core/src/ptr/mod.rs:1134",
       "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
       "rule": "Even if the effectively copied size (`count * size_of::<T>()`) is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-315": {
       "path": "rust/library/core/src/ptr/mod.rs:1134",
       "name": "const unsafe fn swap_nonoverlapping_simple_untyped < T >",
       "rule": "The region of memory beginning at `x` with a size of `count * size_of::<T>()` bytes must not overlap with the region of memory beginning at `y` with the same size.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-316": {
       "path": "rust/library/core/src/ptr/mod.rs:1170",
       "name": "const unsafe fn replace < T >",
       "rule": "Even if `T` has size `0`, `dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-317": {
       "path": "rust/library/core/src/ptr/mod.rs:1170",
       "name": "const unsafe fn replace < T >",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-318": {
       "path": "rust/library/core/src/ptr/mod.rs:1170",
@@ -473,7 +473,7 @@
       "path": "rust/library/core/src/ptr/mod.rs:1231",
       "name": "const unsafe fn read < T >",
       "rule": "`src` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-321": {
       "path": "rust/library/core/src/ptr/mod.rs:1231",
@@ -503,7 +503,7 @@
       "path": "rust/library/core/src/ptr/mod.rs:1473",
       "name": "const unsafe fn write < T >",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-326": {
       "path": "rust/library/core/src/ptr/mod.rs:1473",
@@ -527,13 +527,13 @@
       "path": "rust/library/core/src/ptr/mod.rs:1672",
       "name": "unsafe fn read_volatile < T >",
       "rule": "Even if T has size 0, src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-330": {
       "path": "rust/library/core/src/ptr/mod.rs:1672",
       "name": "unsafe fn read_volatile < T >",
       "rule": "src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-331": {
       "path": "rust/library/core/src/ptr/mod.rs:1672",
@@ -557,13 +557,13 @@
       "path": "rust/library/core/src/ptr/mod.rs:1752",
       "name": "unsafe fn write_volatile < T >",
       "rule": "If `T` has size `0`, `dst` must still be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-335": {
       "path": "rust/library/core/src/ptr/mod.rs:1752",
       "name": "unsafe fn write_volatile < T >",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-336": {
       "path": "rust/library/core/src/ptr/mod.rs:1752",
@@ -605,7 +605,7 @@
       "path": "rust/library/core/src/ptr/mod.rs:432",
       "name": "unsafe fn drop_in_place < T : ? Sized >",
       "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-343": {
       "path": "rust/library/core/src/ptr/mod.rs:432",
@@ -617,7 +617,7 @@
       "path": "rust/library/core/src/ptr/mod.rs:934",
       "name": "const unsafe fn swap < T >",
       "rule": "Both `x` and `y` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-345": {
       "path": "rust/library/core/src/ptr/mod.rs:934",
@@ -635,7 +635,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
       "name": "const unsafe fn sub",
       "rule": "If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-348": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
@@ -647,7 +647,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
       "name": "const unsafe fn sub",
       "rule": "If the computed offset is non-zero, the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-350": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1077",
@@ -659,7 +659,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1341",
       "name": "const unsafe fn read",
       "rule": "`src` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-352": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1341",
@@ -683,7 +683,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
       "name": "unsafe fn read_volatile",
       "rule": "Even if T has size 0, src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-356": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
@@ -695,7 +695,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
       "name": "unsafe fn read_volatile",
       "rule": "src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-358": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1359",
@@ -725,7 +725,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1400",
       "name": "const unsafe fn copy_to",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-363": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1400",
@@ -749,25 +749,25 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-367": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-368": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "The source and destination may not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-369": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "The source and destination must not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-370": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1420",
@@ -785,7 +785,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1440",
       "name": "const unsafe fn copy_from",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-373": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1440",
@@ -809,25 +809,25 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-377": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-378": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "The source and destination may not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-379": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "The source and destination must not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-380": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1460",
@@ -869,7 +869,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
       "name": "unsafe fn drop_in_place",
       "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-387": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1480",
@@ -881,7 +881,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1492",
       "name": "const unsafe fn write",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-389": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1492",
@@ -893,7 +893,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1516",
       "name": "unsafe fn write_bytes",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "ruklee-mut-ptr-write-bytes-valid-rustc-1_87-line1516": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1516",
@@ -911,13 +911,13 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
       "name": "unsafe fn write_volatile",
       "rule": "If `T` has size `0`, `dst` must still be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-392": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
       "name": "unsafe fn write_volatile",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-393": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1529",
@@ -935,13 +935,13 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
       "name": "unsafe fn replace",
       "rule": "Even if `T` has size `0`, `dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-396": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
       "name": "unsafe fn replace",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-397": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1570",
@@ -959,55 +959,55 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
       "name": "unsafe fn split_at_mut",
       "rule": "`mid` must be in-bounds of the underlying allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-400": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
       "name": "unsafe fn split_at_mut",
       "rule": "`self` must be dereferenceable.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-401": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
       "name": "unsafe fn split_at_mut",
       "rule": "`self` must span a single allocation that is at least `mid * size_of::<T>()` bytes long.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-402": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
       "name": "unsafe fn split_at_mut",
       "rule": "mid must be in-bounds of the underlying allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-403": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
       "name": "unsafe fn split_at_mut",
       "rule": "self must be dereferenceable.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-404": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1790",
       "name": "unsafe fn split_at_mut",
       "rule": "self must span a single allocation that is at least mid * size_of::<T>() bytes long.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-405": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1840",
       "name": "unsafe fn split_at_mut_unchecked",
       "rule": "`mid` must be in-bounds of the underlying allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-406": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1840",
       "name": "unsafe fn split_at_mut_unchecked",
       "rule": "`self` must be dereferenceable.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-407": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1840",
       "name": "unsafe fn split_at_mut_unchecked",
       "rule": "`self` must span a single allocation that is at least `mid * size_of::<T>()` bytes long.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-408": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1907",
@@ -1025,19 +1025,19 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The entire memory range of this slice must be contained within a single allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-411": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The pointer must be aligned even for zero-length slices.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-412": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The pointer must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-413": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
@@ -1055,7 +1055,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "When calling this method, you have to ensure that either the pointer is null or all of the following is true.",
-      "dsl": "(get_field(get_arg(0), \"is_null\") || (is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"read\") && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && mul_fits(get_arg(1), get_field(get_type_at_func(0), \"size\"), \"isize\") && is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"shared_borrow\")))"
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"read\") && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && mul_fits(get_arg(1), get_field(get_type_at_func(0), \"size\"), \"isize\") && is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"shared_borrow\")))"
     },
     "rule-416": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1937",
@@ -1073,19 +1073,19 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "The entire memory range of this slice must be contained within a single allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-419": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "The pointer must be aligned even for zero-length slices.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-420": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "The pointer must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-421": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
@@ -1103,7 +1103,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "When calling this method, you have to ensure that either the pointer is null or all of the following is true.",
-      "dsl": "(get_field(get_arg(0), \"is_null\") || (is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"read_write\") && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && mul_fits(get_arg(1), get_field(get_type_at_func(0), \"size\"), \"isize\") && is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"unique_borrow\")))"
+      "dsl": "(get_field(get_arg(0), \"is_null\") || (is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"read_write\") && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && mul_fits(get_arg(1), get_field(get_type_at_func(0), \"size\"), \"isize\") && is_valid_for(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"unique_borrow\")))"
     },
     "rule-424": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:1995",
@@ -1151,13 +1151,13 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
       "name": "const unsafe fn offset",
       "rule": "If the computed offset is non-zero, self must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-432": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
       "name": "const unsafe fn offset",
       "rule": "If the computed offset is non-zero, the entire memory range between self and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-433": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
@@ -1205,7 +1205,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:771",
       "name": "const unsafe fn offset_from",
       "rule": "Self and origin must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-441": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:771",
@@ -1217,7 +1217,7 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:882",
       "name": "const unsafe fn offset_from_unsigned",
       "rule": "Self and origin must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-443": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:882",
@@ -1241,13 +1241,13 @@
       "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-447": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-448": {
       "path": "rust/library/core/src/ptr/mut_ptr.rs:971",
@@ -1265,25 +1265,25 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1011",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-451": {
       "path": "rust/library/core/src/ptr/non_null.rs:1011",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-452": {
       "path": "rust/library/core/src/ptr/non_null.rs:1011",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "The source and destination may not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-453": {
       "path": "rust/library/core/src/ptr/non_null.rs:1011",
       "name": "const unsafe fn copy_to_nonoverlapping",
       "rule": "The source and destination must not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-454": {
       "path": "rust/library/core/src/ptr/non_null.rs:1011",
@@ -1301,7 +1301,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1031",
       "name": "const unsafe fn copy_from",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-457": {
       "path": "rust/library/core/src/ptr/non_null.rs:1031",
@@ -1325,25 +1325,25 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1051",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-461": {
       "path": "rust/library/core/src/ptr/non_null.rs:1051",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "Even if the effectively copied size `count * size_of::<T>()` is `0`, the pointers must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-462": {
       "path": "rust/library/core/src/ptr/non_null.rs:1051",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "The source and destination may not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-463": {
       "path": "rust/library/core/src/ptr/non_null.rs:1051",
       "name": "const unsafe fn copy_from_nonoverlapping",
       "rule": "The source and destination must not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(0), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(2) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "rule-464": {
       "path": "rust/library/core/src/ptr/non_null.rs:1051",
@@ -1385,7 +1385,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1071",
       "name": "unsafe fn drop_in_place",
       "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-471": {
       "path": "rust/library/core/src/ptr/non_null.rs:1071",
@@ -1397,7 +1397,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1083",
       "name": "const unsafe fn write",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-473": {
       "path": "rust/library/core/src/ptr/non_null.rs:1083",
@@ -1415,13 +1415,13 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1120",
       "name": "unsafe fn write_volatile",
       "rule": "If `T` has size `0`, `dst` must still be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-476": {
       "path": "rust/library/core/src/ptr/non_null.rs:1120",
       "name": "unsafe fn write_volatile",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-477": {
       "path": "rust/library/core/src/ptr/non_null.rs:1120",
@@ -1439,13 +1439,13 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1161",
       "name": "unsafe fn replace",
       "rule": "Even if `T` has size `0`, `dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-480": {
       "path": "rust/library/core/src/ptr/non_null.rs:1161",
       "name": "unsafe fn replace",
       "rule": "`dst` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-481": {
       "path": "rust/library/core/src/ptr/non_null.rs:1161",
@@ -1463,7 +1463,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1177",
       "name": "const unsafe fn swap",
       "rule": "Both `x` and `y` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-484": {
       "path": "rust/library/core/src/ptr/non_null.rs:1177",
@@ -1481,19 +1481,19 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1432",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The entire memory range of this slice must be contained within a single allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-487": {
       "path": "rust/library/core/src/ptr/non_null.rs:1432",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The pointer must be aligned even for zero-length slices.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-488": {
       "path": "rust/library/core/src/ptr/non_null.rs:1432",
       "name": "const unsafe fn as_uninit_slice < 'a >",
       "rule": "The pointer must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-489": {
       "path": "rust/library/core/src/ptr/non_null.rs:1432",
@@ -1529,19 +1529,19 @@
       "path": "rust/library/core/src/ptr/non_null.rs:1477",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "The entire memory range of this slice must be contained within a single allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-495": {
       "path": "rust/library/core/src/ptr/non_null.rs:1477",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "The pointer must be aligned even for zero-length slices.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-496": {
       "path": "rust/library/core/src/ptr/non_null.rs:1477",
       "name": "const unsafe fn as_uninit_slice_mut < 'a >",
       "rule": "The pointer must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-497": {
       "path": "rust/library/core/src/ptr/non_null.rs:1477",
@@ -1613,7 +1613,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:491",
       "name": "const unsafe fn offset",
       "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-509": {
       "path": "rust/library/core/src/ptr/non_null.rs:491",
@@ -1625,7 +1625,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:491",
       "name": "const unsafe fn offset",
       "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-511": {
       "path": "rust/library/core/src/ptr/non_null.rs:491",
@@ -1637,13 +1637,13 @@
       "path": "rust/library/core/src/ptr/non_null.rs:567",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, then self must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-513": {
       "path": "rust/library/core/src/ptr/non_null.rs:567",
       "name": "const unsafe fn add",
       "rule": "If the computed offset is non-zero, then the entire memory range between self and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-514": {
       "path": "rust/library/core/src/ptr/non_null.rs:567",
@@ -1661,13 +1661,13 @@
       "path": "rust/library/core/src/ptr/non_null.rs:643",
       "name": "const unsafe fn sub",
       "rule": "If the computed offset is non-zero, then `self` must be derived from a pointer to some allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_range(get_arg(0), 0), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), 0), \"start\")) && (get_field(memory_range(get_arg(0), 0), \"start\") <= get_field(memory_range(get_arg(0), 0), \"end\")) && (get_field(memory_range(get_arg(0), 0), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-517": {
       "path": "rust/library/core/src/ptr/non_null.rs:643",
       "name": "const unsafe fn sub",
       "rule": "If the computed offset is non-zero, then the entire memory range between `self` and the result must be in bounds of that allocated object.",
-      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || within(memory_between(get_arg(0), get_result()), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
+      "dsl": "(get_arg(1) == 0 || get_field(get_type_at_func(0), \"size\") == 0 || ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"start\")) && (get_field(memory_between(get_arg(0), get_result()), \"start\") <= get_field(memory_between(get_arg(0), get_result()), \"end\")) && (get_field(memory_between(get_arg(0), get_result()), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
     },
     "rule-518": {
       "path": "rust/library/core/src/ptr/non_null.rs:643",
@@ -1685,7 +1685,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:725",
       "name": "const unsafe fn offset_from",
       "rule": "The `self` and `origin` pointers must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-521": {
       "path": "rust/library/core/src/ptr/non_null.rs:725",
@@ -1715,7 +1715,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:842",
       "name": "const unsafe fn offset_from_unsigned",
       "rule": "The `self` and `origin` pointers must either point to the same address, or both be derived from a pointer to the same allocated object and the memory range between the two pointers must be in bounds of that object.",
-      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && within(memory_between(get_arg(0), get_arg(1)), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))))"
+      "dsl": "(get_field(get_arg(0), \"address\") == get_field(get_arg(1), \"address\") || (get_field(get_arg(0), \"allocation\") == get_field(get_arg(1), \"allocation\") && ((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"start\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"start\") <= get_field(memory_between(get_arg(0), get_arg(1)), \"end\")) && (get_field(memory_between(get_arg(0), get_arg(1)), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))))"
     },
     "rule-526": {
       "path": "rust/library/core/src/ptr/non_null.rs:842",
@@ -1751,7 +1751,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:932",
       "name": "const unsafe fn read",
       "rule": "`src` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-532": {
       "path": "rust/library/core/src/ptr/non_null.rs:932",
@@ -1775,13 +1775,13 @@
       "path": "rust/library/core/src/ptr/non_null.rs:950",
       "name": "unsafe fn read_volatile",
       "rule": "Even if T has size 0, src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-536": {
       "path": "rust/library/core/src/ptr/non_null.rs:950",
       "name": "unsafe fn read_volatile",
       "rule": "src must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-537": {
       "path": "rust/library/core/src/ptr/non_null.rs:950",
@@ -1811,7 +1811,7 @@
       "path": "rust/library/core/src/ptr/non_null.rs:991",
       "name": "const unsafe fn copy_to",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-542": {
       "path": "rust/library/core/src/ptr/non_null.rs:991",
@@ -1853,7 +1853,7 @@
       "path": "rust/library/core/src/alloc/global.rs:155",
       "name": "unsafe fn dealloc",
       "rule": "The `ptr` pointer must be a block of memory currently allocated via this allocator.",
-      "dsl": "(get_field(get_field(get_arg(1), \"allocation\"), \"start\") == get_field(get_arg(1), \"address\") && is_allocated_via(get_arg(1), get_arg(0)))"
+      "dsl": "(get_field(get_allocation(get_arg(1)), \"start\") == get_field(get_arg(1), \"address\") && get_field(get_allocation(get_arg(1)), \"allocator\") == get_arg(0))"
     },
     "rule-4": {
       "path": "rust/library/core/src/alloc/global.rs:170",
@@ -1871,31 +1871,31 @@
       "path": "rust/library/core/src/slice/mod.rs:625",
       "name": "unsafe fn get_unchecked < I >",
       "rule": "Calling this method with an out-of-bounds index is undefined behavior, even if the resulting reference is not used.",
-      "dsl": "((get_field(rustrange(get_arg(2), get_arg(3)), \"start\") <= get_field(rustrange(get_arg(2), get_arg(3)), \"end\")) && (get_field(rustrange(get_arg(2), get_arg(3)), \"end\") <= get_arg(1)))"
+      "dsl": "((get_field(get_arg(1), \"start\") <= get_field(get_arg(1), \"end\")) && (get_field(get_arg(1), \"end\") <= get_field(get_arg(0), \"len\")))"
     },
     "rule-573": {
       "path": "rust/library/core/src/slice/mod.rs:625",
       "name": "unsafe fn get_unchecked < I >",
       "rule": "It is undefined behavior to call `.get_unchecked(..=len)`.",
-      "dsl": "((get_field(rustrange(get_arg(2), get_arg(3)), \"start\") <= get_field(rustrange(get_arg(2), get_arg(3)), \"end\")) && (get_field(rustrange(get_arg(2), get_arg(3)), \"end\") <= get_arg(1)))"
+      "dsl": "((get_field(get_arg(1), \"start\") <= get_field(get_arg(1), \"end\")) && (get_field(get_arg(1), \"end\") <= get_field(get_arg(0), \"len\")))"
     },
     "rule-574": {
       "path": "rust/library/core/src/slice/mod.rs:625",
       "name": "unsafe fn get_unchecked < I >",
       "rule": "It is undefined behavior to call `.get_unchecked(..len + 1)`.",
-      "dsl": "((get_field(rustrange(get_arg(2), get_arg(3)), \"start\") <= get_field(rustrange(get_arg(2), get_arg(3)), \"end\")) && (get_field(rustrange(get_arg(2), get_arg(3)), \"end\") <= get_arg(1)))"
+      "dsl": "((get_field(get_arg(1), \"start\") <= get_field(get_arg(1), \"end\")) && (get_field(get_arg(1), \"end\") <= get_field(get_arg(0), \"len\")))"
     },
     "rule-575": {
       "path": "rust/library/core/src/slice/mod.rs:625",
       "name": "unsafe fn get_unchecked < I >",
       "rule": "It is undefined behavior to call `.get_unchecked(len)`, even if you immediately convert it to a pointer.",
-      "dsl": "((get_field(rustrange(get_arg(2), get_arg(3)), \"start\") <= get_field(rustrange(get_arg(2), get_arg(3)), \"end\")) && (get_field(rustrange(get_arg(2), get_arg(3)), \"end\") <= get_arg(1)))"
+      "dsl": "((get_field(get_arg(1), \"start\") <= get_field(get_arg(1), \"end\")) && (get_field(get_arg(1), \"end\") <= get_field(get_arg(0), \"len\")))"
     },
     "rule-576": {
       "path": "rust/library/core/src/slice/mod.rs:665",
       "name": "unsafe fn get_unchecked_mut < I >",
       "rule": "Calling this method with an out-of-bounds index is undefined behavior, even if the resulting reference is not used.",
-      "dsl": "((get_field(rustrange(get_arg(2), get_arg(3)), \"start\") <= get_field(rustrange(get_arg(2), get_arg(3)), \"end\")) && (get_field(rustrange(get_arg(2), get_arg(3)), \"end\") <= get_arg(1)))"
+      "dsl": "((get_field(get_arg(1), \"start\") <= get_field(get_arg(1), \"end\")) && (get_field(get_arg(1), \"end\") <= get_field(get_arg(0), \"len\")))"
     },
     "rule-603": {
       "path": "rust/library/core/src/slice/raw.rs:6",
@@ -1907,7 +1907,7 @@
       "path": "rust/library/core/src/slice/raw.rs:6",
       "name": "const unsafe fn from_raw_parts < 'a , T >",
       "rule": "The entire memory range of this slice must be contained within a single allocated object.",
-      "dsl": "within(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), get_field(get_field(get_arg(0), \"allocation\"), \"start\"), get_field(get_field(get_arg(0), \"allocation\"), \"end\"))"
+      "dsl": "((get_field(get_field(get_arg(0), \"allocation\"), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"start\") <= get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\")) && (get_field(memory_range(get_arg(0), (get_arg(1) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(get_field(get_arg(0), \"allocation\"), \"end\")))"
     },
     "rule-605": {
       "path": "rust/library/core/src/slice/raw.rs:6",
@@ -1925,7 +1925,7 @@
       "path": "rust/library/core/src/slice/raw.rs:6",
       "name": "const unsafe fn from_raw_parts < 'a , T >",
       "rule": "`data` must be non-null and aligned even for zero-length slices or slices of ZSTs.",
-      "dsl": "(!get_field(get_arg(0), \"is_null\") && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(!get_field(get_arg(0), \"is_null\") && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "rule-608": {
       "path": "rust/library/core/src/slice/raw.rs:6",
@@ -1937,7 +1937,7 @@
       "path": "rust/library/core/src/slice/raw.rs:6",
       "name": "const unsafe fn from_raw_parts < 'a , T >",
       "rule": "`data` must be properly aligned.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "rule-610": {
       "path": "rust/library/core/src/slice/raw.rs:6",
@@ -1979,19 +1979,19 @@
       "path": "rust/library/core/src/mem/mod.rs:651",
       "name": "unsafe fn uninitialized < T >",
       "rule": "It is immediate undefined behavior to call this function on nearly all types, including integer types and arrays of integer types, even if the result is unused.",
-      "dsl": "allows_uninitialized_value(get_type_at_func(0))"
+      "dsl": "get_field(get_type_at_func(0), \"allows_uninitialized\")"
     },
     "ruklee-box-from-raw-non-null": {
       "path": "rust/library/alloc/src/boxed.rs:999",
       "name": "unsafe fn from_raw < T >",
       "rule": "`raw` must be non-null and must have been allocated by the global allocator.",
-      "dsl": "(!get_field(get_arg(0), \"is_null\") && is_allocated_via(get_arg(0), \"global\"))"
+      "dsl": "(!get_field(get_arg(0), \"is_null\") && get_field(get_allocation(get_arg(0)), \"allocator\") == \"global\")"
     },
     "ruklee-box-from-raw-aligned": {
       "path": "rust/library/alloc/src/boxed.rs:999",
       "name": "unsafe fn from_raw < T >",
       "rule": "`raw` must be properly aligned for `T`.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "ruklee-box-from-raw-valid": {
       "path": "rust/library/alloc/src/boxed.rs:999",
@@ -2003,7 +2003,7 @@
       "path": "rust/library/core/src/intrinsics/mod.rs:3827",
       "name": "const unsafe fn copy < T >",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "ruklee-intrinsics-copy-dst-valid": {
       "path": "rust/library/core/src/intrinsics/mod.rs:3827",
@@ -2021,13 +2021,13 @@
       "path": "rust/library/core/src/intrinsics/mod.rs:3724",
       "name": "const unsafe fn copy_nonoverlapping < T >",
       "rule": "Both `src` and `dst` must be properly aligned.",
-      "dsl": "(is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")) && is_aligned(get_arg(1), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)) && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(1), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "ruklee-intrinsics-copy-nonoverlapping-disjoint": {
       "path": "rust/library/core/src/intrinsics/mod.rs:3724",
       "name": "const unsafe fn copy_nonoverlapping < T >",
       "rule": "The source and destination must not overlap.",
-      "dsl": "not_overlapping(memory_range(get_arg(0), (get_arg(4) * get_field(get_type_at_func(0), \"size\"))), memory_range(get_arg(1), (get_arg(4) * get_field(get_type_at_func(0), \"size\"))))"
+      "dsl": "((get_field(memory_range(get_arg(0), (get_arg(4) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(1), (get_arg(4) * get_field(get_type_at_func(0), \"size\"))), \"start\")) || (get_field(memory_range(get_arg(1), (get_arg(4) * get_field(get_type_at_func(0), \"size\"))), \"end\") <= get_field(memory_range(get_arg(0), (get_arg(4) * get_field(get_type_at_func(0), \"size\"))), \"start\")))"
     },
     "ruklee-intrinsics-copy-nonoverlapping-dst-valid": {
       "path": "rust/library/core/src/intrinsics/mod.rs:3724",
@@ -2075,7 +2075,7 @@
       "path": "rust/library/core/src/ptr/mod.rs:441",
       "name": "unsafe fn drop_in_place < T : ? Sized >",
       "rule": "`to_drop` must be properly aligned, even if `T` has size 0.",
-      "dsl": "is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\"))"
+      "dsl": "((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0))"
     },
     "ruklee-slice-from-raw-parts-mut-nonoverflow-rustc-1_87-line142": {
       "path": "rust/library/core/src/slice/raw.rs:142",
@@ -2087,7 +2087,7 @@
       "path": "rust/library/core/src/slice/raw.rs:142",
       "name": "const unsafe fn from_raw_parts_mut < 'a , T >",
       "rule": "`data` must be non-null and aligned even for zero-length slices.",
-      "dsl": "(!get_field(get_arg(0), \"is_null\") && is_aligned(get_arg(0), get_field(get_type_at_func(0), \"align\")))"
+      "dsl": "(!get_field(get_arg(0), \"is_null\") && ((get_field(get_type_at_func(0), \"align\") != 0) && ((get_field(get_arg(0), \"address\") % get_field(get_type_at_func(0), \"align\")) == 0)))"
     },
     "ruklee-slice-from-raw-parts-mut-valid-rustc-1_87-line142": {
       "path": "rust/library/core/src/slice/raw.rs:142",
@@ -2124,6 +2124,12 @@
       "name": "unsafe fn assume_init",
       "rule": "The contained value must be initialized before calling `assume_init`.",
       "dsl": "is_initialized_for_type(memory_range(get_arg(0), get_field(get_type_at_func(0), \"size\")), get_type_at_func(0))"
+    },
+    "ruklee-mm-prefetch-read-valid-rustc-1_87-line1830": {
+      "path": "rust/library/core/src/../../stdarch/crates/core_arch/src/x86/sse.rs:1830",
+      "name": "unsafe fn _mm_prefetch",
+      "rule": "`p` must be valid for reads.",
+      "dsl": "is_valid_for(get_arg(0), \"read\")"
     },
     "ruklee-option-unwrap-unchecked-is-some-rustc-1_87-line1058": {
       "path": "rust/library/core/src/option.rs:1058",

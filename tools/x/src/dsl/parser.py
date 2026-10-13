@@ -5,13 +5,27 @@ from typing import Any, Iterable, Mapping, Sequence
 from lark import Lark, Transformer, Token
 from lark.exceptions import UnexpectedCharacters, UnexpectedToken, VisitError
 
-from dsl.ast import BinaryExpression, CallExpression, Expression, Identifier, Literal, SourceRef, UnaryExpression
+from dsl.ast import (
+    BinaryExpression,
+    CallExpression,
+    CollectionExpression,
+    Expression,
+    Identifier,
+    Literal,
+    QuantifiedExpression,
+    SourceRef,
+    TemporalExpression,
+    UnaryExpression,
+)
 from dsl.errors import DSLParseError, DSLValidationError
 
 _GRAMMAR = r"""
 ?start: expr
 
-?expr: implication_expr
+?expr: quantified_expr
+
+?quantified_expr: QUANTIFIER IDENT "in" implication_expr ":" expr -> quantified_expr_node
+                | implication_expr
 
 ?implication_expr: or_expr
     | or_expr "=>" implication_expr   -> implies_expr_bin
@@ -31,6 +45,7 @@ _GRAMMAR = r"""
         | comparison_expr "<=" add_expr   -> le_expr_bin
         | comparison_expr ">" add_expr   -> gt_expr_bin
         | comparison_expr ">=" add_expr   -> ge_expr_bin
+        | comparison_expr "in" add_expr   -> in_expr_bin
 
 ?add_expr: mul_expr
      | add_expr "+" mul_expr   -> add_expr_bin
@@ -43,17 +58,21 @@ _GRAMMAR = r"""
 
 ?unary_expr: "!" unary_expr   -> not_unary
        | "-" unary_expr   -> neg_unary
+       | TEMPORAL unary_expr   -> temporal_unary
            | primary
 
 ?primary: call_expr
         | source_ref
         | literal
+        | collection
         | IDENT   -> identifier
         | "(" expr ")"
 
 call_expr: IDENT "(" [call_args] ")"
 call_args: expr ("," expr)*
 source_ref: IDENT "@" INT ":" INT
+collection: "[" [call_args] "]" -> list_collection
+          | "{" [call_args] "}" -> set_collection
 
 ?literal: INT      -> int_lit
         | BOOL     -> bool_lit
@@ -62,6 +81,8 @@ source_ref: IDENT "@" INT ":" INT
 
 BOOL.2: "true" | "false" | "True" | "False"
 NONE.2: "None"
+QUANTIFIER.3: "forall" | "exists"
+TEMPORAL.3: "always" | "eventually" | "previously" | "next_state"
 IDENT: /[A-Za-z_][A-Za-z0-9_]*/
 
 %import common.INT
@@ -115,6 +136,27 @@ class _TreeToAst(Transformer[Token, Expression]):
 
         return CallExpression(name=name, args=tuple(args))
 
+    def list_collection(self, children: list[list[Expression]]) -> CollectionExpression:
+        items = children[0] if children else []
+        return CollectionExpression(kind="list", items=tuple(items))
+
+    def set_collection(self, children: list[list[Expression]]) -> CollectionExpression:
+        items = children[0] if children else []
+        return CollectionExpression(kind="set", items=tuple(items))
+
+    def quantified_expr_node(
+        self, children: list[Token | Expression]
+    ) -> QuantifiedExpression:
+        return QuantifiedExpression(
+            quantifier=str(children[0]),
+            variable=str(children[1]),
+            domain=children[2],
+            predicate=children[3],
+        )
+
+    def temporal_unary(self, children: list[Token | Expression]) -> TemporalExpression:
+        return TemporalExpression(operator=str(children[0]), operand=children[1])
+
     def not_unary(self, children: list[Expression]) -> UnaryExpression:
         return UnaryExpression(operator="!", operand=children[0])
 
@@ -150,6 +192,9 @@ class _TreeToAst(Transformer[Token, Expression]):
 
     def ge_expr_bin(self, children: list[Expression]) -> BinaryExpression:
         return self._binary(">=", children)
+
+    def in_expr_bin(self, children: list[Expression]) -> BinaryExpression:
+        return self._binary("in", children)
 
     def add_expr_bin(self, children: list[Expression]) -> BinaryExpression:
         return self._binary("+", children)
@@ -230,6 +275,17 @@ def _collect_operator_names(ast: Expression) -> set[str]:
         names = _collect_operator_names(ast.left)
         names.update(_collect_operator_names(ast.right))
         return names
+    if isinstance(ast, CollectionExpression):
+        names: set[str] = set()
+        for item in ast.items:
+            names.update(_collect_operator_names(item))
+        return names
+    if isinstance(ast, QuantifiedExpression):
+        names = _collect_operator_names(ast.domain)
+        names.update(_collect_operator_names(ast.predicate))
+        return names
+    if isinstance(ast, TemporalExpression):
+        return _collect_operator_names(ast.operand)
     return set()
 
 

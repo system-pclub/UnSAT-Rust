@@ -2,9 +2,12 @@ from dsl.errors import DSLParseError, DSLValidationError
 from dsl.ast import (
     BinaryExpression,
     CallExpression,
+    CollectionExpression,
     Identifier,
     Literal,
+    QuantifiedExpression,
     SourceRef,
+    TemporalExpression,
     UnaryExpression,
 )
 from dsl.parser import (
@@ -17,11 +20,14 @@ from dsl.parser import (
 __all__ = [
     "BinaryExpression",
     "CallExpression",
+    "CollectionExpression",
     "DSLParseError",
     "DSLValidationError",
     "Identifier",
     "Literal",
+    "QuantifiedExpression",
     "SourceRef",
+    "TemporalExpression",
     "UnaryExpression",
     "list_operators",
     "parse_dsl",

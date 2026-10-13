@@ -1,4 +1,24 @@
 {
+  "grammar_features": {
+    "description": "Grammar-level constructs are not operators and therefore do not consume the operator budget. Quantified and temporal nodes describe documentation contracts; the KLEE evaluator may reject them until a lowering is provided.",
+    "quantifiers": [
+      "forall",
+      "exists"
+    ],
+    "temporal": [
+      "always",
+      "eventually",
+      "previously",
+      "next_state"
+    ],
+    "collections": [
+      "list",
+      "set"
+    ],
+    "relations": [
+      "in"
+    ]
+  },
   "types": [
     {
       "name": "bool",
@@ -121,27 +141,6 @@
       ]
     },
     {
-      "name": "RustRange",
-      "description": "A half-open Rust slice index range [start, end) in element units.",
-      "fields": [
-        {
-          "name": "start",
-          "type": "uint",
-          "description": "The first element index in the range."
-        },
-        {
-          "name": "end",
-          "type": "uint",
-          "description": "The first element index after the range."
-        },
-        {
-          "name": "size",
-          "type": "uint",
-          "description": "The number of elements in the range."
-        }
-      ]
-    },
-    {
       "name": "Layout",
       "description": "Rust allocation layout object.",
       "fields": [
@@ -186,6 +185,11 @@
           "name": "is_zst",
           "type": "bool",
           "description": "Whether the pointee type is zero-sized."
+        },
+        {
+          "name": "allows_uninitialized",
+          "type": "bool",
+          "description": "Whether a value of this Rust type may legally be wholly uninitialized."
         }
       ]
     }
@@ -230,6 +234,19 @@
       "description": "Returns a typed field from an object. Valid fields and return types are defined in types."
     },
     {
+      "name": "get_allocation",
+      "input": [
+        {
+          "name": "value",
+          "type": "Value"
+        }
+      ],
+      "output": {
+        "type": "Allocation"
+      },
+      "description": "Returns the allocation/provenance object associated with a pointer-like value."
+    },
+    {
       "name": "memory_range",
       "input": [
         {
@@ -245,27 +262,6 @@
         "type": "MemoryRange"
       },
       "description": "Constructs a half-open byte range [ptr.address, ptr.address + size)."
-    },
-    {
-      "name": "within",
-      "input": [
-        {
-          "name": "subject",
-          "type": "Value"
-        },
-        {
-          "name": "start",
-          "type": "uint"
-        },
-        {
-          "name": "end",
-          "type": "uint"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Tests membership in the half-open interval [start, end). For a MemoryRange subject, tests full range containment and permits an empty range at end."
     },
     {
       "name": "memory_between",
@@ -348,23 +344,6 @@
       "description": "Interprets a bit-vector value as isize, i32, or i64 and sign-extends it for mathematical arithmetic."
     },
     {
-      "name": "rustrange",
-      "input": [
-        {
-          "name": "start",
-          "type": "uint"
-        },
-        {
-          "name": "end",
-          "type": "uint"
-        }
-      ],
-      "output": {
-        "type": "RustRange"
-      },
-      "description": "Constructs a half-open Rust slice index range [start, end) in element units."
-    },
-    {
       "name": "get_type_at_func",
       "input": [
         {
@@ -391,23 +370,6 @@
       "description": "Returns whether x is a non-zero power of two."
     },
     {
-      "name": "is_aligned",
-      "input": [
-        {
-          "name": "ptr",
-          "type": "Pointer"
-        },
-        {
-          "name": "align",
-          "type": "uint"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Returns whether ptr.address is aligned to align."
-    },
-    {
       "name": "is_valid_for",
       "input": [
         {
@@ -425,19 +387,6 @@
       "description": "Returns whether the range is valid for the requested access. read requires allocation containment/readability, write additionally requires a writable allocation, and read_write is their conjunction. Initialization is a separate is_initialized_for_type rule."
     },
     {
-      "name": "is_initialized",
-      "input": [
-        {
-          "name": "range",
-          "type": "MemoryRange"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Legacy byte-only initialization check. Prefer is_initialized_for_type when validating a Rust value."
-    },
-    {
       "name": "is_initialized_for_type",
       "input": [
         {
@@ -453,32 +402,6 @@
         "type": "bool"
       },
       "description": "Requires every byte in range to be written and applies supported Rust type-validity constraints from TypeInfo (currently exact for bool; other types retain byte-initialization semantics)."
-    },
-    {
-      "name": "allows_uninitialized_value",
-      "input": [
-        {
-          "name": "type_info",
-          "type": "TypeInfo"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Returns whether a value of this Rust type may legally be wholly uninitialized."
-    },
-    {
-      "name": "is_valid_c_str",
-      "input": [
-        {
-          "name": "ptr",
-          "type": "Pointer"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Returns whether ptr is non-null and reaches an initialized NUL byte within one allocation."
     },
     {
       "name": "c_str_in_allocation",
@@ -535,40 +458,6 @@
         "type": "bool"
       },
       "description": "Atomic predicate for Rust raw-pointer-to-reference convertibility."
-    },
-    {
-      "name": "is_allocated_via",
-      "input": [
-        {
-          "name": "ptr",
-          "type": "Pointer"
-        },
-        {
-          "name": "allocator",
-          "type": "Value"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Returns whether ptr denotes a currently live block allocated by the specified allocator identity; the string global denotes Rust's global allocator."
-    },
-    {
-      "name": "not_overlapping",
-      "input": [
-        {
-          "name": "left",
-          "type": "MemoryRange"
-        },
-        {
-          "name": "right",
-          "type": "MemoryRange"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Returns whether two half-open byte ranges do not overlap."
     }
   ],
   "constants": [

@@ -16,6 +16,7 @@ def test_simplify_get_var_alloc_field_to_variables() -> None:
     ast = parse_dsl(
         'get_field(get_alloc(get_var("p")), "layout") == get_var("layout")',
         OPERATORS_PATH,
+        allow_unknown_operators=True,
     )
 
     result = simplify_variables(ast)
@@ -35,6 +36,7 @@ def test_simplify_keeps_only_top_level_calls_as_variables() -> None:
     ast = parse_dsl(
         'get_field(get_alloc(get_var("p")), "layout") != get_field(get_var("q"), "len")',
         OPERATORS_PATH,
+        allow_unknown_operators=True,
     )
 
     result = simplify_variables(ast)
@@ -49,7 +51,11 @@ def test_simplify_keeps_only_top_level_calls_as_variables() -> None:
 
 
 def test_simplify_preserves_unary_and_binary_shape() -> None:
-    ast = parse_dsl('!(get_var("ready") == get_var("done"))', OPERATORS_PATH)
+    ast = parse_dsl(
+        '!(get_var("ready") == get_var("done"))',
+        OPERATORS_PATH,
+        allow_unknown_operators=True,
+    )
 
     result = simplify_variables(ast)
 
@@ -68,7 +74,11 @@ def test_simplify_preserves_unary_and_binary_shape() -> None:
 
 
 def test_simplify_unknown_call_stringification_is_stable() -> None:
-    ast = parse_dsl("offset_in_alloc(get_var(\"p\"))", OPERATORS_PATH)
+    ast = parse_dsl(
+        "offset_in_alloc(get_var(\"p\"))",
+        OPERATORS_PATH,
+        allow_unknown_operators=True,
+    )
     result = simplify_variables(ast)
 
     assert set(result.variables) == {"offset_in_alloc(p)"}
@@ -76,7 +86,11 @@ def test_simplify_unknown_call_stringification_is_stable() -> None:
 
 
 def test_simplify_get_result_and_get_receiver() -> None:
-    ast = parse_dsl("get_alloc(get_result()) == get_alloc(get_receiver())", OPERATORS_PATH)
+    ast = parse_dsl(
+        "get_alloc(get_result()) == get_alloc(get_receiver())",
+        OPERATORS_PATH,
+        allow_unknown_operators=True,
+    )
 
     result = simplify_variables(ast)
 
@@ -109,7 +123,11 @@ def test_simplify_preserves_implication_shape() -> None:
 
 
 def test_simplify_rejects_non_call_leaf() -> None:
-    ast = parse_dsl("count@1:2 == get_var(\"count\")", OPERATORS_PATH)
+    ast = parse_dsl(
+        "count@1:2 == get_var(\"count\")",
+        OPERATORS_PATH,
+        allow_unknown_operators=True,
+    )
 
     with pytest.raises(DSLValidationError, match="Cannot simplify non-call expression"):
         simplify_variables(ast)
