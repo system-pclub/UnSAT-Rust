@@ -30,6 +30,7 @@ extern "C" {
     /// `name`.
     fn klee_make_symbolic(ptr: *mut c_void, size: usize, name: *const c_char);
     fn klee_assume(condition: usize);
+    fn klee_silent_exit(status: i32) -> !;
 }
 
 #[inline(always)]
@@ -38,6 +39,24 @@ pub fn callsite_raw(site_id_nul: &'static [u8]) {
     // `site_id_nul`.  `site_id_nul` is a valid C string by the invariant above.
     let name_ptr = site_id_nul as *const [u8] as *const u8;
     unsafe { klee_ext_callsite(name_ptr as *const c_char) }
+}
+
+/// Verification model of a reached `core::hint::unreachable_unchecked`.
+///
+/// Keep the observation before an opaque non-returning call, rather than LLVM
+/// undefined behavior: otherwise LLVM can erase the observation and its branch.
+/// KLEE checks the selected callsite's DSL, then terminates this path. For a
+/// different selected target, silent exit prevents continuing past this UB.
+///
+/// # Safety
+/// This instrumentation-only function must replace an unsafe unchecked source
+/// operation in its original unsafe context; it is not a normal control-flow API.
+#[inline(always)]
+pub unsafe fn unreachable_unchecked_raw(site_id_nul: &'static [u8]) -> ! {
+    callsite_raw(site_id_nul);
+    // The runtime never returns. A native stub also terminates rather than
+    // providing a value of the source operation's never type.
+    unsafe { klee_silent_exit(0) }
 }
 
 /// Mark the exact pointer operand of a source-level raw-pointer dereference.
@@ -289,6 +308,14 @@ pub fn bind_arg_ptr_value<T: ArgPtrValue>(index: u64, value: T) {
 macro_rules! callsite {
     ($site_id:literal) => {
         $crate::callsite_raw(concat!($site_id, "\0").as_bytes())
+    };
+}
+
+/// Preserve the original unchecked branch as a KLEE reachability obligation.
+#[macro_export]
+macro_rules! unreachable_unchecked {
+    ($site_id:literal) => {
+        $crate::unreachable_unchecked_raw(concat!($site_id, "\0").as_bytes())
     };
 }
 

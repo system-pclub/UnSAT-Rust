@@ -886,6 +886,13 @@ target counterexample.
   boundary to reproduce the counterexample, do not build a non-empty/non-boundary
   container for that same field. A testcase that reaches the callsite while the
   target expression is still on the safe side is invalid.
+- A Vec's `clear()`, `reserve()`, and `reserve_exact()` do not shrink an existing
+  allocation. If a public safe accessor returns `&mut Vec<T>` and the target
+  relation requires a smaller capacity, construct a separate Vec with that
+  capacity and replace the escaped Vec through the accessor, for example
+  `*receiver.data_mut() = replacement`. Merely extending a freshly allocated
+  small Vec into the receiver preserves the receiver's old capacity. Track
+  the receiver Vec's final length and capacity at the target call.
 - If the target context shows a root wrapper location and a different inner
   target-call containing function, prefer the most direct safe function that can
   reach the inner target call and is callable from the injected module. When

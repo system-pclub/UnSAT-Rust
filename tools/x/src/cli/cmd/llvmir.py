@@ -14,6 +14,7 @@ def _emit_llvm_rustflags(
     panic_abort: bool = False,
     panic_abort_tests: bool = False,
     overflow_checks: bool = False,
+    debug_assertions: bool | None = None,
 ) -> str:
     flags = [
         "-Zinline-mir=no",
@@ -25,6 +26,8 @@ def _emit_llvm_rustflags(
     ]
     if panic_abort:
         flags.append("-Cpanic=abort")
+    if debug_assertions is not None:
+        flags.append(f"-Cdebug-assertions={'on' if debug_assertions else 'off'}")
     if panic_abort_tests:
         flags.append("-Zpanic_abort_tests")
     return " ".join(flags)
@@ -56,6 +59,7 @@ def compile_with_emit_llvm(
     build_std: bool = False,
     panic_abort: bool = False,
     overflow_checks: bool = False,
+    debug_assertions: bool | None = None,
     features: list[str] | None = None,
     log_path: Path | None = None,
 ) -> None:
@@ -69,6 +73,7 @@ def compile_with_emit_llvm(
     env["RUSTFLAGS"] = _emit_llvm_rustflags(
         panic_abort=panic_abort,
         overflow_checks=overflow_checks,
+        debug_assertions=debug_assertions,
     )
 
     cmd = ["cargo", "build"]
@@ -113,6 +118,7 @@ def compile_test_with_emit_llvm(
     build_std: bool = False,
     panic_abort: bool = False,
     overflow_checks: bool = False,
+    debug_assertions: bool | None = None,
     features: list[str] | None = None,
     log_path: Path | None = None,
 ) -> None:
@@ -127,6 +133,7 @@ def compile_test_with_emit_llvm(
         panic_abort=panic_abort,
         panic_abort_tests=panic_abort,
         overflow_checks=overflow_checks,
+        debug_assertions=debug_assertions,
     )
 
     # Only the library unit-test harness is part of verify's execution model.
@@ -397,6 +404,7 @@ def ensure_linked_llvm_ir_file(
     build_std: bool = True,
     panic_abort: bool = False,
     overflow_checks: bool = False,
+    debug_assertions: bool | None = None,
     force: bool = False,
     features: list[str] | None = None,
     build_log_path: Path | None = None,
@@ -417,6 +425,7 @@ def ensure_linked_llvm_ir_file(
             panic_abort=panic_abort,
             panic_abort_tests=test and panic_abort,
             overflow_checks=overflow_checks,
+            debug_assertions=debug_assertions,
         ),
         "rustc": rustc,
         "test": test,
@@ -426,6 +435,7 @@ def ensure_linked_llvm_ir_file(
         else [],
         "panic_abort_tests": test and panic_abort,
         "overflow_checks": overflow_checks,
+        "debug_assertions": debug_assertions,
         "features": features,
     }
     metadata_path = output_dir / f"{crate_name}.ll.meta.json"
@@ -449,6 +459,7 @@ def ensure_linked_llvm_ir_file(
             build_std=build_std,
             panic_abort=panic_abort,
             overflow_checks=overflow_checks,
+            debug_assertions=debug_assertions,
             features=features,
             log_path=build_log_path,
         )
@@ -459,6 +470,7 @@ def ensure_linked_llvm_ir_file(
             build_std=build_std,
             panic_abort=panic_abort,
             overflow_checks=overflow_checks,
+            debug_assertions=debug_assertions,
             features=features,
             log_path=build_log_path,
         )

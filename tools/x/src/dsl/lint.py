@@ -22,14 +22,29 @@ class DSLLintIssue:
     message: str
 
 
-SUPPORTED_ACCESS_KINDS = {"read", "write", "read_write"}
+SUPPORTED_ACCESS_KINDS = {
+    "read",
+    "write",
+    "read_write",
+    "volatile_read_no_race",
+    "volatile_write_no_race",
+    "shared_borrow",
+    "unique_borrow",
+    "read_no_mutation",
+    "no_use_after_drop",
+    "drop",
+    "exclusive_during_drop",
+}
 _ISIZE_FIT_PHRASES = (
     "fit in an `isize`",
     "fit in an isize",
+    "fit in `isize`",
     "overflow `isize`",
     "overflow isize",
     "no larger than `isize::max`",
     "more than `isize::max`",
+    "within `isize::max`",
+    "located within `isize::max`",
 )
 
 
@@ -103,6 +118,38 @@ def _field_names(node: Expression) -> set[str]:
     elif isinstance(node, TemporalExpression):
         fields.update(_field_names(node.operand))
     return fields
+
+
+def _unsupported_type_fields(node: Expression) -> set[str]:
+    unsupported: set[str] = set()
+    if isinstance(node, CallExpression):
+        if node.name == "get_field" and len(node.args) == 2:
+            base, field = node.args
+            if (
+                isinstance(base, CallExpression)
+                and base.name == "get_type_at_func"
+                and isinstance(field, Literal)
+                and isinstance(field.value, str)
+                and field.value
+                not in {"size", "align", "is_zst", "allows_uninitialized"}
+            ):
+                unsupported.add(field.value)
+        for arg in node.args:
+            unsupported.update(_unsupported_type_fields(arg))
+    elif isinstance(node, BinaryExpression):
+        unsupported.update(_unsupported_type_fields(node.left))
+        unsupported.update(_unsupported_type_fields(node.right))
+    elif isinstance(node, UnaryExpression):
+        unsupported.update(_unsupported_type_fields(node.operand))
+    elif isinstance(node, CollectionExpression):
+        for item in node.items:
+            unsupported.update(_unsupported_type_fields(item))
+    elif isinstance(node, QuantifiedExpression):
+        unsupported.update(_unsupported_type_fields(node.domain))
+        unsupported.update(_unsupported_type_fields(node.predicate))
+    elif isinstance(node, TemporalExpression):
+        unsupported.update(_unsupported_type_fields(node.operand))
+    return unsupported
 
 
 def lint_rule_semantics(rule: str, ast: Expression) -> list[DSLLintIssue]:
@@ -247,6 +294,15 @@ def lint_dsl_ast(
 
     issues: list[DSLLintIssue] = []
 
+    for field in sorted(_unsupported_type_fields(ast)):
+        issues.append(
+            DSLLintIssue(
+                "error",
+                "unsupported-type-field",
+                f"KLEE type metadata does not expose field {field!r}",
+            )
+        )
+
     def add(severity: str, code: str, message: str) -> None:
         issues.append(DSLLintIssue(severity, code, message))
 
@@ -301,13 +357,6 @@ def lint_dsl_ast(
                         "unsupported-access-kind",
                         f"is_valid_for access kind {access.value!r} is not translated by KLEE",
                     )
-
-            if node.name == "is_valid_for_c_str":
-                add(
-                    "warning",
-                    "unsupported-cstr-access",
-                    "CStr lifetime access is represented but not translated by KLEE",
-                )
 
             if node.name == "mul_fits" and len(node.args) == 3:
                 target = node.args[2]

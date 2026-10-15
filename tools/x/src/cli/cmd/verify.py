@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 RAW_PTR_DEREF_RULE = "__raw_ptr_deref__"
 RAW_PTR_DEREF_CALLEE = "core::ptr::__raw_ptr_deref__"
-REACHABILITY_ONLY_RULES = {"rule-192", "ruklee-unreachable-unchecked"}
+REACHABILITY_ONLY_RULES = {"rule-89", "rule-192"}
 
 
 def _klee_no_stats_args() -> list[str]:
@@ -531,10 +531,15 @@ def _load_rule_ids_by_callee(rule_dsl_path: Path) -> dict[tuple[str, int], list[
         path_with_line: object = None
         if isinstance(raw_entry, dict):
             path_with_line = raw_entry.get("path")
-        parsed = _parse_rule_path(path_with_line)
-        if parsed is None:
-            continue
-        grouped.setdefault(parsed, []).append(rule_id)
+        paths: list[object] = [path_with_line]
+        if isinstance(raw_entry, dict):
+            aliases = raw_entry.get("aliases", [])
+            if isinstance(aliases, list):
+                paths.extend(aliases)
+        for candidate in paths:
+            parsed = _parse_rule_path(candidate)
+            if parsed is not None:
+                grouped.setdefault(parsed, []).append(rule_id)
 
     return {key: sorted(values) for key, values in grouped.items()}
 
@@ -723,6 +728,7 @@ def _run_klee_compose_verify(
     compose_loop_bound: int,
     output_dir: Path,
     timeout_sec: int | None,
+    disable_mut_ref_recovery: bool = False,
 ) -> tuple[int, str]:
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -737,6 +743,8 @@ def _run_klee_compose_verify(
         "--compose-verify",
         f"--compose-verify-symbolic-loop-bound={compose_loop_bound}",
     ]
+    if disable_mut_ref_recovery:
+        cmd.append("--compose-verify-disable-mut-ref-recovery")
     if report_json is not None:
         cmd.append(f"--report-json={report_json}")
     cmd.append(str(ll_path))
@@ -2185,6 +2193,7 @@ def _run_llm_testcase_pipeline(
                 test=False,
                 build_std=True,
                 panic_abort=True,
+                debug_assertions=getattr(args, "debug_assertions", None),
                 force=True,
                 features=sorted(
                     {
@@ -2424,6 +2433,7 @@ def _run_llm_testcase_pipeline(
                 test=False,
                 build_std=True,
                 panic_abort=True,
+                debug_assertions=getattr(args, "debug_assertions", None),
                 force=True,
                 features=sorted(
                     {
@@ -2619,6 +2629,7 @@ def _run_verify_matrix_locked(
         "report_json": str(report_json) if report_json is not None else None,
         "klee_bin": args.klee_bin,
         "compose_loop_bound": args.compose_loop_bound,
+        "disable_mut_ref_recovery": bool(getattr(args, "disable_mut_ref_recovery", False)),
         "timeout_sec": args.timeout_sec,
         "test": args.test,
         "stop_callsite_if_violated": bool(getattr(args, "stop_callsite_if_violated", False)),
@@ -2813,6 +2824,8 @@ def _run_verify_matrix_locked(
                 "--compose-verify",
                 f"--compose-verify-symbolic-loop-bound={args.compose_loop_bound}",
             ]
+            if getattr(args, "disable_mut_ref_recovery", False):
+                cmd.append("--compose-verify-disable-mut-ref-recovery")
             if raw_ptr_deref:
                 cmd.append("--ext.raw-ptr-deref")
             else:
@@ -3143,6 +3156,7 @@ def run(args: argparse.Namespace) -> int:
         test=args.test,
         build_std=True,
         panic_abort=True,
+        debug_assertions=getattr(args, "debug_assertions", None),
         force=True,
         features=crate_features,
     )
@@ -3229,6 +3243,7 @@ def run(args: argparse.Namespace) -> int:
         compose_loop_bound=args.compose_loop_bound,
         output_dir=compose_output,
         timeout_sec=args.timeout_sec,
+        disable_mut_ref_recovery=getattr(args, "disable_mut_ref_recovery", False),
     )
     if compose_reach_only and compose_status in {"candidate", "verified", "unknown"}:
         # A root marker proves reachability/context for testcase generation, not

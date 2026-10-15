@@ -16,6 +16,15 @@ This reports grammar expressibility only. It does not claim that KLEE can lower
 quantified or temporal expressions. Rules that cannot be classified from their
 text remain unsupported rather than being counted through an opaque predicate.
 
+The current catalog has 962 canonical `rule-N` entries. All 836 rules selected
+by the grammar-capability audit have a KLEE-consumable translation in
+`ptr_rule_dsl.json`; the file has 854 entries in total because it also retains
+18 earlier translations outside that conservative classifier. `./x
+lint-rule-dsl` checks that every translated ID is canonical, exists in
+`rules.csv`, and has matching path/name/rule metadata. This is translation
+coverage, not a claim that KLEE can prove 80% of the rules at every callsite:
+summary-state fields still require corresponding program-state bindings.
+
 ## Generate a Rust exploit example
 
 Set `OPENAI_API_KEY`, then select a callsite from the crate's `report.json` and
@@ -75,3 +84,42 @@ how many unique unsafe api: 2
 how many buggy/total unsafe api: 2/2 100.00%
 how many buggy/total unsafe api callsites: 13/19 68.42%
 ```
+
+## Preserve `unreachable_unchecked` verification targets
+
+AutoInj replaces a direct `unreachable_unchecked()` with
+`klee_ext_bind::unreachable_unchecked!("<original-callsite-id>")` at the same
+expression position. The shim records the callsite and calls KLEE's opaque,
+non-returning `klee_silent_exit`. This retains the source branch and its never
+type while preventing LLVM from erasing the observation because of subsequent
+undefined behavior. A path that reaches an earlier, unselected unchecked target
+also terminates there; it cannot continue to a later selected target.
+
+For unambiguous local `macro_rules!` definitions, AutoInj specializes the macro
+and its local helper macros for that invocation. It changes only unchecked calls
+in expansion bodies. Matchers, argument tokens, conditions, debug/release branches,
+and single evaluation of arguments are retained. For example, REVM's
+`assume! -> debug_unreachable! -> unreachable_unchecked()` is handled without
+editing the benchmark source or inserting a marker before the assumption guard.
+External, ambiguous, and recursive macro definitions remain explicitly skipped.
+
+Release-only unchecked branches require `./x verify ... --no-debug-assertions`.
+Generic callers still need a compile-only instantiation or concrete harness to
+emit their body. Marker preservation fixes target availability; a preserved
+marker alone does not establish a DSL violation. Rule-89 (`false`) is violated
+only when KLEE actually reaches that original branch.
+
+Rebuild `tools/autoinj/target/release/autoinj` after source changes: `x sync`
+prefers this binary. The end-to-end regression checks O0/O3, valid/invalid
+branches, debug configuration, and termination at an earlier unchecked target:
+
+```bash
+PYTHONPATH=tools/x/src tools/x/.venv/bin/python \
+  dev/check_unreachable_instrumentation.py
+```
+
+Add `--real` with Cargo/custom-rustc configured to reinject the five original
+REVM macro targets and Arrow2 `OffsetsBuffer::<i32>::first`. Each run writes a
+fresh evidence tree under `.local/unreachable-instrumentation/`. Native fallback
+stubs panic if an instrumented unchecked branch is reached; this shim is for
+verification builds.

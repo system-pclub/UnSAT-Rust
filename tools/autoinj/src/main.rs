@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
-use proc_macro2::{LineColumn, Span};
+use proc_macro2::{Delimiter, Group, LineColumn, Span, TokenStream, TokenTree};
+use quote::quote;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -290,6 +291,17 @@ fn normalized_id_suffix(value: &str) -> String {
 }
 
 fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
+    let mut macros = LocalMacroDefinitions::default();
+    for entry in WalkDir::new(crate_dir).into_iter().filter_entry(|entry| {
+        !matches!(entry.file_name().to_str(), Some("target" | ".git"))
+    }) {
+        let entry = entry?;
+        if entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "rs") {
+            if let Ok(ast) = syn::parse_file(&fs::read_to_string(entry.path())?) {
+                macros.visit_file(&ast);
+            }
+        }
+    }
     let mut files = BTreeSet::new();
     for target in &meta.report.targets {
         if let Some(path) = target_path(target) {
@@ -361,7 +373,7 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
                 push_injection(unsafe_callsite, true, true);
             }
         }
-        inject_file(&path, &injections)
+        inject_file_with_macros(&path, &injections, &macros)
             .with_context(|| format!("failed to inject {}", path.display()))?;
     }
     Ok(())
@@ -380,7 +392,18 @@ fn target_path_for_callsite<'a>(target: &'a Target, callsite: &'a Callsite) -> O
     })
 }
 
+#[cfg(test)]
 fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
+    let mut macros = LocalMacroDefinitions::default();
+    macros.visit_file(&syn::parse_file(&fs::read_to_string(path)?)?);
+    inject_file_with_macros(path, injections, &macros)
+}
+
+fn inject_file_with_macros(
+    path: &Path,
+    injections: &[Injection],
+    macros: &LocalMacroDefinitions,
+) -> Result<()> {
     let source = fs::read_to_string(path)?;
     let mut ast = syn::parse_file(&source)?;
     let mut raw_pointer_collector = RawPointerPlaceCollector::default();
@@ -390,6 +413,7 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
     let mut macro_collector = MacroRangeCollector::default();
     macro_collector.visit_file(&ast);
     let macro_ranges = macro_collector.ranges;
+    let macro_invocations = macro_collector.invocations;
     let const_ranges = ast
         .items
         .iter()
@@ -418,9 +442,14 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
             let in_macro = macro_ranges
                 .iter()
                 .any(|(start, end)| injection.line >= *start && injection.line <= *end);
-            if in_macro {
+            let supported_unreachable_macro = is_unreachable_injection(injection)
+                && macro_invocations.iter().any(|mac| {
+                    span_matches(mac.span(), injection)
+                        && specialize_unreachable_macro(mac, injection, macros).is_some()
+                });
+            if in_macro && !supported_unreachable_macro {
                 eprintln!(
-                    "warning: skipping callsite {} at {}:{} because it is inside a macro",
+                    "warning: skipping callsite {} at {}:{} because its macro has no supported unambiguous local expansion",
                     injection.id,
                     path.display(),
                     injection.line,
@@ -437,7 +466,7 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
                     injection.line,
                 );
             }
-            !in_macro && !in_const
+            (!in_macro || supported_unreachable_macro) && !in_const
         })
         .collect::<Vec<_>>();
     for injection in &ordered_injections {
@@ -447,6 +476,7 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
             inserted: false,
             next_temp_index,
             raw_pointer_places: &raw_pointer_places,
+            macros,
         };
         injector.visit_file_mut(&mut ast);
         if !injector.inserted {
@@ -486,13 +516,278 @@ fn inject_file(path: &Path, injections: &[Injection]) -> Result<()> {
 #[derive(Default)]
 struct MacroRangeCollector {
     ranges: Vec<(usize, usize)>,
+    invocations: Vec<syn::Macro>,
 }
 
 impl<'ast> Visit<'ast> for MacroRangeCollector {
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
         let span = node.span();
         self.ranges.push((span.start().line, span.end().line));
+        if !node.path.is_ident("macro_rules") {
+            self.invocations.push(node.clone());
+        }
         visit::visit_macro(self, node);
+    }
+}
+
+fn is_unreachable_injection(injection: &Injection) -> bool {
+    injection.callee_name.as_deref().and_then(callee_leaf) == Some("unreachable_unchecked")
+}
+
+/// Only specialize an unambiguous local macro_rules definition. Unknown,
+/// external, and recursively defined macros keep the existing explicit skip.
+#[derive(Default)]
+struct LocalMacroDefinitions {
+    definitions: BTreeMap<String, syn::ItemMacro>,
+    ambiguous: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for LocalMacroDefinitions {
+    fn visit_item_macro(&mut self, item: &'ast syn::ItemMacro) {
+        if item.mac.path.is_ident("macro_rules") {
+            if let Some(ident) = &item.ident {
+                let name = ident.to_string();
+                if self.definitions.contains_key(&name) {
+                    self.ambiguous.insert(name);
+                } else {
+                    self.definitions.insert(name, item.clone());
+                }
+            }
+        }
+        visit::visit_item_macro(self, item);
+    }
+}
+
+struct UnreachableMacroSpecializer<'a> {
+    macros: &'a LocalMacroDefinitions,
+    injection: &'a Injection,
+    definitions: BTreeMap<String, syn::ItemMacro>,
+    active: BTreeSet<String>,
+    unsupported: bool,
+}
+
+fn strip_token_path(tokens: &mut Vec<TokenTree>) {
+    while tokens.len() >= 2
+        && matches!(&tokens[tokens.len() - 1], TokenTree::Punct(p) if p.as_char() == ':')
+        && matches!(&tokens[tokens.len() - 2], TokenTree::Punct(p) if p.as_char() == ':')
+    {
+        tokens.truncate(tokens.len() - 2);
+        if matches!(tokens.last(), Some(TokenTree::Ident(_))) {
+            tokens.pop();
+            if matches!(tokens.last(), Some(TokenTree::Punct(p)) if p.as_char() == '$') {
+                tokens.pop();
+            }
+        } else {
+            break;
+        }
+    }
+}
+
+fn token_macro_path_is_local(tokens: &[TokenTree]) -> bool {
+    if !matches!(tokens.last(), Some(TokenTree::Punct(p)) if p.as_char() == ':') {
+        return true;
+    }
+    // Only $crate::foo! has a known relationship to this crate's definition.
+    // other_crate::foo! must not be replaced by a same-named local macro.
+    tokens.len() >= 4
+        && matches!(&tokens[tokens.len() - 4], TokenTree::Punct(p) if p.as_char() == '$')
+        && matches!(&tokens[tokens.len() - 3], TokenTree::Ident(i) if i == "crate")
+        && matches!(&tokens[tokens.len() - 2], TokenTree::Punct(p) if p.as_char() == ':')
+}
+
+fn token_unreachable_path_is_standard(tokens: &[TokenTree]) -> bool {
+    if matches!(tokens.last(), Some(TokenTree::Punct(p)) if p.as_char() == '.') {
+        return false;
+    }
+    let mut end = tokens.len();
+    let mut names = Vec::new();
+    while end >= 3
+        && matches!(&tokens[end - 1], TokenTree::Punct(p) if p.as_char() == ':')
+        && matches!(&tokens[end - 2], TokenTree::Punct(p) if p.as_char() == ':')
+    {
+        let TokenTree::Ident(ident) = &tokens[end - 3] else { return false; };
+        names.push(ident.to_string());
+        end -= 3;
+    }
+    names.reverse();
+    names.is_empty()
+        || names == ["hint"]
+        || names == ["core", "hint"]
+        || names == ["std", "hint"]
+}
+
+impl UnreachableMacroSpecializer<'_> {
+    fn specialize(&mut self, name: &str) -> Option<syn::Ident> {
+        if let Some(definition) = self.definitions.get(name) {
+            return definition.ident.clone();
+        }
+        if self.macros.ambiguous.contains(name) {
+            self.unsupported = true;
+            return None;
+        }
+        let mut definition = self.macros.definitions.get(name)?.clone();
+        if !self.active.insert(name.to_string()) {
+            self.unsupported = true;
+            return None;
+        }
+        // Rewrite only macro arm transcribers, never their token matchers.
+        let mut tokens: Vec<TokenTree> = definition.mac.tokens.clone().into_iter().collect();
+        let mut changed = false;
+        let mut i = 0;
+        while i + 3 < tokens.len() {
+            if matches!(&tokens[i], TokenTree::Group(_))
+                && matches!(&tokens[i + 1], TokenTree::Punct(p) if p.as_char() == '=')
+                && matches!(&tokens[i + 2], TokenTree::Punct(p) if p.as_char() == '>')
+            {
+                if let TokenTree::Group(group) = &tokens[i + 3] {
+                    let (stream, rewritten) = self.rewrite_expansion(group.stream());
+                    let mut replacement = Group::new(group.delimiter(), stream);
+                    replacement.set_span(group.span());
+                    tokens[i + 3] = TokenTree::Group(replacement);
+                    changed |= rewritten;
+                    i += 4;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        self.active.remove(name);
+        if !changed || self.unsupported {
+            return None;
+        }
+        let ident = syn::Ident::new(
+            &format!(
+                "__klee_unreachable_{}_{}",
+                normalized_id_suffix(&self.injection.id), name
+            ),
+            Span::call_site(),
+        );
+        definition.ident = Some(ident.clone());
+        definition.attrs.retain(|attr| !attr.path().is_ident("macro_export"));
+        definition.mac.tokens = tokens.into_iter().collect();
+        self.definitions.insert(name.to_string(), definition);
+        Some(ident)
+    }
+
+    fn rewrite_expansion(&mut self, stream: TokenStream) -> (TokenStream, bool) {
+        let tokens: Vec<TokenTree> = stream.into_iter().collect();
+        let mut output = Vec::new();
+        let mut changed = false;
+        let mut i = 0;
+        while i < tokens.len() {
+            if let TokenTree::Ident(ident) = &tokens[i] {
+                if ident == "unreachable_unchecked" && token_unreachable_path_is_standard(&output) {
+                    if let Some(TokenTree::Group(args)) = tokens.get(i + 1) {
+                        if args.delimiter() == Delimiter::Parenthesis && args.stream().is_empty() {
+                            strip_token_path(&mut output);
+                            let site = syn::LitStr::new(&self.injection.id, Span::call_site());
+                            output.extend(quote! { klee_ext_bind::unreachable_unchecked!(#site) });
+                            changed = true;
+                            i += 2;
+                            continue;
+                        }
+                    }
+                }
+                if matches!(tokens.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == '!') {
+                    if let Some(TokenTree::Group(_)) = tokens.get(i + 2) {
+                        // Macro arguments are tokens, not necessarily evaluated
+                        // Rust (for example stringify!). Do not traverse them.
+                        let replacement = token_macro_path_is_local(&output)
+                            .then(|| self.specialize(&ident.to_string()))
+                            .flatten();
+                        if let Some(replacement) = replacement {
+                            strip_token_path(&mut output);
+                            output.push(TokenTree::Ident(replacement));
+                            output.extend(tokens[i + 1..i + 3].iter().cloned());
+                            changed = true;
+                        } else {
+                            output.extend(tokens[i..i + 3].iter().cloned());
+                        }
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+            match &tokens[i] {
+                TokenTree::Group(group) => {
+                    let (stream, rewritten) = self.rewrite_expansion(group.stream());
+                    let mut replacement = Group::new(group.delimiter(), stream);
+                    replacement.set_span(group.span());
+                    output.push(TokenTree::Group(replacement));
+                    changed |= rewritten;
+                }
+                token => output.push(token.clone()),
+            }
+            i += 1;
+        }
+        (output.into_iter().collect(), changed)
+    }
+}
+
+fn specialize_unreachable_macro(
+    mac: &syn::Macro,
+    injection: &Injection,
+    macros: &LocalMacroDefinitions,
+) -> Option<syn::Expr> {
+    if mac.path.segments.len() != 1 {
+        return None;
+    }
+    let name = mac.path.segments.last()?.ident.to_string();
+    let mut specializer = UnreachableMacroSpecializer {
+        macros,
+        injection,
+        definitions: BTreeMap::new(),
+        active: BTreeSet::new(),
+        unsupported: false,
+    };
+    let replacement = specializer.specialize(&name)?;
+    if specializer.unsupported {
+        return None;
+    }
+    let definitions = specializer.definitions.values();
+    let args = &mac.tokens;
+    Some(parse_quote! {{ #(#definitions)* #replacement!(#args) }})
+}
+
+struct UnreachableMacroRewriter<'a> {
+    injection: &'a Injection,
+    macros: &'a LocalMacroDefinitions,
+    inserted: bool,
+}
+
+impl VisitMut for UnreachableMacroRewriter<'_> {
+    fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
+        if self.inserted {
+            return;
+        }
+        visit_mut::visit_expr_mut(self, expr);
+        if let syn::Expr::Macro(node) = expr {
+            if span_matches(node.mac.span(), self.injection) {
+                if let Some(replacement) =
+                    specialize_unreachable_macro(&node.mac, self.injection, self.macros)
+                {
+                    *expr = replacement;
+                    self.inserted = true;
+                }
+            }
+        }
+    }
+
+    fn visit_stmt_mut(&mut self, stmt: &mut syn::Stmt) {
+        if self.inserted {
+            return;
+        }
+        visit_mut::visit_stmt_mut(self, stmt);
+        if let syn::Stmt::Macro(node) = stmt {
+            if span_matches(node.mac.span(), self.injection) {
+                if let Some(replacement) =
+                    specialize_unreachable_macro(&node.mac, self.injection, self.macros)
+                {
+                    *stmt = syn::Stmt::Expr(replacement, node.semi_token);
+                    self.inserted = true;
+                }
+            }
+        }
     }
 }
 
@@ -573,6 +868,7 @@ struct Injector<'a> {
     inserted: bool,
     next_temp_index: usize,
     raw_pointer_places: &'a BTreeSet<String>,
+    macros: &'a LocalMacroDefinitions,
 }
 
 impl VisitMut for Injector<'_> {
@@ -635,6 +931,7 @@ impl VisitMut for Injector<'_> {
                 &mut block.stmts[index],
                 self.injection,
                 self.next_temp_index,
+                self.macros,
             );
             if let Some(rewrite) = rewrite {
                 let mut stmts = rewrite.lift_stmts;
@@ -853,7 +1150,20 @@ fn rewrite_stmt_matching_call_args(
     stmt: &mut syn::Stmt,
     injection: &Injection,
     next_temp_index: usize,
+    macros: &LocalMacroDefinitions,
 ) -> Option<CallRewrite> {
+    if is_unreachable_injection(injection) {
+        let mut rewriter = UnreachableMacroRewriter {
+            injection, macros, inserted: false,
+        };
+        rewriter.visit_stmt_mut(stmt);
+        if rewriter.inserted {
+            return Some(CallRewrite {
+                lift_stmts: Vec::new(), ret_stmts: Vec::new(),
+                next_temp_index, callsite_inline: true,
+            });
+        }
+    }
     let mut rewriter = CallRewriter {
         injection,
         rewrite: None,
@@ -891,14 +1201,30 @@ impl VisitMut for CallRewriter<'_> {
                     .and_then(callee_leaf)
                     .unwrap_or("");
                 let source_leaf = expr_call_leaf(node);
-                if !callee_leaf.is_empty() && !source_leaf.is_empty() && callee_leaf != source_leaf
+                if callee_leaf == "unreachable_unchecked"
+                    && source_leaf == "unreachable_unchecked"
+                {
+                    let literal = syn::LitStr::new(&self.injection.id, Span::call_site());
+                    *expr = parse_quote! { klee_ext_bind::unreachable_unchecked!(#literal) };
+                    self.rewrite = Some(CallRewrite {
+                        lift_stmts: Vec::new(),
+                        ret_stmts: Vec::new(),
+                        next_temp_index,
+                        callsite_inline: true,
+                    });
+                    return;
+                }
+                if !callee_leaf.is_empty()
+                    && !source_leaf.is_empty()
+                    && callee_leaf != source_leaf
                 {
                     // The source expression is a local/safe wrapper free
                     // function, while the rule belongs to an unsafe callee
                     // reached inside that wrapper. Keep the wrapper call in
                     // place so pattern-bound locals (for example match-arm
                     // `op` bindings) and expression evaluation order remain
-                    // valid.
+                    // valid. Never lift these wrappers out of their branch:
+                    // a wrapper may itself be a non-returning operation.
                     let literal = syn::LitStr::new(&self.injection.id, Span::call_site());
                     let call_expr = syn::Expr::Call(node.clone());
                     *expr = parse_quote! {{
@@ -1576,6 +1902,199 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
         assert!(compact.contains("unsafe{klee_ext_bind::callsite!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
         assert!(compact.contains("callee(p,layout)"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_keeps_unreachable_unchecked_inside_match_arm() -> Result<()> {
+        let tmp = TempDir::new("unreachable-match-arm")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"unsafe fn as_usize(value: Result<usize, ()>) -> usize {
+    match value {
+        Ok(value) => value,
+        Err(_) => unreachable_unchecked(),
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-4-19".to_string(),
+                line: 4,
+                col: 19,
+                callee_name: Some("core::hint::unreachable_unchecked".to_string()),
+                raw_pointer_deref: false,
+                source_line: Some("        Err(_) => unreachable_unchecked(),".to_string()),
+                best_effort: false,
+                caller_name: None,
+                preserve_export: false,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains(
+            "Err(_)=>klee_ext_bind::unreachable_unchecked!(\"src-lib-rs-4-19\")"
+        ));
+        assert!(!compact.starts_with(
+            "unsafefnas_usize(value:Result<usize,()>)->usize{klee_ext_bind::callsite!"
+        ));
+        Ok(())
+    }
+
+    fn unreachable_injection(source: &str, needle: &str, id: &str) -> Injection {
+        let (line, text) = source.lines().enumerate().find(|(_, line)| line.contains(needle)).unwrap();
+        Injection {
+            id: id.to_string(), line: line + 1, col: text.find(needle).unwrap() + 1,
+            callee_name: Some("core::hint::unreachable_unchecked".to_string()),
+            raw_pointer_deref: false, source_line: None, best_effort: false,
+            caller_name: None, preserve_export: false,
+        }
+    }
+
+    #[test]
+    fn unreachable_macro_keeps_cfg_and_assumption_guard() -> Result<()> {
+        let tmp = TempDir::new("unreachable-local-macros")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"macro_rules! debug_unreachable {
+    ($($t:tt)*) => {
+        if cfg!(debug_assertions) { unreachable!($($t)*); }
+        else { unsafe { core::hint::unreachable_unchecked() }; }
+    };
+}
+macro_rules! assume {
+    ($e:expr) => { if !$e { debug_unreachable!(stringify!($e)); } };
+}
+pub fn target(flag: bool) { assume!(flag); }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "assume!(flag)", "macro-target")])?;
+        let injected = fs::read_to_string(&path)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("if!$e{"));
+        assert!(compact.contains("ifcfg!(debug_assertions){unreachable!("));
+        assert!(compact.contains("else{unsafe{klee_ext_bind::unreachable_unchecked!(\"macro-target\")}"));
+        assert!(compact.contains("__klee_unreachable_macro_target_assume!(flag)"));
+        assert!(!compact.contains("klee_ext_bind::callsite!(\"macro-target\")"));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_macro_preserves_matchers_and_stringified_tokens() -> Result<()> {
+        let tmp = TempDir::new("unreachable-macro-token-matchers")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"macro_rules! branch {
+    (unreachable_unchecked()) => { unsafe { core::hint::unreachable_unchecked() } };
+    ($e:expr) => { stringify!(unreachable_unchecked()) };
+}
+pub fn target() { branch!(unreachable_unchecked()); }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "branch!(unreachable_unchecked())", "tokens")])?;
+        let injected = fs::read_to_string(&path)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("(unreachable_unchecked())=>{unsafe{klee_ext_bind::unreachable_unchecked!(\"tokens\")}}"));
+        assert!(compact.contains("stringify!(unreachable_unchecked())"));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_macro_expression_stays_in_match_arm() -> Result<()> {
+        let tmp = TempDir::new("unreachable-expression-macro")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"macro_rules! never { () => { unsafe { core::hint::unreachable_unchecked() } }; }
+pub fn target(flag: bool) -> i32 { match flag { true => 7, false => never!() } }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "never!()", "branch-only")])?;
+        let injected = fs::read_to_string(&path)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("matchflag{true=>7,false=>{macro_rules!"));
+        assert!(compact.contains("klee_ext_bind::unreachable_unchecked!(\"branch-only\")"));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_unknown_or_recursive_macro_is_not_guessed() -> Result<()> {
+        for (name, source, needle) in [
+            ("unknown", "pub fn target() { external_macro!(); }\n", "external_macro!()"),
+            ("recursive", "macro_rules! recursive { (0) => { unsafe { core::hint::unreachable_unchecked() } }; ($n:tt) => { recursive!(0) }; }\npub fn target() { recursive!(1); }\n", "recursive!(1)"),
+        ] {
+            let tmp = TempDir::new(name)?;
+            let path = tmp.path().join("lib.rs");
+            write(&path, source)?;
+            inject_file(&path, &[unreachable_injection(source, needle, name)])?;
+            assert!(!fs::read_to_string(&path)?.contains("klee_ext_bind::unreachable_unchecked!"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_macro_definitions_can_come_from_another_file() -> Result<()> {
+        let tmp = TempDir::new("unreachable-cross-file-macro")?;
+        let path = tmp.path().join("lib.rs");
+        let definition = "macro_rules! never { () => { unsafe { core::hint::unreachable_unchecked() } }; }";
+        let source = "pub fn target(flag: bool) { if !flag { never!(); } }\n";
+        write(&path, source)?;
+        let mut macros = LocalMacroDefinitions::default();
+        macros.visit_file(&syn::parse_file(definition)?);
+        inject_file_with_macros(&path, &[unreachable_injection(source, "never!()", "cross-file")], &macros)?;
+        let injected = fs::read_to_string(&path)?;
+        assert!(injected.contains("__klee_unreachable_cross_file_never"));
+        assert!(injected.contains("\"cross-file\""));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_macro_does_not_replace_qualified_external_macros() -> Result<()> {
+        let tmp = TempDir::new("unreachable-external-macro-path")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"macro_rules! never { () => { unsafe { core::hint::unreachable_unchecked() } }; }
+macro_rules! outer { () => { if false { external::never!(); } else { unsafe { core::hint::unreachable_unchecked() } } }; }
+pub fn target() { outer!(); }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "outer!()", "qualified")])?;
+        let injected = fs::read_to_string(&path)?.replace(char::is_whitespace, "");
+        assert!(injected.contains("external::never!()"));
+        assert!(!injected.contains("__klee_unreachable_qualified_never"));
+        assert!(injected.contains("klee_ext_bind::unreachable_unchecked!(\"qualified\")"));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_ambiguous_macro_definitions_are_not_guessed() -> Result<()> {
+        let tmp = TempDir::new("unreachable-ambiguous-macro")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"mod a {
+    macro_rules! never { () => { unsafe { core::hint::unreachable_unchecked() } }; }
+    pub fn target() { never!(); }
+}
+mod b { macro_rules! never { () => { panic!() }; } }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "never!()", "ambiguous")])?;
+        assert!(!fs::read_to_string(&path)?.contains("klee_ext_bind::unreachable_unchecked!"));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_macro_preserves_same_named_nonstandard_calls() -> Result<()> {
+        let tmp = TempDir::new("unreachable-nonstandard-function")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"macro_rules! outer { () => { if false { other::unreachable_unchecked(); } else { unsafe { core::hint::unreachable_unchecked() } } }; }
+pub fn target() { outer!(); }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "outer!()", "nonstandard")])?;
+        let injected = fs::read_to_string(&path)?.replace(char::is_whitespace, "");
+        // Retained in both the original definition and the specialized copy.
+        assert_eq!(injected.matches("other::unreachable_unchecked()").count(), 2);
+        assert_eq!(injected.matches("klee_ext_bind::unreachable_unchecked!(\"nonstandard\")").count(), 1);
         Ok(())
     }
 

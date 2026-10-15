@@ -38,6 +38,12 @@ pub unsafe extern "C" fn klee_make_symbolic(
 #[no_mangle]
 pub unsafe extern "C" fn klee_assume(_condition: usize) {}
 
+/// A non-returning fallback for instrumented unchecked paths in native builds.
+#[no_mangle]
+pub unsafe extern "C" fn klee_silent_exit(_status: i32) -> ! {
+    panic!("reached a KLEE-instrumented unreachable_unchecked path")
+}
+
 /// No-op Miri runtime shims used only to let `--cfg=miri` test binaries link
 /// while emitting LLVM IR for KLEE. KLEE handles these as externals/no-ops when
 /// interpreting the linked IR.

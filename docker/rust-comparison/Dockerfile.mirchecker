@@ -1,0 +1,10 @@
+FROM uspec-rust-comparison-base:bookworm
+ARG REVISION=2a8c4632902497fc92b9b61f7fa5c4d4f52f578e
+RUN git clone https://github.com/lizhuohua/rust-mir-checker.git /opt/mirchecker && cd /opt/mirchecker && git checkout "$REVISION" && git submodule update --init --recursive
+RUN rustup toolchain install nightly-2020-12-29 --profile minimal --component rustc-dev --component rust-src --component llvm-tools-preview
+ENV RUSTUP_TOOLCHAIN=nightly-2020-12-29
+ENV LD_LIBRARY_PATH=/usr/local/rustup/toolchains/nightly-2020-12-29-x86_64-unknown-linux-gnu/lib
+WORKDIR /opt/mirchecker
+RUN mkdir -p .cargo && cargo +1.83.0 vendor --locked /opt/vendor > .cargo/config.toml
+RUN cargo install --offline --locked --path .
+WORKDIR /work

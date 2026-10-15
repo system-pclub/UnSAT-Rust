@@ -1,0 +1,9 @@
+FROM uspec-rust-comparison-base:bookworm
+ARG REVISION=aae0a56f91d9a0a62073bb86e7b2c9793cefc24b
+RUN git clone https://github.com/endorlabs/MIRAI.git /opt/mirai && cd /opt/mirai && git checkout "$REVISION"
+RUN rustup toolchain install nightly-2025-01-10 --profile minimal --component rustc-dev --component rust-src --component llvm-tools-preview
+ENV RUSTUP_TOOLCHAIN=nightly-2025-01-10
+ENV LD_LIBRARY_PATH=/usr/local/rustup/toolchains/nightly-2025-01-10-x86_64-unknown-linux-gnu/lib
+WORKDIR /opt/mirai
+RUN cargo install --locked --path checker
+WORKDIR /work

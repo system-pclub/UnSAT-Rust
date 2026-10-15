@@ -9,11 +9,18 @@ from cli.cmd.llvmir import (
     _collect_test_link_llvm_irs,
     _dedupe_latest_llvm_irs,
     _find_library_test_harness_llvm_ir,
+    _emit_llvm_rustflags,
     compile_test_with_emit_llvm,
 )
 
 
 class LlvmIrSelectionTests(unittest.TestCase):
+    def test_explicit_debug_configuration_is_independent_of_overflow_checks(self) -> None:
+        flags = _emit_llvm_rustflags(debug_assertions=False, overflow_checks=True)
+        self.assertIn("-Cdebug-assertions=off", flags)
+        self.assertIn("-Coverflow-checks=on", flags)
+        self.assertNotIn("debug-assertions", _emit_llvm_rustflags())
+
     @staticmethod
     def write_ir(path: Path, *, main: bool = False) -> Path:
         body = "define i32 @main() { ret i32 0 }\n" if main else "; library IR\n"

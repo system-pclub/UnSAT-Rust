@@ -127,6 +127,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="operators.json",
         help="Operator definition path (default: operators.json).",
     )
+    lint_rule_dsl_parser.add_argument(
+        "--rules-csv",
+        default="rules.csv",
+        help="Canonical rule catalog (default: rules.csv).",
+    )
     lint_rule_dsl_parser.set_defaults(func=_run_lint_rule_dsl)
 
     compare_parser = subparsers.add_parser(
@@ -263,6 +268,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable the final rerun-sym fallback after concrete compose-rerun misses.",
     )
     verify_parser.add_argument(
+        "--disable-mut-ref-recovery",
+        action="store_true",
+        help=(
+            "Ablation: forbid safe-context recovery through mutable-reference "
+            "escapes while retaining constructors and direct mutators."
+        ),
+    )
+    verify_parser.add_argument(
         "--stop-callsite-if-violated",
         action="store_true",
         help=(
@@ -332,6 +345,12 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--rustc",
         help="Optional custom rustc for llvmir generation.",
+    )
+    verify_parser.add_argument(
+        "--debug-assertions",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Set Rust debug assertions consistently for init and replay; use --no-debug-assertions for release-only unchecked branches.",
     )
     verify_parser.add_argument(
         "--features",

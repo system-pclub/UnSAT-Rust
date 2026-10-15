@@ -6,6 +6,7 @@ from dsl.lint import lint_dsl_ast, lint_rule_semantics
 
 OPERATORS = [
     {"name": "get_arg", "input": [{"name": "index"}]},
+    {"name": "get_type_at_func", "input": [{"name": "index"}]},
     {"name": "get_field", "input": [{"name": "base"}, {"name": "field"}]},
     {"name": "memory_range", "input": [{"name": "ptr"}, {"name": "size"}]},
     {"name": "is_valid_for", "input": [{"name": "range"}, {"name": "access"}]},
@@ -30,9 +31,29 @@ def test_rejects_placeholder_access_kind() -> None:
     )
 
 
-def test_warns_for_untranslated_access_kind() -> None:
+def test_accepts_every_klee_access_kind() -> None:
+    access_kinds = {
+        "read",
+        "write",
+        "read_write",
+        "volatile_read_no_race",
+        "volatile_write_no_race",
+        "shared_borrow",
+        "unique_borrow",
+        "read_no_mutation",
+        "no_use_after_drop",
+        "drop",
+        "exclusive_during_drop",
+    }
+    for access_kind in access_kinds:
+        assert "unsupported-access-kind" not in _codes(
+            f'is_valid_for(memory_range(get_arg(0), 1), "{access_kind}")'
+        )
+
+
+def test_warns_for_unknown_access_kind() -> None:
     assert "unsupported-access-kind" in _codes(
-        'is_valid_for(memory_range(get_arg(0), 1), "unique_borrow")'
+        'is_valid_for(memory_range(get_arg(0), 1), "future_access")'
     )
 
 
@@ -47,6 +68,13 @@ def test_get_field_requires_a_literal_field_name() -> None:
 
 def test_allows_rust_typed_fields_on_get_arg() -> None:
     assert not _codes('get_field(get_arg(1), "start")')
+
+
+def test_rejects_type_fields_that_klee_does_not_expose() -> None:
+    assert "unsupported-type-field" in _codes(
+        'get_field(get_type_at_func(0), "trait_contract_holds")'
+    )
+    assert not _codes('get_field(get_type_at_func(0), "size")')
 
 
 def test_rule_semantics_rejects_extra_overflow_condition() -> None:
