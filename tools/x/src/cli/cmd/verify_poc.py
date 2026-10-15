@@ -3732,6 +3732,29 @@ def generate_safe_testcase(
         reproduction_plans=reproduction_plans,
         target_context=target_context,
     )
+    # Rust source is token-dense, so a full-crate retry can exceed the model
+    # limit even when a character/4 estimate appears to fit. Preserve full
+    # context for small crates and fall back to the witness-guided slice when
+    # the complete prompt leaves insufficient room for compiler feedback.
+    if context_mode == "full" and len(prompt) > 500_000:
+        rust_context = build_witness_guided_rust_context(
+            crate_dir,
+            target=target,
+            control_chains=testcase_chains,
+            mode="slice",
+        )
+        prompt = build_testcase_prompt(
+            rust_context=rust_context.text,
+            call_chain=json.dumps(testcase_chains, indent=2),
+            callsite=json.dumps(target, indent=2),
+            safety_requirement=str(rule.get("rule", "")),
+            function_name=injection.function,
+            feature_name=injection.feature,
+            klee_witness=klee_witness,
+            retry_feedback=retry_feedback,
+            reproduction_plans=reproduction_plans,
+            target_context=target_context,
+        )
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     (artifacts_dir / f"testcase-context-attempt-{attempt}.txt").write_text(
         rust_context.text + "\n", encoding="utf-8"

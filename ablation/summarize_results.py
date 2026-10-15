@@ -27,9 +27,15 @@ CRATE_DIRS = {
     "meshopt": "meshopt-0.3.0",
 }
 DIR_TO_CRATE = {value: key for key, value in CRATE_DIRS.items()}
+PREDICTION_PATH_PREFIX = {
+    # blade is evaluated through its nested library package, while the
+    # workbook stores paths relative to the downloaded top-level crate.
+    "blade": "blade-graphics",
+}
 DEFAULT_VARIANTS = (
     "full",
     "without-rule-extraction",
+    "without-rule-translation",
     "without-mut-ref-recovery",
     "without-symbolic-execution",
     "without-validation",
@@ -121,10 +127,16 @@ def _load_json(path: Path) -> dict[str, Any]:
 def _is_positive(variant: str, row: dict[str, Any]) -> bool:
     status = row.get("status")
     if variant == "without-validation":
-        return status in {"violation", "violation-timeout"}
+        return status in {
+            "violation",
+            "violation-timeout",
+            "low-confidence-sat",
+        }
     if variant == "without-symbolic-execution":
         return row.get("prediction") == "violation" or status == "violation"
-    return status == "violation" and bool(row.get("full_rerun_passed"))
+    return status in {"violation", "violation-timeout", "low-confidence-sat"} and bool(
+        row.get("full_rerun_passed")
+    )
 
 
 def _crate_from_result(path: Path, document: dict[str, Any]) -> str | None:
@@ -138,13 +150,28 @@ def _crate_from_result(path: Path, document: dict[str, Any]) -> str | None:
     return None
 
 
-def predicted_callsites(variant: str, result_root: Path) -> tuple[set[tuple[str, str, int]], int]:
+def result_crates(result_root: Path) -> set[str]:
+    crates: set[str] = set()
+    for path in sorted(result_root.rglob("full-matrix-results.json")):
+        crate = _crate_from_result(path, _load_json(path))
+        if crate is not None:
+            crates.add(crate)
+    return crates
+
+
+def predicted_callsites(
+    variant: str,
+    result_root: Path,
+    include_crates: set[str] | None = None,
+) -> tuple[set[tuple[str, str, int]], int]:
     predictions: set[tuple[str, str, int]] = set()
     errors = 0
     for path in sorted(result_root.rglob("full-matrix-results.json")):
         document = _load_json(path)
         crate = _crate_from_result(path, document)
         if crate is None:
+            continue
+        if include_crates is not None and crate not in include_crates:
             continue
         for row in document.get("results", []):
             if not isinstance(row, dict):
@@ -155,12 +182,21 @@ def predicted_callsites(variant: str, result_root: Path) -> tuple[set[tuple[str,
                 continue
             source_path, line = row.get("path"), row.get("line")
             if isinstance(source_path, str) and isinstance(line, int):
-                predictions.add((crate, source_path.replace("\\", "/"), line))
+                source_path = source_path.replace("\\", "/")
+                prefix = PREDICTION_PATH_PREFIX.get(crate)
+                if prefix and not source_path.startswith(prefix + "/"):
+                    source_path = f"{prefix}/{source_path}"
+                predictions.add((crate, source_path, line))
     return predictions, errors
 
 
-def score(variant: str, result_root: Path, truth: list[dict[str, Any]]) -> dict[str, Any]:
-    predictions, errors = predicted_callsites(variant, result_root)
+def score(
+    variant: str,
+    result_root: Path,
+    truth: list[dict[str, Any]],
+    include_crates: set[str] | None = None,
+) -> dict[str, Any]:
+    predictions, errors = predicted_callsites(variant, result_root, include_crates)
     matched_rows: set[int] = set()
     false_positives: list[dict[str, Any]] = []
     for crate, path, line in sorted(predictions):
@@ -202,6 +238,14 @@ def main() -> int:
         help="Override/add a result directory; repeatable.",
     )
     parser.add_argument("--output", type=Path, default=ROOT / "ablation" / "results" / "summary.json")
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help=(
+            "Score only crates shared by every available variant. Intended for "
+            "smoke tests; final top-10 results require complete coverage."
+        ),
+    )
     args = parser.parse_args()
     variants = {name: args.results_root / name for name in DEFAULT_VARIANTS}
     for value in args.variant or []:
@@ -210,17 +254,59 @@ def main() -> int:
             parser.error("--variant must use NAME=PATH")
         variants[name] = Path(path)
     truth = load_ground_truth(args.workbook)
-    results = []
-    for name, path in variants.items():
-        if path.is_dir() and any(path.rglob("full-matrix-results.json")):
-            results.append(score(name, path, truth))
-    if not results:
+    available = {
+        name: path
+        for name, path in variants.items()
+        if path.is_dir() and any(path.rglob("full-matrix-results.json"))
+    }
+    if not available:
         raise RuntimeError("no ablation result matrices found")
+    coverage = {name: result_crates(path) for name, path in available.items()}
+    expected_crates = set(CRATE_DIRS)
+    missing_variants = sorted(set(DEFAULT_VARIANTS) - set(available))
+    missing_by_variant = {
+        name: sorted(expected_crates - coverage.get(name, set()))
+        for name in DEFAULT_VARIANTS
+        if expected_crates - coverage.get(name, set())
+    }
+    complete = not missing_variants and not missing_by_variant
+    if not complete and not args.allow_partial:
+        details = []
+        if missing_variants:
+            details.append("missing variants: " + ", ".join(missing_variants))
+        details.extend(
+            f"{name} missing crates: {', '.join(crates)}"
+            for name, crates in missing_by_variant.items()
+        )
+        raise RuntimeError(
+            "top-10 ablation results are incomplete ("
+            + "; ".join(details)
+            + "). Finish the runs or pass --allow-partial for a smoke-test summary."
+        )
+    included_crates = (
+        expected_crates
+        if complete
+        else set.intersection(*(coverage[name] for name in available))
+    )
+    if not included_crates:
+        raise RuntimeError("available variants have no commonly covered crates")
+    scoped_truth = [item for item in truth if item["crate"] in included_crates]
+    results = [
+        score(name, path, scoped_truth, included_crates)
+        for name, path in available.items()
+    ]
     payload = {
         "workbook": str(args.workbook),
         "sheet": "top10 github bugs",
         "top10_crates": list(CRATE_DIRS),
-        "ground_truth_total": len(truth),
+        "ground_truth_total": len(scoped_truth),
+        "top10_ground_truth_total": len(truth),
+        "coverage": {
+            "status": "complete" if complete else "partial-smoke",
+            "included_crates": sorted(included_crates),
+            "missing_variants": missing_variants,
+            "missing_by_variant": missing_by_variant,
+        },
         "matching": {
             "mode": "crate_path_line",
             "status": "preliminary",
@@ -235,6 +321,11 @@ def main() -> int:
     args.output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     for item in results:
         print(f"{item['label']}: TP={item['TP']} FP={item['FP']} FN={item['FN']} errors={item['error_rows']}")
+    if not complete:
+        print(
+            "warning: partial smoke-test summary; common crates: "
+            + ", ".join(sorted(included_crates))
+        )
     print("warning: location-level scores are preliminary; adjudicate same-callsite obligations manually")
     print(f"wrote {args.output}")
     return 0
