@@ -1,0 +1,77 @@
+MirChecker
+entry: set
+There are four FP reports.
+warning: [MirChecker] Possible error: index out of bound
+   --> src/quest_bindings.rs:267:37
+    |
+267 |             let real_row_pointer = *real_pointer.add(row);
+    |                                     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: [MirChecker] Possible error: index out of bound
+   --> src/quest_bindings.rs:268:14
+    |
+268 |             *real_row_pointer.add(column) = real;
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: [MirChecker] Possible error: index out of bound
+   --> src/quest_bindings.rs:270:37
+    |
+270 |             let imag_row_pointer = *imag_pointer.add(row);
+    |                                     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: [MirChecker] Possible error: index out of bound
+   --> src/quest_bindings.rs:271:14
+    |
+271 |             *imag_row_pointer.add(column) = imag;
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ #[derive(Debug, Clone)]
+pub struct ComplexMatrixN {
+    /// Internally stored C ComplexMatrix.
+    pub complex_matrix: quest_sys::ComplexMatrixN,
+    /// The dimension of the complex matrix
+    pub dimension: usize,
+}
+
+impl ComplexMatrixN {
+    /// Creates a new ComplexMatrix for N qubits.
+    ///
+    /// QuEST internally uses ComplexMatrices of
+    ///
+    /// # Arguments
+    ///
+    /// * `number_qubits` - The number of qubits that determine the dimension of the matrix (2**number_qubits).
+    pub fn new(number_qubits: u32) -> Self {
+        unsafe {
+            let complex_matrix = quest_sys::createComplexMatrixN(number_qubits as i32);
+            let dimension = 2_usize.pow(number_qubits);
+            ComplexMatrixN {
+                complex_matrix,
+                dimension,
+            }
+        }
+    }   
+    /// Sets the value of a ComplexMatrixN at a position defined by row and column.
+    ///
+    /// # Arguments
+    ///
+    /// * `row` - The row value of the position in the matrix.
+    /// * `column` - The column value of the position in the matrix.
+    /// * `value` - The value that is set.
+    pub fn set(&mut self, row: usize, column: usize, value: Complex64) -> Result<(), &'static str> {
+        if row >= self.dimension || column >= self.dimension {
+            return Err("Row or column index out of bounds");
+        }
+        let real = value.re;
+        let imag = value.im;
+        unsafe {
+            let real_pointer = self.complex_matrix.real;
+            let real_row_pointer = *real_pointer.add(row);
+            *real_row_pointer.add(column) = real;
+            let imag_pointer = self.complex_matrix.imag;
+            let imag_row_pointer = *imag_pointer.add(row);
+            *imag_row_pointer.add(column) = imag;
+        }
+        Ok(())
+    }
+}
+I think the four are FPs. row and column have been checked against dimension. By design invariant of ComplexMatrixN, out-of-bounds access is impossible.

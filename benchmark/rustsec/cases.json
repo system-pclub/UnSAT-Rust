@@ -1,0 +1,160 @@
+{
+  "scope": "Exactly the advertised defect; unrelated diagnostics and compiler deprecation warnings do not count as a hit.",
+  "cases": [
+    {
+      "advisory": "RUSTSEC-2025-0109",
+      "crate": "binary_vec_io",
+      "version": "0.1.12",
+      "unsafe_api": "from_raw_parts / from_raw_parts_mut",
+      "defect": "单个引用配合任意 n 构造越界 slice",
+      "source_locations": [
+        "src/lib.rs:31",
+        "src/lib.rs:52"
+      ],
+      "witness_reasoning": "T=u8, p 指向独立的一个字节，n=2；slice 覆盖两字节而对象只有一字节。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2025-0109.html"
+    },
+    {
+      "advisory": "RUSTSEC-2025-0107",
+      "crate": "borrowck_sacrifices",
+      "version": "0.1.0",
+      "unsafe_api": "slice::from_raw_parts",
+      "defect": "泛型对象的 padding 被作为已初始化 u8 暴露",
+      "source_locations": [
+        "src/unsafe_casts.rs:27"
+      ],
+      "witness_reasoning": "#[repr(C)] struct P { a:u8, b:u32 }；字段已初始化仍不保证 padding 字节初始化。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2025-0107.html"
+    },
+    {
+      "advisory": "RUSTSEC-2025-0105",
+      "crate": "direct_ring_buffer",
+      "version": "0.2.1",
+      "unsafe_api": "Vec::set_len",
+      "defect": "未初始化元素被纳入 Vec/Box，随后形成有类型的 slice",
+      "source_locations": [
+        "src/lib.rs:459"
+      ],
+      "witness_reasoning": "create_ring_buffer::<bool>(1)，随后 write_slices 提供 &mut [bool]；初始化契约没有保证。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2025-0105.html"
+    },
+    {
+      "advisory": "RUSTSEC-2023-0017",
+      "crate": "maligned",
+      "version": "0.2.1",
+      "unsafe_api": "Vec::from_raw_parts",
+      "defect": "分配和释放的 alignment/layout 不一致",
+      "source_locations": [
+        "src/heap.rs:23",
+        "src/heap.rs:24"
+      ],
+      "witness_reasoning": "align_first::<u8,A16>(8) 以 alignment=16 分配，Vec<u8> 按 alignment=1 释放。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2023-0017.html"
+    },
+    {
+      "advisory": "RUSTSEC-2018-0013",
+      "crate": "safe-transmute",
+      "version": "0.10.0",
+      "unsafe_api": "Vec::from_raw_parts",
+      "defect": "length 与 capacity 参数颠倒",
+      "source_locations": [
+        "src/lib.rs:317",
+        "src/to_bytes.rs:234"
+      ],
+      "witness_reasoning": "输入 Vec<u8> length=1, capacity=4，bool 包装返回 length=4, capacity=1 的 Vec；违反 length<=capacity。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2018-0013.html"
+    },
+    {
+      "advisory": "RUSTSEC-2021-0032",
+      "crate": "byte_struct",
+      "version": "0.6.0",
+      "unsafe_api": "mem::uninitialized / ptr::write",
+      "defect": "数组反序列化在用户实现 panic 时 drop 未初始化元素",
+      "source_locations": [
+        "src/lib.rs:415",
+        "src/lib.rs:417"
+      ],
+      "witness_reasoning": "自定义带 Drop 的 T 实现 ByteStructUnspecifiedByteOrder，read_bytes_default_le panic；未初始化 [T;N] 被清理。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2021-0032.html"
+    },
+    {
+      "advisory": "RUSTSEC-2022-0079",
+      "crate": "elf_rs",
+      "version": "0.2.0",
+      "unsafe_api": "ptr::add / slice::from_raw_parts",
+      "defect": "不校验 ELF section offset/count",
+      "source_locations": [
+        "src/elf/elf.rs:88",
+        "src/elf/elf.rs:89"
+      ],
+      "witness_reasoning": "合法大小的 ELF header 把 section_header_offset 设置为超出输入 allocation 的值，section_header_nth 形成越界 slice。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2022-0079.html"
+    },
+    {
+      "advisory": "RUSTSEC-2018-0018",
+      "crate": "smallvec",
+      "version": "0.6.12",
+      "unsafe_api": "mem::uninitialized",
+      "defect": "为任意 Array 类型构造未初始化值",
+      "source_locations": [
+        "lib.rs:409"
+      ],
+      "witness_reasoning": "SmallVec::<[&u8;1]>::new() 构造含无效引用的未初始化数组，即使长度为零。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2018-0018.html"
+    },
+    {
+      "advisory": "RUSTSEC-2020-0026",
+      "crate": "linked-hash-map",
+      "version": "0.5.2",
+      "unsafe_api": "mem::uninitialized",
+      "defect": "into_iter 构造内部含 NonNull 的未初始化 HashMap",
+      "source_locations": [
+        "src/lib.rs:1137"
+      ],
+      "witness_reasoning": "LinkedHashMap::<u8,u8>::new().into_iter()；self.map 被赋予未初始化 HashMap，内部 NonNull 不允许此值。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2020-0026.html"
+    },
+    {
+      "advisory": "RUSTSEC-2022-0067",
+      "crate": "lzf",
+      "version": "0.3.1",
+      "unsafe_api": "mem::uninitialized",
+      "defect": "压缩表为未初始化 usize 数组",
+      "source_locations": [
+        "src/compress.rs:58"
+      ],
+      "witness_reasoning": "compress 输入至少两字节可到达 htab:[usize;65536] = mem::uninitialized()；整数数组不允许未初始化值。",
+      "witness_executed": false,
+      "scoring_unit": "one advisory / pinned crate defect",
+      "positive_means": "violation",
+      "advisory_url": "https://rustsec.org/advisories/RUSTSEC-2022-0067.html"
+    }
+  ]
+}

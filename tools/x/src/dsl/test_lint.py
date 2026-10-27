@@ -115,3 +115,23 @@ def test_rule_semantics_rejects_null_exemption_on_alignment_rule() -> None:
     )
     issues = lint_rule_semantics("The pointer must be aligned", ast)
     assert "extraneous-null-exemption" in {issue.code for issue in issues}
+
+
+def test_optional_operator_input_may_be_omitted() -> None:
+    operators = [
+        *OPERATORS[:4],
+        {
+            "name": "is_valid_for",
+            "input": [
+                {"name": "range"},
+                {"name": "access"},
+                {"name": "type_info", "optional": True},
+            ],
+        },
+    ]
+    source = 'is_valid_for(memory_range(get_arg(0), 1), "read")'
+    issues = lint_dsl_ast(parse_dsl(source, operators), operators)
+    assert "operator-arity" not in {issue.code for issue in issues}
+    source = 'is_valid_for(memory_range(get_arg(0), 1))'
+    issues = lint_dsl_ast(parse_dsl(source, operators), operators)
+    assert "operator-arity" in {issue.code for issue in issues}

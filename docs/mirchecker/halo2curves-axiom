@@ -1,0 +1,20 @@
+MirChecker
+entry: prefetch
+There is one TP report.
+warning: [MirChecker] Provably error: index out of bound
+  --> src/lib.rs:37:13
+   |
+37 |             data.as_ptr().add(offset) as *const i8,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+//src/lib.rs:37
+#[inline(always)]
+pub fn prefetch<T>(data: &[T], offset: usize) {
+    use core::arch::x86_64::_mm_prefetch;
+    unsafe {
+        _mm_prefetch(
+            data.as_ptr().add(offset) as *const i8,
+            core::arch::x86_64::_MM_HINT_T0,
+        );
+    }
+}
+Public safe function performs unchecked pointer addition that may lead to out-of-bounds access.

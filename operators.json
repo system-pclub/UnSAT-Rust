@@ -1,6 +1,6 @@
 {
   "grammar_features": {
-    "description": "Grammar-level constructs are not operators and therefore do not consume the operator budget. Quantified and temporal nodes describe documentation contracts; the KLEE evaluator may reject them until a lowering is provided.",
+    "description": "15 reusable call operators. Quantifiers range over the specified finite observation collections. Temporal operators use the current invocation trace: always means every state from the current state onward; previously means some earlier state; eventually means some current or future state; next_state means the next state. Explicit event interval comparisons must restrict lifetime-specific obligations. Mathematical integers are used for arithmetic, including pointer offsets, without implicit machine wrapping.",
     "quantifiers": [
       "forall",
       "exists"
@@ -49,6 +49,121 @@
           "name": "value",
           "type": "any",
           "description": "The actual value, which may be a primitive or a structured object."
+        },
+        {
+          "name": "type",
+          "type": "TypeInfo",
+          "description": "The actual source type of this value."
+        },
+        {
+          "name": "call",
+          "type": "CallContext",
+          "description": "Invocation in which this value is bound, available also on pointers and unit results."
+        },
+        {
+          "name": "length",
+          "type": "uint",
+          "description": "Array/slice/string length; elements for arrays/slices, bytes for strings."
+        },
+        {
+          "name": "element_type",
+          "type": "TypeInfo",
+          "description": "Array/slice/pointer pointee element type."
+        },
+        {
+          "name": "elements",
+          "type": "sequence<Value>",
+          "description": "The source elements, in index order, each carrying source index and type."
+        },
+        {
+          "name": "bytes",
+          "type": "sequence<Value>",
+          "description": "Object-representation bytes, each with numeric value and initialization state; padding may be uninitialized."
+        },
+        {
+          "name": "variant",
+          "type": "string",
+          "description": "Active enum variant, e.g. Some, None, Ok or Err."
+        },
+        {
+          "name": "index",
+          "type": "uint",
+          "description": "Index of an element within its parent sequence."
+        },
+        {
+          "name": "initialized",
+          "type": "bool",
+          "description": "The source value has been initialized according to Rust value initialization, not all padding bytes."
+        },
+        {
+          "name": "discriminant",
+          "type": "int",
+          "description": "Numeric enum discriminant."
+        },
+        {
+          "name": "is_nan",
+          "type": "bool",
+          "description": "IEEE floating-point NaN classification."
+        },
+        {
+          "name": "is_infinite",
+          "type": "bool",
+          "description": "IEEE floating-point infinity classification."
+        },
+        {
+          "name": "truncated",
+          "type": "int",
+          "description": "The mathematical integer obtained by truncation toward zero, for finite floating-point values."
+        },
+        {
+          "name": "observations",
+          "type": "sequence<Invocation>",
+          "description": "All source invocations on this object, including arguments, results, pre/post-state and event interval."
+        },
+        {
+          "name": "identity",
+          "type": "ObjectId",
+          "description": "Stable source object identity, preserved through references."
+        },
+        {
+          "name": "created_at",
+          "type": "int",
+          "description": "Creation event position in the program trace."
+        },
+        {
+          "name": "dropped_at",
+          "type": "int|None",
+          "description": "Drop completion event position, or None if not dropped."
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "description": "Address-space region such as user or enclave, derived from the platform memory map."
+        },
+        {
+          "name": "lifetime",
+          "type": "Interval",
+          "description": "Source borrow or future lifetime interval, with start/end trace positions."
+        },
+        {
+          "name": "descendants",
+          "type": "sequence<Value>",
+          "description": "The transitive reflexive closure of real source fields/elements of this value; pointer pointees are not followed unless the source owns that pointee."
+        },
+        {
+          "name": "reachable",
+          "type": "set<Value>",
+          "description": "Transitive reflexive closure of the actual source pointer/reference/field graph, with cycle deduplication; this is graph reachability, not a validity flag."
+        },
+        {
+          "name": "states",
+          "type": "map<uint,Value>",
+          "description": "The same source value/object viewed at each trace position. Pointer identity/address are retained; pointee, allocation, permissions and resource state reflect the selected position, including after deallocation."
+        },
+        {
+          "name": "resource",
+          "type": "Resource|None",
+          "description": "The modeled OS/platform resource denoted by a descriptor, handle, socket, task identifier or user allocation; None for invalid/non-resource values."
         }
       ]
     },
@@ -75,6 +190,51 @@
           "name": "is_null",
           "type": "bool",
           "description": "Whether the pointer address is zero."
+        },
+        {
+          "name": "length",
+          "type": "uint",
+          "description": "Slice fat-pointer metadata length in elements."
+        },
+        {
+          "name": "element_type",
+          "type": "TypeInfo",
+          "description": "Actual source pointee/element type."
+        },
+        {
+          "name": "pointee",
+          "type": "Value",
+          "description": "The pointed-to source value, with its source fields; meaningful when dereferenceable."
+        },
+        {
+          "name": "metadata",
+          "type": "Value",
+          "description": "DST pointer metadata: length scalar for slices or vtable pointer for trait objects."
+        },
+        {
+          "name": "nul_offset",
+          "type": "uint|None",
+          "description": "Distance in bytes to first initialized NUL, or None if no reachable initialized NUL exists."
+        },
+        {
+          "name": "wide_nul_offset",
+          "type": "uint|None",
+          "description": "Distance in 16-bit units to first initialized zero unit, or None."
+        },
+        {
+          "name": "dynamic_size",
+          "type": "uint",
+          "description": "Entire source pointee size including static prefix and dynamic tail."
+        },
+        {
+          "name": "dynamic_align",
+          "type": "uint",
+          "description": "Alignment of the actual dynamic pointee type."
+        },
+        {
+          "name": "derived_from",
+          "type": "set<ObjectId>",
+          "description": "Transitive provenance/borrow ancestors, not address coincidence."
         }
       ]
     },
@@ -111,6 +271,21 @@
           "name": "allocator",
           "type": "Allocator",
           "description": "The allocator identity that created this allocation."
+        },
+        {
+          "name": "live",
+          "type": "bool",
+          "description": "Allocation exists and has not yet been deallocated at the evaluated state."
+        },
+        {
+          "name": "minimum_size",
+          "type": "uint",
+          "description": "Minimum allocated size accepted by the allocator fitting-layout contract."
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "description": "Platform address-space region, e.g. user or enclave."
         }
       ]
     },
@@ -137,6 +312,11 @@
           "name": "allocation",
           "type": "Allocation",
           "description": "The allocation containing the range start."
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "description": "user or enclave iff the entire numerical address interval lies in that platform address-space region; mixed otherwise. Region membership does not imply allocation containment, initialization or access permission."
         }
       ]
     },
@@ -189,9 +369,171 @@
         {
           "name": "allows_uninitialized",
           "type": "bool",
-          "description": "Whether a value of this Rust type may legally be wholly uninitialized."
+          "description": "Whether a value of this Rust type may legally be wholly uninitialized. KLEE derives this from concrete callsite type metadata (including MaybeUninit); unresolved external types remain explicit symbolic type inputs and inherit the callsite's certainty classification."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "Canonical Rust source type name."
+        },
+        {
+          "name": "id",
+          "type": "TypeId",
+          "description": "Rust nominal type identity, used for Any downcasts."
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "description": "Type category: primitive, struct, enum, array, slice, trait_object, extern, reference, raw_pointer, etc."
+        },
+        {
+          "name": "sized",
+          "type": "bool",
+          "description": "Whether the source type implements Sized."
+        },
+        {
+          "name": "tail_kind",
+          "type": "string",
+          "description": "DST tail category: sized, slice, trait_object, extern or other."
+        },
+        {
+          "name": "min",
+          "type": "int",
+          "description": "Minimum representable integer value, for an integer type."
+        },
+        {
+          "name": "max",
+          "type": "int",
+          "description": "Maximum representable integer value, for an integer type."
+        },
+        {
+          "name": "traits",
+          "type": "set<string>",
+          "description": "Implemented Rust traits, including marker/auto traits, from source type checking."
+        },
+        {
+          "name": "fields",
+          "type": "sequence<TypeInfo>",
+          "description": "Actual source field types, including nested source structure via recursive projections."
+        },
+        {
+          "name": "components",
+          "type": "set<TypeInfo>",
+          "description": "The transitive reflexive closure of source field/element types, with cycle deduplication; reference/raw-pointer targets are not ownership components."
+        },
+        {
+          "name": "item_name",
+          "type": "string",
+          "description": "Unqualified source type-item identifier, without module path or generic arguments."
+        },
+        {
+          "name": "item_path",
+          "type": "string",
+          "description": "Fully qualified defining Rust item path without generic arguments, e.g. std::os::fortanix_sgx::usercalls::alloc::User; distinct from an unrelated type with the same item_name."
+        },
+        {
+          "name": "pointee_type",
+          "type": "TypeInfo",
+          "description": "Source pointee type of a raw pointer/reference or transparent pointer wrapper."
+        },
+        {
+          "name": "tail_type",
+          "type": "TypeInfo",
+          "description": "Actual unsized tail type, or this type if the entire type is the tail."
+        },
+        {
+          "name": "lang_item",
+          "type": "string|None",
+          "description": "The actual Rust compiler lang-item identity, such as owned_box for Box; None for ordinary types."
+        },
+        {
+          "name": "ownership",
+          "type": "string",
+          "description": "owning for a source type whose contract owns pointee resources (Box, Vec, Rc, Arc and equivalent owner types); borrowed for references; raw for non-owning raw pointers; none otherwise. Ownership is distinct from mere pointer layout or reference access permissions."
+        },
+        {
+          "name": "outlives",
+          "type": "set<string>",
+          "description": "Source lifetime bounds satisfied by this type, including static exactly when the type contains no non-static borrowed data under Rust outlives checking."
+        },
+        {
+          "name": "associated_types",
+          "type": "map<string,TypeInfo>",
+          "description": "Resolved source associated types, keyed by source name."
+        },
+        {
+          "name": "has_padding",
+          "type": "bool",
+          "description": "Whether the Rust layout contains any padding bytes."
+        },
+        {
+          "name": "has_provenance",
+          "type": "bool",
+          "description": "Whether the type can carry pointer provenance."
+        },
+        {
+          "name": "bit_patterns",
+          "type": "set<Value>",
+          "description": "All bit patterns of the type size, interpreted as candidate values."
+        },
+        {
+          "name": "valid_bit_patterns",
+          "type": "set<Value>",
+          "description": "Those patterns satisfying Rust language-level validity, independent of type safety invariants."
+        },
+        {
+          "name": "valid_values",
+          "type": "set<Value>",
+          "description": "All values obeying this source type and its safety invariants; distinct from merely language-bit-valid representations."
+        },
+        {
+          "name": "subtypes",
+          "type": "set<TypeInfo>",
+          "description": "Rust subtypes, as determined by source typing and variance."
+        },
+        {
+          "name": "supertypes",
+          "type": "set<TypeInfo>",
+          "description": "Rust supertypes, as determined by source typing and variance."
+        },
+        {
+          "name": "implementations",
+          "type": "sequence<Implementation>",
+          "description": "Source trait implementations with type, trait, method and associated-constant maps."
         }
       ]
+    },
+    {
+      "name": "CallContext",
+      "description": "Source invocation context. consts maps actual const generic names to values (including structured const parameters); constants maps source in-scope constants by name. args is the ordered source-argument sequence; result is the source result; receiver is arg0 for methods; result_type is TypeInfo; name is the source method name. start/end are trace event positions; thread is caller thread identity. before/after are State snapshots; events is the complete source execution trace (explicit intervals restrict scope). invocations is the collection of source invocations relevant to a trait contract. globals is the actual source global-variable map; platform is the target OS name; threads is the set of program threads. lifetimes maps source lifetime names to intervals with start/end. status is return, panic, unwind or abort; a future result has its lifetime interval via lifetime. source declarations and method names are not treated as precomputed rule-correctness predicates."
+    },
+    {
+      "name": "Invocation",
+      "description": "A call observation with name (unqualified source method), qualified_name, args, receiver, result, result_type, before, after, start, end, thread, status; same meaning as CallContext. Snapshots expose real source fields and global maps. Events/invocations can include hypothetical permitted inputs when universally quantifying a trait implementation contract."
+    },
+    {
+      "name": "Event",
+      "description": "A source execution event. kind is read, write, move, drop, deallocate, clone, borrow_shared, borrow_mut, call, return, panic, unwind, atomic, fence or undefined_behavior; time is its trace position; thread is its thread identity; object is the affected Value/ObjectId; range is the affected MemoryRange; pointer is the access pointer; value is the written or returned value; method is the source callee name for calls; args is source arguments; receiver is the receiver; result is the return value; ordering is the source atomic ordering; happens_before is the set of event identities ordered before this event; identity is the event identity; atomic is whether the access is atomic; unsafe_cell is whether the accessed bytes are inside UnsafeCell; derived_from is the set of source reference/object provenance ancestors of the access; lifetime is a borrow interval (start/end); instruction is the target instruction mnemonic for platform barriers."
+    },
+    {
+      "name": "State",
+      "description": "A trace snapshot. globals is a map of actual source globals; objects is the set of source objects with their real fields and identities; allocations is the allocation set; threads is the thread set. Field access on a recorded receiver denotes its source state at that observation, rather than a fresh independent Boolean variable."
+    },
+    {
+      "name": "VTable",
+      "description": "Compiler trait-object metadata: type is the actual concrete TypeInfo for which the vtable was emitted; target is the coercion target trait-object TypeInfo; trait is the implemented trait identity; origin is unsizing when this metadata was obtained by a Rust unsizing coercion; methods is the actual compiler-emitted method map. An initialized pointer to an unrelated vtable does not establish that it is the required type/trait vtable."
+    },
+    {
+      "name": "Resource",
+      "description": "OS/platform resource state, independent of Rust owner-object existence. identity is its stable resource identity; kind is file_descriptor, socket, handle, task, event, module, process_environment or user_allocation. open is current liveness (includes inherited and foreign-created resources). owners is the set of logical ownership principals/tokens, independent of whether an OwnedFd/OwnedHandle value currently exists. closer is the operation sufficient to release it: close, closesocket, CloseHandle, RegCloseKey, SOLID_NET_Close (Rust source alias close) or the relevant free usercall, as determined by the platform resource class. created_at and closed_at are lifecycle event positions (closed_at None when open); attributes is the actual platform resource attribute map, e.g. file asynchronous-I/O mode. This is modeled resource state, not a requirement-success Boolean or a guessed creator-call list."
+    },
+    {
+      "name": "ThreadInfo",
+      "description": "The actual current OS thread: identity is its abstract thread identity; handle is its platform thread handle; phase is starting, running, exit_destructors or exited; tls is the actual current OS TLS key-to-value map; stack is its source stack range. Running TLS destructors is an exit path even though the thread still exists."
+    },
+    {
+      "name": "Implementation",
+      "description": "A source trait implementation: type is Self TypeInfo; trait is its source trait name; methods maps source names to method records (name, defining_trait, specialized, invocations); constants maps associated constant names to their source values."
     }
   ],
   "operators": [
@@ -206,7 +548,7 @@
       "output": {
         "type": "Value"
       },
-      "description": "Returns the target call argument by index, using the verifier's __klee_argN binding convention."
+      "description": "The indexed source argument, receiver first; structured source values and pointer metadata are preserved."
     },
     {
       "name": "get_result",
@@ -214,7 +556,7 @@
       "output": {
         "type": "Value"
       },
-      "description": "Returns the target call's result. KLEE evaluates this after the callsite's target callee returns."
+      "description": "The source result. All values also carry invocation metadata via field call, even a unit result. A trait-item contract has an abstract call context whose invocations range over all relevant implementations/member calls; it does not invent a result for an unnamed method."
     },
     {
       "name": "get_field",
@@ -225,13 +567,13 @@
         },
         {
           "name": "field",
-          "type": "string"
+          "type": "string|uint"
         }
       ],
       "output": {
         "type": "Value"
       },
-      "description": "Returns a typed field from an object. Valid fields and return types are defined in types."
+      "description": "Project a real Rust source field or explicitly defined modeled metadata field. Integer selectors index sequences; string selectors index source-name maps. Pointer/reference wrappers expose their logical source object fields without an extra ABI indirection. A field must have the definition below or be grounded in the supplied Rust source; a suggestive name alone never defines a new property."
     },
     {
       "name": "get_allocation",
@@ -379,29 +721,36 @@
         {
           "name": "access",
           "type": "string"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Returns whether the range is valid for the requested access. read requires allocation containment/readability, write additionally requires a writable allocation, and read_write is their conjunction. Initialization is a separate is_initialized_for_type rule."
-    },
-    {
-      "name": "is_initialized_for_type",
-      "input": [
-        {
-          "name": "range",
-          "type": "MemoryRange"
         },
         {
           "name": "type_info",
-          "type": "TypeInfo"
+          "type": "TypeInfo",
+          "optional": true
         }
       ],
       "output": {
         "type": "bool"
       },
-      "description": "Requires every byte in range to be written and applies supported Rust type-validity constraints from TypeInfo (currently exact for bool; other types retain byte-initialization semantics)."
+      "description": "Reusable range predicate. The access argument selects precisely one property; it does not imply the other properties. read/write/read_write: the entire half-open range lies in one currently live allocation with that access permission (write requires writable storage); zero-byte ranges are vacuously valid. These modes impose no alignment or initialization. initialized: the range contains initialized Rust values of the optional type_info (otherwise the range element type); each value obeys Rust language validity, including discriminants, references and niches, without requiring padding bytes to be written. bit_valid: the stored bits satisfy only Rust language type validity. invariants: the type-defined safety invariants, beyond language-level bit validity, hold for the values; type_info identifies the type contract. drop/async_drop: precisely the type-defined precondition for the respective destructor, including additional type invariants. utf8/wtf8: the bytes in exactly the range encode that format, without adding allocation/alignment requirements. shared_borrow/read_no_mutation: no conflicting write occurs throughout the returned reference lifetime, except inside UnsafeCell. unique_borrow: accesses during that lifetime must be derived from the returned unique reference. volatile_read_no_race: no unordered overlapping write; volatile_write_no_race: no unordered overlapping other access. exclusive_during_drop: while the destructor runs, all overlapping accesses derive from its supplied self references. no_use_after_drop: no access to the dropped value after destruction. Each temporal mode refers to the current invocation/result lifetime; it is not a call-time capability approximation. Unknown access strings are not defined and must not be invented.",
+      "access_modes": [
+        "read",
+        "write",
+        "read_write",
+        "initialized",
+        "bit_valid",
+        "invariants",
+        "drop",
+        "async_drop",
+        "utf8",
+        "wtf8",
+        "shared_borrow",
+        "read_no_mutation",
+        "unique_borrow",
+        "volatile_read_no_race",
+        "volatile_write_no_race",
+        "exclusive_during_drop",
+        "no_use_after_drop"
+      ]
     },
     {
       "name": "c_str_in_allocation",
@@ -414,7 +763,7 @@
       "output": {
         "type": "bool"
       },
-      "description": "Returns whether the complete CStr byte range through its terminator is contained in one allocation."
+      "description": "Returns whether a non-null pointer has a reachable nul byte before the first uninitialized byte and before the end of the same live KLEE allocation. Symbolic pointers are resolved as a disjunction over live objects."
     },
     {
       "name": "has_nul_terminator",
@@ -427,24 +776,7 @@
       "output": {
         "type": "bool"
       },
-      "description": "Returns whether ptr has a reachable initialized nul terminator."
-    },
-    {
-      "name": "is_valid_for_c_str",
-      "input": [
-        {
-          "name": "ptr",
-          "type": "Pointer"
-        },
-        {
-          "name": "access",
-          "type": "string"
-        }
-      ],
-      "output": {
-        "type": "bool"
-      },
-      "description": "Applies an access/lifetime condition to the complete CStr range rather than a fixed byte prefix."
+      "description": "Returns whether ptr has a reachable initialized nul terminator in a live KLEE allocation, including for symbolic pointer values."
     },
     {
       "name": "is_convertible_to_ref",
@@ -471,5 +803,7 @@
       "type": "uint",
       "description": "Number of bits in Rust usize."
     }
-  ]
+  ],
+  "evaluation_mode": "specification",
+  "source_value_semantics": "Pointer plus/minus a mathematical byte integer produces a logical derived Pointer, preserving provenance and the source snapshot, with the corresponding mathematical address and offset. This does not silently assert in-bounds or address-space fit. Pointer subtraction produces mathematical byte distance. Recorded values preserve their observation state through field projection, pointer arithmetic and memory_range; is_valid_for on such a range evaluates the referenced bytes in that observation state. On ordinary current-call values it uses the current evaluation state. Sequence iteration binds elements; map iteration binds source-name keys, requiring get_field(map,key) to retrieve mapped records. No hypothetical observation may be inferred from an actual history-only collection. Trait CallContext.invocations explicitly includes hypothetical invocations for each permitted implementation/input. Event invocation identifies its causal source invocation; parent_invocation identifies its causal caller. CallContext identity is the current invocation identity; these identities scope call-caused events. Event unsafe_context records the Rust unsafe/safe source-code context, not semantic correctness. TypeInfo valid_values includes safety invariants, while valid_bit_patterns includes only language validity. Returned references/futures expose Value.lifetime. For a trait method, enclosing type parameter indexes precede method parameters; Self is accessed through the logical receiver type rather than inserted into those indexes. CallContext.types maps actual in-scope source type names/aliases to TypeInfo. CallContext.caller is the logical calling ownership principal; thread_info is ThreadInfo; stack is the dynamic enclosing Invocation sequence; phase is runtime_initialization, running, runtime_cleanup or thread_exit, derived from the actual runtime lifecycle. Invocation.leaf_calls is the transitive collection of actual external primitive calls, excluding intermediate pure Rust helpers; their names identify the actual target API rather than an invented function-name allowlist. State.resources is the modeled OS resource set, State.environment is the actual process environment map, and Event.resource is the resource affected by that access (including environment accesses on targets without a global environ). Resource state on recorded values is the state at that observation. Scalar source values transparently denote their scalar contents; ordering comparisons on pointers compare numerical addresses. Object handles/ObjectId compare stable identity; projecting identity on an object handle yields that same stable identity. These views do not assert type validity or any unmentioned safety requirement. Event.causal_ancestors is the transitive set of invocation identities that caused the event, excluding the directly owning Event.invocation. It includes nested helper calls under the outer source call, but excludes unrelated interrupt/signal handlers. Event.state is the source State snapshot at event.time. CallContext.time and state are the currently evaluated trace position and State (they advance inside temporal formulas); State.active_invocations is the set of active invocation identities at that state. Ordinary CallContext.stack remains its enclosing frames, not a guarantee that its own frame is included. ObjectId and InvocationId are typed source handles: get_field resolves the actual object/invocation record by that identity in its observation state, preserving that state through further projections. This permits Event.object.type and Event.invocation.stack when the handle is well formed; it never grants fields on arbitrary integers or establishes safety merely from a name. A reference type may contain other borrowed references in its pointee; traversal of only ownership descendants does not enumerate those nested borrows. Unnamed Rust tuple/enum-payload fields may be selected by their integer position or its decimal source field-name string (0 or \"0\"); collection sequence indexing still uses integer positions. Invocation fields have the same definitions as CallContext fields. Source implementation methods maps contain explicit source impl entries; inherited trait default bodies are not inserted as explicit overrides."
 }

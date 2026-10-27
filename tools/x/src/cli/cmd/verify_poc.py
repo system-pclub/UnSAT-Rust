@@ -3678,6 +3678,17 @@ def _get_arg_expr_name(expr: Any) -> str | None:
     return None
 
 
+def _crate_is_no_std(crate_dir: Path) -> bool:
+    lib = Path("src/lib.rs")
+    try:
+        manifest = tomllib.loads((crate_dir / "Cargo.toml").read_text(encoding="utf-8"))
+        lib = Path(manifest.get("lib", {}).get("path", lib))
+        text = (crate_dir / lib).read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return False
+    return re.search(r"^\s*#!\[no_std\]", text, re.MULTILINE) is not None
+
+
 def generate_safe_testcase(
     *,
     crate_dir: Path,
@@ -3720,6 +3731,7 @@ def generate_safe_testcase(
         control_chains=testcase_chains,
         mode=context_mode,
     )
+    no_std = _crate_is_no_std(crate_dir)
     prompt = build_testcase_prompt(
         rust_context=rust_context.text,
         call_chain=json.dumps(testcase_chains, indent=2),
@@ -3731,7 +3743,32 @@ def generate_safe_testcase(
         retry_feedback=retry_feedback,
         reproduction_plans=reproduction_plans,
         target_context=target_context,
+        no_std=no_std,
     )
+    # Rust source is token-dense, so a full-crate retry can exceed the model
+    # limit even when a character/4 estimate appears to fit. Preserve full
+    # context for small crates and fall back to the witness-guided slice when
+    # the complete prompt leaves insufficient room for compiler feedback.
+    if context_mode == "full" and len(prompt) > 500_000:
+        rust_context = build_witness_guided_rust_context(
+            crate_dir,
+            target=target,
+            control_chains=testcase_chains,
+            mode="slice",
+        )
+        prompt = build_testcase_prompt(
+            rust_context=rust_context.text,
+            call_chain=json.dumps(testcase_chains, indent=2),
+            callsite=json.dumps(target, indent=2),
+            safety_requirement=str(rule.get("rule", "")),
+            function_name=injection.function,
+            feature_name=injection.feature,
+            klee_witness=klee_witness,
+            retry_feedback=retry_feedback,
+            reproduction_plans=reproduction_plans,
+            target_context=target_context,
+            no_std=no_std,
+        )
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     (artifacts_dir / f"testcase-context-attempt-{attempt}.txt").write_text(
         rust_context.text + "\n", encoding="utf-8"

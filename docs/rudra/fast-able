@@ -1,0 +1,182 @@
+Rudra
+All reports are TP. The Send and Sync implementations are genuinely unsound, and the crate exposes several independent safe-code paths to undefined behavior.
+This content is only supported in a Feishu Docs
+1. The Send implementations are unsound
+All three containers implement Send without requiring their contained types to be Send:
+unsafe impl<V> Send for SyncVec<V> {}
+
+unsafe impl<K: Eq + Hash, V> Send for SyncBtreeMap<K, V> {}
+
+unsafe impl<K: Eq + Hash, V> Send for SyncHashMap<K, V> {}
+The containers physically own Vec<V>, BTreeMap<K, V>, or HashMap<K, V> inside an UnsafeCell.
+Therefore, moving the container to another thread also moves its K and V values. At minimum, the bounds would need to be:
+unsafe impl<V: Send> Send for SyncVec<V> {}
+
+unsafe impl<K: Eq + Hash + Send, V: Send> Send
+    for SyncHashMap<K, V>
+{}
+
+unsafe impl<K: Eq + Hash + Send, V: Send> Send
+    for SyncBtreeMap<K, V>
+{}
+A mutex does not make a non-Send value safe to move between threads.
+For example, the current implementation permits this safe-code pattern:
+use std::cell::Cell;
+use std::rc::Rc;
+use std::thread;
+
+let value = Rc::new(Cell::new(0));
+let other = value.clone();
+
+let container = SyncVec::from(vec![value]);
+
+let handle = thread::spawn(move || {
+    container.get(0).unwrap().set(1);
+});
+
+other.set(2);
+handle.join().unwrap();
+Rc<Cell<_>> is not Send. Because SyncVec<Rc<Cell<_>>> falsely implements Send, both threads can access the same non-atomic Cell and Rc state, creating a data race.
+The maps have the same problem with, for example:
+SyncHashMap<u32, Rc<Cell<u32>>>
+SyncBtreeMap<u32, Rc<Cell<u32>>>
+So Rudra’s PhantomSendForSend, NaiveSendForSend, and RelaxSend findings are correct.
+
+---
+2. The Sync implementations are even more clearly unsound
+The crate claims all instantiations are Sync:
+unsafe impl<V> Sync for SyncVec<V> {}
+unsafe impl<K: Eq + Hash, V> Sync for SyncHashMap<K, V> {}
+unsafe impl<K: Eq + Hash, V> Sync for SyncBtreeMap<K, V> {}
+But the APIs return unguarded references directly into mutable collections.
+SyncVec
+These methods access the vector without retaining a lock:
+pub fn get(&self, index: usize) -> Option<&V>
+pub fn iter(&self) -> slice::Iter<'_, V>
+pub fn dirty_ref(&self) -> &Vec<V>
+pub fn len(&self) -> usize
+pub fn is_empty(&self) -> bool
+Meanwhile methods such as push, pop, clear, and shrink_to_fit mutate the same vector through &self.
+This gives deterministic safe-code use-after-free even in one thread:
+let vec = SyncVec::new();
+vec.push(Box::new(42));
+
+let reference = vec.get(0).unwrap();
+vec.clear();                     // drops the Box
+println!("{}", **reference);     // dangling reference
+The borrow checker permits this because both get and clear take &self. The unsafe interior mutation invalidates the reference previously returned by the safe API.
+Additionally, SyncVec::remove does not lock at all:
+pub fn remove(&self, index: usize) -> Option<V> {
+    let m = unsafe { &mut *self.dirty.get() };
+    ...
+}
+
+SyncHashMap
+get, iter, Index, dirty_ref, len, and is_empty read the hash map without holding a guard, while insert, remove, clear, and shrink_to_fit mutate it.
+A deterministic safe-code failure is:
+let map = SyncHashMap::new();
+map.insert(1, Box::new(42));
+
+let reference = map.get(&1).unwrap();
+map.remove(&1);                  // removes and drops the Box
+println!("{}", **reference);     // dangling reference
+Concurrent insertion is worse: HashMap may reallocate its entire table while another thread holds a naked reference or iterator.
+SyncBtreeMap
+The B-tree implementation has the same defect:
+pub fn get(...) -> Option<&V>
+pub fn iter(&self) -> MapIter<'_, K, V>
+pub fn dirty_ref(&self) -> &BTreeMap<K, V>
+These references escape without any lock guard, while insert, remove, and clear mutate the tree through &self.
+Removing an entry or rebalancing the tree can immediately invalidate returned references and iterators.
+
+---
+3. Adding Send/Sync bounds would not fix the Sync reports
+For Send, adding the appropriate bounds fixes that particular auto-trait violation.
+For Sync, bounds alone are insufficient. Even this would remain unsound:
+unsafe impl<V: Send + Sync> Sync for SyncVec<V> {}
+because the container can still mutate or drop values while naked &V references remain alive.
+Similarly:
+unsafe impl<K: Send + Sync, V: Send + Sync> Sync
+    for SyncHashMap<K, V>
+{}
+does not prevent a concurrent hash-table reallocation from invalidating an iterator or reference.
+The problem is not merely whether K and V are thread-safe. It is that the container violates Rust’s aliasing and lifetime rules.
+
+---
+4. get_mut is also incorrectly synchronized
+The implementations form a mutable reference before acquiring the lock.
+For example, SyncVec does:
+let m = unsafe { &mut *self.dirty.get() };
+let _g = self.lock.lock();
+Some(VecRefMut {
+    _g,
+    value: Some(m.get_mut(index)?),
+})
+
+The hash map does the same thing.
+Two threads can therefore simultaneously execute:
+&mut *self.dirty.get()
+before either has synchronized, creating overlapping mutable references. Locking afterward does not repair the aliasing violation that has already occurred.
+The order must instead be conceptually:
+let guard = self.lock.lock();
+let collection = unsafe { &mut *self.dirty.get() };
+But even that is only safe when every access follows the same locking discipline and references cannot outlive the guard.
+
+---
+5. The reentrant mutex creates another aliasing bug
+SyncBtreeMap always uses ReentrantMutex<()>, and the other types may use it through a feature.
+A reentrant lock allows the same thread to acquire the lock repeatedly. Consequently, safe code can potentially retain one SyncMapRefMut and call get_mut again for the same value:
+let mut first = map.get_mut(&key).unwrap();
+let mut second = map.get_mut(&key).unwrap();
+Both contain an &mut V to the same object.
+This is exactly why a normal reentrant mutex generally cannot safely expose mutable access to protected data. parking_lot::ReentrantMutexGuard itself deliberately provides shared rather than mutable access; this crate circumvents that restriction with a separate UnsafeCell.
+
+---
+Correct benchmark classification
+SyncVec<V> Send:
+    TP — missing V: Send
+
+SyncVec<V> Sync:
+    TP — missing bounds and unguarded references into mutable Vec
+
+SyncBtreeMap<K, V> Send:
+    TP — missing K: Send and V: Send
+
+SyncBtreeMap<K, V> Sync:
+    TP — unguarded references/iterators, mutation through &self,
+         and reentrant mutable aliasing
+
+SyncHashMap<K, V> Send:
+    TP — missing K: Send and V: Send
+
+SyncHashMap<K, V> Sync:
+    TP — unguarded references/iterators into concurrently mutable HashMap
+These reports are stronger than the earlier Rudra dataflow warnings: Rudra has correctly identified genuinely invalid unsafe auto-trait implementations. The crate should be considered unsound, not merely over-permissive.
+
+MirChecker
+entry: get_uncheck
+There is one TP report. 
+warning: [MirChecker] Possible error: index out of bound
+   --> src/vec.rs:184:18
+    |
+184 |         unsafe { (&*self.dirty.get()).get_unchecked(index) }
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//src/vec.rs
+pub struct SyncVec<V> {
+    dirty: UnsafeCell<Vec<V>>,
+
+    #[cfg(feature = "reentrant_lock")]
+    lock: parking_lot::ReentrantMutex<()>,
+
+    #[cfg(feature = "std_lock")]
+    lock: std::sync::Mutex<()>,
+}
+
+impl<V> SyncVec<V> {
+    // ...
+    #[inline]
+    pub fn get_uncheck(&self, index: usize) -> &V {
+        unsafe { (&*self.dirty.get()).get_unchecked(index) }
+    }
+}
+Public safe method accepts an unchecked arbitrary index that may lead to out-of-bounds access.

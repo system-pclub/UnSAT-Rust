@@ -668,7 +668,15 @@ def build_testcase_prompt(
     retry_feedback: str | None = None,
     reproduction_plans: str | None = None,
     target_context: str | None = None,
+    no_std: bool = False,
 ) -> str:
+    no_std_block = ""
+    if no_std:
+        no_std_block = (
+            "\n\t- The crate is `#![no_std]`: `Vec`, `vec!`, `String`, `Box`, and "
+            "`format!` are not in scope. Use arrays and slices, or import `alloc` "
+            "items only if the crate already declares `extern crate alloc`."
+        )
     witness_block = ""
     if klee_witness and klee_witness.strip():
         witness_block = f"""
@@ -769,7 +777,7 @@ target counterexample.
 	  small local safe helper instead.
 	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
 	  code must not contain the token `unsafe` anywhere, including comments,
-	  explanations, strings, or block bodies.
+	  explanations, strings, or block bodies.{no_std_block}
 	- The testcase is compiled as part of the library with
 	  `cargo build --lib --features {feature_name}`. It is not compiled with
 	  `cargo test`.

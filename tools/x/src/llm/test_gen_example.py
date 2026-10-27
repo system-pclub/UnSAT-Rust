@@ -132,6 +132,18 @@ fn old_generated_poc() { panic!("do not retain me") }
         self.assertIn("use that direct function", prompt)
         self.assertIn("Do not fall back to the root wrapper merely", prompt)
 
+    def test_testcase_prompt_mentions_no_std_only_when_requested(self) -> None:
+        kwargs = dict(
+            rust_context="<rust context/>",
+            call_chain="[]",
+            callsite="{}",
+            safety_requirement="demo rule",
+            function_name="__unsat_poc_demo",
+            feature_name="unsat-poc-demo",
+        )
+        self.assertIn("`#![no_std]`", build_testcase_prompt(**kwargs, no_std=True))
+        self.assertNotIn("`#![no_std]`", build_testcase_prompt(**kwargs))
+
 
 if __name__ == "__main__":
     unittest.main()

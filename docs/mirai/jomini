@@ -1,0 +1,47 @@
+Rudra:
+Verdict
+The self.de.read() reports are all FPs. I would classify the entire group as one repeated false-positive cluster.
+Rudra appears to miss this real bug while repeatedly reporting the deliberate self.de.read() workaround.
+Why every self.de.read() gets reported
+All the warnings originate from the same structure:
+de: *const &'a mut BinaryReaderDeserializer<...>
+followed by:
+unsafe { self.de.read() }
+Rudra sees ptr::read applied to a pointer whose pointee is non-Copy—here, &mut T. It therefore marks the result as a “strong lifetime bypass.” It then treats unresolved generic calls such as Visitor::visit_*, DeserializeSeed::deserialize, BinaryFlavor::visit_f32, and Encoding::decode as possible user-controlled panic points. This is explicitly how Rudra's analysis works.
+Rudra only excludes ptr::read when its pointee type is Copy; &mut T is not Copy, so every such read becomes a source.
+That produces warnings in every containing generic function, as seen throughout your log.
+Why the Rudra panic argument does not apply
+The bug pattern Rudra is looking for is approximately:
+let duplicate = ptr::read(ptr_to_owned_value);
+generic_user_code_that_may_panic();
+// expected ownership restoration never happens
+This is dangerous for types such as:
+Box<T>
+Vec<T>
+String
+ManuallyDrop<T>
+because a panic can leave two owning instances that later double-drop.
+Here the copied value is:
+&mut BinaryReaderDeserializer<...>
+An &mut T:
+- owns no allocation;
+- has no destructor;
+- performs no cleanup when dropped;
+- cannot double-free the deserializer merely because the generic call panics.
+So Rudra's flow:
+ptr::read(non-Copy) → unresolved generic call
+exists syntactically, but its intended consequence:
+duplicated owner → panic → double-drop / corrupted ownership
+does not.
+This code was deliberately introduced as a Miri fix
+The pointer-based implementation was introduced by upstream PR #150, titled “Use pointers in token reader deserializations.” Its stated purpose was to avoid invalidating references and to re-enable Miri's stacked-borrows checking.
+The changelog for v0.25.2 says the remaining soundness issues detected by Miri were fixed; v0.27.0 was released later and contains that corrected pointer implementation.
+Therefore I would label the Rudra findings as:
+This content is only supported in a Feishu Docs
+This does not mean the code is easy to prove sound formally. It means Rudra's reported panic-safety condition does not establish a bug here.
+
+MIRAI:
+I classify the 20 MIRAI warnings as 1 true positive and 19 false positives.
+Here, “TP” means the reported overflow/panic is reachable through safe public APIs, even if it requires an extreme value. “FP” means surrounding control-flow invariants make the operation safe, but MIRAI failed to infer them.
+This content is only supported in a Feishu Docs
+The only actionable warning is [buffer.rs (line 62)](/home/ubuntu/Projects/experimental/analyzer/UnSAT-Rust/benchmark/ruklee/jomini-0.27.0/src/buffer.rs:62). A robust fix would use checked_add, or make prior_reads private and maintain a documented non-overflow invariant internally.

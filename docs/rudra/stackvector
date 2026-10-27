@@ -1,0 +1,272 @@
+Rudra
+
+Rudra reports 3 FPs on stackvector:
+
+```
+Error (SendSyncVariance:/PhantomSendForSend/NaiveSendForSend/RelaxSend): Suspicious impl of Send found
+-> src/lib.rs:1058:1: 1058:66
+unsafe impl<A: Array> Send for StackVec<A> where A::Item: Send {}
+Warning (UnsafeDataflow:/CopyFlow/WriteFlow): Potential unsafe dataflow issue in StackVec::<A>::insert_many
+-> src/lib.rs:571:5: 635:6
+pub fn insert_many<I: iter::IntoIterator<Item = A::Item>>(
+        &mut self,
+        index: usize,
+        iterable: I,
+    ) {
+        let mut iter = iterable.into_iter();
+        if index == self.len() {
+            return self.extend(iter);
+        }
+
+        let (lower_size_bound, _) = iter.size_hint();
+        assert!(lower_size_bound <= lib::isize::MAX as usize); // Ensure offset is indexable
+        assert!(index + lower_size_bound >= index); // Protect against overflow
+        assert!(self.len() + lower_size_bound <= self.capacity());
+
+        let mut num_added = 0;
+        let old_len = self.len();
+        assert!(index <= old_len);
+
+
+        unsafe {
+            let start = self.as_mut_ptr();
+            let ptr = start.add(index);
+
+            // Move the trailing elements.
+            ptr::copy(ptr, ptr.padd(lower_size_bound), old_len - index);
+
+            // In case the iterator panics, don't double-drop the items we just copied above.
+            self.set_len(0);
+            let mut guard = DropOnPanic {
+                start,
+                skip: index..(index + lower_size_bound),
+                len: old_len + lower_size_bound,
+            };
+
+            while num_added < lower_size_bound {
+                let element = match iter.next() {
+                    Some(x) => x,
+                    None => break,
+                };
+                let cur = ptr.add(num_added);
+                ptr::write(cur, element);
+                guard.skip.start += 1;
+                num_added += 1;
+            }
+
+            if num_added < lower_size_bound {
+                // Iterator provided fewer elements than the hint. Move the tail backward.
+                ptr::copy(
+                    ptr.add(lower_size_bound),
+                    ptr.add(num_added),
+                    old_len - index,
+                );
+            }
+            // There are no more duplicate or uninitialized slots, so the guard is not needed.
+            self.set_len(old_len + num_added);
+            mem::forget(guard);
+
+            // Insert any remaining elements one-by-one.
+            for element in iter {
+                self.insert(index + num_added, element);
+                num_added += 1;
+            }
+        }
+    }
+
+Warning (UnsafeDataflow:/WriteFlow): Potential unsafe dataflow issue in StackVec::<A>::from_elem
+-> src/lib.rs:796:5: 808:6
+pub fn from_elem(elem: A::Item, n: usize) -> Self {
+        assert!(n <= A::size());
+        let mut v = StackVec::<A>::new();
+        unsafe {
+            let ptr = v.as_mut_ptr();
+            let mut local_len = SetLenOnDrop::new(&mut v.length);
+            for i in 0..n as isize {
+                ptr::write(ptr.offset(i), elem.clone());
+                local_len.increment_len(1);
+            }
+        }
+        v
+    }
+```
+
+Classification
+This content is only supported in a Feishu Docs
+
+---
+1. unsafe impl Send: FP
+unsafe impl<A: Array> Send for StackVec<A>
+where
+    A::Item: Send
+{}
+Rudra complains because the type physically contains:
+pub data: MaybeUninit<A>
+but the impl only requires A::Item: Send, not A: Send.
+For this abstraction, A is intended to be only backing storage for A::Item; StackVec manually manages the initialized element prefix and suppresses ordinary destruction of the backing array. The crate-provided implementations are exclusively ordinary arrays:
+unsafe impl<T> Array for [T; N] {
+    type Item = T;
+    ...
+}
+For [T; N], the array is Send exactly when T is Send, so A::Item: Send is sufficient for every provided implementation.
+This is also the design still used by smallvec, from which this code was derived: its public SmallVec<A> similarly implements Send based on A::Item: Send. (Docs.rs)
+Caveat
+The Array safety contract is poorly documented. A downstream user could write a strange unsafe impl Array for a type containing unrelated non-Send state. But constructing such an implementation already requires unsafe code and would violate the intended “fixed-size array backing storage” abstraction.
+Therefore, for normal safe-client soundness analysis:
+Send report: FP
+Reason: Rudra does not understand the Array → Array::Item relationship.
+A conservative API-hardening change would nevertheless be:
+unsafe impl<A> Send for StackVec<A>
+where
+    A: Array + Send,
+    A::Item: Send,
+{}
+That would eliminate ambiguity around custom Array implementations.
+
+---
+2. insert_many: Rudra panic-safety report is FP
+The dangerous-looking sequence is:
+ptr::copy(...);       // duplicates trailing non-Copy elements
+self.set_len(0);
+
+let mut guard = DropOnPanic { ... };
+
+let element = iter.next(); // arbitrary user code, can panic
+ptr::write(...);
+
+Older smallvec::insert_many implementations really did have double-free bugs when Iterator::next() panicked after elements had been copied. (RustSec)
+But this version contains a deliberate cleanup guard:
+struct DropOnPanic<T> {
+    start: *mut T,
+    skip: Range<usize>,
+    len: usize,
+}
+
+impl<T> Drop for DropOnPanic<T> {
+    fn drop(&mut self) {
+        for i in 0..self.len {
+            if !self.skip.contains(&i) {
+                ptr::drop_in_place(self.start.add(i));
+            }
+        }
+    }
+}
+
+Its invariant is correct:
+1. The original tail is copied rightward.
+2. self.len is set to zero so StackVec::drop cannot double-drop anything.
+3. skip initially covers the duplicated/uninitialized insertion gap.
+4. After each successful ptr::write, skip.start advances, making that newly initialized element eligible for cleanup.
+5. If the iterator returns too few elements, the shifted tail is copied backward.
+6. Only after duplicates and gaps are removed is the real length restored and the guard forgotten.
+If iter.next() panics, the guard drops exactly:
+- the prefix before index;
+- successfully inserted elements;
+- the shifted copy of the original tail;
+while skipping the stale duplicate slots.
+Therefore Rudra’s inferred pattern—
+ptr::copy duplicates ownership
+→ arbitrary iterator method panics
+→ double drop
+—is blocked by DropOnPanic.
+Incorrect size_hint
+This implementation also handles both directions of an incorrect hint:
+- fewer items than the lower bound: move the tail backward;
+- more items than the lower bound: insert remaining elements one by one with capacity assertions.
+The crate’s older extend implementation had a real size_hint vulnerability, but that issue was patched in versions >=1.0.9; version 1.1.1 contains the non-optimized, checked extend implementation. (RustSec)
+Recommended classification:
+insert_many Rudra report: FP
+Reason: panic guard correctly handles copied ownership.
+Location-level caveat
+Because StackVec::length is public, safe code can corrupt it. In an optimized build, a maliciously set length may make arithmetic wrap and allow insert_many or other methods to reach unsafe pointer operations with invalid counts. That is a different root cause—the broken public invariant—not the iterator-panic flow Rudra reports. The official advisory specifically identifies the public length field and unsafe methods trusting it. (OSV)
+For a benchmark that labels only whether the function location can reach UB:
+insert_many: TP-location / root-cause mismatch
+For evaluating Rudra’s actual reported hypothesis:
+insert_many: FP
+I recommend the latter for Rudra precision measurements.
+
+---
+3. from_elem: FP
+let mut local_len = SetLenOnDrop::new(&mut v.length);
+
+for i in 0..n {
+    ptr::write(ptr.offset(i), elem.clone());
+    local_len.increment_len(1);
+}
+
+SetLenOnDrop retains a temporary count and commits it when dropped:
+impl Drop for SetLenOnDrop<'_> {
+    fn drop(&mut self) {
+        *self.len = self.local_len;
+    }
+}
+
+The panic cases are sound:
+- If elem.clone() panics, ptr::write has not happened, so the length is not incremented.
+- If cloning succeeds, ptr::write initializes one slot.
+- The length is incremented immediately afterward, before any further user-provided operation.
+- If a later clone panics, SetLenOnDrop restores the length to exactly the number of successfully initialized elements.
+- Normal StackVec::drop then drops exactly those initialized values.
+There is no interval where a successfully written value can be forgotten because of a user-controlled panic.
+from_elem Rudra report: FP
+Reason: SetLenOnDrop provides correct clone-panic safety.
+
+---
+Final benchmark labels
+SendSyncVariance: StackVec<A> Send
+    FP
+    Associated-type / unsafe Array abstraction not understood.
+
+UnsafeDataflow: StackVec::insert_many
+    FP
+    DropOnPanic correctly prevents double-drop.
+    Optional annotation: TP-location/root-cause mismatch due public length.
+
+UnsafeDataflow: StackVec::from_elem
+    FP
+    SetLenOnDrop correctly tracks initialized clones.
+So for report-level Rudra precision, I would count three FPs, while recording the crate’s actual unsoundness separately as a Rudra false negative/root-cause miss.
+MirChecker
+entry: from_elem
+
+This is an FP report:
+warning: [MirChecker] Possible error: index out of bound
+   --> src/lib.rs:803:28
+    |
+803 |                 ptr::write(ptr.offset(i), elem.clone());
+    |                            ^^^^^^^^^^^^^
+ 
+pub struct StackVec<A: Array> {
+    // The capacity field is used for iteration and other optimizations.
+    // Publicly expose the fields, so they may be used in constant
+    // initialization.
+    pub data: mem::MaybeUninit<A>,
+    pub length: usize,
+}
+
+impl<A: Array> StackVec<A>
+where
+    A::Item: Clone,
+{
+    /// Creates a `StackVec` with `n` copies of `elem`.
+    /// ```
+    /// use stackvector::StackVec;
+    ///
+    /// let v = StackVec::<[char; 128]>::from_elem('d', 2);
+    /// assert_eq!(v, StackVec::from_buf(['d', 'd']));
+    /// ```
+    pub fn from_elem(elem: A::Item, n: usize) -> Self {
+        assert!(n <= A::size());
+        let mut v = StackVec::<A>::new();
+        unsafe {
+            let ptr = v.as_mut_ptr();
+            let mut local_len = SetLenOnDrop::new(&mut v.length);
+            for i in 0..n as isize {
+                ptr::write(ptr.offset(i), elem.clone());
+                local_len.increment_len(1);
+            }
+        }
+        v
+    }
+}
+from_elem first asserts n <= A::size() and writes only offsets 0..n into storage of capacity A::size(). So index cannot be out-of-bounds.

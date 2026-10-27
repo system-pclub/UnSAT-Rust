@@ -1,0 +1,77 @@
+Rudra
+Rdura only reports bugs in vendored dependencies not the library so we do not count them as ptr_hash's bug.
+
+MIRAI
+MIRAI reports one warning in the current crate (excluding the vendored dependencies)
+
+This warning is a false positive.
+At [tiny_ef.rs (line 26)](/home/ubuntu/Projects/experimental/analyzer/UnSAT-Rust/benchmark/ruklee/ptr_hash-0.1.1/src/tiny_ef.rs:26):
+for i in (0..vals.len()).step_by(L) {
+    // L = 44
+    min(i + L, vals.len())
+}
+The relevant invariants are:
+- i < vals.len().
+- A valid Rust &[u64] cannot have a byte size greater than isize::MAX.
+- Consequently, vals.len() <= isize::MAX / size_of::<u64>(), far below usize::MAX.
+- Therefore i + 44 cannot overflow usize.
+MIRAI tracks i as an insufficiently bounded usize and misses the maximum-size invariant of a valid slice.
+Verdict: FP — 0 TP, 1 FP.
+Note that min(i + L, vals.len()) alone would not prevent overflow because addition occurs before min; safety comes from the slice-length bound. Using i.saturating_add(L).min(vals.len()) could silence analyzers, though it is not required for correctness here.
+
+MirChecker
+entry: prefetch
+There is one TP and one FP report.
+warning: [MirChecker] Provably error: index out of bound
+  --> src/util.rs:11:24
+   |
+11 |     let ptr = unsafe { s.as_ptr().add(index) as *const u64 };
+   |                        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: [MirChecker] Possible error: "attempt to divide \"copy _2\" by zero"
+  --> src/tiny_ef.rs:39:55
+   |
+39 |         crate::util::prefetch_index(self.ef.as_ref(), index / L);
+   |                                                       ^^^^^^^^^
+//src/util.rs
+/// Prefetch the given cacheline into L1 cache.
+pub fn prefetch_index<T>(s: &[T], index: usize) {
+    let ptr = unsafe { s.as_ptr().add(index) as *const u64 };
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::x86_64::_mm_prefetch(ptr as *const i8, std::arch::x86_64::_MM_HINT_T0);
+    }
+    #[cfg(target_arch = "x86")]
+    unsafe {
+        std::arch::x86::_mm_prefetch(ptr as *const i8, std::arch::x86::_MM_HINT_T0);
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        // TODO: Put this behind a feature flag.
+        // std::arch::aarch64::_prefetch(ptr as *const i8, std::arch::aarch64::_PREFETCH_LOCALITY3);
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64")))]
+    {
+        // Do nothing.
+    }
+}
+This is TP:
+Public safe prefetch_index and TinyEf::prefetch accept an arbitrary index, then call slice.as_ptr().add(index) without checking the slice length.
+
+//src/tiny_ef.rs
+/// Number of stored values per unit.
+const L: usize = 44;
+
+impl<E: AsRef<[TinyEfUnit]>> TinyEf<E> {
+    pub fn index(&self, index: usize) -> u64 {
+        // Note: This division is inlined by the compiler.
+        unsafe { (*self.ef.as_ref().get_unchecked(index / L)).get(index % L) }
+    }
+    pub fn prefetch(&self, index: usize) {
+        crate::util::prefetch_index(self.ef.as_ref(), index / L);
+    }
+    pub fn size_in_bytes(&self) -> usize {
+        std::mem::size_of_val(self.ef.as_ref())
+    }
+}
+This is FP: The reported divisor is L, a compile-time constant equal to 44, so division by zero is impossible

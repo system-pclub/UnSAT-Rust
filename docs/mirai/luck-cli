@@ -1,0 +1,45 @@
+Rudra
+The four reported warnings are false positives. They are two unique warnings, each emitted twice because the library was analyzed in two build passes.
+This content is only supported in a Feishu Docs
+So the result is:
+- Reported warnings: 4
+- Unique warning sites: 2
+- TPs: 0
+- FPs: 4
+MirChecker
+warning: [MirChecker] Possible error: index out of bound
+  --> src/arch/mod.rs:77:32
+   |
+77 |         let address = unsafe { (address as *mut c_void).offset(count) };
+   |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pub fn read_string(pid: Pid, address: c_ulonglong) -> String {
+    let mut string = String::new();
+    // Move 8 bytes up each time for next read.
+    let mut count = 0;
+    let word_size = 8;
+
+    'done: loop {
+        let address = unsafe { (address as *mut c_void).offset(count) };
+
+        let res: c_long = match ptrace::read(pid, address) {
+            Ok(c_long) => c_long,
+            Err(_) => break 'done,
+        };
+
+        let mut bytes: Vec<u8> = vec![];
+        bytes.write_i64::<LittleEndian>(res).unwrap_or_else(|err| {
+            panic!("Failed to write {res} as i64 LittleEndian: {err}");
+        });
+        for b in bytes {
+            if b == 0 {
+                break 'done;
+            }
+            string.push(b as char);
+        }
+
+        count += word_size;
+    }
+
+    string
+}
+In a public safe function read_string, integer remote address is advanced with offset. If the input address is invalid or len is incorrect, then it will trigger a memory bug.

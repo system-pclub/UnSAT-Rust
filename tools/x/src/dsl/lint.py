@@ -285,12 +285,17 @@ def lint_rule_semantics(rule: str, ast: Expression) -> list[DSLLintIssue]:
 def lint_dsl_ast(
     ast: Expression, operators: Sequence[Mapping[str, object]]
 ) -> list[DSLLintIssue]:
-    signatures: dict[str, int] = {}
+    signatures: dict[str, tuple[int, int]] = {}
     for entry in operators:
         name = entry.get("name")
         inputs = entry.get("input")
         if isinstance(name, str) and isinstance(inputs, list):
-            signatures[name] = len(inputs)
+            required = sum(
+                1
+                for item in inputs
+                if not (isinstance(item, Mapping) and item.get("optional"))
+            )
+            signatures[name] = (required, len(inputs))
 
     issues: list[DSLLintIssue] = []
 
@@ -315,11 +320,16 @@ def lint_dsl_ast(
             expected = signatures.get(node.name)
             if expected is None:
                 add("error", "unknown-operator", f"unknown operator {node.name!r}")
-            elif len(node.args) != expected:
+            elif not expected[0] <= len(node.args) <= expected[1]:
+                count = (
+                    str(expected[1])
+                    if expected[0] == expected[1]
+                    else f"{expected[0]} to {expected[1]}"
+                )
                 add(
                     "error",
                     "operator-arity",
-                    f"{node.name} expects {expected} arguments, got {len(node.args)}",
+                    f"{node.name} expects {count} arguments, got {len(node.args)}",
                 )
 
             if node.name == "get_field" and len(node.args) == 2:

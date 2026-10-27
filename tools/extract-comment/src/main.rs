@@ -61,6 +61,19 @@ pub struct Unit {
     /// For functions, the parent struct or trait they belong to (if any). For standalone functions, this will be None.
     pub parent_struct_or_trait: Option<String>,
 
+    /// Source generics are kept separately: const arguments must not disappear
+    /// when translating documentation (for example array bounds involving N).
+    #[serde(default)]
+    pub enclosing_declaration: Option<String>,
+    #[serde(default)]
+    pub enclosing_generics: Vec<String>,
+    #[serde(default)]
+    pub item_generics: Vec<String>,
+    #[serde(default)]
+    pub members: Vec<String>,
+    #[serde(default)]
+    pub source_body: Option<String>,
+
     pub is_unsafe: bool,
 
     pub comment: String
@@ -75,6 +88,11 @@ impl Unit {
             declaration_text,
             is_unsafe,
             parent_struct_or_trait,
+            enclosing_declaration: None,
+            enclosing_generics: Vec::new(),
+            item_generics: Vec::new(),
+            members: Vec::new(),
+            source_body: None,
             comment
         }
     }
@@ -85,6 +103,8 @@ impl Unit {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Units {
     pub files: HashMap<String, Vec<Unit>>,
+    #[serde(default)]
+    pub source_declarations: HashMap<String, Vec<String>>,
 }
 
 pub fn keep_only_unsafe_fn_and_unsafe_trait(units: &mut Units) {
@@ -101,6 +121,7 @@ pub fn keep_only_unsafe_fn_and_unsafe_trait(units: &mut Units) {
 /// Step 3: For each Unit, extract the associated comments above them (doc comments).
 pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<Units> {
     let mut files_map: HashMap<String, Vec<Unit>> = HashMap::new();
+    let mut source_declarations = HashMap::new();
     // Step 1: Collect all Rust source files from the target directories
     let mut rust_files = Vec::new();
     let mut blacklisted_rust_files = Vec::new();
@@ -153,6 +174,20 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
             }
         };
         
+        let declarations = syntax.items.iter().filter_map(|item| match item {
+            Item::Struct(_) | Item::Enum(_) | Item::Union(_) | Item::Const(_) | Item::Static(_) | Item::Type(_) => {
+                // Attributes may contain many pages of docs; declarations alone ground fields.
+                let mut item = item.clone();
+                match &mut item {
+                    Item::Struct(i) => i.attrs.clear(), Item::Enum(i) => i.attrs.clear(),
+                    Item::Union(i) => i.attrs.clear(), Item::Const(i) => i.attrs.clear(),
+                    Item::Static(i) => i.attrs.clear(), Item::Type(i) => i.attrs.clear(), _ => {}
+                }
+                Some(item.to_token_stream().to_string())
+            }
+            _ => None,
+        }).collect();
+        source_declarations.insert(file_path.display().to_string(), declarations);
         // Extract units from the parsed file
         let mut file_has_unsafe = false;
         for item in syntax.items {
@@ -210,7 +245,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
 
                         files_map.entry(file_path.display().to_string())
                             .or_insert_with(Vec::new)
-                            .push(Unit::new(
+                            .push({ let mut unit = Unit::new(
                                 start_line,
                                 end_line,
                                 method_name,
@@ -218,7 +253,17 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
                                 is_unsafe,
                                 parent_struct_or_trait,
                                 comment,
-                            ));
+                            );
+                                unit.enclosing_declaration = Some(format!("trait {} {} : {} {}", trait_item.ident, trait_item.generics.to_token_stream(), trait_item.supertraits.to_token_stream(), trait_item.generics.where_clause.to_token_stream()));
+                                unit.enclosing_generics = trait_item.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect();
+                                unit.item_generics = method.sig.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect();
+                                unit.members = trait_item.items.iter().map(|item| match item {
+                                    syn::TraitItem::Fn(f) => f.sig.to_token_stream().to_string(),
+                                    other => other.to_token_stream().to_string(),
+                                }).collect();
+                                unit.source_body = method.default.as_ref().map(|body| body.to_token_stream().to_string());
+                                unit
+                            });
                     }
                 }
             }
@@ -244,13 +289,23 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
                         files_map.entry(file_path.display().to_string())
                         .or_insert_with(Vec::new)
                         .push(
-                            Unit::new(start_line, 
+                            { let mut unit = Unit::new(start_line,
                                 end_line, 
                                 method_name,
                                 declaration_text, 
                                 is_unsafe,
                                 parent_struct_or_trait,
-                                comment))
+                                comment);
+                                unit.enclosing_declaration = Some(format!("impl {} {} {}", impl_item.generics.to_token_stream(), impl_item.self_ty.to_token_stream(), impl_item.generics.where_clause.to_token_stream()));
+                                unit.enclosing_generics = impl_item.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect();
+                                unit.item_generics = method.sig.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect();
+                                unit.members = impl_item.items.iter().map(|item| match item {
+                                    syn::ImplItem::Fn(f) => f.sig.to_token_stream().to_string(),
+                                    other => other.to_token_stream().to_string(),
+                                }).collect();
+                                unit.source_body = Some(method.block.to_token_stream().to_string());
+                                unit
+                            })
                             ;
                     }
                 }
@@ -264,7 +319,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
     
     println!("Files containing unsafe functions/traits with comments: {}", files_contains_unsafe_fn_or_trait);
     
-    Ok(Units { files: files_map })
+    Ok(Units { files: files_map, source_declarations })
 }
 
 /// Index documented unsafe functions in blacklisted modules. They are not emitted directly, but
@@ -376,7 +431,8 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
             let mut token_iter = tokens.clone().into_iter();
             let start_line = token_iter.next().map(|t| t.span().start().line).unwrap_or(0);
             let end_line = tokens.clone().into_iter().last().map(|t| t.span().end().line).unwrap_or(0);
-            Some(Unit::new(start_line, end_line, name, declaration_text, is_unsafe, None, comment))
+            Some({ let mut unit = Unit::new(start_line, end_line, name, declaration_text, is_unsafe, None, comment);
+                unit.item_generics = fn_item.sig.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect(); unit })
         }
         // Extract standalone functions - only signature
         Item::Fn(func) => {
@@ -387,7 +443,9 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
             let end_line = func.span().end().line;
             let name = func.sig.ident.to_string();
             let is_unsafe = func.sig.unsafety.is_some();
-            Some(Unit::new(start_line, end_line, name, declaration_text, is_unsafe, None, comment))
+            Some({ let mut unit = Unit::new(start_line, end_line, name, declaration_text, is_unsafe, None, comment);
+                unit.item_generics = func.sig.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect();
+                unit.source_body = Some(func.block.to_token_stream().to_string()); unit })
         }
         // Extract structs - declaration with fields but without field implementations
         Item::Struct(struct_item) => {
@@ -449,7 +507,12 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
             let end_line = trait_item.span().end().line;
             let is_unsafe = trait_item.unsafety.is_some();
             
-            Some(Unit::new(start_line, end_line, trait_item.ident.to_string(), declaration_text, is_unsafe, None, comment))
+            Some({ let mut unit = Unit::new(start_line, end_line, trait_item.ident.to_string(), declaration_text, is_unsafe, None, comment);
+                unit.item_generics = trait_item.generics.params.iter().map(|p| p.to_token_stream().to_string()).collect();
+                unit.members = trait_item.items.iter().map(|item| match item {
+                    syn::TraitItem::Fn(f) => f.sig.to_token_stream().to_string(),
+                    other => other.to_token_stream().to_string(),
+                }).collect(); unit })
             
         }
         _ => None,

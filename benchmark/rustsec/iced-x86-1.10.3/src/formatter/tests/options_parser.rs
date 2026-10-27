@@ -1,0 +1,151 @@
+/*
+Copyright (C) 2018-2019 de4dot@gmail.com
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+use super::super::super::test_utils::from_str_conv::*;
+use super::enums::OptionsProps;
+use super::opt_value::OptionValue;
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+pub(super) fn parse_option(key_value: &str) -> Result<(OptionsProps, OptionValue), String> {
+	let kv_parts: Vec<_> = key_value.trim().splitn(2, '=').collect();
+	if kv_parts.len() != 2 {
+		return Err(format!("Expected key=value: '{}'", key_value));
+	}
+	let value_str = kv_parts[1].trim();
+	let prop = to_options_props(kv_parts[0])?;
+	let value = match prop {
+		OptionsProps::AddLeadingZeroToHexNumbers
+		| OptionsProps::AlwaysShowScale
+		| OptionsProps::AlwaysShowSegmentRegister
+		| OptionsProps::BranchLeadingZeroes
+		| OptionsProps::DisplacementLeadingZeroes
+		| OptionsProps::GasNakedRegisters
+		| OptionsProps::GasShowMnemonicSizeSuffix
+		| OptionsProps::GasSpaceAfterMemoryOperandComma
+		| OptionsProps::LeadingZeroes
+		| OptionsProps::MasmAddDsPrefix32
+		| OptionsProps::NasmShowSignExtendedImmediateSize
+		| OptionsProps::PreferST0
+		| OptionsProps::RipRelativeAddresses
+		| OptionsProps::ScaleBeforeIndex
+		| OptionsProps::ShowBranchSize
+		| OptionsProps::ShowSymbolAddress
+		| OptionsProps::ShowZeroDisplacements
+		| OptionsProps::SignedImmediateOperands
+		| OptionsProps::SignedMemoryDisplacements
+		| OptionsProps::SmallHexNumbersInDecimal
+		| OptionsProps::SpaceAfterMemoryBracket
+		| OptionsProps::SpaceAfterOperandSeparator
+		| OptionsProps::SpaceBetweenMemoryAddOperators
+		| OptionsProps::SpaceBetweenMemoryMulOperators
+		| OptionsProps::UppercaseAll
+		| OptionsProps::UppercaseDecorators
+		| OptionsProps::UppercaseHex
+		| OptionsProps::UppercaseKeywords
+		| OptionsProps::UppercaseMnemonics
+		| OptionsProps::UppercasePrefixes
+		| OptionsProps::UppercaseRegisters
+		| OptionsProps::UsePseudoOps
+		| OptionsProps::ShowUselessPrefixes => OptionValue::Boolean(to_boolean(value_str)?),
+
+		OptionsProps::BinaryDigitGroupSize
+		| OptionsProps::DecimalDigitGroupSize
+		| OptionsProps::FirstOperandCharIndex
+		| OptionsProps::HexDigitGroupSize
+		| OptionsProps::OctalDigitGroupSize
+		| OptionsProps::TabSize => OptionValue::Int32(to_i32(value_str)?),
+
+		OptionsProps::IP => OptionValue::UInt64(to_u64(value_str)?),
+
+		OptionsProps::BinaryPrefix
+		| OptionsProps::BinarySuffix
+		| OptionsProps::DecimalPrefix
+		| OptionsProps::DecimalSuffix
+		| OptionsProps::DigitSeparator
+		| OptionsProps::HexPrefix
+		| OptionsProps::HexSuffix
+		| OptionsProps::OctalPrefix
+		| OptionsProps::OctalSuffix => OptionValue::String(String::from(if value_str == "<null>" { "" } else { value_str })),
+
+		OptionsProps::MemorySizeOptions => OptionValue::MemorySizeOptions(to_memory_size_options(value_str)?),
+		OptionsProps::DecoderOptions => OptionValue::DecoderOptions(to_decoder_options(value_str)?),
+
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::NumberBase => OptionValue::NumberBase(to_number_base(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_b => OptionValue::CC_b(to_cc_b(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_ae => OptionValue::CC_ae(to_cc_ae(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_e => OptionValue::CC_e(to_cc_e(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_ne => OptionValue::CC_ne(to_cc_ne(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_be => OptionValue::CC_be(to_cc_be(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_a => OptionValue::CC_a(to_cc_a(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_p => OptionValue::CC_p(to_cc_p(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_np => OptionValue::CC_np(to_cc_np(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_l => OptionValue::CC_l(to_cc_l(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_ge => OptionValue::CC_ge(to_cc_ge(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_le => OptionValue::CC_le(to_cc_le(value_str)?),
+		#[cfg(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm"))]
+		OptionsProps::CC_g => OptionValue::CC_g(to_cc_g(value_str)?),
+
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::NumberBase => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_b => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_ae => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_e => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_ne => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_be => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_a => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_p => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_np => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_l => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_ge => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_le => OptionValue::Ignore,
+		#[cfg(not(any(feature = "gas", feature = "intel", feature = "masm", feature = "nasm")))]
+		OptionsProps::CC_g => OptionValue::Ignore,
+	};
+	Ok((prop, value))
+}

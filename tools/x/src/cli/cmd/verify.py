@@ -544,6 +544,41 @@ def _load_rule_ids_by_callee(rule_dsl_path: Path) -> dict[tuple[str, int], list[
     return {key: sorted(values) for key, values in grouped.items()}
 
 
+def _unsafe_function_name(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"\bunsafe\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)", value)
+    if match:
+        return match.group(1)
+    tail = value.rsplit("::", 1)[-1]
+    match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", tail)
+    return match.group(1) if match else None
+
+
+def _load_rule_ids_by_callee_name(
+    rule_dsl_path: Path,
+) -> dict[tuple[str, str], list[str]]:
+    """Index rules by stable API identity for cross-toolchain line drift."""
+    if not rule_dsl_path.is_file():
+        raise RuntimeError(f"rule DSL file does not exist: {rule_dsl_path}")
+    data = _load_json(rule_dsl_path)
+    rules = data.get("rules", data) if isinstance(data, dict) else {}
+    if not isinstance(rules, dict):
+        raise RuntimeError(f"rule DSL file must contain an object: {rule_dsl_path}")
+
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for rule_id, raw_entry in rules.items():
+        if not isinstance(rule_id, str) or not isinstance(raw_entry, dict):
+            continue
+        parsed = _parse_rule_path(raw_entry.get("path"))
+        function_name = _unsafe_function_name(raw_entry.get("name"))
+        if parsed is None or function_name is None:
+            continue
+        path, _ = parsed
+        grouped.setdefault((path, function_name), []).append(rule_id)
+    return {key: sorted(values) for key, values in grouped.items()}
+
+
 def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> str:
     ast = parse_dsl(task1, operators)
     issues = lint_dsl_ast(ast, operators)
@@ -563,6 +598,52 @@ def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> st
         separators=(",", ":"),
         ensure_ascii=False,
     )
+
+
+def _rule_entry_to_ext_ast_json(
+    entry: dict[str, Any], operators: list[dict[str, object]]
+) -> str:
+    smtlib = entry.get("smtlib")
+    if not isinstance(smtlib, str) or not smtlib.strip():
+        dsl = entry.get("dsl")
+        if not isinstance(dsl, str) or not dsl.strip():
+            raise RuntimeError("rule entry contains neither non-empty `dsl` nor `smtlib`")
+        return _task1_to_ext_ast_json(dsl, operators)
+
+    raw_selectors = entry.get("selectors")
+    if not isinstance(raw_selectors, dict) or not raw_selectors:
+        raise RuntimeError("SMT-LIB rule entry requires a non-empty `selectors` object")
+    selectors: dict[str, object] = {}
+    for name, raw_selector in raw_selectors.items():
+        if not isinstance(name, str) or not name:
+            raise RuntimeError("SMT-LIB selector names must be non-empty strings")
+        if isinstance(raw_selector, dict):
+            selectors[name] = raw_selector
+            continue
+        if not isinstance(raw_selector, str) or not raw_selector.strip():
+            raise RuntimeError(f"SMT-LIB selector {name!r} must be a DSL string or AST")
+        ast = parse_dsl(raw_selector, operators)
+        issues = lint_dsl_ast(ast, operators)
+        errors = [issue for issue in issues if issue.severity == "error"]
+        if errors:
+            details = "; ".join(f"{issue.code}: {issue.message}" for issue in errors)
+            raise RuntimeError(f"invalid selector {name!r}: {details}")
+        selectors[name] = _expr_to_ext_ast(ast)
+
+    return json.dumps(
+        {"smtlib": smtlib, "selectors": selectors},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+
+def _klee_constraint_arg(ast_json: str) -> str:
+    try:
+        document = json.loads(ast_json)
+    except json.JSONDecodeError:
+        document = None
+    option = "--ext.smtlib" if isinstance(document, dict) and "smtlib" in document else "--ext.dsl"
+    return f"{option}={ast_json}"
 
 
 def _compose_status_from_output(
@@ -739,7 +820,7 @@ def _run_klee_compose_verify(
         f"--output-dir={output_dir}",
         f"--compose-verify-chain-json={output_dir.parent / 'klee-control-chains.json'}",
         f"--ext.callsite={callsite_id}",
-        f"--ext.dsl={ast_json}",
+        _klee_constraint_arg(ast_json),
         "--compose-verify",
         f"--compose-verify-symbolic-loop-bound={compose_loop_bound}",
     ]
@@ -833,7 +914,7 @@ def _run_klee_compose_rerun(
     if raw_ptr_deref:
         cmd.append("--ext.raw-ptr-deref")
     else:
-        cmd.append(f"--ext.dsl={ast_json}")
+        cmd.append(_klee_constraint_arg(ast_json))
     if report_json is not None:
         cmd.append(f"--report-json={report_json}")
     cmd.append(str(ll_path))
@@ -1243,12 +1324,13 @@ def _assign_matrix_rules_to_callsites(
     requested_rule: str | None,
 ) -> list[dict[str, Any]]:
     if requested_rule:
-        _load_rule_dsl(rule_dsl_path, requested_rule)
+        _load_rule_entry(rule_dsl_path, requested_rule)
         for callsite in callsites:
             callsite["rules"] = [requested_rule]
         return callsites
 
     rules_by_callee = _load_rule_ids_by_callee(rule_dsl_path)
+    rules_by_callee_name = _load_rule_ids_by_callee_name(rule_dsl_path)
     for callsite in callsites:
         if callsite.get("unsafe_callee") == RAW_PTR_DEREF_CALLEE:
             callsite["rules"] = [RAW_PTR_DEREF_RULE]
@@ -1257,7 +1339,14 @@ def _assign_matrix_rules_to_callsites(
         callee_line = callsite.get("unsafe_callee_line_start")
         rules: list[str] = []
         if isinstance(callee_path, str) and isinstance(callee_line, int):
-            rules = rules_by_callee.get((callee_path.replace("\\", "/"), callee_line), [])
+            normalized_path = callee_path.replace("\\", "/")
+            rules = rules_by_callee.get((normalized_path, callee_line), [])
+            if not rules:
+                function_name = _unsafe_function_name(callsite.get("unsafe_callee"))
+                if function_name is not None:
+                    rules = rules_by_callee_name.get(
+                        (normalized_path, function_name), []
+                    )
         callsite["rules"] = rules
     return callsites
 
@@ -1266,7 +1355,11 @@ def _row_needs_llm_testcase(row: dict[str, Any]) -> bool:
     # This is the important semantic split for the full pipeline:
     # compose found SAT for constraints AND NOT(safety rule), so a fully safe
     # concrete PoC may exist and is worth asking the LLM to construct.
-    return row.get("status") in {"violation", "violation-timeout"}
+    return row.get("status") in {
+        "violation",
+        "violation-timeout",
+        "low-confidence-sat",
+    }
 
 
 def _matrix_sort_key(row: dict[str, Any]) -> tuple[Any, Any]:
@@ -1459,7 +1552,8 @@ def _read_failure_feedback(path: Path | None, fallback: BaseException) -> str:
             parts.append(path.read_text(encoding="utf-8", errors="replace"))
         except OSError:
             pass
-    return _tail_text("\n\n".join(part for part in parts if part))
+    # Keep the whole log: cargo prints the error before hundreds of warnings.
+    return "\n\n".join(part for part in parts if part)
 
 
 def _is_testcase_format_feedback(feedback: str | None) -> bool:
@@ -2806,8 +2900,8 @@ def _run_verify_matrix_locked(
 
             raw_ptr_deref = rule == RAW_PTR_DEREF_RULE
             if not raw_ptr_deref and rule not in ast_cache:
-                ast_cache[rule] = _task1_to_ext_ast_json(
-                    _load_rule_dsl(rule_dsl_path, rule), operators
+                ast_cache[rule] = _rule_entry_to_ext_ast_json(
+                    _load_rule_entry(rule_dsl_path, rule), operators
                 )
             artifact_dir = _pair_artifact_dir(artifact_root, callsite_id, str(rule))
             output_dir = artifact_dir / "klee-out"
@@ -2829,7 +2923,7 @@ def _run_verify_matrix_locked(
             if raw_ptr_deref:
                 cmd.append("--ext.raw-ptr-deref")
             else:
-                cmd.append(f"--ext.dsl={ast_cache[rule]}")
+                cmd.append(_klee_constraint_arg(ast_cache[rule]))
             if report_json is not None:
                 cmd.append(f"--report-json={report_json}")
             cmd.append(str(ll_path))
@@ -2980,6 +3074,8 @@ def _run_verify_matrix_locked(
     for row in results:
         if not _row_needs_llm_testcase(row):
             continue
+        if args.resume and row.get("full_rerun_passed") is True:
+            continue
         target_index = row.get("target_index")
         target = target_by_index.get(target_index) if isinstance(target_index, int) else None
         if not isinstance(target, dict):
@@ -2997,8 +3093,8 @@ def _run_verify_matrix_locked(
             continue
         raw_ptr_deref = rule_id == RAW_PTR_DEREF_RULE
         if not raw_ptr_deref and rule_id not in ast_cache:
-            ast_cache[rule_id] = _task1_to_ext_ast_json(
-                _load_rule_dsl(rule_dsl_path, rule_id), operators
+            ast_cache[rule_id] = _rule_entry_to_ext_ast_json(
+                _load_rule_entry(rule_dsl_path, rule_id), operators
             )
         artifact_dir = Path(klee_output_dir).parent
         print(
@@ -3204,10 +3300,10 @@ def run(args: argparse.Namespace) -> int:
         ll_path=ll_path, target=target, callsite_id=resolved_callsite_id, targets=targets
     )
     callsite_key = _target_callsite_key(target, 0) if target is not None else None
-    task1 = _load_rule_dsl(rule_dsl_path, args.rule)
-
     operators = _load_operator_entries(repo_root)
-    ast_json = _task1_to_ext_ast_json(task1, operators)
+    ast_json = _rule_entry_to_ext_ast_json(
+        _load_rule_entry(rule_dsl_path, args.rule), operators
+    )
 
     print(f"[verify] crate={cargo_dir}")
     print(f"[verify] injected-crate={injected_dir}")

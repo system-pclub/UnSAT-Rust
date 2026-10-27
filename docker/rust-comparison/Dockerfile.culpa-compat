@@ -1,0 +1,10 @@
+FROM uspec-rust-comparison-culpa:local
+COPY patches/culpa-rustc-queries.patch /opt/culpa-rustc-queries.patch
+WORKDIR /opt/culpa
+RUN git apply --check /opt/culpa-rustc-queries.patch && git apply /opt/culpa-rustc-queries.patch
+WORKDIR /opt/culpa/culpa
+RUN RUSTFLAGS="-A warnings" cargo install --locked --path . --force && mv /usr/local/cargo/bin/culpa /usr/local/cargo/bin/culpa-driver
+COPY culpa-driver.sh /usr/local/cargo/bin/culpa
+RUN chmod +x /usr/local/cargo/bin/culpa
+LABEL org.opencontainers.image.description="CULPA with guarded generic queries and enum-variant lookup; safety specifications unchanged"
+WORKDIR /work

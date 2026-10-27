@@ -1,0 +1,298 @@
+--- a/culpa/src/abstract_domain/alignment.rs
++++ b/culpa/src/abstract_domain/alignment.rs
+@@ -85,7 +85,7 @@
+     ) -> Self {
+         use rustc_middle::ty::TypingEnv;
+ 
+-        if let Ok(layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty)) {
++        if let Ok(layout) = crate::ty_util::try_layout_of(tcx, ty) {
+             AlignmentDomain::Exact(layout.align.abi.bytes())
+         } else {
+             // Layout unavailable (generic type without monomorphization)
+--- a/culpa/src/abstract_domain/padding.rs
++++ b/culpa/src/abstract_domain/padding.rs
+@@ -96,7 +96,7 @@
+                     if let Some(variant) = adt_def.variants().iter().next() {
+                         for field in &variant.fields {
+                             let field_ty = field.ty(tcx, substs);
+-                            if let Ok(layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(field_ty)) {
++                            if let Ok(layout) = crate::ty_util::try_layout_of(tcx, field_ty) {
+                                 if layout.size.bytes() > 0 {
+                                     crate::vprintln!("[PADDING] {:?} is repr(transparent) - checking inner type {:?}", ty, field_ty);
+                                     return Self::from_type(tcx, field_ty);
+@@ -151,7 +151,7 @@
+         use rustc_middle::ty::TypingEnv;
+ 
+         // Get layout for the full type
+-        let Ok(layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty)) else {
++        let Ok(layout) = crate::ty_util::try_layout_of(tcx, ty) else {
+             return PaddingDomain::Unknown;
+         };
+ 
+@@ -173,7 +173,7 @@
+ 
+         for (idx, field) in variant.fields.iter().enumerate() {
+             let field_ty = field.ty(tcx, substs);
+-            if let Ok(field_layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(field_ty)) {
++            if let Ok(field_layout) = crate::ty_util::try_layout_of(tcx, field_ty) {
+                 sum_of_field_sizes += field_layout.size.bytes();
+ 
+                 // Also check if field type itself has padding
+@@ -201,7 +201,7 @@
+     fn check_tuple_padding<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Self {
+         use rustc_middle::ty::{TyKind, TypingEnv};
+ 
+-        let Ok(layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty)) else {
++        let Ok(layout) = crate::ty_util::try_layout_of(tcx, ty) else {
+             return PaddingDomain::Unknown;
+         };
+ 
+@@ -213,7 +213,7 @@
+         let mut sum_of_field_sizes = 0u64;
+ 
+         for field_ty in fields.iter() {
+-            if let Ok(field_layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(field_ty)) {
++            if let Ok(field_layout) = crate::ty_util::try_layout_of(tcx, field_ty) {
+                 sum_of_field_sizes += field_layout.size.bytes();
+ 
+                 // Check if field has padding
+--- a/culpa/src/analyzer/event_analyzer.rs
++++ b/culpa/src/analyzer/event_analyzer.rs
+@@ -532,9 +532,7 @@
+                 if let Some(ty) = c.const_.try_to_scalar() {
+                     // This is a simplification - we need to handle function constants properly
+                     format!("constant_func_{:?}", ty)
+-                } else if let Some(literal) = c
+-                    .const_
+-                    .try_eval_target_usize(self.tcx, rustc_middle::ty::TypingEnv::fully_monomorphized())
++                } else if let Some(literal) = crate::ty_util::try_eval_usize(self.tcx, c.const_)
+                 {
+                     format!("literal_func_{}", literal)
+                 } else {
+--- a/culpa/src/analyzer/mir_visitor.rs
++++ b/culpa/src/analyzer/mir_visitor.rs
+@@ -7435,18 +7435,14 @@
+             TyKind::Ref(_, pointee_ty, _) => {
+                 // For slices, return element size
+                 if let TyKind::Slice(elem_ty) = pointee_ty.kind() {
+-                    return self.tcx.layout_of(
+-                        rustc_middle::ty::TypingEnv::fully_monomorphized().as_query_input(*elem_ty)
+-                    ).ok().map(|l| l.size.bytes());
++                    return crate::ty_util::try_layout_of(self.tcx, *elem_ty).ok().map(|l| l.size.bytes());
+                 }
+                 *pointee_ty
+             }
+             _ => return None,
+         };
+ 
+-        self.tcx.layout_of(
+-            rustc_middle::ty::TypingEnv::fully_monomorphized().as_query_input(pointee_ty)
+-        ).ok().map(|l| l.size.bytes())
++        crate::ty_util::try_layout_of(self.tcx, pointee_ty).ok().map(|l| l.size.bytes())
+     }
+ 
+     /// Get the pointee type for a pointer/reference type
+--- a/culpa/src/checker.rs
++++ b/culpa/src/checker.rs
+@@ -17501,7 +17501,7 @@
+ 
+     // Check if all possible instantiations satisfy alignment requirements
+     for instantiation in &analysis_result {
+-        if let Ok(layout) = tcx.layout_of(rustc_middle::ty::TypingEnv::fully_monomorphized().as_query_input(*instantiation)) {
++        if let Ok(layout) = crate::ty_util::try_layout_of(tcx, *instantiation) {
+             if layout.align.abi.bytes() < target_align as u64 {
+                 return Ok(false);
+             }
+--- a/culpa/src/generics/trait_solver.rs
++++ b/culpa/src/generics/trait_solver.rs
+@@ -537,7 +537,7 @@
+         // Compute alignment set
+         let mut alignments = HashSet::new();
+         for ty in candidate_types {
+-            if let Ok(layout) = self.tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty)) {
++            if let Ok(layout) = crate::ty_util::try_layout_of(self.tcx, ty) {
+                 alignments.insert(layout.align.abi.bytes());
+             }
+         }
+--- a/culpa/src/guard_ir/symbolic.rs
++++ b/culpa/src/guard_ir/symbolic.rs
+@@ -572,9 +572,7 @@
+     // Only call this for usize types to avoid ICE on other integer types.
+     let const_ty = constant.const_.ty();
+     if matches!(const_ty.kind(), TyKind::Uint(rustc_middle::ty::UintTy::Usize)) {
+-        if let Some(value) = constant
+-            .const_
+-            .try_eval_target_usize(tcx, rustc_middle::ty::TypingEnv::fully_monomorphized())
++        if let Some(value) = crate::ty_util::try_eval_usize(tcx, constant.const_)
+         {
+             vprintln!("  📏 [SYMBOLIC] Evaluated const via try_eval_target_usize: {}", value);
+             return Some(value as u128);
+--- a/culpa/src/ty_util.rs
++++ b/culpa/src/ty_util.rs
+@@ -3,7 +3,37 @@
+ use crate::vprintln;
+ use crate::events::Loc;
+ use crate::views::AmlView;
+-use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypingEnv};
++use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypingEnv, TypeVisitableExt};
++
++/// Query concrete layout only when the fully-monomorphized environment applies.
++/// Generic layouts remain unknown; querying them with an empty parameter
++/// environment can register a delayed rustc ICE even when layout_of returns Err.
++pub fn try_layout_of<'tcx>(
++    tcx: TyCtxt<'tcx>,
++    ty: Ty<'tcx>,
++) -> Result<rustc_middle::ty::layout::TyAndLayout<'tcx>, ()> {
++    if ty.has_non_region_param() || ty.has_infer() || ty.has_escaping_bound_vars() {
++        return Err(());
++    }
++    tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty))
++        .map_err(|_| ())
++}
++
++/// Const generics cannot be evaluated without their defining parameter environment.
++/// Preserve the existing unknown-value fallback instead of panicking in rustc.
++pub fn try_eval_usize<'tcx>(
++    tcx: TyCtxt<'tcx>,
++    constant: rustc_middle::mir::Const<'tcx>,
++) -> Option<u64> {
++    if !matches!(constant.ty().kind(), TyKind::Uint(rustc_middle::ty::UintTy::Usize))
++        || constant.has_non_region_param()
++        || constant.has_infer()
++        || constant.has_escaping_bound_vars()
++    {
++        return None;
++    }
++    constant.try_eval_target_usize(tcx, TypingEnv::fully_monomorphized())
++}
+ 
+ /// Extract an AmlView from a MIR type.
+ ///
+@@ -14,7 +44,7 @@
+     //
+     // CRITICAL: For pointers, we need the POINTEE alignment, not the pointer's own alignment.
+     // Example: *mut u8 on 64-bit has pointer alignment=8, but we need pointee alignment=1
+-    let layout_result = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty));
++    let layout_result = crate::ty_util::try_layout_of(tcx, ty);
+ 
+     let (size_bytes, align_bytes) = if let Ok(layout) = layout_result {
+         (Some(layout.size.bytes()), Some(layout.align.abi.bytes()))
+@@ -39,7 +69,7 @@
+     let target_align_bytes = if is_raw_ptr {
+         // Get pointee type and its alignment
+         if let TyKind::RawPtr(pointee_ty, _mutbl) = ty.kind() {
+-            if let Ok(pointee_layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(*pointee_ty)) {
++            if let Ok(pointee_layout) = crate::ty_util::try_layout_of(tcx, *pointee_ty) {
+                 Some(pointee_layout.align.abi.bytes())
+             } else {
+                 None
+@@ -88,7 +118,7 @@
+     } else if is_repr_transparent {
+         // [P4 AlignedFor FP-FIX 2026-02-02] repr(transparent) wrapper inherits inner type's alignment
+         if let Some(inner_ty) = get_transparent_inner_type(tcx, ty) {
+-            let inner_align = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(inner_ty))
++            let inner_align = crate::ty_util::try_layout_of(tcx, inner_ty)
+                 .ok()
+                 .map(|layout| layout.align.abi.bytes());
+             // Recursively get inner alignment source
+@@ -256,7 +286,7 @@
+ 
+ /// Get the size of a type in bytes
+ fn get_type_size<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<u64> {
+-    tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(ty))
++    crate::ty_util::try_layout_of(tcx, ty)
+         .ok()
+         .map(|layout| layout.size.bytes())
+ }
+@@ -430,7 +460,7 @@
+                 // Get element type and alignment for generic containers
+                 let (element_ty_str, element_align) = if !substs.is_empty() {
+                     let elem_ty = substs.type_at(0);
+-                    let elem_align = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(elem_ty))
++                    let elem_align = crate::ty_util::try_layout_of(tcx, elem_ty)
+                         .ok()
+                         .map(|layout| layout.align.abi.bytes());
+                     (format!("{:?}", elem_ty), elem_align)
+@@ -530,7 +560,7 @@
+                 for field in &variant.fields {
+                     let field_ty = field.ty(tcx, substs);
+                     // Check if this field is non-ZST (the one that determines layout)
+-                    if let Ok(layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(field_ty)) {
++                    if let Ok(layout) = crate::ty_util::try_layout_of(tcx, field_ty) {
+                         if layout.size.bytes() > 0 {
+                             return Some(field_ty);
+                         }
+@@ -578,7 +608,7 @@
+ 
+     for field in &variant.fields {
+         let field_ty = field.ty(tcx, substs);
+-        if let Ok(layout) = tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(field_ty)) {
++        if let Ok(layout) = crate::ty_util::try_layout_of(tcx, field_ty) {
+             if layout.size.bytes() > 0 {
+                 non_zst_fields.push(field_ty);
+             }
+@@ -762,7 +792,7 @@
+     match ty.kind() {
+         // Raw pointers: *const T, *mut T
+         TyKind::RawPtr(pointee_ty, _mutbl) => {
+-            tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(*pointee_ty))
++            crate::ty_util::try_layout_of(tcx, *pointee_ty)
+                 .ok()
+                 .map(|layout| layout.align.abi.bytes())
+         }
+@@ -771,7 +801,7 @@
+         TyKind::Ref(_, pointee_ty, _mutbl) => {
+             // Handle slice references: &[T], &mut [T]
+             if let TyKind::Slice(elem_ty) = pointee_ty.kind() {
+-                return tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(*elem_ty))
++                return crate::ty_util::try_layout_of(tcx, *elem_ty)
+                     .ok()
+                     .map(|layout| layout.align.abi.bytes());
+             }
+@@ -780,7 +810,7 @@
+                 return Some(1); // str is u8-aligned
+             }
+             // Regular references: &T
+-            tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(*pointee_ty))
++            crate::ty_util::try_layout_of(tcx, *pointee_ty)
+                 .ok()
+                 .map(|layout| layout.align.abi.bytes())
+         }
+@@ -800,7 +830,7 @@
+                         // Get first type parameter: T in Vec<T>, Box<T>, etc.
+                         if !substs.is_empty() {
+                             let elem_ty = substs.type_at(0);
+-                            tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(elem_ty))
++                            crate::ty_util::try_layout_of(tcx, elem_ty)
+                                 .ok()
+                                 .map(|layout| layout.align.abi.bytes())
+                         } else {
+@@ -820,7 +850,7 @@
+ 
+         // Slice type: [T]
+         TyKind::Slice(elem_ty) => {
+-            tcx.layout_of(TypingEnv::fully_monomorphized().as_query_input(*elem_ty))
++            crate::ty_util::try_layout_of(tcx, *elem_ty)
+                 .ok()
+                 .map(|layout| layout.align.abi.bytes())
+         }
+--- a/culpa/src/type_dependency.rs
++++ b/culpa/src/type_dependency.rs
+@@ -494,7 +494,7 @@
+                             if let Rvalue::Aggregate(box agg_kind, fields) = rvalue {
+                                 use rustc_middle::mir::AggregateKind;
+ 
+-                                if let AggregateKind::Adt(adt_def_id, _, _, _, _) = agg_kind {
++                                if let AggregateKind::Adt(adt_def_id, variant_idx, _, _, _) = agg_kind {
+                                     // Check if this is constructing our type
+                                     if *adt_def_id != type_def_id {
+                                         continue;
+@@ -508,7 +508,7 @@
+ 
+                                     // Get field names from the ADT definition
+                                     let adt_def = tcx.adt_def(type_def_id);
+-                                    let variant = adt_def.non_enum_variant();
++                                    let variant = adt_def.variant(*variant_idx);
+ 
+                                     // Check each field
+                                     for (field_idx, field_operand) in fields.iter().enumerate() {

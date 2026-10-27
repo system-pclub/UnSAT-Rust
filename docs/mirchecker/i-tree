@@ -1,0 +1,25 @@
+MirChecker
+entry: mut_node
+There is one TP report.
+warning: [MirChecker] Possible error: index out of bound
+  --> src/tree.rs:72:13
+   |
+72 |             self.store.buffer.get_unchecked_mut(index as usize)
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pub struct Tree<T> {
+    pub store: Store<T>,
+    pub root: u32,
+    nil_index: u32,
+}
+
+impl<T: Clone + PartialEq + Eq + PartialOrd + Ord> Tree<T> {
+    // ...
+    #[inline(always)]
+    pub fn mut_node(&mut self, index: u32) -> &mut Node<T> {
+        unsafe {
+            self.store.buffer.get_unchecked_mut(index as usize)
+        }
+    }
+    // ...
+}
+Public safe method uses an unchecked arbitrary index that may lead to out-of-bounds access.

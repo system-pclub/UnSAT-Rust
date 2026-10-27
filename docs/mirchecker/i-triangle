@@ -1,0 +1,24 @@
+MirChecker
+entry: vertex_by_order
+warning: [MirChecker] Possible error: index out of bound
+  --> src/delaunay/triangle.rs:19:14
+   |
+19 |             *self.vertices.get_unchecked(order)
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#[derive(Debug, Clone, Copy)]
+pub struct DTriangle {
+    pub index: usize,
+    pub vertices: [DVertex; 3],
+    pub neighbors: [usize; 3],
+}
+
+impl DTriangle {
+    // ...
+    pub fn vertex_by_order(&self, order: usize) -> DVertex {
+        unsafe {
+            *self.vertices.get_unchecked(order)
+        }
+    }
+    // ...
+}
+Public safe method does not restrict the order to 0,1,2 that may lead to out-of-bounds access. (vertices is an array of len 3)

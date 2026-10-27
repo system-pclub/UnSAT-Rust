@@ -1,0 +1,19 @@
+I classify the 30 MIRAI reports as 30 false positives and 0 true positives, assuming the structures were created through their normal constructors and unsafe “unchecked” methods satisfy their documented preconditions.
+perf_and_test_utils/mod.rs:92	1	FP	For valid inputs, the generated value is below u-n, while i<n; therefore value+i < u and cannot overflow. Invalid u<n fails earlier.
+bitvector/mod.rs:129,156	2	FP	off represents a position within one 512-bit DataLine. It increases by at most eight 64-bit words plus an offset below 64, so it is bounded by 511.
+rs_narrow.rs	13	FP	Rank values are bounded by the bit-vector length; block positions are derived from valid select hints; a block contains eight words. MIRAI does not connect these constructor and select invariants.
+rs_wide.rs	12	FP	Counts are bounded by the allocated bit-vector size, far below u128::MAX. Select positions and ranks are constrained by valid hints and safe-wrapper checks.
+quadwt/prefetch_support.rs:31,58–62	2	FP	Each counter is bounded by qv.len(). For a valid query and constructed sample index, sampled rank multiplied by the sampling rate is bounded by the represented sequence length.
+Some notable individual cases:
+- rs_narrow.rs:110 and rs_wide.rs:123: rank1(last) + last_bit is exactly the total number of ones, so it cannot exceed the vector length.
+- rs_narrow.rs:116 and rs_wide.rs:129: n_ones() <= bv.len(), so subtraction cannot underflow.
+- rs_narrow.rs:220 and rs_wide.rs:237: the stored one-rank never exceeds the number of preceding bit positions, so the computed zero-rank cannot underflow.
+- rs_wide.rs:230: j - 1 cannot execute with j == 0; at the first subblock, its rank equals the selected superblock’s starting rank, which is known to be <= i.
+- The select index warnings are protected by i < n_ones() or i < n_zeros() in the safe methods. Their unchecked counterparts explicitly require that condition.
+There are separate robustness issues not represented by these warnings:
+- RSNarrow::default().n_ones() and RSWide::default().n_ones() subtract one from an empty bit-vector length and panic.
+- Arbitrary serde deserialization can potentially violate internal rank/select invariants.
+- Some unsafe *_unchecked methods can fail if callers violate their contracts.
+Those issues do not make MIRAI’s specific 30 arithmetic/index claims true on valid execution paths.
+Verdict: 0 TP, 30 FP.
+

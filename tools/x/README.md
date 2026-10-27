@@ -1,6 +1,40 @@
 # `x` developer commands
 
-## Audit std/core DSL grammar coverage
+## Translate and review the current core/std catalog
+
+The dissertation uses the frozen selective audit in
+`eval/rule-processing/2026-10-16-gpt61-final/`: 958 rules (708 core, 250 std),
+15 reusable call operators, and 879 semantically correct translations under
+local Codex specification review. Full-catalog success is 879/958 = 91.8%;
+among 953 produced expressions it is 92.2%. These are AI review labels, not
+independent human annotations. Extraction retains 948 TP, 38 FP and six FN
+(96.1% precision, 99.4% recall).
+
+`src/llm/translate_rules.py` translates every submitted rule directly using
+`gpt-6.1-sol`, with source argument/type bindings and frozen definitions.
+`--retain-correct-from RUN` preserves reviewed correct DSL byte-for-byte;
+only unresolved rules are submitted, and review feedback guides revisions.
+No support classification or `UNSUPPORTED` response is used. See the final
+audit's `README.md` for provenance and reproducible aggregation. Its
+`translations.json` and `accepted-translations.json` are the evaluated
+catalog outputs. The legacy root `ptr_rule_dsl.json` below is a separate
+historical artifact.
+
+## Demonstrated DSL expressibility coverage
+
+`eval/rule-processing/2026-10-16-dsl-coverage/` evaluates the same 958 rules under
+exactly the same frozen 15-operator specification. It retains 879 accepted model
+translations as witnesses and accepts six additional manually constructed,
+separately reviewed capacity witnesses. Demonstrated expressibility coverage
+is at least 885/958=92.4% (core 94.5%, std 86.4%); 73 rules remain unresolved.
+This is an AI-review-based lower bound, not proof that the remainder is
+inexpressible. Manual capacity witnesses do not change the original model
+translation result (879 TP,0 FP,79 FN; 91.8% success).
+
+The older keyword-family classifier below does not establish a true
+expressibility upper bound or a complete per-rule coverage assessment.
+
+## Historical std/core DSL grammar-family audit
 
 The grammar supports first-order quantification, finite collection literals,
 membership, and temporal predicates without adding domain-specific operators.
@@ -16,14 +50,35 @@ This reports grammar expressibility only. It does not claim that KLEE can lower
 quantified or temporal expressions. Rules that cannot be classified from their
 text remain unsupported rather than being counted through an opaque predicate.
 
-The current catalog has 962 canonical `rule-N` entries. All 836 rules selected
-by the grammar-capability audit have a KLEE-consumable translation in
-`ptr_rule_dsl.json`; the file has 854 entries in total because it also retains
-18 earlier translations outside that conservative classifier. `./x
+The current catalog has 962 canonical `rule-N` entries: 958 in `core`/`std`
+(708/250), plus four supplemental `alloc` rules. The inventory
+uses only `core` and `std`: 365 API source items and 958 rules. The historical
+grammar-family classifier selects 832 of those rules; this classifier is not
+used by the current translation workflow. The original extraction audit accepted 948
+rules; ten later `core` supplements bring that cohort to 958 without changing
+the original extraction TP/FP/FN labels.
+
+All 836 rules selected by the classifier over the complete 962-rule catalog
+have parseable expressions in `ptr_rule_dsl.json`. The file has 854 entries:
+850 for `core`/`std` and four for `alloc`; 18 `core` translations fall outside
+the conservative classifier. `./x
 lint-rule-dsl` checks that every translated ID is canonical, exists in
 `rules.csv`, and has matching path/name/rule metadata. This is translation
 coverage, not a claim that KLEE can prove 80% of the rules at every callsite:
 summary-state fields still require corresponding program-state bindings.
+
+The frozen `core`/`std` semantic review in
+`eval/rule-processing/2026-10-15/` separately reviews all 850 retained
+translations against their rules and current operator/binding semantics.
+Local Codex adjudication records 158 correct, 681 incorrect, and 11
+unverifiable translations (18.6% success among produced expressions), with
+108 untranslated catalog rules. These are AI semantic-review labels, not
+human-author annotations or a fresh prompt-run accuracy estimate. Regenerate
+the summary with:
+
+```bash
+tools/x/.venv/bin/python eval/audit_rule_processing.py
+```
 
 ## Generate a Rust exploit example
 

@@ -10,9 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DISPLAY = {
     "full": "RuKLEE",
     "without-rule-extraction": "① W.O. E",
-    "without-mut-ref-recovery": "② W.O. M",
-    "without-symbolic-execution": "③ W.O. S",
-    "without-validation": "④ W.O. V",
+    "without-rule-translation": "② W.O. T",
+    "without-mut-ref-recovery": "③ W.O. M",
+    "without-symbolic-execution": "④ W.O. S",
+    "without-validation": "⑤ W.O. V",
 }
 
 
@@ -34,6 +35,8 @@ def main() -> int:
     tp = [item["TP"] for item in variants]
     fp = [item["FP"] for item in variants]
     total = int(document["ground_truth_total"])
+    coverage = document.get("coverage", {})
+    partial = isinstance(coverage, dict) and coverage.get("status") != "complete"
 
     bar_width = 0.35
     x = np.arange(len(labels), dtype=float)
@@ -66,6 +69,9 @@ def main() -> int:
     ax.set_ylim(0, upper * 1.18 + 1)
     ax.tick_params(axis="y", labelsize=14)
     ax.legend(fontsize=12, ncol=3)
+    if partial:
+        included = ", ".join(coverage.get("included_crates", []))
+        ax.set_title(f"Partial smoke result ({included})", fontsize=12)
     for bars, values, color in ((tp_bars, tp, "green"), (fp_bars, fp, "red")):
         for bar, value in zip(bars, values):
             ax.annotate(
