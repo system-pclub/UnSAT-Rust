@@ -7,11 +7,12 @@
 ```bash
 # Initialize submodule 
 $ git submodule update --init --recursive
-$ ./build_klee.sh
-$ ./build_rust.sh
-$ ./build_mirscan.sh
-$ cd tools/x && uv sync && cd ../..
+$ ./x build
 ```
+
+`x` builds `unsat-rust:local` on first use and mounts this repository at
+`/unsat-rust`. On macOS it builds and runs the image as `linux/amd64` so the
+patched x86_64 Rust/KLEE toolchain is used consistently.
 
 ## How to label a crate
 ```bash
@@ -29,10 +30,13 @@ $ ./x sync --cargo-dir <crate folder>
 
 ## How to extract comment
 ```bash
-$ ./build_extractcomment.sh
-$ tools/extract-comment/target/release/extract-comment --dirs tools/rust/library/core --out .local/core-comments.json
-$ tools/extract-comment/target/release/extract-comment --dirs tools/rust/library/std --out .local/std-comments.json
+$ ./x extract
 ```
+
+This runs `extract-comment`, LLM atomic-rule extraction, and LLM DSL
+translation in sequence. Outputs and resumable request artifacts are written
+under `.local/extract/`. Use `./x extract --help` for partial-pipeline and smoke
+test options.
 
 rule-446,rust/library/core/src/ptr/mut_ptr.rs:971,const unsafe fn add,"If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object."
 rule-447,rust/library/core/src/ptr/mut_ptr.rs:971,const unsafe fn add,"If the computed offset is non-zero, the entire memory range between `self` and the result must be in bounds of that allocated object."

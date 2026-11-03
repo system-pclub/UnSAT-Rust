@@ -21,8 +21,7 @@ an LLM judgment when simply deleting it would make the experiment undefined.
 All runners accept `--crate NAME` (repeatable), `--resume`, `--dry-run`,
 `--timeout-sec`, `--model`, `--rustc`, `--klee-bin`, and `--results-root`.
 They default to the repository's patched stage-1 rustc and KLEE build; run
-`./build_rust.sh`, `./build_mirscan.sh`, and `./build_klee.sh` first on a fresh
-checkout. Examples:
+`./x build` first on a fresh checkout. Examples:
 
 ```bash
 python3 ablation/full.py --resume

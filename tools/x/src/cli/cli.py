@@ -24,6 +24,12 @@ def _run_verify(args: argparse.Namespace) -> int:
     return run(args)
 
 
+def _run_extract(args: argparse.Namespace) -> int:
+    from cli.cmd.extract import run
+
+    return run(args)
+
+
 def _run_result(args: argparse.Namespace) -> int:
     from cli.cmd.result import run
 
@@ -188,6 +194,58 @@ def build_parser() -> argparse.ArgumentParser:
     )
     
     compare_parser.set_defaults(func=_run_compare)
+
+    extract_parser = subparsers.add_parser(
+        "extract",
+        help="Extract Rust safety docs, derive atomic rules with an LLM, and translate them to DSL.",
+    )
+    extract_parser.add_argument(
+        "--output-dir",
+        default=".local/extract",
+        help="Pipeline output directory (default: .local/extract).",
+    )
+    extract_parser.add_argument(
+        "--model",
+        default="gpt-6.1-sol",
+        help="Model used for rule extraction and DSL translation (default: gpt-6.1-sol).",
+    )
+    extract_parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Maximum concurrent LLM requests (default: 8).",
+    )
+    extract_parser.add_argument(
+        "--reasoning-effort",
+        default="medium",
+        help="Reasoning effort passed to the translation stage (default: medium).",
+    )
+    extract_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Process only the first N documented APIs (useful for smoke tests).",
+    )
+    extract_parser.add_argument(
+        "--comments-only",
+        action="store_true",
+        help="Stop after building extract-comment and writing source-units.json.",
+    )
+    extract_parser.add_argument(
+        "--skip-comment-extract",
+        action="store_true",
+        help="Reuse an existing source-units.json in --output-dir.",
+    )
+    extract_parser.add_argument(
+        "--skip-rule-extract",
+        action="store_true",
+        help="Reuse an existing rules.csv in --output-dir.",
+    )
+    extract_parser.add_argument(
+        "--skip-translate",
+        action="store_true",
+        help="Stop after writing the extracted natural-language rules.csv.",
+    )
+    extract_parser.set_defaults(func=_run_extract)
 
     verify_parser = subparsers.add_parser(
         "verify",
