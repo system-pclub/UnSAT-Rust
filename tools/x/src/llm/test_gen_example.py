@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from llm.gen_example import build_testcase_prompt, build_witness_guided_rust_context
+from llm.gen_example import (
+    build_testcase_prompt,
+    build_witness_guided_rust_context,
+    crate_api_slice_function_names,
+    render_crate_api_slice,
+)
 
 
 class WitnessGuidedRustContextTests(unittest.TestCase):
@@ -143,6 +148,46 @@ fn old_generated_poc() { panic!("do not retain me") }
         )
         self.assertIn("`#![no_std]`", build_testcase_prompt(**kwargs, no_std=True))
         self.assertNotIn("`#![no_std]`", build_testcase_prompt(**kwargs))
+
+    def test_testcase_prompt_is_compact_and_keeps_core_requirements(self) -> None:
+        prompt = build_testcase_prompt(
+            rust_context="<rust context/>",
+            call_chain="a -> b",
+            callsite="{}",
+            safety_requirement="demo rule",
+            function_name="__unsat_poc_demo",
+            feature_name="unsat-poc-demo",
+        )
+        self.assertLess(len(prompt), 9000)
+        self.assertEqual(prompt.count('#[cfg(feature = "unsat-poc-demo")]'), 1)
+        for required in ("#[no_mangle]", "cfg(test)", "one Rust fenced code block"):
+            self.assertIn(required, prompt)
+
+    def test_api_slice_function_names_cover_target_and_chain(self) -> None:
+        names = crate_api_slice_function_names(
+            {"caller": {"name": "c::T::target"}},
+            [{"steps": [{"function": "c::T::new"}, {"function": "c::T::target"}]}],
+        )
+        self.assertEqual(names, ["c::T::new", "c::T::target"])
+
+    def test_render_api_slice_keeps_bodies_for_chain_and_signatures_for_apis(self) -> None:
+        context = render_crate_api_slice(
+            {
+                "types": [
+                    {"name": "c::T", "path": "src/lib.rs", "line": 1, "definition": "struct T;"}
+                ],
+                "functions": [
+                    {"name": "c::T::target", "role": "requested", "path": "src/lib.rs",
+                     "line": 3, "signature": "fn target()", "body": "fn target() { 1 }"},
+                    {"name": "c::T::api", "role": "related_type_api", "path": "src/lib.rs",
+                     "line": 5, "signature": "pub fn api()"},
+                ],
+            }
+        )
+        self.assertIn("struct T;", context.text)
+        self.assertIn("fn target() { 1 }", context.text)
+        self.assertIn("pub fn api()", context.text)
+        self.assertEqual(context.stats["retained_type_count"], 1)
 
 
 if __name__ == "__main__":

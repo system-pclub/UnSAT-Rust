@@ -7,7 +7,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from llm.gen_example import build_testcase_prompt, build_witness_guided_rust_context
+from llm.gen_example import (
+    build_crate_api_slice_context,
+    build_testcase_prompt,
+    build_witness_guided_rust_context,
+)
 from llm.openai_llm import OpenAILLM
 
 
@@ -3725,12 +3729,29 @@ def generate_safe_testcase(
     )
     if relation_hint:
         target_context = target_context + "\n\n" + relation_hint
-    rust_context = build_witness_guided_rust_context(
-        crate_dir,
-        target=target,
-        control_chains=testcase_chains,
-        mode=context_mode,
-    )
+    if context_mode == "slice":
+        try:
+            rust_context = build_crate_api_slice_context(
+                crate_dir,
+                target=target,
+                control_chains=testcase_chains,
+                output_path=artifacts_dir / "testcase-api-slice.json",
+            )
+        except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
+            logger.warning("crate-local API slicing failed; using source slice: %s", error)
+            rust_context = build_witness_guided_rust_context(
+                crate_dir,
+                target=target,
+                control_chains=testcase_chains,
+                mode="slice",
+            )
+    else:
+        rust_context = build_witness_guided_rust_context(
+            crate_dir,
+            target=target,
+            control_chains=testcase_chains,
+            mode=context_mode,
+        )
     no_std = _crate_is_no_std(crate_dir)
     prompt = build_testcase_prompt(
         rust_context=rust_context.text,
