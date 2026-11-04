@@ -1,0 +1,69 @@
+[package]
+authors = ["info@tos.network"]
+description = "rtvm Interpreter"
+edition = "2021"
+keywords = ["no_std", "tos", "evm", "rtvm", "interpreter"]
+license = "MIT"
+name = "rtvm-interpreter"
+repository = "https://github.com/tos-network/rtvm"
+version = "4.0.0"
+readme = "../../README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+rtvm-primitives = { path = "../primitives", version = "3.1.1", default-features = false }
+
+# optional
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "rc",
+], optional = true }
+
+[dev-dependencies]
+walkdir = "2.5"
+serde_json = { version = "1.0"}
+bincode = "1.3"
+
+[[test]]
+name = "eof"
+path = "tests/eof.rs"
+required-features = ["serde"]
+
+[features]
+default = ["std"]
+std = ["serde?/std", "rtvm-primitives/std"]
+hashbrown = ["rtvm-primitives/hashbrown"]
+serde = ["dep:serde", "rtvm-primitives/serde"]
+arbitrary = ["std", "rtvm-primitives/arbitrary"]
+asm-keccak = ["rtvm-primitives/asm-keccak"]
+portable = ["rtvm-primitives/portable"]
+
+optimism = ["rtvm-primitives/optimism"]
+# Optimism default handler enabled Optimism handler register by default in EvmBuilder.
+optimism-default-handler = [
+    "optimism",
+    "rtvm-primitives/optimism-default-handler",
+]
+negate-optimism-default-handler = [
+    "rtvm-primitives/negate-optimism-default-handler",
+]
+
+dev = [
+    "memory_limit",
+    "optional_balance_check",
+    "optional_block_gas_limit",
+    "optional_eip3607",
+    "optional_gas_refund",
+    "optional_no_base_fee",
+    "optional_beneficiary_reward",
+]
+memory_limit = ["rtvm-primitives/memory_limit"]
+optional_balance_check = ["rtvm-primitives/optional_balance_check"]
+optional_block_gas_limit = ["rtvm-primitives/optional_block_gas_limit"]
+optional_eip3607 = ["rtvm-primitives/optional_eip3607"]
+optional_gas_refund = ["rtvm-primitives/optional_gas_refund"]
+optional_no_base_fee = ["rtvm-primitives/optional_no_base_fee"]
+optional_beneficiary_reward = ["rtvm-primitives/optional_beneficiary_reward"]

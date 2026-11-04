@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Run only the pinned RustSec callsite/rule pairs; preserve prior results."""
+"""Run the pinned RustSec callsite/rule pairs through the ./x wrapper (Docker)."""
 from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
 import fcntl
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,13 +13,13 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 BENCHMARK = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = ROOT / "eval/rustsec20"
-HISTORY = [DEFAULT_OUTPUT, ROOT / "eval/rustsec", ROOT / "eval/rustsec-supplement",
-           ROOT / "eval/rustsec-supplement2"]
+# Statuses where the symbolic stage found a violating state for the advisory.
+DETECTED = {"violation", "violation-timeout", "low-confidence-sat"}
 
 # crate -> {MIRScan callsite id: relevant rule ids}. Locations refer to the
 # original pinned sources, not injected copies. Advisory evidence is under
@@ -109,6 +108,8 @@ ADVISORY_TARGETS = {
     "xmas-elf-0.9.1": {"src-hash-rs-31-23": ("rule-289",)},
 }
 
+# Cargo features needed for the advisory code to be compiled.
+FEATURES = {}
 # These advisories require release-style assertions/overflow behavior.
 RELEASE_ONLY = {"bam-0.1.2", "orx-pinned-vec-3.20.0", "partial_sort-0.1.2", "ruint-1.16.0",
                 "tanton_engine-1.0.0", "transpose-0.2.2"}
@@ -143,32 +144,40 @@ def matrix_pairs(matrix):
             for row in matrix.get("results", []) if isinstance(row, dict)}
 
 
-def previous_run(crate, roots, *, no_debug_assertions=False):
-    """Reuse only finished invocations covering every selected callsite/rule.
-
-    Older targeted/instantiated runs can qualify; not-in-ir is still a finished
-    attempt, not evidence of coverage or an advisory hit.
-    """
-    for root in dict.fromkeys(roots):
-        for path in sorted((root / crate / "ruklee").glob("*/run.json"), reverse=True):
-            run = read_json(path)
-            matrix = read_json(path.parent / "matrix.json")
-            if no_debug_assertions and "--no-debug-assertions" not in run.get("command", []):
-                continue
-            if (run.get("status") == "completed" and run.get("exit_code") == 0
-                    and isinstance(matrix.get("total"), int)
-                    and matrix.get("completed") == matrix["total"]
-                    and selected_pairs(crate) <= matrix_pairs(matrix)):
-                return path.parent
-    return None
-
-
 def environment():
-    # Reuse the existing experiment's compiler, Cargo shim and credentials.
-    spec = importlib.util.spec_from_file_location("rustsec_runner", ROOT / "dev/run-rustsec.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.environment()
+    """Environment for ./x: it runs everything inside the unsat-rust:local image."""
+    env = dict(os.environ)
+    env["PYTHONUNBUFFERED"] = "1"
+    dotenv = ROOT / ".env"
+    for line in dotenv.read_text().splitlines() if dotenv.exists() else []:
+        if line.startswith("OPENAI_API_KEY=") and "OPENAI_API_KEY" not in env:
+            env["OPENAI_API_KEY"] = line.split("=", 1)[1].strip().strip("\"'")
+    return env
+
+
+def package_name(source):
+    match = re.search(r'(?ms)^\[package\].*?^name\s*=\s*"([^"]+)"', (source / "Cargo.toml").read_text())
+    return match.group(1) if match else None
+
+
+def lib_path(work):
+    manifest = (work / "Cargo.toml").read_text()
+    match = re.search(r'(?ms)^\[lib\].*?^path\s*=\s*"([^"]+)"', manifest)
+    return work / (match.group(1) if match else "src/lib.rs")
+
+
+def rel(path):
+    """Path as seen inside the container, where the repository is the cwd."""
+    return str(Path(path).resolve().relative_to(ROOT))
+
+
+def detection(matrix, crate):
+    """Callsite -> whether any selected rule reported a violating state."""
+    found = {target: False for target in ADVISORY_TARGETS[crate]}
+    for row in matrix.get("results", []):
+        if row.get("callsite") in found and row.get("status") in DETECTED:
+            found[row["callsite"]] = True
+    return found
 
 
 def write_json(path, value):
@@ -192,7 +201,7 @@ def write_selection(crate, output):
     dsl_path = output / "rule-dsl.json"
     write_json(dsl_path, {rule: rules[rule] for rule in dsl_ids})
     write_json(output / "selection.json", targets)
-    return ["--callsites-file", str(calls_path), "--rule-dsl", str(dsl_path)]
+    return ["--callsites-file", rel(calls_path), "--rule-dsl", rel(dsl_path)]
 
 
 def stop_process(process):
@@ -212,9 +221,11 @@ def run_crate(source, args, env, attempt):
     output.mkdir(parents=True, exist_ok=False)
     selection_args = write_selection(source.name, output)
     work = ROOT / ".local/rustsec-work/ruklee" / attempt / source.name
+    work.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, work, ignore=shutil.ignore_patterns("target", ".git"))
     # Reuse the reviewed dependency resolutions instead of resolving old broad
-    # version requirements to incompatible modern dependencies.
+    # version requirements to incompatible modern dependencies. A Cargo.lock
+    # shipped in the benchmark directory is already part of the copy.
     for provenance in (BENCHMARK / "evidence").glob("*/provenance.json"):
         case = read_json(provenance)
         if Path(case.get("directory", "")).name == source.name:
@@ -226,18 +237,16 @@ def run_crate(source, args, env, attempt):
         manifest = work / "Cargo.toml"
         manifest.write_text(manifest.read_text().replace('default = ["pelite"]', 'default = []'))
     if source.name in INSTANTIATIONS:
-        manifest = tomllib.loads((work / "Cargo.toml").read_text())
-        lib = work / manifest.get("lib", {}).get("path", "src/lib.rs")
+        lib = lib_path(work)
         (lib.parent / "__rustsec_instantiations.rs").write_text(
             "#[test]\nfn instantiate_public_api() {\n    " + INSTANTIATIONS[source.name] + "\n}\n")
         declaration = "\n#[cfg(test)] mod __rustsec_instantiations;\n"
         lib.write_text(lib.read_text() + declaration)
-    command = [str(ROOT / "x"), "verify", str(work),
-               "--rustc", str(args.rustc), "--klee-bin", str(args.klee_bin),
-               "--ir-output-dir", str(ROOT / ".local/rustsec-irs" / source.name),
-               "--results-json", str(output / "matrix.json"),
-               "--logs-dir", str(output / "logs"),
-               "--artifacts-dir", str(output / "artifacts"),
+    command = [str(ROOT / "x"), "verify", rel(work),
+               "--ir-output-dir", rel(ROOT / ".local/rustsec-irs" / source.name),
+               "--results-json", rel(output / "matrix.json"),
+               "--logs-dir", rel(output / "logs"),
+               "--artifacts-dir", rel(output / "artifacts"),
                "--timeout-sec", str(args.timeout),
                "--test" if args.tests or source.name in INSTANTIATIONS else "--no-test",
                *selection_args]
@@ -245,7 +254,9 @@ def run_crate(source, args, env, attempt):
         command.append("--skip-llm-testcase")
     if args.no_debug_assertions or source.name in RELEASE_ONLY:
         command.append("--no-debug-assertions")
-    record = {"command": command, "cwd": str(ROOT), "source": str(source),
+    if source.name in FEATURES:
+        command += ["--features", FEATURES[source.name]]
+    record = {"runner": 2, "command": command, "cwd": str(ROOT), "source": str(source),
               "selection": ADVISORY_TARGETS[source.name],
               "started_at": datetime.now(timezone.utc).isoformat(),
               "timeout_seconds": args.crate_timeout, "status": "running"}
@@ -267,6 +278,9 @@ def run_crate(source, args, env, attempt):
                     record.update(status="failed", error="advisory selection was not fully executed",
                                   missing_pairs=sorted(expected - actual),
                                   unexpected_pairs=sorted(actual - expected))
+                record["detected"] = detection(matrix, source.name)
+                if not all(record["detected"].values()) and record["status"] == "completed":
+                    record.update(status="missed", error="advisory callsite not reported SAT")
     except subprocess.TimeoutExpired:
         stop_process(process)
         record.update(status="timeout", exit_code=process.returncode)
@@ -287,7 +301,6 @@ def run_crate(source, args, env, attempt):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--crate", action="append", help="Only this package name or directory; repeatable")
-    parser.add_argument("--rerun", action="store_true", help="Ignore prior completed runs; write a new attempt")
     parser.add_argument("--dry-run", action="store_true", help="List decisions and exact target/rule pairs without running tools")
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--timeout", type=int, default=60, help="Per KLEE invocation timeout in seconds (default: 60)")
@@ -297,21 +310,16 @@ def main():
     parser.add_argument("--skip-llm", action="store_true", help="Only run the symbolic stage; skip generated PoCs/replays")
     parser.add_argument("--no-debug-assertions", action="store_true", help="Use release-style assertion behavior")
     parser.add_argument("--advisory-only", action="store_true", help="Compatibility flag: advisory-only is now always enabled")
-    parser.add_argument("--rustc", type=Path, default=ROOT / "tools/rust/build/x86_64-unknown-linux-gnu/stage1/bin/rustc")
-    parser.add_argument("--klee-bin", type=Path, default=ROOT / "tools/klee/build/bin/klee")
     args = parser.parse_args()
     if args.timeout <= 0 or args.crate_timeout < 0:
         parser.error("--timeout must be positive and --crate-timeout nonnegative")
     args.output_root = args.output_root.resolve()
-    args.rustc = args.rustc.resolve()
-    args.klee_bin = args.klee_bin.resolve()
     crates = []
     matched = set()
     for source in sorted(BENCHMARK.iterdir()):
         if not source.is_dir() or not (source / "Cargo.toml").is_file():
             continue
-        package = tomllib.loads((source / "Cargo.toml").read_text()).get("package", {})
-        names = {source.name, package.get("name")}
+        names = {source.name, package_name(source)}
         if args.crate and not names.intersection(args.crate):
             continue
         matched.update(names.intersection(args.crate or []))
@@ -330,10 +338,6 @@ def main():
         unknown = {rule for _, rule in pairs} - known_rules
         if unknown:
             parser.error(f"Unknown DSL rules for {source.name}: {sorted(unknown)}")
-    if not args.dry_run:
-        for binary in (args.rustc, args.klee_bin):
-            if not os.access(binary, os.X_OK):
-                parser.error(f"Missing executable: {binary}")
     # The experiment tools share metadata and injected directories. Serialize
     # both crates and simultaneous invocations of this batch entrypoint.
     lock_path = ROOT / ".local/rustsec-batch.lock"
@@ -346,7 +350,7 @@ def main():
                 parser.error("Another benchmark/rustsec/run.py is running")
         attempt = datetime.now(timezone.utc).strftime("batch-%Y%m%dT%H%M%S-%f")
         env = None
-        skipped = failed = ran = unsupported = 0
+        failed = ran = unsupported = 0
         for index, source in enumerate(crates, 1):
             if args.dry_run:
                 for target, rules in ADVISORY_TARGETS[source.name].items():
@@ -356,12 +360,6 @@ def main():
                 unsupported += 1
                 continue
             release = args.no_debug_assertions or source.name in RELEASE_ONLY
-            old = None if args.rerun else previous_run(
-                source.name, [args.output_root, *HISTORY], no_debug_assertions=release)
-            if old is not None:
-                print(f"[{index}/{len(crates)}] SKIP {source.name}: {old}", flush=True)
-                skipped += 1
-                continue
             print(f"[{index}/{len(crates)}] RUN  {source.name} "
                   f"targets={len(ADVISORY_TARGETS[source.name])} pairs={len(selected_pairs(source.name))}"
                   f"{' no-debug-assertions' if release else ''}", flush=True)
@@ -371,7 +369,7 @@ def main():
                 if not run_crate(source, args, env, attempt):
                     failed += 1
             ran += 1
-        print(f"{'Plan' if args.dry_run else 'Done'}: run={ran}, skipped={skipped}, failed={failed}, unsupported={unsupported}")
+        print(f"{'Plan' if args.dry_run else 'Done'}: run={ran}, failed={failed}, unsupported={unsupported}")
         return int(failed > 0)
 
 
@@ -379,5 +377,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print("\nInterrupted; logs preserved. The next run retries unfinished crates.", file=sys.stderr)
+        print("\nInterrupted; logs preserved.", file=sys.stderr)
         sys.exit(130)

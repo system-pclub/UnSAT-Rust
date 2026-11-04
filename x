@@ -35,7 +35,12 @@ run_args=(
     --volume "$repo_root:$CONTAINER_ROOT"
     --workdir "$CONTAINER_ROOT"
     --env HOME=/home/user
+    # Keep downloaded crates across containers so analysed crates' dependencies
+    # and the mirscan build deps are fetched only once.
+    --volume "$repo_root/.local/cargo-home/registry:/home/user/.cargo/registry"
+    --volume "$repo_root/.local/cargo-home/git:/home/user/.cargo/git"
 )
+mkdir -p "$repo_root/.local/cargo-home/registry" "$repo_root/.local/cargo-home/git"
 if [[ -t 0 && -t 1 ]]; then
     run_args+=(--interactive --tty)
 fi
