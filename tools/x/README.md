@@ -1,5 +1,42 @@
 # `x` developer commands
 
+## Extract and translate rules by directory
+
+```bash
+./x rule --output .local/rules \
+  tools/rust/library/std tools/rust/library/core tools/rust/library/alloc
+```
+
+Each input directory gets a subdirectory under the output, using its basename
+(`std/`, `core/`, `alloc/`). `--step 0` runs the Rust `extract-comment` tool
+and writes `step0.json`; `--step 1` reads that file, extracts atomic rules
+with the LLM and writes `step1.json`; `--step 2` reads the saved rules and
+translates them with the LLM into `step2.json`. A selected step runs only that
+step and requires the preceding results. Omitting `--step` runs all three,
+reusing existing `step0.json` and successful LLM requests. Run `--step 0`
+explicitly to refresh comments after changing sources, then rerun the pipeline.
+The step 0 JSON uses the original `extract-comment` format, so existing
+`source-units.json` files can be reused by copying each directory's extraction
+to its `step0.json`.
+
+After each directory finishes step 0, the command prints its API count and
+one API per line (source location, parent type/trait if present, and declaration).
+To print saved results without rerunning extraction, use the standalone script:
+
+```bash
+python tools/x/src/cli/cmd/print_step0.py eval/rule/std eval/rule/core eval/rule/alloc
+```
+
+After step 1, the output root contains a merged `rules.csv`, including all
+supplied directories. Each input subdirectory also has its own `rules.csv`,
+with the same globally unique IDs used by `step2.json`. IDs follow input
+directory order, then source path and line; use the same input list and order
+when resuming. Inputs with duplicate basenames are rejected. Requests and raw
+responses remain under each directory for inspection and resuming failed work.
+`--model`, `--workers`, `--reasoning-effort`, and `--limit` configure the LLM
+stages; `--limit` bounds the number of source APIs per directory for smoke runs.
+LLM requests require `OPENAI_API_KEY` (environment or a nearby `.env` file).
+
 ## Translate and review the current core/std catalog
 
 The dissertation uses the frozen selective audit in

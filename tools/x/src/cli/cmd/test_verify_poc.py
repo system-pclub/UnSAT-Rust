@@ -10,6 +10,8 @@ from cli.cmd.verify_poc import (
     _source_level_bound_relation_hint,
     build_target_context_block,
     ensure_cargo_feature,
+    format_control_chains_text,
+    format_target_text,
     inject_testcase_at_callsite,
     symbolize_testcase_constants,
     testcase_injection,
@@ -656,3 +658,37 @@ Rule DSL AST. The testcase should make NOT(this rule) true at the target unsafe 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromptSerializationTests(unittest.TestCase):
+    def test_chain_text_is_concise_english(self) -> None:
+        text = format_control_chains_text(
+            [
+                {
+                    "symbol": "_ZN7scanner5Match3ptr17hABCE.arg0.at",
+                    "steps": [
+                        {"kind": "root", "root_type": "Match"},
+                        {"kind": "public_field", "root_type": "Match", "field": "at"},
+                    ],
+                },
+                {"symbol": "compose_slice_as_ptr1", "steps": []},
+            ]
+        )
+        self.assertIn("`arg0.at`: public field `Match.at` is directly writable", text)
+        self.assertNotIn("{", text)
+        self.assertNotIn("compose_slice", text)
+
+    def test_target_text_keeps_only_useful_facts(self) -> None:
+        text = format_target_text(
+            {
+                "caller": {"name": "A::f", "path": "src/lib.rs", "line_start": 1,
+                           "line_end": 3, "is_unsafe": False, "return_ty": "u8",
+                           "body_end": 9, "require_template": True},
+                "callee": {"name": "offset", "is_unsafe": True, "body_end": 4},
+                "callsite": {"path": "src/lib.rs", "line": 2, "col": 5, "id": "x"},
+                "callee_type_args": [{"name": "T", "instantiated_ty": "u8"}],
+            }
+        )
+        self.assertIn("safe fn, returns `u8`", text)
+        self.assertIn("T = u8", text)
+        self.assertNotIn("body_end", text)

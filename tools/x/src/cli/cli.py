@@ -30,6 +30,12 @@ def _run_extract(args: argparse.Namespace) -> int:
     return run(args)
 
 
+def _run_rule(args: argparse.Namespace) -> int:
+    from cli.cmd.rule import run
+
+    return run(args)
+
+
 def _run_result(args: argparse.Namespace) -> int:
     from cli.cmd.result import run
 
@@ -246,6 +252,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Stop after writing the extracted natural-language rules.csv.",
     )
     extract_parser.set_defaults(func=_run_extract)
+
+    rule_parser = subparsers.add_parser(
+        "rule", help="Extract comments (0), extract rules (1), and translate rules to DSL (2).",
+    )
+    rule_parser.add_argument("directories", nargs="+", help="Input directories; each gets its own output subdirectory.")
+    rule_parser.add_argument("--output", required=True, help="Output directory for cached stages and the merged rules.csv.")
+    rule_parser.add_argument("--step", type=int, choices=(0, 1, 2), help="Run only this step; by default run all steps, reusing cached results.")
+    rule_parser.add_argument("--model", default="gpt-6.1-sol")
+    rule_parser.add_argument("--workers", type=int, default=8)
+    rule_parser.add_argument("--reasoning-effort", default="medium")
+    rule_parser.add_argument("--limit", type=int, help="Process at most N documented APIs per input directory.")
+    rule_parser.set_defaults(func=_run_rule)
 
     verify_parser = subparsers.add_parser(
         "verify",

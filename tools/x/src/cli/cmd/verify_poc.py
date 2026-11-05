@@ -847,6 +847,83 @@ def write_certainty_chain_json(
     return payload
 
 
+def format_control_chains_text(chains: list[dict[str, Any]]) -> str:
+    """Serialize certainty chains to short English lines for the LLM prompt."""
+    lines: list[str] = []
+    for symbol in chains:
+        if not isinstance(symbol, dict):
+            continue
+        steps = [
+            step
+            for step in symbol.get("steps", [])
+            if isinstance(step, dict) and step.get("kind") != "root"
+        ]
+        if not steps:
+            continue
+        name = str(symbol.get("symbol", ""))
+        if name.startswith("_ZN") and "." in name:
+            name = name.split(".", 1)[1]
+        how: list[str] = []
+        for step in steps:
+            owner = step.get("root_type") or "the receiver"
+            field = step.get("field")
+            target = f"{owner}.{field}" if field else str(owner)
+            function = step.get("function")
+            kind = step.get("kind")
+            if kind == "public_field":
+                how.append(f"public field `{target}` is directly writable")
+            elif kind == "mut_ref_escape" and function:
+                how.append(f"`{function}` returns `&mut` access to `{target}`")
+            elif function:
+                how.append(f"`{function}` sets `{target}`")
+            else:
+                how.append(str(step.get("detail", kind)))
+        lines.append(f"- `{name}`: " + "; ".join(dict.fromkeys(how)))
+    if not lines:
+        return "No controllable symbols were identified."
+    return "Symbols the testcase can control, and how:\n" + "\n".join(lines)
+
+
+def format_target_text(target: dict[str, Any]) -> str:
+    """Serialize callsite metadata to the few facts a testcase needs."""
+
+    def span(item: dict[str, Any]) -> str:
+        start, end = item.get("line_start"), item.get("line_end")
+        where = f"{item.get('path', '?')}:{start}"
+        return where + (f"-{end}" if end and end != start else "")
+
+    lines: list[str] = []
+    caller = target.get("caller")
+    if isinstance(caller, dict):
+        kind = "unsafe fn" if caller.get("is_unsafe") else "safe fn"
+        text = f"Target caller: `{caller.get('name')}` ({span(caller)}, {kind}"
+        if caller.get("return_ty"):
+            text += f", returns `{caller['return_ty']}`"
+        lines.append(text + ")")
+    parent = target.get("caller_parent")
+    if isinstance(parent, dict) and parent.get("name"):
+        public = "public" if parent.get("is_public") else "non-public"
+        lines.append(f"Caller's owner type: `{parent['name']}` ({public})")
+    callee = target.get("callee")
+    callsite = target.get("callsite")
+    if isinstance(callee, dict):
+        unsafe = "unsafe " if callee.get("is_unsafe") else ""
+        text = f"Target callee: {unsafe}`{callee.get('name')}`"
+        if isinstance(callsite, dict):
+            text += f" called at {callsite.get('path')}:{callsite.get('line')}:{callsite.get('col')}"
+        lines.append(text)
+    type_args = target.get("callee_type_args")
+    if isinstance(type_args, list) and type_args:
+        rendered = ", ".join(
+            f"{arg.get('name')} = {arg.get('instantiated_ty')}"
+            for arg in type_args
+            if isinstance(arg, dict)
+        )
+        if rendered:
+            lines.append(f"Callee type arguments: {rendered}")
+    return "\n".join(lines)
+
+
 def select_testcase_control_chains(chain: dict[str, Any]) -> list[dict[str, Any]]:
     raw = chain.get("control_chains")
     if not isinstance(raw, list):
@@ -3755,8 +3832,8 @@ def generate_safe_testcase(
     no_std = _crate_is_no_std(crate_dir)
     prompt = build_testcase_prompt(
         rust_context=rust_context.text,
-        call_chain=json.dumps(testcase_chains, indent=2),
-        callsite=json.dumps(target, indent=2),
+        call_chain=format_control_chains_text(testcase_chains),
+        callsite=format_target_text(target),
         safety_requirement=str(rule.get("rule", "")),
         function_name=injection.function,
         feature_name=injection.feature,
@@ -3779,8 +3856,8 @@ def generate_safe_testcase(
         )
         prompt = build_testcase_prompt(
             rust_context=rust_context.text,
-            call_chain=json.dumps(testcase_chains, indent=2),
-            callsite=json.dumps(target, indent=2),
+            call_chain=format_control_chains_text(testcase_chains),
+            callsite=format_target_text(target),
             safety_requirement=str(rule.get("rule", "")),
             function_name=injection.function,
             feature_name=injection.feature,

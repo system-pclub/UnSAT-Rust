@@ -64,7 +64,7 @@ def _source_items(document: dict[str, Any]) -> list[dict[str, Any]]:
     result = []
     files = document.get("files")
     if not isinstance(files, dict):
-        raise RuntimeError("source-units.json has no files object")
+        raise RuntimeError("comment extraction JSON has no files object")
     for raw_path, units in files.items():
         if not isinstance(raw_path, str) or not isinstance(units, list):
             continue
@@ -86,7 +86,7 @@ def _source_items(document: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(result, key=lambda item: (item["path"], item["line"], item["name"]))
 
 
-def _extract_one(client: OpenAI, model: str, item: dict[str, Any], request_dir: Path) -> dict[str, Any]:
+def _extract_one(client: OpenAI | None, model: str, item: dict[str, Any], request_dir: Path) -> dict[str, Any]:
     key = f"{item['path']}:{item['line']}:{item['name']}"
     readable = re.sub(r"[^A-Za-z0-9_.-]+", "-", item["name"]).strip("-")[:48]
     safe_key = f"{hashlib.sha256(key.encode()).hexdigest()[:16]}-{readable}"
@@ -95,7 +95,9 @@ def _extract_one(client: OpenAI, model: str, item: dict[str, Any], request_dir: 
     result_path = directory / "result.json"
     if result_path.is_file():
         previous = json.loads(result_path.read_text(encoding="utf-8"))
-        if previous.get("status") == "extracted" and previous.get("model") == model:
+        if (previous.get("status") == "extracted" and previous.get("model") == model
+                and all(previous.get(field) == value for field, value in item.items())
+                and previous.get("prompt_sha256") == hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()):
             return previous
 
     user = (
@@ -112,12 +114,15 @@ def _extract_one(client: OpenAI, model: str, item: dict[str, Any], request_dir: 
     }
     _write_json(directory / "request.json", request)
     try:
+        if client is None:
+            raise RuntimeError("OPENAI_API_KEY is required for LLM rule extraction")
         response = client.chat.completions.create(**request)
         raw = response.model_dump(mode="json")
         _write_json(directory / "response.json", raw)
         text = response.choices[0].message.content or ""
         (directory / "response.txt").write_text(text, encoding="utf-8")
-        result = {**item, "rules": _parse_rules(text), "status": "extracted", "model": model}
+        result = {**item, "rules": _parse_rules(text), "status": "extracted", "model": model,
+                  "prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()}
     except Exception as error:
         result = {
             **item,
@@ -169,6 +174,7 @@ def run(args: argparse.Namespace) -> int:
                 str(root / "tools/extract-comment/target/release/extract-comment"),
                 "--dirs", "tools/rust/library/core",
                 "--dirs", "tools/rust/library/std",
+                "--dirs", "tools/rust/library/alloc",
                 "--out", str(source_units),
             ],
             cwd=root,

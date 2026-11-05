@@ -258,8 +258,10 @@ pub fn analyze(tcx: TyCtxt<'_>, requested_functions: Vec<String>) -> ApiSlice {
         .iter()
         .copied()
         .filter(|function| {
-            associated_type(tcx, *function)
-                .is_some_and(|ty| related_types.contains(&ty))
+            // Derive-generated methods have no source of their own to show.
+            !tcx.def_span(*function).in_derive_expansion()
+                && associated_type(tcx, *function)
+                    .is_some_and(|ty| related_types.contains(&ty))
         })
         .collect();
 
