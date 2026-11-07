@@ -19,6 +19,11 @@ The step 0 JSON uses the original `extract-comment` format, so existing
 `source-units.json` files can be reused by copying each directory's extraction
 to its `step0.json`.
 
+`extract-comment` filters functions, inherent methods, and traits by unrestricted
+`pub` visibility; methods of a public trait inherit that trait's visibility.
+Private and restricted items such as `pub(crate)` are excluded. Output declarations
+still omit `pub`. This checks item visibility, without resolving module reachability.
+
 After each directory finishes step 0, the command prints its API count and
 one API per line (source location, parent type/trait if present, and declaration).
 To print saved results without rerunning extraction, use the standalone script:
