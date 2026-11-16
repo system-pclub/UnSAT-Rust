@@ -218,6 +218,21 @@ mod tests {
         assert_eq!(c.selectors["sample::Kind::Named"][0].syntax, ".child");
     }
     #[test]
+    fn raw_pointer_fields_preserve_target_and_mutability() {
+        let c = Catalog::generate(&registry(
+            "struct Links<T> { src: *const T, dst: *mut [T] }",
+        ))
+        .unwrap();
+        let fields = &c.selectors["sample::Links"];
+        assert!(
+            matches!(&fields[0].result, Ty::Pointer { element, mutable: false } if matches!(&**element, Ty::Parameter { name } if name == "T"))
+        );
+        assert!(
+            matches!(&fields[1].result, Ty::Pointer { element, mutable: true } if matches!(&**element, Ty::Sequence { length: None, .. }))
+        );
+    }
+
+    #[test]
     fn cfg_alternatives_are_not_silently_selected() {
         let c = Catalog::generate(&registry(
             "#[cfg(a)] struct A { x: u8 } #[cfg(b)] struct A { y: bool }",

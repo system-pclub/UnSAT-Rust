@@ -25,6 +25,12 @@ def display(value):
     kind = value["kind"]
     if kind == "named":
         return value["name"] + ("<" + ", ".join(map(display, value["args"])) + ">" if value["args"] else "")
+    if kind == "pointer":
+        return ("*mut " if value["mutable"] else "*const ") + display(value["element"])
+    if kind == "memory":
+        return "Memory" + value["view"].title() + ("<" + display(value["of"]) + ">" if "of" in value else "")
+    if kind == "memory_scalar":
+        return "Memory" + value["name"].title()
     if kind == "parameter":
         return value["name"]
     if kind == "tuple":
@@ -94,12 +100,11 @@ class TypeCatalog:
                     take()
                 return parse_type()
             if tokens[position] == "*":
-                begin = position
-                take()
-                if position < len(tokens) and tokens[position] in {"const", "mut"}:
-                    take()
-                parse_type()
-                return {"kind": "opaque", "rust": " ".join(tokens[begin:position])}
+                take("*")
+                qualifier = take()
+                if qualifier not in {"const", "mut"}:
+                    raise ValueError("raw pointer requires const or mut")
+                return {"kind": "pointer", "element": parse_type(), "mutable": qualifier == "mut"}
             if tokens[position] == "[":
                 take("[")
                 element = parse_type()
@@ -217,6 +222,9 @@ class TypeCatalog:
         value = self._types[sort_id]
         sort = self.sorts[sort_id]
         kind = value["kind"]
+        import dslmemory
+        if dslmemory.expand(self, value, sort, self.intern):
+            return
         edges = []
         if kind == "named" and value["name"] in self.definitions:
             definition = self.definitions[value["name"]]
@@ -241,6 +249,7 @@ class TypeCatalog:
         else:
             sort["opaque_reason"] = "No member definition in the supplied source catalog."
         sort["edges"] = edges
+        dslmemory.attach(self, value, sort, self.intern)
 
     def references(self, value):
         if isinstance(value, dict):

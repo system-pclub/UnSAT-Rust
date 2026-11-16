@@ -53,8 +53,10 @@ Type/lifetime parameters are opaque handles; const parameters carry values of
 their declared types. For `IntoIter<T, N>::new_unchecked`, T keeps a numbered type
 handle and N keeps a numbered usize value. Compiler syntax nodes are not inputs.
 
-Modeled analysis domains such as memory can supply separate, explicitly defined
-schemas. Their properties should not be inferred from unrelated source fields.
+The memory domain supplies a separate schema in `tools/dslmemory.json`, composed
+by Python with these source selectors. Raw pointer type expressions retain their
+target type and mutability so storage and pointee views can be distinguished.
+See `tools/dslmemory.md` for the domain contract.
 See `tools/dsltrans.md` for the active input contract.
 
 ## Boundaries

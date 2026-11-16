@@ -289,6 +289,10 @@ class ApiInterface:
                         i += 1
                 output.append(expression[start:i])
             elif char == "$":
+                if expression.startswith("$mem", i) and (i+4 == len(expression) or not (expression[i+4].isalnum() or expression[i+4] == "_")) and expression[:i].rstrip().endswith("."):
+                    output.append("__dsl_mem")
+                    i += 4
+                    continue
                 match = re.match(r"\$\d+", expression[i:])
                 symbol = match[0] if match else "$"
                 if symbol not in allowed:
@@ -298,7 +302,7 @@ class ApiInterface:
             elif char.isalpha() or char == "_":
                 match = re.match(r"\w+", expression[i:])
                 token = match[0]
-                if token.startswith("__dsl_slot_"):
+                if token.startswith("__dsl_slot_") or token == "__dsl_mem":
                     raise ValueError("reserved internal variable name")
                 output.append(token)
                 i += len(token)

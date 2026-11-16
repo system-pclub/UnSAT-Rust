@@ -29,6 +29,10 @@ pub enum Ty {
     Const {
         expression: String,
     },
+    Pointer {
+        element: Box<Ty>,
+        mutable: bool,
+    },
     Sequence {
         element: Box<Ty>,
         length: Option<String>,
@@ -52,6 +56,11 @@ impl Ty {
             ),
             Self::Parameter { name } => format!("${name}"),
             Self::Const { expression } => format!("const({expression})"),
+            Self::Pointer { element, mutable } => format!(
+                "*{} {}",
+                if *mutable { "mut" } else { "const" },
+                element.display()
+            ),
             Self::Sequence { element, length } => match length {
                 Some(n) => format!("[{}; {n}]", element.display()),
                 None => format!("[{}]", element.display()),
@@ -400,6 +409,10 @@ impl Registry {
             Type::Reference(t) => self.ty(&t.elem, module, parameters)?,
             Type::Paren(t) => self.ty(&t.elem, module, parameters)?,
             Type::Group(t) => self.ty(&t.elem, module, parameters)?,
+            Type::Ptr(t) => Ty::Pointer {
+                element: Box::new(self.ty(&t.elem, module, parameters)?),
+                mutable: t.mutability.is_some(),
+            },
             Type::Slice(t) => Ty::Sequence {
                 element: Box::new(self.ty(&t.elem, module, parameters)?),
                 length: None,

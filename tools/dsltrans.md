@@ -5,13 +5,14 @@
 
 ## Grammar assembly
 
-1. Read dslgen's `schema.json` library declaration catalog. This is the sole
-   machine-readable input; dslgen emits no general EBNF.
+1. Read dslgen's `schema.json` library declaration catalog and the separately
+   modeled `dslmemory.json` domain. dslgen emits no general EBNF.
 2. Select API-relevant library types and their field/alias/generic dependencies.
 3. Parse the API signature into fixed `$1`, `$2`, ... inputs. Number value
    parameters (receiver included), enclosing then method generics, and an explicit
    non-unit return value last. The header maps every token to its source meaning.
-4. Generate literal field/index/variant productions reachable from these inputs.
+4. Add modeled storage/pointee/allocation projections and generate literal
+   field/index/variant productions reachable from these inputs.
    Join them to the fixed Starlark-style expression template and formula start.
 5. Ask the model to translate the atomic requirement using the fixed inputs.
 6. Infer comprehension-local types and compile an exact executable Lark grammar.
@@ -55,7 +56,7 @@ Use `unsat-rust:local`, `--platform linux/amd64`, the repository mounted at
 
 ```sh
 cargo run --locked --manifest-path tools/dslgen/Cargo.toml
-python -m unittest discover -s tools -p test_dsltrans.py -v
+python -m unittest discover -s tools -p 'test_dsl*.py' -v
 python tools/dsltrans.py \
   --api 'core::alloc::GlobalAlloc::alloc(&self, layout: core::alloc::Layout) -> *mut u8' \
   --rule '`layout` must have non-zero size.' \
@@ -85,8 +86,19 @@ saves inputs without a model call. `--resume` requires identical request hashes.
 Credentials come from `OPENAI_API_KEY`, `.local/.env`, or `.env` and are not saved.
 
 Artifacts include `api_variables.json`, the selected `schema.json`,
-`prompt_grammar.ebnf`, `grammar.ebnf`, `template.ebnf`, `library.ebnf`, and model
+`prompt_grammar.ebnf`, `grammar.ebnf`, `template.ebnf`, `library.ebnf`,
+`memory.ebnf`, `memory-schema.json`, and model
 request/response JSON. Accepted formulas also save an executable `grammar.lark`.
+
+## Memory domain
+
+`x.$mem` describes x's own storage; `p.$mem.pointee` describes a pointer's
+referenced region. The domain has literal fields for size, start, required
+alignment, read/write extents, initialization, typed validity and originating
+allocation. Details and semantic boundaries are in `tools/dslmemory.md`.
+Use `--batch tools/dslmem_samples.json` for ten real pointer/memory requirements.
+Memory observations are symbolic specification inputs; runtime KLEE binding is
+outside this implementation. Current-state fields do not express future history.
 
 ## Evidence and limits
 

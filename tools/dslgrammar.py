@@ -11,6 +11,7 @@ import json
 import re
 
 from dsltypes import TypeCatalog, display, named
+import dslmemory
 
 
 def literal(text):
@@ -108,7 +109,9 @@ class ConcreteGrammar:
                     name = self.catalog.canonical(ty["name"])
                     parameters = self.catalog.definitions.get(name, {}).get("parameters", [])
                     return named(name, [{"kind": "parameter", "name": p["name"]} for p in parameters])
-                if ty["kind"] == "sequence":
+                if ty["kind"] == "memory" and "of" in ty:
+                    ty["of"] = erase(ty["of"])
+                if ty["kind"] in {"sequence", "pointer"}:
                     ty["element"] = erase(ty["element"])
                 if ty["kind"] == "tuple":
                     ty["elements"] = [erase(x) for x in ty["elements"]]
@@ -198,7 +201,13 @@ class ConcreteGrammar:
             declared = [n for n in nodes if self.catalog._types[n]["kind"] == "named" and self.catalog._types[n]["name"] in self.catalog.definitions]
             chosen = min(declared or nodes, key=lambda n: self.catalog.sorts[n]["rust_type"])
             ty = self.catalog._types[chosen]
-            if ty["kind"] == "named":
+            if ty["kind"] == "memory":
+                base = "memory_" + ty["view"]
+            elif ty["kind"] == "memory_scalar":
+                base = "memory_" + ty["name"]
+            elif ty["kind"] == "pointer":
+                base = "pointer"
+            elif ty["kind"] == "named":
                 base = snake(ty["name"].rsplit("::", 1)[-1])
             elif ty["kind"] == "sequence":
                 base = "sequence"
@@ -238,13 +247,13 @@ class ConcreteGrammar:
             members = grouped[group]
             types = sorted({self.catalog.sorts[n]["rust_type"] for n in members})
             self.comments[name] = "; ".join(types)
-            section = "library"
+            section = "memory" if any(self.catalog._types[n]["kind"] in {"memory", "memory_scalar"} for n in members) else "library"
             choices = incoming[group] + [sequence(literal("("), reference(name), literal(")"))]
             self.add(name, alternative(*dict.fromkeys(choices)), section)
             for node in members:
                 sort = self.catalog.sorts[node]
                 ty = self.catalog._types[node]
-                if sort["shape"] == "scalar" and re.fullmatch(r"[ui](?:8|16|32|64|128)|usize|isize", sort["rust_type"]):
+                if sort["shape"] == "scalar" and (sort.get("scalar_kind") == "integer" or re.fullmatch(r"[ui](?:8|16|32|64|128)|usize|isize", sort["rust_type"])):
                     self.integer_names.append(name)
                 if ty["kind"] == "sequence" or sort["rust_type"] in {"str", "String"}:
                     self.collection_names.append(name)
@@ -268,6 +277,8 @@ class ConcreteGrammar:
         self.catalog._expanded.add(node)
         value = self.catalog._types[node]
         sort = self.catalog.sorts[node]
+        if dslmemory.expand(self.catalog, value, sort, self.intern):
+            return
         edges = []
         if value["kind"] == "named" and value["name"] in self.catalog.definitions:
             definition = self.catalog.definitions[value["name"]]
@@ -285,6 +296,7 @@ class ConcreteGrammar:
         elif value["kind"] == "named" and re.fullmatch(r"bool|char|str|[ui](?:8|16|32|64|128)|usize|isize", value["name"]):
             sort["shape"] = "scalar"
         sort["edges"] = edges
+        dslmemory.attach(self.catalog, value, sort, self.intern)
 
     def _syntax(self):
         # Ordinary EBNF, with no open-ended attribute or method production.
