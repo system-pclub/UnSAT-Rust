@@ -1888,14 +1888,19 @@ def _build_klee_witness_text(
         f"Rule id: {rule_id}",
     ]
     log_path = compose_output.parent / "klee-compose.log"
+    if not log_path.is_file():
+        log_path = compose_output.parent / "klee.log"
     witness_lines = _extract_klee_init_witness_lines(log_path, callsite_id=callsite_id)
     if witness_lines:
         obligations = _derive_witness_obligations(ast_json, witness_lines)
         parts.append(
-            "KLEE init witness at the target call. These are the call argument "
-            "expressions/values from a path where KLEE found a target "
-            "counterexample satisfiable. Shape the concrete testcase so the "
-            "same target call arguments reproduce the counterexample:\n"
+            "KLEE init witness at the target call: the call-argument expressions "
+            "from a path where KLEE found the counterexample satisfiable, plus "
+            "one arbitrary satisfying model (for a slice argument, the argN value "
+            "is its length). Use the argument expressions to decide the "
+            "required relation; model values only show one solution, so pick "
+            "the nearest valid boundary value if a model value is not "
+            "constructible (for example, an unsupported array size):\n"
             + ("\n".join(obligations) + "\n" if obligations else "")
             + "\n".join(witness_lines)
         )
@@ -2073,6 +2078,16 @@ def _extract_klee_init_witness_lines(
             current = [line]
             continue
         if current is None:
+            if candidates and "[ext.dsl] counterexample value:" in line:
+                candidates[-1].append(line)
+            continue
+        if (
+            line.startswith("   ")
+            and len(current) > 1
+            and current[-1].startswith("  __klee_call_arg")
+        ):
+            # KLEE wraps long expressions over several indented lines.
+            current[-1] += " " + line.strip()
             continue
         if line.startswith("  __klee_call_arg") or "[ext.dsl]" in line:
             current.append(line)
@@ -2099,8 +2114,61 @@ def _extract_klee_init_witness_lines(
                 continue
     if not candidates:
         return []
-    selected = candidates[-1][:max_lines]
-    return selected
+    # The DSL evaluation trace is noise for testcase generation: keep only the
+    # target call's argument expressions and the concrete model values that
+    # name real target arguments (not KLEE-internal objects).
+    selected = candidates[-1]
+    args = [
+        line.replace(" (explicit)", "")
+        for line in selected
+        if line.startswith("  __klee_call_arg")
+    ]
+    values: list[str] = []
+    for line in selected:
+        if "[ext.dsl] counterexample value:" not in line:
+            continue
+        line = re.sub(
+            r"(?:__klee_target_|_ZN)\S+?\.(arg\d+)", r"target call \1", line
+        )
+        if re.search(r"counterexample value: (?:compose_|extdsl_obj_)", line):
+            continue
+        values.append(line.replace("KLEE: [ext.dsl] ", ""))
+    return list(dict.fromkeys(args + values))[:max_lines]
+
+
+def _qualify_crate_module_paths(testcase: str, crate_dir: Path) -> str:
+    """Prefix bare top-level module paths (`utils::f`) with `crate::`.
+
+    Generated testcases are appended inside a nested module, where a path that
+    starts at a top-level module of the crate does not resolve. Models keep
+    repeating that mistake after compiler feedback, so repair it directly.
+    """
+    root = None
+    for name in ("lib.rs", "main.rs"):
+        if (crate_dir / "src" / name).is_file():
+            root = crate_dir / "src" / name
+            break
+    if root is None:
+        return testcase
+    try:
+        root_text = root.read_text(encoding="utf-8", errors="replace")
+        manifest = (crate_dir / "Cargo.toml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return testcase
+    modules = set(
+        re.findall(
+            r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*[;{]",
+            root_text,
+            re.MULTILINE,
+        )
+    )
+    for module in sorted(modules):
+        if re.search(rf"^\s*{re.escape(module)}\s*=", manifest, re.MULTILINE):
+            continue
+        if re.search(rf"\b(?:use|mod|struct|enum|fn|type|trait)\b[^;{{]*\b{re.escape(module)}\b", testcase):
+            continue
+        testcase = re.sub(rf"(?<![\w:]){re.escape(module)}::", f"crate::{module}::", testcase)
+    return testcase
 
 
 def _run_llm_testcase_pipeline(
@@ -2236,6 +2304,7 @@ def _run_llm_testcase_pipeline(
                 attempt=attempt,
                 context_mode=context_mode,
             )
+            testcase = _qualify_crate_module_paths(testcase, injected_dir)
             last_testcase = testcase
             ensure_cargo_feature(injected_dir, injection.feature)
             injection = inject_testcase_at_callsite(
@@ -3241,6 +3310,14 @@ def run(args: argparse.Namespace) -> int:
         force=True,
         features=crate_features,
     )
+    # Inject only the requested callsites so unrelated sites cannot break the build.
+    requested_ids = set(_load_callsites_file(repo_root, getattr(args, "callsites_file", None)) or ())
+    if getattr(args, "callsite", None):
+        requested_ids.add(args.callsite)
+    if requested_ids:
+        os.environ["AUTOINJ_ONLY_CALLSITES"] = ",".join(sorted(requested_ids))
+    else:
+        os.environ.pop("AUTOINJ_ONLY_CALLSITES", None)
     injected_dir = ensure_injected_crate(repo_root, cargo_dir, meta_path)
 
     ir_output_dir = _resolve_path(repo_root, args.ir_output_dir, ".local/irs")

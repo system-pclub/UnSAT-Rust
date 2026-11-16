@@ -1,0 +1,2348 @@
+{
+  "version": 2,
+  "status": "design-proposal-not-runtime-configuration",
+  "primitive_types": [
+    "Boolean",
+    "Integer",
+    "Float",
+    "String"
+  ],
+  "generic_types": [
+    "Sequence<T>",
+    "Set<T>",
+    "Map<String,T>",
+    "Map<Integer,T>",
+    "T?"
+  ],
+  "operator_type_aliases": {
+    "bool": "Boolean",
+    "uint": "Integer",
+    "int": "Integer",
+    "string": "String",
+    "RecordOrContainer": "polymorphic receiver",
+    "DependentFieldType": "receiver/selector-dependent result"
+  },
+  "identity_semantics": "所有身份采用稳定、带种类及代次的规范 String；同地址的不同对象/分配/资源必须有不同字符串。Map key 与相应 identity 完全一致，不从地址重新编码。",
+  "constants": [
+    {
+      "name": "ISIZE_MAX",
+      "type": "int",
+      "description": "Maximum signed pointer-sized integer bound."
+    },
+    {
+      "name": "USIZE_BITS",
+      "type": "uint",
+      "description": "Number of bits in Rust usize."
+    }
+  ],
+  "types": [
+    {
+      "name": "Value",
+      "description": "带源类型和观测状态的值；标量在表达式中透明表示其内容。种类专用属性仅在适用时可读。",
+      "fields": [
+        {
+          "name": "type",
+          "type": "TypeInfo",
+          "description": "实际源类型；dyn 包装器的静态类型和被包装对象的具体类型分别保留",
+          "rules": [
+            "rule-31",
+            "rule-784"
+          ]
+        },
+        {
+          "name": "identity",
+          "type": "String?",
+          "description": "稳定对象身份；无对象身份的逻辑标量为 None",
+          "rules": [
+            "rule-45",
+            "rule-845"
+          ]
+        },
+        {
+          "name": "storage",
+          "type": "MemoryRange?",
+          "description": "值自身的存储位置，不是指针指向的位置",
+          "rules": [
+            "rule-39",
+            "rule-793"
+          ]
+        },
+        {
+          "name": "call",
+          "type": "CallContext",
+          "description": "绑定该值的上下文，unit 结果也适用",
+          "rules": [
+            "rule-53",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "initialized",
+          "type": "Boolean",
+          "description": "按源 Rust 类型完成初始化及语言有效性；不要求 padding 已写入",
+          "rules": [
+            "rule-39",
+            "rule-53"
+          ]
+        },
+        {
+          "name": "lifetime",
+          "type": "Interval?",
+          "description": "借用、引用或 future 的语义存续区间",
+          "rules": [
+            "rule-45",
+            "rule-62",
+            "rule-581"
+          ]
+        },
+        {
+          "name": "length",
+          "type": "Integer",
+          "description": "数组/slice 元素数，字符串字节数",
+          "rules": [
+            "rule-41",
+            "rule-783"
+          ]
+        },
+        {
+          "name": "element_type",
+          "type": "TypeInfo",
+          "description": "序列元素或指针 pointee 的源类型",
+          "rules": [
+            "rule-39",
+            "rule-804"
+          ]
+        },
+        {
+          "name": "elements",
+          "type": "Sequence<Value>",
+          "description": "源元素的有序视图；指针需先取 pointee",
+          "rules": [
+            "rule-38",
+            "rule-39"
+          ]
+        },
+        {
+          "name": "bytes",
+          "type": "Sequence<Value>",
+          "description": "对象表示字节，每项有数值、index 和字节 initialized 属性；允许未初始化 padding",
+          "rules": [
+            "rule-56",
+            "rule-787"
+          ]
+        },
+        {
+          "name": "index",
+          "type": "Integer",
+          "description": "元素在所属序列的索引",
+          "rules": [
+            "rule-39"
+          ]
+        },
+        {
+          "name": "variant",
+          "type": "String",
+          "description": "当前枚举分支的源名称",
+          "rules": [
+            "rule-79",
+            "rule-876"
+          ]
+        },
+        {
+          "name": "discriminant",
+          "type": "Integer",
+          "description": "当前枚举判别值，按源声明映射",
+          "rules": [
+            "rule-79"
+          ]
+        },
+        {
+          "name": "is_nan",
+          "type": "Boolean",
+          "description": "浮点 NaN 分类，非浮点值不适用",
+          "rules": [
+            "rule-202",
+            "rule-205",
+            "rule-208",
+            "rule-211"
+          ]
+        },
+        {
+          "name": "is_infinite",
+          "type": "Boolean",
+          "description": "浮点无穷分类，非浮点值不适用",
+          "rules": [
+            "rule-203",
+            "rule-206",
+            "rule-209",
+            "rule-212"
+          ]
+        },
+        {
+          "name": "truncated",
+          "type": "Integer?",
+          "description": "有限浮点数向零截断的数学整数；NaN/无穷为 None",
+          "rules": [
+            "rule-201",
+            "rule-204",
+            "rule-207",
+            "rule-210"
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "Integer",
+          "description": "该身份对象的生命周期开始位置",
+          "rules": [
+            "rule-845",
+            "rule-856"
+          ]
+        },
+        {
+          "name": "dropped_at",
+          "type": "Integer?",
+          "description": "该身份对象销毁完成位置；未销毁为 None",
+          "rules": [
+            "rule-227",
+            "rule-847"
+          ]
+        },
+        {
+          "name": "observations",
+          "type": "Sequence<Invocation>",
+          "description": "实际调用历史中以该对象为逻辑 receiver 的调用，不包含假设调用",
+          "rules": [
+            "rule-99",
+            "rule-102",
+            "rule-859"
+          ]
+        },
+        {
+          "name": "states",
+          "type": "Map<Integer,Value>",
+          "description": "同一对象/值在各轨迹位置的观测视图，保留类型和指针来源；不存在时为 None",
+          "rules": [
+            "rule-30",
+            "rule-716"
+          ]
+        },
+        {
+          "name": "descendants",
+          "type": "Set<Value>",
+          "description": "反身传递的真实拥有字段/元素闭包；不沿非拥有引用追踪",
+          "rules": [
+            "rule-227",
+            "rule-790",
+            "rule-794"
+          ]
+        },
+        {
+          "name": "reachable",
+          "type": "Set<Value>",
+          "description": "反身传递的字段、元素、指针及引用图可达闭包，按对象身份去重",
+          "rules": [
+            "rule-197",
+            "rule-782",
+            "rule-901"
+          ]
+        },
+        {
+          "name": "resource",
+          "type": "Resource?",
+          "description": "描述符、handle 或 task 对应的资源状态；非资源或已知无效标识为 None",
+          "rules": [
+            "rule-713",
+            "rule-775",
+            "rule-888"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pointer",
+      "description": "Value 的指针子类；属性投影和数学字节偏移均保留来源与观测状态。",
+      "fields": [
+        {
+          "name": "address",
+          "type": "Integer",
+          "description": "数值地址；逻辑偏移可产生超出机器地址空间的数学值",
+          "rules": [
+            "rule-252",
+            "rule-268"
+          ]
+        },
+        {
+          "name": "allocation",
+          "type": "Allocation?",
+          "description": "派生来源的分配身份；释放后仍保留该记录，不能仅按当前地址重新匹配",
+          "rules": [
+            "rule-3",
+            "rule-16"
+          ]
+        },
+        {
+          "name": "length",
+          "type": "Integer",
+          "description": "slice-tail fat pointer 的长度 metadata，包括 struct-with-slice-tail；其他 pointer 种类不适用",
+          "rules": [
+            "rule-11",
+            "rule-12"
+          ]
+        },
+        {
+          "name": "element_type",
+          "type": "TypeInfo",
+          "description": "源 pointee T 的类型；若 T 本身是 slice，其元素类型再由 T.element_type 读取",
+          "rules": [
+            "rule-784",
+            "rule-804"
+          ]
+        },
+        {
+          "name": "metadata",
+          "type": "Value?",
+          "description": "slice 长度标量或 trait-object vtable 指针的源元数据；thin pointer 为 None",
+          "rules": [
+            "rule-11",
+            "rule-14"
+          ]
+        },
+        {
+          "name": "pointee",
+          "type": "Value?",
+          "description": "可读取时的逻辑源对象；不隐含 Rust 库安全不变量",
+          "rules": [
+            "rule-31",
+            "rule-38"
+          ]
+        },
+        {
+          "name": "vtable",
+          "type": "VTable?",
+          "description": "trait-object 元数据的有类型视图；无法解析为编译器 vtable 记录时为 None；存在记录不隐含存储可读",
+          "rules": [
+            "rule-14",
+            "rule-180",
+            "rule-188"
+          ]
+        },
+        {
+          "name": "dynamic_size",
+          "type": "Integer",
+          "description": "整个 DST 的字节数，含静态前缀及动态尾部；无可解析布局时 unknown",
+          "rules": [
+            "rule-12",
+            "rule-55"
+          ]
+        },
+        {
+          "name": "dynamic_align",
+          "type": "Integer",
+          "description": "整个动态 pointee 的对齐；无法解析时 unknown",
+          "rules": [
+            "rule-54"
+          ]
+        },
+        {
+          "name": "derived_from",
+          "type": "Set<String>",
+          "description": "真实借用/指针派生的传递祖先对象或借用身份",
+          "rules": [
+            "rule-581"
+          ]
+        },
+        {
+          "name": "borrow_identity",
+          "type": "String?",
+          "description": "当前源引用/reborrow 的独立借用令牌，区别于 pointee 对象身份；不建立借用的 raw pointer 可为 None",
+          "rules": [
+            "rule-581"
+          ]
+        },
+        {
+          "name": "nul_offset",
+          "type": "Integer?",
+          "description": "同一来源活分配内、遇到未初始化字节之前的首个已初始化 NUL 距离，单位字节；无则 None",
+          "rules": [
+            "rule-63",
+            "rule-65"
+          ]
+        },
+        {
+          "name": "wide_nul_offset",
+          "type": "Integer?",
+          "description": "对应的首个已初始化零 16 位单元距离，单位为 16 位单元；无则 None",
+          "rules": [
+            "rule-880",
+            "rule-936"
+          ]
+        }
+      ],
+      "extends": "Value"
+    },
+    {
+      "name": "Allocation",
+      "description": "当前分配代次的记录；成功 grow/shrink 即使地址不变也产生新身份。",
+      "fields": [
+        {
+          "name": "identity",
+          "type": "String",
+          "description": "带代次的稳定分配身份，不是地址字符串",
+          "rules": [
+            "rule-3",
+            "rule-30"
+          ]
+        },
+        {
+          "name": "start",
+          "type": "Integer",
+          "description": "起始地址",
+          "rules": [
+            "rule-3",
+            "rule-268"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "Integer",
+          "description": "实际返回的非负字节数",
+          "rules": [
+            "rule-16",
+            "rule-20"
+          ]
+        },
+        {
+          "name": "minimum_size",
+          "type": "Integer",
+          "description": "Allocator fitting-layout 合约允许的最小大小，来自产生当前分配的请求",
+          "rules": [
+            "rule-16",
+            "rule-20",
+            "rule-22",
+            "rule-25"
+          ]
+        },
+        {
+          "name": "layout",
+          "type": "Layout",
+          "description": "产生当前分配时请求的 layout；与实际返回 size 区分",
+          "rules": [
+            "rule-2",
+            "rule-5"
+          ]
+        },
+        {
+          "name": "allocator",
+          "type": "Allocator",
+          "description": "具有契约身份的分配器",
+          "rules": [
+            "rule-3",
+            "rule-17"
+          ]
+        },
+        {
+          "name": "live",
+          "type": "Boolean",
+          "description": "在相应观测状态下尚未失效",
+          "rules": [
+            "rule-3",
+            "rule-30"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MemoryRange",
+      "description": "携带来源和观测状态的半开字节范围；构造范围不建立可访问性。",
+      "fields": [
+        {
+          "name": "pointer",
+          "type": "Pointer",
+          "description": "范围起点指针，保留 allocation 和观测状态",
+          "rules": [
+            "rule-253",
+            "rule-268"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "Integer",
+          "description": "非负字节长度",
+          "rules": [
+            "rule-253",
+            "rule-268"
+          ]
+        },
+        {
+          "name": "region",
+          "type": "String",
+          "description": "整个数值区间在平台映射中为 user/enclave/other，跨类别为 mixed；不隐含分配包含关系或权限",
+          "rules": [
+            "rule-806",
+            "rule-808"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Layout",
+      "description": "源 Rust 分配布局的逻辑视图。",
+      "fields": [
+        {
+          "name": "size",
+          "type": "Integer",
+          "description": "非负请求字节数",
+          "rules": [
+            "rule-1",
+            "rule-19"
+          ]
+        },
+        {
+          "name": "align",
+          "type": "Integer",
+          "description": "请求对齐",
+          "rules": [
+            "rule-2",
+            "rule-16"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Allocator",
+      "description": "分配器的契约身份。",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "description": "契约等价的复制/克隆分配器保留相同身份",
+          "rules": [
+            "rule-3",
+            "rule-28"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TypeInfo",
+      "description": "源类型及其编译器/契约元数据；集合是逻辑域，不要求枚举实现。",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "description": "完整源类型身份，包含泛型实参；不能用显示名称代替",
+          "rules": [
+            "rule-31"
+          ]
+        },
+        {
+          "name": "name",
+          "type": "String",
+          "description": "显示名称",
+          "rules": [
+            "rule-31"
+          ]
+        },
+        {
+          "name": "item_path",
+          "type": "String",
+          "description": "不含泛型实参的规范定义路径，区分同名类型",
+          "rules": [
+            "rule-791",
+            "rule-792"
+          ]
+        },
+        {
+          "name": "lang_item",
+          "type": "String?",
+          "description": "真实编译器 lang item；普通类型为 None",
+          "rules": [
+            "rule-790"
+          ]
+        },
+        {
+          "name": "kind",
+          "type": "String",
+          "description": "primitive/struct/enum/array/slice/trait_object/extern/reference/raw_pointer/union 等源类别",
+          "rules": [
+            "rule-11",
+            "rule-794"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "Integer?",
+          "description": "静态大小，DST 为 None；无法取得信息则为 unknown",
+          "rules": [
+            "rule-59",
+            "rule-268"
+          ]
+        },
+        {
+          "name": "align",
+          "type": "Integer?",
+          "description": "静态对齐；无法静态确定为 None",
+          "rules": [
+            "rule-54",
+            "rule-59"
+          ]
+        },
+        {
+          "name": "min",
+          "type": "Integer?",
+          "description": "整数类型的最小表示值，其他类型为 None",
+          "rules": [
+            "rule-201"
+          ]
+        },
+        {
+          "name": "max",
+          "type": "Integer?",
+          "description": "整数类型的最大表示值，其他类型为 None",
+          "rules": [
+            "rule-201"
+          ]
+        },
+        {
+          "name": "sized",
+          "type": "Boolean",
+          "description": "是否满足源 Sized 约束",
+          "rules": [
+            "rule-10",
+            "rule-175"
+          ]
+        },
+        {
+          "name": "tail_type",
+          "type": "TypeInfo?",
+          "description": "实际 DST 尾类型；整个类型为尾部时返回自身；无 DST 尾部为 None",
+          "rules": [
+            "rule-11",
+            "rule-14"
+          ]
+        },
+        {
+          "name": "element_type",
+          "type": "TypeInfo?",
+          "description": "数组/slice 元素类型，其他类型为 None",
+          "rules": [
+            "rule-39",
+            "rule-804"
+          ]
+        },
+        {
+          "name": "pointee_type",
+          "type": "TypeInfo?",
+          "description": "源引用、raw pointer 或有明确透明指针契约的 pointee 类型",
+          "rules": [
+            "rule-784",
+            "rule-794"
+          ]
+        },
+        {
+          "name": "fields",
+          "type": "Map<String,TypeInfo>",
+          "description": "直接源字段类型，元组用十进制名称；数组元素另由 element_type 给出",
+          "rules": [
+            "rule-790",
+            "rule-794"
+          ]
+        },
+        {
+          "name": "traits",
+          "type": "Set<String>",
+          "description": "实现的规范 trait 实例 ID，包含 trait 泛型实参",
+          "rules": [
+            "rule-103",
+            "rule-113",
+            "rule-796"
+          ]
+        },
+        {
+          "name": "trait_impls",
+          "type": "Map<String,Implementation>",
+          "description": "按相同 trait 实例 ID 查对应实现；关联类型放在实现内，避免跨 trait 的同名冲突",
+          "rules": [
+            "rule-103",
+            "rule-105"
+          ]
+        },
+        {
+          "name": "methods",
+          "type": "Map<String,MethodInfo>",
+          "description": "源公开及私有方法记录，key 为规范方法 ID；包含已解析的 trait/default 方法视图",
+          "rules": [
+            "rule-105"
+          ]
+        },
+        {
+          "name": "allows_uninitialized",
+          "type": "Boolean",
+          "description": "该源类型能否合法地完全未初始化，区别于所有位模式有效",
+          "rules": [
+            "rule-192"
+          ]
+        },
+        {
+          "name": "has_padding",
+          "type": "Boolean",
+          "description": "源布局中存在 padding 字节",
+          "rules": [
+            "rule-58",
+            "rule-795"
+          ]
+        },
+        {
+          "name": "has_provenance",
+          "type": "Boolean",
+          "description": "该类型的值能承载指针 provenance，包括适用的嵌套字段/元素",
+          "rules": [
+            "rule-57"
+          ]
+        },
+        {
+          "name": "ownership",
+          "type": "String",
+          "description": "owning/borrowed/raw/none，依据源类型契约，不按名字猜测",
+          "rules": [
+            "rule-790"
+          ]
+        },
+        {
+          "name": "outlives",
+          "type": "Set<String>",
+          "description": "源类型满足的生命周期边界名称，包括适用时的 static",
+          "rules": [
+            "rule-781",
+            "rule-947"
+          ]
+        },
+        {
+          "name": "components",
+          "type": "Set<TypeInfo>",
+          "description": "源拥有字段/元素类型的反身传递闭包，引用/raw pointer 的目标不是拥有组成部分",
+          "rules": [
+            "rule-790",
+            "rule-791",
+            "rule-792",
+            "rule-794"
+          ]
+        },
+        {
+          "name": "subtypes",
+          "type": "Set<TypeInfo>",
+          "description": "源类型系统和 variance 确定的子类型域",
+          "rules": [
+            "rule-113",
+            "rule-118"
+          ]
+        },
+        {
+          "name": "supertypes",
+          "type": "Set<TypeInfo>",
+          "description": "相应超类型域",
+          "rules": [
+            "rule-113",
+            "rule-118"
+          ]
+        },
+        {
+          "name": "bit_patterns",
+          "type": "Set<Value>",
+          "description": "该静态大小的全部候选表示，值可不合法；候选的 provenance 信息按源模型保留",
+          "rules": [
+            "rule-787"
+          ]
+        },
+        {
+          "name": "valid_bit_patterns",
+          "type": "Set<Value>",
+          "description": "其中满足 Rust 语言有效性的候选表示，不自动包含库安全不变量",
+          "rules": [
+            "rule-787"
+          ]
+        },
+        {
+          "name": "valid_values",
+          "type": "Set<Value>",
+          "description": "满足语言有效性及该类型明确安全不变量的值域",
+          "rules": [
+            "rule-56",
+            "rule-162",
+            "rule-198"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TraitInfo",
+      "description": "规范的源 trait 实例。",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "description": "带已绑定泛型实参的 trait 实例身份",
+          "rules": [
+            "rule-103",
+            "rule-113"
+          ]
+        },
+        {
+          "name": "item_path",
+          "type": "String",
+          "description": "trait 定义路径",
+          "rules": [
+            "rule-103",
+            "rule-105"
+          ]
+        },
+        {
+          "name": "type_arguments",
+          "type": "Map<String,TypeInfo>",
+          "description": "源 trait 泛型实参，包括适用时的 Rhs",
+          "rules": [
+            "rule-56",
+            "rule-103"
+          ]
+        },
+        {
+          "name": "methods",
+          "type": "Map<String,MethodInfo>",
+          "description": "trait 中声明的方法，按规范方法 ID 索引",
+          "rules": [
+            "rule-73",
+            "rule-105"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Implementation",
+      "description": "源 impl 记录；不预先编码其是否满足被验证规则。",
+      "fields": [
+        {
+          "name": "type",
+          "type": "TypeInfo",
+          "description": "该实现的 Self 类型",
+          "rules": [
+            "rule-105",
+            "rule-113"
+          ]
+        },
+        {
+          "name": "trait",
+          "type": "TraitInfo",
+          "description": "实现的 trait 实例",
+          "rules": [
+            "rule-103",
+            "rule-105"
+          ]
+        },
+        {
+          "name": "associated_types",
+          "type": "Map<String,TypeInfo>",
+          "description": "按源名称解析的关联类型",
+          "rules": [
+            "rule-103"
+          ]
+        },
+        {
+          "name": "constants",
+          "type": "Map<String,Value>",
+          "description": "按源名称解析的关联常量",
+          "rules": [
+            "rule-195",
+            "rule-872"
+          ]
+        },
+        {
+          "name": "methods",
+          "type": "Map<String,MethodInfo>",
+          "description": "显式 impl 方法；不把继承的默认方法伪装为显式 override",
+          "rules": [
+            "rule-105"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MethodInfo",
+      "description": "源方法及编译器已解析的 dispatch 信息。",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "description": "规范方法实例身份",
+          "rules": [
+            "rule-73",
+            "rule-105"
+          ]
+        },
+        {
+          "name": "name",
+          "type": "String",
+          "description": "不含路径的方法名",
+          "rules": [
+            "rule-73"
+          ]
+        },
+        {
+          "name": "qualified_name",
+          "type": "String",
+          "description": "规范定义路径",
+          "rules": [
+            "rule-105"
+          ]
+        },
+        {
+          "name": "visibility",
+          "type": "String",
+          "description": "public/restricted/private，按源声明解释",
+          "rules": [
+            "rule-105"
+          ]
+        },
+        {
+          "name": "defining_trait",
+          "type": "String?",
+          "description": "所属 trait 实例 ID；inherent 方法为 None",
+          "rules": [
+            "rule-105"
+          ]
+        },
+        {
+          "name": "specialized",
+          "type": "Boolean",
+          "description": "相对相应 generic/default 实现选择了非默认特化项的编译器事实；不等于整个规则正确",
+          "rules": [
+            "rule-105",
+            "rule-108"
+          ]
+        },
+        {
+          "name": "explicit_override",
+          "type": "Boolean",
+          "description": "当前 impl 是否显式提供该方法体",
+          "rules": [
+            "rule-124"
+          ]
+        },
+        {
+          "name": "dispatch_targets",
+          "type": "Set<MethodInfo>",
+          "description": "该入口在当前类型绑定下可到达的源 dispatch 项，含 helper 内的相关调用",
+          "rules": [
+            "rule-105",
+            "rule-108"
+          ]
+        },
+        {
+          "name": "invocations",
+          "type": "Set<Invocation>",
+          "description": "该方法对所有允许输入和执行的逻辑调用域，不是仅实际发生的调用",
+          "rules": [
+            "rule-56",
+            "rule-73"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "VTable",
+      "description": "由该指针元数据解析的编译器 vtable 观测，origin 属于此元数据的来源链。",
+      "fields": [
+        {
+          "name": "storage",
+          "type": "MemoryRange",
+          "description": "编译器 vtable 记录所在的实际存储范围",
+          "rules": [
+            "rule-14"
+          ]
+        },
+        {
+          "name": "type",
+          "type": "TypeInfo",
+          "description": "vtable 对应的具体源类型",
+          "rules": [
+            "rule-14"
+          ]
+        },
+        {
+          "name": "target",
+          "type": "TypeInfo",
+          "description": "对应的目标 dyn trait 类型，DST 包装类型应与 tail_type 比较",
+          "rules": [
+            "rule-14"
+          ]
+        },
+        {
+          "name": "trait",
+          "type": "TraitInfo",
+          "description": "实际实现的 trait 实例",
+          "rules": [
+            "rule-14"
+          ]
+        },
+        {
+          "name": "origin",
+          "type": "String",
+          "description": "unsizing/other，依据该元数据实际产生及复制链；无证据则 unknown",
+          "rules": [
+            "rule-14"
+          ]
+        },
+        {
+          "name": "methods",
+          "type": "Map<String,MethodInfo>",
+          "description": "编译器发出的实际方法映射",
+          "rules": [
+            "rule-14"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Interval",
+      "description": "轨迹位置的半开区间 [start,end)。",
+      "fields": [
+        {
+          "name": "start",
+          "type": "Integer",
+          "description": "起始状态位置",
+          "rules": [
+            "rule-45",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "end",
+          "type": "Integer?",
+          "description": "结束位置；None 表示尚未结束，不代表未来义务满足",
+          "rules": [
+            "rule-45",
+            "rule-581"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Invocation",
+      "description": "一次实际或契约域中的源调用；两类调用的域严格区分。",
+      "fields": [
+        {
+          "name": "identity",
+          "type": "String",
+          "description": "稳定调用身份，trace 内唯一",
+          "rules": [
+            "rule-852"
+          ]
+        },
+        {
+          "name": "qualified_name",
+          "type": "String",
+          "description": "实际源目标的规范路径；外部 primitive 使用平台操作表相同 key",
+          "rules": [
+            "rule-737",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "method",
+          "type": "MethodInfo?",
+          "description": "目标源方法；非方法调用为 None",
+          "rules": [
+            "rule-73",
+            "rule-105"
+          ]
+        },
+        {
+          "name": "args",
+          "type": "Sequence<Value>",
+          "description": "按源顺序绑定的参数，receiver 在首位",
+          "rules": [
+            "rule-19",
+            "rule-73"
+          ]
+        },
+        {
+          "name": "result",
+          "type": "Value?",
+          "description": "正常返回的源结果，unit 是 Value；尚未返回或无正常返回为 None",
+          "rules": [
+            "rule-53",
+            "rule-73"
+          ]
+        },
+        {
+          "name": "result_type",
+          "type": "TypeInfo",
+          "description": "声明/绑定后的源返回类型",
+          "rules": [
+            "rule-201"
+          ]
+        },
+        {
+          "name": "types",
+          "type": "Map<String,TypeInfo>",
+          "description": "调用作用域内源类型名称及 Self、别名的绑定",
+          "rules": [
+            "rule-103",
+            "rule-201"
+          ]
+        },
+        {
+          "name": "consts",
+          "type": "Map<String,Value>",
+          "description": "实际 const generic 绑定",
+          "rules": [
+            "rule-195"
+          ]
+        },
+        {
+          "name": "interval",
+          "type": "Interval",
+          "description": "源调用进入至退出的区间",
+          "rules": [
+            "rule-45",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "thread",
+          "type": "String",
+          "description": "调用线程身份",
+          "rules": [
+            "rule-769"
+          ]
+        },
+        {
+          "name": "caller",
+          "type": "String",
+          "description": "调用的逻辑拥有权主体/令牌身份",
+          "rules": [
+            "rule-713",
+            "rule-775"
+          ]
+        },
+        {
+          "name": "status",
+          "type": "String",
+          "description": "running/return/panic/unwind/abort/nontermination",
+          "rules": [
+            "rule-9",
+            "rule-53"
+          ]
+        },
+        {
+          "name": "before",
+          "type": "State",
+          "description": "进入前的快照",
+          "rules": [
+            "rule-51",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "after",
+          "type": "State?",
+          "description": "完成后的快照，执行尚未完成时为 None",
+          "rules": [
+            "rule-53"
+          ]
+        },
+        {
+          "name": "trace",
+          "type": "Trace",
+          "description": "包含此调用的执行轨迹；契约调用保留自身可能执行的轨迹",
+          "rules": [
+            "rule-73",
+            "rule-805"
+          ]
+        },
+        {
+          "name": "parent_invocation",
+          "type": "String?",
+          "description": "真实因果 caller；信号/中断不因同线程而被当作普通 helper",
+          "rules": [
+            "rule-805"
+          ]
+        },
+        {
+          "name": "stack",
+          "type": "Sequence<Invocation>",
+          "description": "动态外层调用栈，不自动包含当前调用本身",
+          "rules": [
+            "rule-925"
+          ]
+        },
+        {
+          "name": "leaf_calls",
+          "type": "Set<Invocation>",
+          "description": "其因果后代中的实际外部 primitive 调用，排除中间纯 Rust helper",
+          "rules": [
+            "rule-737"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Event",
+      "description": "按 kind 区分的源/指令事件；可空字段由事件种类决定。",
+      "fields": [
+        {
+          "name": "identity",
+          "type": "String",
+          "description": "稳定事件身份",
+          "rules": [
+            "rule-255"
+          ]
+        },
+        {
+          "name": "kind",
+          "type": "String",
+          "description": "create/read/write/move/drop/deallocate/clone/borrow_shared/borrow_mut/call/return/panic/unwind/atomic/fence/instruction/resource_open/resource_close/environment_read/environment_write/undefined_behavior",
+          "rules": [
+            "rule-45",
+            "rule-805"
+          ]
+        },
+        {
+          "name": "time",
+          "type": "Integer",
+          "description": "事件发生前的状态位置，事件后状态位于下一位置",
+          "rules": [
+            "rule-45",
+            "rule-805"
+          ]
+        },
+        {
+          "name": "thread",
+          "type": "String",
+          "description": "实际线程身份",
+          "rules": [
+            "rule-255"
+          ]
+        },
+        {
+          "name": "invocation",
+          "type": "String?",
+          "description": "直接归属的源调用身份，无调用归属的运行时事件为 None",
+          "rules": [
+            "rule-805"
+          ]
+        },
+        {
+          "name": "causal_ancestors",
+          "type": "Set<String>",
+          "description": "真实因果祖先调用身份，包含 helper 的外层调用，排除无关 signal/interrupt",
+          "rules": [
+            "rule-805"
+          ]
+        },
+        {
+          "name": "object",
+          "type": "String?",
+          "description": "受影响对象/借用的身份，不按地址相等替代",
+          "rules": [
+            "rule-45",
+            "rule-845"
+          ]
+        },
+        {
+          "name": "range",
+          "type": "MemoryRange?",
+          "description": "实际访问范围，包含访问指针及来源",
+          "rules": [
+            "rule-255",
+            "rule-581",
+            "rule-805"
+          ]
+        },
+        {
+          "name": "value",
+          "type": "Value?",
+          "description": "写入、创建或返回的源值",
+          "rules": [
+            "rule-53"
+          ]
+        },
+        {
+          "name": "atomic",
+          "type": "Boolean",
+          "description": "该访问是否为 atomic",
+          "rules": [
+            "rule-255"
+          ]
+        },
+        {
+          "name": "ordering",
+          "type": "String?",
+          "description": "源 atomic ordering，无则 None",
+          "rules": [
+            "rule-763"
+          ]
+        },
+        {
+          "name": "happens_before",
+          "type": "Set<String>",
+          "description": "在该事件之前的真实 HB 事件身份，含规定的同步及传递关系，不是墙钟排序",
+          "rules": [
+            "rule-255",
+            "rule-763"
+          ]
+        },
+        {
+          "name": "unsafe_cell",
+          "type": "Boolean",
+          "description": "访问字节是否位于 UnsafeCell",
+          "rules": [
+            "rule-49",
+            "rule-581"
+          ]
+        },
+        {
+          "name": "lifetime",
+          "type": "Interval?",
+          "description": "该借用事件建立的区间",
+          "rules": [
+            "rule-45"
+          ]
+        },
+        {
+          "name": "resource",
+          "type": "Resource?",
+          "description": "受影响资源在本次事件状态下的观测",
+          "rules": [
+            "rule-738"
+          ]
+        },
+        {
+          "name": "unsafe_context",
+          "type": "Boolean",
+          "description": "源码是否位于 unsafe 语法上下文，不表示操作正确",
+          "rules": [
+            "rule-198"
+          ]
+        },
+        {
+          "name": "instruction",
+          "type": "String?",
+          "description": "实际机器指令的规范大写 mnemonic；无对应指令时为 None",
+          "rules": [
+            "rule-805"
+          ]
+        },
+        {
+          "name": "strand",
+          "type": "String",
+          "description": "线程内因果执行分支；普通 helper 继承，异步 handler 分支单独标识",
+          "rules": [
+            "rule-805"
+          ]
+        },
+        {
+          "name": "instruction_index",
+          "type": "Integer?",
+          "description": "在该 strand 的机器指令位置；同条指令的访问事件使用相同位置",
+          "rules": [
+            "rule-805"
+          ]
+        },
+        {
+          "name": "state",
+          "type": "State",
+          "description": "该事件 time 对应的源状态快照",
+          "rules": [
+            "rule-255"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "State",
+      "description": "一个轨迹位置的源状态；记录和投影保留此状态。",
+      "fields": [
+        {
+          "name": "time",
+          "type": "Integer",
+          "description": "轨迹位置",
+          "rules": [
+            "rule-45"
+          ]
+        },
+        {
+          "name": "objects",
+          "type": "Map<String,Value>",
+          "description": "稳定对象身份字符串到该状态下对象的映射，key 与 Value.identity 相同",
+          "rules": [
+            "rule-197",
+            "rule-845"
+          ]
+        },
+        {
+          "name": "allocations",
+          "type": "Map<String,Allocation>",
+          "description": "稳定分配身份字符串到记录的映射，包含可查询的已失效记录",
+          "rules": [
+            "rule-3",
+            "rule-30"
+          ]
+        },
+        {
+          "name": "resources",
+          "type": "Map<String,Resource>",
+          "description": "平台资源状态，包括继承或外部创建的资源",
+          "rules": [
+            "rule-713"
+          ]
+        },
+        {
+          "name": "threads",
+          "type": "Map<String,ThreadInfo>",
+          "description": "程序线程状态",
+          "rules": [
+            "rule-773",
+            "rule-922"
+          ]
+        },
+        {
+          "name": "globals",
+          "type": "Map<String,Value>",
+          "description": "实际源全局变量",
+          "rules": [
+            "rule-51"
+          ]
+        },
+        {
+          "name": "environment",
+          "type": "Map<String,Value>",
+          "description": "实际进程环境状态",
+          "rules": [
+            "rule-738"
+          ]
+        },
+        {
+          "name": "active_invocations",
+          "type": "Set<String>",
+          "description": "此状态下仍活跃的调用身份",
+          "rules": [
+            "rule-904"
+          ]
+        },
+        {
+          "name": "phase",
+          "type": "String",
+          "description": "runtime_initialization/running/runtime_cleanup/thread_exit，由实际运行生命周期确定",
+          "rules": [
+            "rule-852",
+            "rule-855",
+            "rule-923"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Trace",
+      "description": "一次可能执行的轨迹；实际历史和契约的可能执行分别持有自己的 Trace。",
+      "fields": [
+        {
+          "name": "events",
+          "type": "Sequence<Event>",
+          "description": "按观测位置排序的事件；排序本身不建立跨线程 HB",
+          "rules": [
+            "rule-45",
+            "rule-805"
+          ]
+        },
+        {
+          "name": "invocations",
+          "type": "Map<String,Invocation>",
+          "description": "按稳定调用身份查调用记录",
+          "rules": [
+            "rule-852"
+          ]
+        },
+        {
+          "name": "states",
+          "type": "Map<Integer,State>",
+          "description": "按非负轨迹位置查状态",
+          "rules": [
+            "rule-30",
+            "rule-716"
+          ]
+        },
+        {
+          "name": "complete",
+          "type": "Boolean",
+          "description": "是否已包含该执行的完整后续；未完成前缀不自动证明未来义务",
+          "rules": [
+            "rule-45",
+            "rule-581"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Contract",
+      "description": "与真实历史独立的完整逻辑域；禁止把待验证的规则假定为域前提。",
+      "fields": [
+        {
+          "name": "trait",
+          "type": "TraitInfo?",
+          "description": "当前 trait 契约目标；普通函数契约可为 None",
+          "rules": [
+            "rule-73"
+          ]
+        },
+        {
+          "name": "implementations",
+          "type": "Set<Implementation>",
+          "description": "当前源约束允许的所有相关 impl，不限于运行中出现者",
+          "rules": [
+            "rule-73",
+            "rule-105"
+          ]
+        },
+        {
+          "name": "invocations",
+          "type": "Set<Invocation>",
+          "description": "所有相关实现、允许输入及可能行为的调用域，每项有自己的 trace",
+          "rules": [
+            "rule-56",
+            "rule-73"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CallContext",
+      "description": "调用/契约上下文；沿用 get_field(get_result(), \"call\") 的表示，由解析器按源场景绑定。trait 场景不要求真实返回值。",
+      "fields": [
+        {
+          "name": "invocation",
+          "type": "Invocation?",
+          "description": "当前实际调用，trait 元契约无当前运行调用时为 None",
+          "rules": [
+            "rule-73",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "trace",
+          "type": "Trace",
+          "description": "当前执行历史，不代替 Contract 的可能调用域",
+          "rules": [
+            "rule-45",
+            "rule-852"
+          ]
+        },
+        {
+          "name": "state",
+          "type": "State",
+          "description": "当前求值状态，随时序求值前进",
+          "rules": [
+            "rule-45",
+            "rule-716"
+          ]
+        },
+        {
+          "name": "types",
+          "type": "Map<String,TypeInfo>",
+          "description": "实际在作用域内的源名称/别名与 Self 绑定，不按规则臆造类型别名",
+          "rules": [
+            "rule-103"
+          ]
+        },
+        {
+          "name": "traits",
+          "type": "Map<String,TraitInfo>",
+          "description": "源作用域内 trait 名称/别名到规范 trait 实例的绑定",
+          "rules": [
+            "rule-103",
+            "rule-113"
+          ]
+        },
+        {
+          "name": "consts",
+          "type": "Map<String,Value>",
+          "description": "源 const generic 参数绑定",
+          "rules": [
+            "rule-195"
+          ]
+        },
+        {
+          "name": "constants",
+          "type": "Map<String,Value>",
+          "description": "源作用域内普通常量绑定",
+          "rules": [
+            "rule-195",
+            "rule-872"
+          ]
+        },
+        {
+          "name": "contract",
+          "type": "Contract?",
+          "description": "当前逻辑契约域；无则 None",
+          "rules": [
+            "rule-73"
+          ]
+        },
+        {
+          "name": "platform",
+          "type": "Platform",
+          "description": "目标平台及其独立操作契约",
+          "rules": [
+            "rule-737",
+            "rule-805"
+          ]
+        },
+        {
+          "name": "caller",
+          "type": "String?",
+          "description": "当前调用的逻辑拥有权主体，trait 元契约入口可为 None",
+          "rules": [
+            "rule-713"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Resource",
+      "description": "OS/平台资源事实，不要求 Rust owner 包装对象已经存在。",
+      "fields": [
+        {
+          "name": "identity",
+          "type": "String",
+          "description": "稳定资源身份，区分关闭后的标识复用",
+          "rules": [
+            "rule-713",
+            "rule-943"
+          ]
+        },
+        {
+          "name": "kind",
+          "type": "String",
+          "description": "file_descriptor/socket/handle/task/event/module/process_environment/user_allocation 等资源类别",
+          "rules": [
+            "rule-713",
+            "rule-775"
+          ]
+        },
+        {
+          "name": "open",
+          "type": "Boolean",
+          "description": "在该观测状态下的资源存续状态",
+          "rules": [
+            "rule-713",
+            "rule-716"
+          ]
+        },
+        {
+          "name": "owners",
+          "type": "Set<String>",
+          "description": "具有对应处置/拥有权契约的主体令牌；不是 owner 包装器的存在集合",
+          "rules": [
+            "rule-713",
+            "rule-775",
+            "rule-888"
+          ]
+        },
+        {
+          "name": "closer",
+          "type": "String",
+          "description": "足以释放该类资源的规范操作，如 close/closesocket/CloseHandle",
+          "rules": [
+            "rule-714",
+            "rule-749"
+          ]
+        },
+        {
+          "name": "attributes",
+          "type": "Map<String,Value>",
+          "description": "平台资源的实际属性；key 必须有源/平台定义，不允许添加每条规则的成功标志",
+          "rules": [
+            "rule-755",
+            "rule-776",
+            "rule-877"
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "Integer",
+          "description": "该资源代次的创建位置",
+          "rules": [
+            "rule-713"
+          ]
+        },
+        {
+          "name": "closed_at",
+          "type": "Integer?",
+          "description": "关闭位置；尚未关闭为 None",
+          "rules": [
+            "rule-716"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ThreadInfo",
+      "description": "实际平台线程状态。",
+      "fields": [
+        {
+          "name": "identity",
+          "type": "String",
+          "description": "线程身份",
+          "rules": [
+            "rule-766",
+            "rule-941"
+          ]
+        },
+        {
+          "name": "handle",
+          "type": "Value",
+          "description": "实际平台线程 handle",
+          "rules": [
+            "rule-777",
+            "rule-889"
+          ]
+        },
+        {
+          "name": "phase",
+          "type": "String",
+          "description": "starting/running/exit_destructors/exited",
+          "rules": [
+            "rule-922",
+            "rule-923"
+          ]
+        },
+        {
+          "name": "tls",
+          "type": "Map<String,Value>",
+          "description": "平台 TLS key 的规范字符串到当前值的映射",
+          "rules": [
+            "rule-934"
+          ]
+        },
+        {
+          "name": "stack",
+          "type": "MemoryRange",
+          "description": "实际线程栈范围",
+          "rules": [
+            "rule-779"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Platform",
+      "description": "目标平台事实和外部原语契约；不提供每条 rule 的预判结果。",
+      "fields": [
+        {
+          "name": "name",
+          "type": "String",
+          "description": "规范目标 OS/ABI 名称",
+          "rules": [
+            "rule-702",
+            "rule-737"
+          ]
+        },
+        {
+          "name": "regions",
+          "type": "Sequence<AddressRegion>",
+          "description": "平台地址区域映射",
+          "rules": [
+            "rule-806",
+            "rule-808"
+          ]
+        },
+        {
+          "name": "operations",
+          "type": "Map<String,Operation>",
+          "description": "按实际外部 primitive 规范名查平台契约，未知操作保持 unknown",
+          "rules": [
+            "rule-737"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AddressRegion",
+      "description": "平台地址映射的一个区段。",
+      "fields": [
+        {
+          "name": "start",
+          "type": "Integer",
+          "description": "半开区间起点",
+          "rules": [
+            "rule-806"
+          ]
+        },
+        {
+          "name": "end",
+          "type": "Integer",
+          "description": "半开区间终点",
+          "rules": [
+            "rule-808"
+          ]
+        },
+        {
+          "name": "name",
+          "type": "String",
+          "description": "user/enclave/other 等实际区域类别",
+          "rules": [
+            "rule-806",
+            "rule-808"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Operation",
+      "description": "有独立平台规范依据的原语操作契约。",
+      "fields": [
+        {
+          "name": "qualified_name",
+          "type": "String",
+          "description": "平台 primitive 的规范标识，与 Invocation.qualified_name 一致",
+          "rules": [
+            "rule-737"
+          ]
+        },
+        {
+          "name": "allowed_contexts",
+          "type": "Set<String>",
+          "description": "平台规范允许的执行上下文，如 async_signal_safe；不能从一次成功调用推断",
+          "rules": [
+            "rule-737"
+          ]
+        },
+        {
+          "name": "attributes",
+          "type": "Map<String,Value>",
+          "description": "平台契约其他明确属性；未定义 key 不产生任意符号真值",
+          "rules": [
+            "rule-737",
+            "rule-841"
+          ]
+        }
+      ]
+    }
+  ],
+  "operators": [
+    {
+      "name": "get_arg",
+      "input": [
+        {
+          "name": "index",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "Value"
+      },
+      "description": "The indexed source argument, receiver first; structured source values and pointer metadata are preserved."
+    },
+    {
+      "name": "get_result",
+      "input": [],
+      "output": {
+        "type": "Value"
+      },
+      "description": "The source result. All values also carry invocation metadata via field call, even a unit result. A trait-item contract has an abstract call context whose invocations range over all relevant implementations/member calls; it does not invent a result for an unnamed method."
+    },
+    {
+      "name": "get_field",
+      "input": [
+        {
+          "name": "obj",
+          "type": "RecordOrContainer"
+        },
+        {
+          "name": "field",
+          "type": "String|Integer"
+        }
+      ],
+      "output": {
+        "type": "DependentFieldType"
+      },
+      "description": "统一投影真实源字段、建模属性或容器成员；具体来源和同名消歧由解析器结合源声明及类型绑定识别。",
+      "overloads": [
+        "Value x resolved Rust source field selector -> source Value",
+        "Record x StringLiteral -> declared field type",
+        "Map<String,T> x String -> T?",
+        "Map<Integer,T> x Integer -> T?",
+        "Sequence<T> x Integer -> T?",
+        "Sequence<T> x \"length\" -> Integer"
+      ]
+    },
+    {
+      "name": "get_allocation",
+      "input": [
+        {
+          "name": "value",
+          "type": "Value"
+        }
+      ],
+      "output": {
+        "type": "Allocation"
+      },
+      "description": "Returns the allocation/provenance object associated with a pointer-like value."
+    },
+    {
+      "name": "memory_range",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "size",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "MemoryRange"
+      },
+      "description": "Constructs a half-open byte range [ptr.address, ptr.address + size)."
+    },
+    {
+      "name": "memory_between",
+      "input": [
+        {
+          "name": "a",
+          "type": "Pointer"
+        },
+        {
+          "name": "b",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "MemoryRange"
+      },
+      "description": "Constructs the half-open byte range between two addresses, independent of their order."
+    },
+    {
+      "name": "offset_does_not_wrap",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        },
+        {
+          "name": "count",
+          "type": "uint"
+        },
+        {
+          "name": "element_size",
+          "type": "uint"
+        },
+        {
+          "name": "direction",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Uses mathematical 128-bit arithmetic to check that ptr plus a signed offset, an unsigned add offset, or an unsigned sub offset does not cross the address-space boundary. direction is signed, add, or sub."
+    },
+    {
+      "name": "mul_fits",
+      "input": [
+        {
+          "name": "a",
+          "type": "uint"
+        },
+        {
+          "name": "b",
+          "type": "uint"
+        },
+        {
+          "name": "target",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Uses 128-bit mathematical multiplication and checks that the result fits the target integer type. target is one of isize, usize, i32, u32, i64, or u64; pointer-sized targets use KLEE's current pointer width. Plain operands are non-negative mathematical integers; wrap a signed operand with as_signed."
+    },
+    {
+      "name": "as_signed",
+      "input": [
+        {
+          "name": "value",
+          "type": "uint"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "type": "int"
+      },
+      "description": "Interprets a bit-vector value as isize, i32, or i64 and sign-extends it for mathematical arithmetic."
+    },
+    {
+      "name": "get_type_at_func",
+      "input": [
+        {
+          "name": "index",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "TypeInfo"
+      },
+      "description": "Returns metadata for the indexed type parameter of the target callee."
+    },
+    {
+      "name": "is_power_of_two",
+      "input": [
+        {
+          "name": "x",
+          "type": "uint"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether x is a non-zero power of two."
+    },
+    {
+      "name": "is_valid_for",
+      "input": [
+        {
+          "name": "range",
+          "type": "MemoryRange"
+        },
+        {
+          "name": "access",
+          "type": "string"
+        },
+        {
+          "name": "type_info",
+          "type": "TypeInfo",
+          "optional": true
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Reusable range predicate. The access argument selects precisely one property; it does not imply the other properties. read/write/read_write: the entire half-open range lies in one currently live allocation with that access permission (write requires writable storage); zero-byte ranges are vacuously valid. These modes impose no alignment or initialization. initialized: the range contains initialized Rust values of the optional type_info (otherwise the range element type); each value obeys Rust language validity, including discriminants, references and niches, without requiring padding bytes to be written. bit_valid: the stored bits satisfy only Rust language type validity. invariants: the type-defined safety invariants, beyond language-level bit validity, hold for the values; type_info identifies the type contract. drop/async_drop: precisely the type-defined precondition for the respective destructor, including additional type invariants. utf8/wtf8: the bytes in exactly the range encode that format, without adding allocation/alignment requirements. shared_borrow/read_no_mutation: no conflicting write occurs throughout the returned reference lifetime, except inside UnsafeCell. unique_borrow: accesses during that lifetime must be derived from the returned unique reference. volatile_read_no_race: no unordered overlapping write; volatile_write_no_race: no unordered overlapping other access. exclusive_during_drop: while the destructor runs, all overlapping accesses derive from its supplied self references. no_use_after_drop: no access to the dropped value after destruction. Each temporal mode refers to the current invocation/result lifetime; it is not a call-time capability approximation. Unknown access strings are not defined and must not be invented.",
+      "access_modes": [
+        "read",
+        "write",
+        "read_write",
+        "initialized",
+        "bit_valid",
+        "invariants",
+        "drop",
+        "async_drop",
+        "utf8",
+        "wtf8",
+        "shared_borrow",
+        "read_no_mutation",
+        "unique_borrow",
+        "volatile_read_no_race",
+        "volatile_write_no_race",
+        "exclusive_during_drop",
+        "no_use_after_drop"
+      ]
+    },
+    {
+      "name": "c_str_in_allocation",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether a non-null pointer has a reachable nul byte before the first uninitialized byte and before the end of the same live KLEE allocation. Symbolic pointers are resolved as a disjunction over live objects."
+    },
+    {
+      "name": "has_nul_terminator",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Returns whether ptr has a reachable initialized nul terminator in a live KLEE allocation, including for symbolic pointer values."
+    },
+    {
+      "name": "is_convertible_to_ref",
+      "input": [
+        {
+          "name": "ptr",
+          "type": "Pointer"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "Atomic predicate for Rust raw-pointer-to-reference convertibility."
+    },
+    {
+      "name": "is_initialized_for_type",
+      "input": [
+        {
+          "name": "range",
+          "type": "MemoryRange"
+        },
+        {
+          "name": "type_info",
+          "type": "TypeInfo"
+        }
+      ],
+      "output": {
+        "type": "bool"
+      },
+      "description": "等价于 is_valid_for(range,\"initialized\",T)：按 T 的 Rust 初始化及语言有效性检查，允许 padding 未写入。"
+    }
+  ],
+  "examples": [
+    {
+      "rule_id": "rule-1",
+      "rule": "`layout` must have non-zero size.",
+      "argument_types": [
+        "Allocator",
+        "Layout"
+      ],
+      "expression": "get_field(get_arg(1), \"size\") > 0",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-3",
+      "rule": "The `ptr` pointer must be a block of memory currently allocated via this allocator.",
+      "argument_types": [
+        "Allocator",
+        "Pointer",
+        "Layout"
+      ],
+      "expression": "get_field(get_arg(1), \"allocation\") != None && get_field(get_field(get_arg(1), \"allocation\"), \"live\") && get_field(get_arg(1), \"address\") == get_field(get_field(get_arg(1), \"allocation\"), \"start\") && get_field(get_field(get_field(get_arg(1), \"allocation\"), \"allocator\"), \"id\") == get_field(get_arg(0), \"id\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-16",
+      "rule": "`layout` must fit that block of memory.",
+      "argument_types": [
+        "Allocator",
+        "Pointer",
+        "Layout"
+      ],
+      "expression": "get_field(get_arg(1), \"allocation\") != None && get_field(get_field(get_arg(1), \"allocation\"), \"live\") && get_field(get_arg(2), \"align\") == get_field(get_field(get_field(get_arg(1), \"allocation\"), \"layout\"), \"align\") && get_field(get_arg(2), \"size\") >= get_field(get_field(get_arg(1), \"allocation\"), \"minimum_size\") && get_field(get_arg(2), \"size\") <= get_field(get_field(get_arg(1), \"allocation\"), \"size\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-19",
+      "rule": "`new_layout.size()` must be greater than or equal to `old_layout.size()`.",
+      "argument_types": [
+        "Allocator",
+        "Pointer",
+        "Layout",
+        "Layout"
+      ],
+      "expression": "get_field(get_arg(3), \"size\") >= get_field(get_arg(2), \"size\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-38",
+      "rule": "Every byte in the array must be in `0..=127`.",
+      "argument_types": [
+        "Pointer"
+      ],
+      "expression": "forall byte in get_field(get_field(get_arg(0), \"pointee\"), \"elements\"): byte >= 0 && byte <= 127",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-268",
+      "rule": "The source and destination may not overlap.",
+      "argument_types": [
+        "Pointer",
+        "Pointer",
+        "Value"
+      ],
+      "expression": "(get_field(get_arg(0), \"address\") + get_arg(2) * get_field(get_type_at_func(0), \"size\") <= get_field(get_arg(1), \"address\")) || (get_field(get_arg(1), \"address\") + get_arg(2) * get_field(get_type_at_func(0), \"size\") <= get_field(get_arg(0), \"address\"))",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-12",
+      "rule": "If the unsized tail of `T` is a slice, the size of the entire value (dynamic tail length + statically sized prefix) must fit in `isize`.",
+      "argument_types": [
+        "Pointer"
+      ],
+      "expression": "(get_field(get_type_at_func(0), \"tail_type\") != None && get_field(get_field(get_type_at_func(0), \"tail_type\"), \"kind\") == \"slice\") => (get_field(get_arg(0), \"length\") == 0 || mul_fits(get_field(get_arg(0), \"dynamic_size\"), 1, \"isize\"))",
+      "complete_translation": true,
+      "note": "保留源文档的 slice-tail 长度为零例外。"
+    },
+    {
+      "rule_id": "rule-14",
+      "rule": "If the unsized tail of `T` is a trait object, the vtable part of the pointer must point to a valid vtable for the type `T` acquired by an unsizing coercion.",
+      "argument_types": [
+        "Pointer"
+      ],
+      "expression": "(get_field(get_type_at_func(0), \"tail_type\") != None && get_field(get_field(get_type_at_func(0), \"tail_type\"), \"kind\") == \"trait_object\") => (get_field(get_arg(0), \"vtable\") != None && get_field(get_field(get_arg(0), \"vtable\"), \"origin\") == \"unsizing\" && get_field(get_field(get_field(get_arg(0), \"vtable\"), \"target\"), \"id\") == get_field(get_field(get_type_at_func(0), \"tail_type\"), \"id\"))",
+      "complete_translation": false,
+      "note": "检查有类型的 vtable 目标和来源路径；完整翻译还要约束元数据初始化及 vtable 存储有效性。"
+    },
+    {
+      "rule_id": "rule-57",
+      "rule": "Neither Self nor Rhs have provenance, so integer comparisons are correct.",
+      "argument_types": [],
+      "expression": "!get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"has_provenance\") && !get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Rhs\"), \"has_provenance\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-58",
+      "rule": "Self and Rhs have no padding.",
+      "argument_types": [],
+      "expression": "!get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"has_padding\") && !get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Rhs\"), \"has_padding\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-73",
+      "rule": "`digit` must return an ASCII character.",
+      "argument_types": [],
+      "expression": "forall inv in get_field(get_field(get_field(get_result(), \"call\"), \"contract\"), \"invocations\"): (get_field(inv, \"method\") != None && get_field(get_field(inv, \"method\"), \"name\") == \"digit\" && get_field(get_field(inv, \"method\"), \"defining_trait\") == get_field(get_field(get_field(get_field(get_result(), \"call\"), \"contract\"), \"trait\"), \"id\") && get_field(inv, \"status\") == \"return\") => (get_field(inv, \"result\") >= 0 && get_field(inv, \"result\") <= 127)",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-103",
+      "rule": "The iterator source `S` itself must implement `SourceIter<Source = S>`.",
+      "argument_types": [],
+      "expression": "(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"SourceIter\"), \"id\") in get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"trait_impls\"), get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"SourceIter\"), \"id\")), \"associated_types\"), \"Source\"), \"traits\")) && get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"trait_impls\"), get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"SourceIter\"), \"id\")), \"associated_types\"), \"Source\"), \"trait_impls\"), get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"SourceIter\"), \"id\")), \"associated_types\"), \"Source\"), \"id\") == get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"trait_impls\"), get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"SourceIter\"), \"id\")), \"associated_types\"), \"Source\"), \"id\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-105",
+      "rule": "All public StepBy methods must be specialized.",
+      "argument_types": [],
+      "expression": "forall key in get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"methods\"): get_field(get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"methods\"), key), \"visibility\") == \"public\" => (forall target in get_field(get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"methods\"), key), \"dispatch_targets\"): get_field(target, \"defining_trait\") == get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"StepByImpl\"), \"id\") => get_field(target, \"specialized\"))",
+      "complete_translation": false,
+      "note": "展示 public 方法到已解析 spec dispatch 项的路径；完整公式需结合 setup/特化分支条件，不把 wrapper 自身必须有特化体当作规则。"
+    },
+    {
+      "rule_id": "rule-113",
+      "rule": "All subtypes and all supertypes of `Self` must also implement `TrustedRandomAccess`.",
+      "argument_types": [],
+      "expression": "(forall subtype in get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"subtypes\"): get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"TrustedRandomAccess\"), \"id\") in get_field(subtype, \"traits\")) && (forall supertype in get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"supertypes\"): get_field(get_field(get_field(get_field(get_result(), \"call\"), \"traits\"), \"TrustedRandomAccess\"), \"id\") in get_field(supertype, \"traits\"))",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-192",
+      "rule": "It is immediate undefined behavior to call this function on nearly all types, including integer types and arrays of integer types, even if the result is unused.",
+      "argument_types": [],
+      "expression": "get_field(get_type_at_func(0), \"allows_uninitialized\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-201",
+      "rule": "The value must be representable in the return type `Int`, after truncating off its fractional part.",
+      "argument_types": [
+        "Value"
+      ],
+      "expression": "get_field(get_arg(0), \"truncated\") != None && get_field(get_arg(0), \"truncated\") >= get_field(get_type_at_func(0), \"min\") && get_field(get_arg(0), \"truncated\") <= get_field(get_type_at_func(0), \"max\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-713",
+      "rule": "The resource pointed to by `fd` must be open and suitable for assuming ownership.",
+      "argument_types": [
+        "Value"
+      ],
+      "expression": "get_field(get_arg(0), \"resource\") != None && get_field(get_field(get_arg(0), \"resource\"), \"open\") && get_field(get_field(get_result(), \"call\"), \"caller\") in get_field(get_field(get_arg(0), \"resource\"), \"owners\")",
+      "complete_translation": true,
+      "note": "cleanup 操作要求属于 rule-714，不混入此公式；owners 是处置权主体令牌，不要求 Rust owner 包装器存在或额外要求唯一性。"
+    },
+    {
+      "rule_id": "rule-787",
+      "rule": "Any bit pattern must be valid for the type.",
+      "argument_types": [],
+      "expression": "forall bits in get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"bit_patterns\"): bits in get_field(get_field(get_field(get_field(get_result(), \"call\"), \"types\"), \"Self\"), \"valid_bit_patterns\")",
+      "complete_translation": true,
+      "note": ""
+    },
+    {
+      "rule_id": "rule-805",
+      "rule": "All writes to untrusted memory must be either preceded by the VERW instruction and followed by the MFENCE; LFENCE instruction sequence or be in multiples of 8 bytes aligned to an 8-byte boundary.",
+      "argument_types": [
+        "Pointer",
+        "Pointer",
+        "Value"
+      ],
+      "expression": "forall write in get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"events\"): (get_field(write, \"kind\") == \"write\" && get_field(write, \"range\") != None && get_field(get_field(write, \"range\"), \"region\") == \"user\" && (get_field(write, \"invocation\") == get_field(get_field(get_field(get_result(), \"call\"), \"invocation\"), \"identity\") || get_field(get_field(get_field(get_result(), \"call\"), \"invocation\"), \"identity\") in get_field(write, \"causal_ancestors\"))) => ((get_field(get_field(get_field(write, \"range\"), \"pointer\"), \"address\") % 8 == 0 && get_field(get_field(write, \"range\"), \"size\") % 8 == 0) || (exists before in get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"events\"): get_field(before, \"strand\") == get_field(write, \"strand\") && get_field(before, \"thread\") == get_field(write, \"thread\") && get_field(before, \"instruction\") == \"VERW\" && get_field(before, \"instruction_index\") + 1 == get_field(write, \"instruction_index\") && (exists fence in get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"events\"): get_field(fence, \"strand\") == get_field(write, \"strand\") && get_field(fence, \"thread\") == get_field(write, \"thread\") && get_field(fence, \"instruction\") == \"MFENCE\" && get_field(fence, \"instruction_index\") == get_field(write, \"instruction_index\") + 1 && (exists after in get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"events\"): get_field(after, \"strand\") == get_field(write, \"strand\") && get_field(after, \"thread\") == get_field(write, \"thread\") && get_field(after, \"instruction\") == \"LFENCE\" && get_field(after, \"instruction_index\") == get_field(write, \"instruction_index\") + 2))))",
+      "complete_translation": false,
+      "note": "屏障/对齐组合候选式；需要将实际平台 instruction_index/strand 观测与 Intel 契约核对，不声明已完成平台语义验证。"
+    },
+    {
+      "rule_id": "rule-852",
+      "rule": "This function must be called only once during runtime initialization.",
+      "argument_types": [
+        "Value",
+        "Pointer",
+        "Value"
+      ],
+      "expression": "get_field(get_field(get_field(get_result(), \"call\"), \"state\"), \"phase\") == \"runtime_initialization\" && (forall key in get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"invocations\"): (get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"invocations\"), key), \"qualified_name\") == get_field(get_field(get_field(get_result(), \"call\"), \"invocation\"), \"qualified_name\") && get_field(get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"invocations\"), key), \"before\"), \"phase\") == \"runtime_initialization\") => get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"trace\"), \"invocations\"), key), \"identity\") == get_field(get_field(get_field(get_result(), \"call\"), \"invocation\"), \"identity\"))",
+      "complete_translation": true,
+      "note": "在当前调用进入状态上检查历史，trace 中未发生的未来调用不参与本次调用前置条件。"
+    }
+  ],
+  "interface_checks": [
+    {
+      "name": "State.objects 字符串查找",
+      "argument_types": [
+        "Value"
+      ],
+      "expression": "(get_field(get_arg(0), \"identity\") != None && get_field(get_arg(0), \"identity\") in get_field(get_field(get_field(get_result(), \"call\"), \"state\"), \"objects\")) => get_field(get_field(get_field(get_field(get_field(get_result(), \"call\"), \"state\"), \"objects\"), get_field(get_arg(0), \"identity\")), \"identity\") == get_field(get_arg(0), \"identity\")"
+    },
+    {
+      "name": "Resource closer 与独立条款",
+      "argument_types": [
+        "Value"
+      ],
+      "expression": "get_field(get_arg(0), \"resource\") != None && get_field(get_field(get_arg(0), \"resource\"), \"closer\") == \"close\""
+    },
+    {
+      "name": "浮点分类",
+      "argument_types": [
+        "Value"
+      ],
+      "expression": "!get_field(get_arg(0), \"is_nan\") && !get_field(get_arg(0), \"is_infinite\")"
+    },
+    {
+      "name": "统一 get_field 的源字段投影",
+      "argument_types": [
+        "Value"
+      ],
+      "source_fields": {
+        "0": {
+          "type": "Value"
+        }
+      },
+      "source_fixture": "struct Packet { r#type: u8 }",
+      "expression": "get_field(get_arg(0), \"type\") >= 0"
+    }
+  ]
+}

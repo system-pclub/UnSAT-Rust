@@ -2,8 +2,10 @@ import asyncio
 from dataclasses import dataclass
 import json
 import math
+import os
 from pathlib import Path
 import re
+import subprocess
 from typing import Any
 
 
@@ -623,6 +625,113 @@ def build_witness_guided_rust_context(
     )
 
 
+def crate_api_slice_function_names(
+    target: dict[str, Any], control_chains: list[dict[str, Any]]
+) -> list[str]:
+    """Return the target/call-chain function names used to seed mirscan."""
+    names: set[str] = set()
+    for key in ("caller", "caller_parent"):
+        value = target.get(key)
+        if isinstance(value, dict) and isinstance(value.get("name"), str):
+            names.add(value["name"])
+    for chain in control_chains:
+        steps = chain.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if isinstance(step, dict) and isinstance(step.get("function"), str):
+                names.add(step["function"])
+    return sorted(names)
+
+
+def render_crate_api_slice(data: dict[str, Any]) -> RustContext:
+    """Render mirscan's crate-local API/type closure for an LLM prompt."""
+    functions = data.get("functions") if isinstance(data.get("functions"), list) else []
+    types = data.get("types") if isinstance(data.get("types"), list) else []
+    chunks = [
+        '<rust context mode="crate-local-api-slice">',
+        "<context policy>",
+        "Only crate-local types and APIs related to the requested target/call-chain functions are shown. ",
+        "Bodies are included only for target/call-chain functions; related-type APIs retain signatures only. ",
+        "Standard-library APIs are intentionally omitted.",
+        "</context policy>",
+    ]
+    for item in types:
+        if not isinstance(item, dict) or not isinstance(item.get("definition"), str):
+            continue
+        chunks.append(
+            f'\n<type name="{item.get("name", "")}" path="{item.get("path", "")}" '
+            f'line="{item.get("line", "")}">\n```rust\n{item["definition"]}\n```\n</type>'
+        )
+    for item in functions:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("body") or item.get("signature")
+        if not isinstance(source, str) or not source.strip():
+            continue
+        chunks.append(
+            f'\n<function name="{item.get("name", "")}" role="{item.get("role", "")}" '
+            f'path="{item.get("path", "")}" line="{item.get("line", "")}">\n'
+            f'```rust\n{source}\n```\n</function>'
+        )
+    chunks.append("</rust context>")
+    text = "\n".join(chunks)
+    return RustContext(
+        text=text,
+        stats={
+            "schema_version": 1,
+            "mode": "crate-local-api-slice",
+            "requested_functions": data.get("requested_functions", []),
+            "unresolved_functions": data.get("unresolved_functions", []),
+            "retained_function_count": len(functions),
+            "retained_type_count": len(types),
+            "context_chars": len(text),
+            "estimated_context_tokens": math.ceil(len(text) / 4),
+        },
+    )
+
+
+def build_crate_api_slice_context(
+    root: str | Path,
+    *,
+    target: dict[str, Any],
+    control_chains: list[dict[str, Any]],
+    output_path: str | Path,
+) -> RustContext:
+    """Run mirscan's crate-local API slicer and render its cached JSON output."""
+    root = Path(root).resolve()
+    output_path = Path(output_path).resolve()
+    requested = crate_api_slice_function_names(target, control_chains)
+    if output_path.is_file():
+        cached = json.loads(output_path.read_text(encoding="utf-8"))
+        if cached.get("requested_functions") == requested:
+            return render_crate_api_slice(cached)
+
+    mirscan_rustc = os.environ.get("MIRSCAN_RUSTC")
+    if not mirscan_rustc:
+        raise RuntimeError("MIRSCAN_RUSTC is required for crate-local API slicing")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.pop("ANALYSIS_OUT", None)
+    env["RUSTC"] = mirscan_rustc
+    env["API_SLICE_OUT"] = str(output_path)
+    env["API_SLICE_FUNCTIONS"] = json.dumps(requested)
+    result = subprocess.run(
+        ["cargo", "check", "--lib", "--quiet"],
+        cwd=root,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not output_path.is_file():
+        detail = (result.stderr or result.stdout).strip()[-4000:]
+        raise RuntimeError(
+            f"crate-local API slicing failed (exit {result.returncode}): {detail}"
+        )
+    return render_crate_api_slice(json.loads(output_path.read_text(encoding="utf-8")))
+
+
 def build_final_prompt(
     rust_context: str,
     struct_method: str,
@@ -760,183 +869,75 @@ compiler/tool feedback. Do not repeat the same mistake.
     return f"""
 Generate one small in-crate Rust testcase that concretely reproduces the
 target counterexample.
-
 {hard_feedback_block}
+Requirements:
+- Use only safe Rust: no unsafe blocks, `unsafe fn` calls, or FFI calls that
+  need `unsafe`. The token `unsafe` must not appear anywhere in the output
+  (comments and strings included), except `#[unsafe(no_mangle)]` when Rust 2024
+  requires it. If a call is rejected as unsafe, build the receiver/arguments
+  from visible fields, safe local values, or safe pointer-producing methods such
+  as `as_ptr`/`as_mut_ptr` instead.{no_std_block}
+- The testcase is appended to the module containing the target callsite and
+  compiled with `cargo build --lib --features {feature_name}` (not `cargo test`).
+  It may use fields and types visible from that module. Do not use items gated
+  by `#[cfg(test)]`; recreate any needed state with non-test constructors,
+  visible fields, or a small local safe helper.
+- Paths must compile from that module: prefer `crate::...`, `super::...`, or
+  names already visible there; never import the current crate by package name.
+  Keep nested module paths exactly as shown in the context or compiler feedback,
+  and use dependency paths as visible in the surrounding source.
+- Gate the function with exactly `#[cfg(feature = "{feature_name}")]` and
+  define `pub extern "C" fn {function_name}()` with no arguments, using
+  `#[no_mangle]`. Do not define `main` or use `#[test]`.
+- Reproduce the certainty call chain literally, with concrete values for every
+  input (no KLEE helpers or symbolic inputs). Keep earlier steps valid so
+  execution reaches the target callsite.
+- Call the most direct safe function that contains the target call. If the
+  target context lists a "Direct actual-containing safe function option" and it
+  type-checks from the injection module, use that direct function.
+  Do not fall back to the root wrapper merely because its location is shown;
+  otherwise call the caller named in the callsite metadata. Candidate safe-call plans are
+  suggestions; if a constructor or wrapper may call FFI, validate inputs away,
+  panic, or return before the target, build the receiver from visible fields.
 
-	Requirements:
-	- Use only safe Rust. Do not use unsafe blocks, unsafe functions, or unsafe
-	  operations. If the crate uses Rust 2024 and the compiler requires it, the
-	  attribute `#[unsafe(no_mangle)]` is allowed; otherwise the token `unsafe`
-	  must not occur in the output.
-	- Do not call any function whose signature is declared `unsafe fn` or any
-	  external FFI function that rustc requires to be called from an unsafe
-	  block. If a previous compiler diagnostic says a call "is unsafe and
-	  requires unsafe function or block", remove that call and construct the
-	  target caller's receiver/arguments with safe visible fields, safe local
-	  values, safe pointer-producing methods such as `as_ptr`/`as_mut_ptr`, or a
-	  small local safe helper instead.
-	- Unless the output needs `#[unsafe(no_mangle)]` for Rust 2024, the generated
-	  code must not contain the token `unsafe` anywhere, including comments,
-	  explanations, strings, or block bodies.{no_std_block}
-	- The testcase is compiled as part of the library with
-	  `cargo build --lib --features {feature_name}`. It is not compiled with
-	  `cargo test`.
-	- Do not call, reference, copy, or depend on any item gated by `#[cfg(test)]`
-	  or located inside a test-only module, even if such an item appeared in a
-	  previous attempt or compiler diagnostic. If a test-only helper would have
-	  been convenient, recreate the necessary state using non-test library
-	  constructors, public fields visible from the injection module, or a small
-	  local safe helper inside `{function_name}`.
-	- The testcase is injected into the module containing the target callsite, so
-	  it may use fields and types visible from that module. Reproduce the supplied
-	  control-chain steps literally; do not replace them with unrelated APIs.
-	- Because the testcase is compiled inside the library crate, do not import
-	  the current crate through its package name (for example, avoid
-	  `use package_name::...`). Prefer `crate::...`, `super::...`, or names
-	  already visible from the injection module.
-	- Preserve nested module paths for dependency or re-exported types. If the
-	  context or compiler feedback shows `foo::bar::Type`,
-	  `foo::{{bar::Type, Other}}`, or suggests importing `crate::x::bar::Type`,
-	  use that exact nested path instead of guessing that `Type` is re-exported
-	  from `foo` or `crate::x`. If the surrounding source file refers to a
-	  dependency module directly as `foo::Type`, and the testcase is injected
-	  into that same module, use that visible `foo::Type` path instead of
-	  inventing `crate::foo::Type`.
-	- If the target context lists visible `use` statements or direct dependency
-	  paths from the injection module, those names are already in scope for the
-	  generated function. Use the visible path exactly; for an external crate
-	  dependency visible as `dep::Type`, do not write `crate::dep::Type`.
-	- Candidate constructors are only suggestions, but a candidate direct
-	  target-caller skeleton is the primary path when it type-checks. If a
-	  constructor or wrapper can call external FFI, validate inputs away, panic,
-	  or return before the target callsite, construct the target caller's
-	  receiver/arguments from visible fields instead.
-- If the target caller receiver or its nested fields contain raw pointers that
-  are read or written before the target callsite, do not leave those prefix
-  pointer fields as `null()`, `null_mut()`, or dangling placeholders. Use tiny
-  local arrays, Vecs, or other safe pointer-producing values to provide just
-  enough backing storage for prefix reads/writes needed to reach the target.
-  This prefix backing is separate from the target counterexample relation; keep
-  prefix-only state valid while choosing the actual target caller field/index/
-  length/value that makes the target callsite a counterexample.
-  If the same caller argument/index/count is used both by prefix pointer
-  operations and by the target unsafe call, pick a small violating value for the
-  target and make only the prefix backing large enough for that value. Do not
-  make every raw-pointer field share the same backing size: a prefix field may
-  need two elements to reach the target while the actual target field may need
-  only one element so the target relation is false. For pointer arithmetic
-  targets such as `add`/`offset`, an offset/count of zero often makes the target
-  safety relation trivially true; if a previous observation showed the selected
-  offset/count was `0`, use a concrete small non-zero value such as `1`, keep
-  any earlier prefix receiver valid for that value, and make the target
-  receiver/buffer relation false at that same value.
-  If a visible receiver field has a pointer-to-pointer type such as
-  `*mut *mut T`, construct it as an array/Vec of row/element pointers whose
-  elements point at separate safe backing arrays/Vecs. Do not cast a `Vec<T>` or
-  `[T; N]` element buffer directly to `*mut *mut T`; that creates pointer values
-  from data bytes instead of a valid pointer array.
-- The KLEE init witness and target context override examples in the Rust
-  context. Do not imitate an unrelated example's container size, element count,
-  indexes, or constructor choices when they do not reproduce the target
-  counterexample.
-- Before writing code, work backward from the target call arguments and the
-  target caller's source expressions. If a witness argument comes from a `.len`, `.capacity`, slice
-  length, pointer base, or receiver field, construct that field/receiver state
-  directly at a small boundary value instead of adding elements just because an
-  example did.
-- Read the target caller's guards and arithmetic before choosing values. Try
-  concrete edge values such as `0`, `1`, `len - 1`, `len`, `len + 1`,
-  `usize::MAX`, and `usize::MAX - k` when they can still reach the target
-  callsite. In optimized library builds, unsigned arithmetic may wrap; if a
-  guard checks an expression like `a + b`, a wraparound pair can pass the guard
-  while a later target expression using `a`, `b`, or the wrapped result becomes
-  the counterexample.
-- Do not stop at the first ordinary in-bounds value that reaches the target
-  callsite. If a previous attempt reached the target but did not reproduce the
-  counterexample, change the caller parameters or receiver fields that feed the
-  selected target expression, especially values involved in earlier arithmetic
-  or comparisons.
-- If the target context contains an instrumented bound-argument map, use that
-  map before choosing values. For example, `bind_arg_*(1, X)` means target
-  argument `get_arg(1)` is `X`, and `bind_arg_*_value(2, &Y)` means target
-  argument `get_arg(2)` is the current value of `Y`; generate the
-  counterexample for the mapped source expressions at the actual target call.
-- If the prefix path decodes a value from bytes selected out of a collection,
-  lookup, or field (for example, `Type::decode(selected.clone()).expect(...)`),
-  the selected bytes must be valid for that decode before the target is
-  reached. Do not use placeholder byte strings for such selected elements.
-  Prefer constructing a separate value of the decoded type with visible safe
-  constructors/mutators, then place bytes from a visible safe raw/encode/accessor
-  for that value into the selected collection element.
-  If the selected element came from a receiver field or nested receiver
-  collection, build that receiver with the selected collection non-empty at the
-  chosen selector/index. A standalone local byte value or a decoded top-level
-  value is not enough unless it is actually stored into the selected collection
-  element read by the prefix. Do not use `Default`, `Vec::new()`, or `vec![]` as
-  the final state for a receiver whose prefix must read an existing selected
-  element.
-- When the target context shows an inner target-call source line, identify the
-  receiver and argument expressions on that exact line and make those expression
-  values reproduce the target counterexample. If the target-call index/count/length comes from
-  a visible struct field, array element, method result, or caller parameter,
-  construct that source value directly; do not assume it must equal the element's
-  position in a Vec or an earlier guarded lookup index unless the source code
-  forces equality.
-- In particular, do not preserve common data-structure invariants such as
-  `field named index == Vec slot`, `stored length == allocation length`, or
-  `neighbor id == current object id` unless the target caller enforces them
-  before the target call. Counterexamples often require safe construction of a
-  deliberately inconsistent but type-correct receiver state: keep the earlier
-  values needed to reach the callsite valid, and make the actual target
-  expression's field/argument form the counterexample.
-- If the witness-derived target relation says a length/count/capacity/index
-  must be `0`, `<= 0`, equal to another boundary, or otherwise at a small
-  boundary to reproduce the counterexample, do not build a non-empty/non-boundary
-  container for that same field. A testcase that reaches the callsite while the
-  target expression is still on the safe side is invalid.
-- A Vec's `clear()`, `reserve()`, and `reserve_exact()` do not shrink an existing
-  allocation. If a public safe accessor returns `&mut Vec<T>` and the target
-  relation requires a smaller capacity, construct a separate Vec with that
-  capacity and replace the escaped Vec through the accessor, for example
-  `*receiver.data_mut() = replacement`. Merely extending a freshly allocated
-  small Vec into the receiver preserves the receiver's old capacity. Track
-  the receiver Vec's final length and capacity at the target call.
-- If the target context shows a root wrapper location and a different inner
-  target-call containing function, prefer the most direct safe function that can
-  reach the inner target call and is callable from the injected module. When
-  the actual-containing function is safe and in the same module, constructing
-  its receiver/parameters and calling it directly is valid and often better
-  than routing through a root wrapper that performs earlier guarded lookups,
-  loop traversal, validation, or panic-prone setup.
-- If the target context contains a "Direct actual-containing safe function
-  option" and it type-checks from the injection module, use that direct function
-  as the primary target caller. Do not fall back to the root wrapper merely
-  because the metadata caller/root source location is shown; the root wrapper is
-  only a fallback when the direct actual-containing safe function is not visible
-  or cannot be called safely.
-- If there is no separate actual-containing safe function, the target callsite
-  metadata names the caller function to exercise. If that caller is safe and
-  visible, call it directly instead of a higher-level wrapper unless doing so
-  fails to type-check from the injection module.
-- Gate the function with exactly `#[cfg(feature = "{feature_name}")]`.
-- Define `pub extern "C" fn {function_name}()` with no arguments under that
-  cfg, using either `#[no_mangle]` or, only when required by Rust 2024,
-  `#[unsafe(no_mangle)]`. Do not define `main` and do not use `#[test]`.
-	- Copy the feature gate and function name exactly. The first lines should be
-	  exactly this shape, with the closing quote and bracket intact:
-	  `#[cfg(feature = "{feature_name}")]`
-	  `#[no_mangle]`
-	  `pub extern "C" fn {function_name}() {{`
-	- Exercise the target callsite through the certainty call chain. Use concrete
-	  values for every input; do not use KLEE helpers or symbolic inputs.
-	- Do not assume that length/count/capacity/index arguments must equal the
-	  actual size of a local container. When the target caller accepts a pointer,
-	  slice, raw buffer, length, count, capacity, or index as separate inputs,
-	  choose these inputs independently and try boundary relationships that
-	  reproduce the target counterexample while still reaching that callsite.
-	- The function will be appended to the Rust file containing the callsite, so
-	  use paths that compile from that module.
-	- Return only the function in one Rust fenced code block.
+Choosing values:
+- The KLEE witness and target context override examples in the Rust context.
+  Work backward from the target call's arguments to the caller's source
+  expressions, and set that receiver field/parameter directly at the boundary
+  value the witness implies (empty, zero length, one element, index == length).
+  If a bound-argument map is given (`bind_arg_*(1, X)` means `get_arg(1)` is
+  `X`), reproduce the counterexample for those mapped expressions.
+- Length, count, capacity, index, and pointer inputs are independent; do not
+  assume they match the size of a local container, or that invariants such as
+  `stored length == allocation length` or `field index == Vec slot` hold unless
+  the caller enforces them. Deliberately inconsistent but type-correct state is
+  often required.
+- Read the caller's guards and arithmetic first. Try edge values (`0`, `1`,
+  `len - 1`, `len`, `len + 1`, `usize::MAX`) that still pass the guards;
+  unsigned arithmetic may wrap in optimized builds. If an earlier attempt
+  reached the target without the counterexample, change the values feeding the
+  target expression. For pointer `add`/`offset` targets, avoid a zero offset
+  unless the witness requires it.
+- If the witness requires a length/count/capacity to be `0` or another
+  boundary, do not build a larger container for that field.
+- Raw-pointer fields read or written before the target need small safe backing
+  storage (local arrays/Vecs), not null or dangling placeholders. Size prefix
+  backing only as needed to reach the target; keep it separate from the target
+  field, which must violate the relation. A `*mut *mut T` field needs an array
+  of pointers to separate backing buffers, not a cast of a data buffer.
+- Values decoded from selected collection elements before the target must be
+  valid for that decode and actually stored in the element the prefix reads;
+  do not leave the collection empty or use placeholder bytes.
+- `Vec::clear`, `reserve`, and `reserve_exact` never shrink capacity. To get a
+  smaller capacity through an accessor returning `&mut Vec<T>`, replace the Vec
+  (`*receiver.data_mut() = replacement`) and track final length and capacity.
+- Return only the function in one Rust fenced code block.
+
+The testcase passes only if KLEE reports the exact target callsite and the
+counterexample is reproduced. A panic, `None`/`Err`, early return, or a
+different target call is a failure. If the target was reached without the
+counterexample, generate a different safe testcase for the same caller and
+callsite.
 
 <certainty call chain>
 {call_chain}
@@ -949,32 +950,6 @@ target counterexample.
 <candidate safe-call plans>
 {plans_block}
 </candidate safe-call plans>
-
-{target_context_block}
-
-{witness_block}
-
-Important:
-- Generate a counterexample for the target callsite. If the context identifies
-  a direct actual-containing safe function, call that function directly when it
-  is visible/type-checks from the injected module; otherwise use the target
-  caller named in the metadata.
-- Use the KLEE init witness, when present, as the target shape for the concrete
-  testcase. If a call argument in the witness comes from a receiver field,
-  container length/capacity, slice length, pointer, index, or other caller state,
-  construct that caller state so the target call's arguments reproduce the
-  counterexample. Boundary states such as empty containers, zero lengths, one-element
-  containers, and indexes equal to a length are often the smallest useful
-  choices; use whichever one is implied by the witness and still reaches the
-  target callsite.
-- The testcase is judged by whether KLEE reports the exact target callsite id.
-  A panic, `None`/`Err`, early return, or a different target call before that
-  site is a failed testcase even if the API call looks plausible.
-- If previous KLEE feedback says the target callsite was reported but the
-  counterexample was not reproduced, generate a different safe testcase for the same
-  target caller and target callsite.
-
-{feedback_block}
-
+{target_context_block}{witness_block}{feedback_block}
 {rust_context}
 """.strip()

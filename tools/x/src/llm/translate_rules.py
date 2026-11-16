@@ -96,11 +96,15 @@ def write_json(path: Path, value):
 def context_for(row, units):
     filename, _, line = row["path"].rpartition(":")
     source = ROOT / "tools" / filename
+    if not source.is_file():
+        source = ROOT / filename
     match = re.search(r"\b(?:fn|trait)\s+(\w+)", row["name"])
     if not match:
         match = re.search(r"^\s*(\w+)\s*\(", row["name"])
     name = match.group(1) if match else None
-    candidates = [u for u in units.get("tools/" + filename, []) if u["name"] == name]
+    candidates = [u for raw_path, items in units.items()
+                  if raw_path.replace("\\", "/").removeprefix("./").removeprefix("tools/") == filename
+                  for u in items if u["name"] == name]
     if candidates:
         unit = min(candidates, key=lambda u: abs(u["line_number_start"] - int(line)))
         return {"source_file": str(source.relative_to(ROOT)), "catalog_line": int(line),
@@ -275,8 +279,8 @@ def main():
     for filename in ("rules.csv", "operators.json"):
         destination = output / "inputs" / filename
         if not destination.exists(): shutil.copy2(ROOT / filename, destination)
-    rows = [r for r in csv.DictReader((output / "inputs/rules.csv").open(newline=""))
-            if "/library/core/" in r["path"] or "/library/std/" in r["path"]]
+    with (output / "inputs/rules.csv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
     retained = {}
     for run in args.retain_correct_from:
         for item in json.loads((run / "judgments.json").read_text()):
@@ -313,7 +317,12 @@ def main():
     else: write_json(manifest_file, settings)
     (output / "system-prompt.txt").write_text(SYSTEM)
     (output / "binding-convention.txt").write_text(BINDING)
-    pending = [r for r in rows if not (output / "requests" / r["id"] / "result.json").exists()]
+    pending = []
+    for row in rows:
+        result_path = output / "requests" / row["id"] / "result.json"
+        if (not result_path.exists()
+                or json.loads(result_path.read_text())["status"] != "translated"):
+            pending.append(row)
     print(f"cohort={len(rows)} pending={len(pending)} model={args.model}", flush=True)
     failures = 0
     with ThreadPoolExecutor(max_workers=args.workers) as pool:

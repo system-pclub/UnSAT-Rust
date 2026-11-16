@@ -115,6 +115,18 @@ fn run(cargo_dir: &Path, meta_json: &Path, dest_dir: &Path) -> Result<()> {
     .with_context(|| format!("failed to parse {}", meta_json.display()))?;
 
     normalize_callsite_ids(&mut meta);
+    if let Ok(only) = env::var("AUTOINJ_ONLY_CALLSITES") {
+        let wanted: BTreeSet<&str> = only.split(',').filter(|id| !id.is_empty()).collect();
+        if !wanted.is_empty() {
+            meta.report.targets.retain(|target| {
+                target
+                    .callsite
+                    .id
+                    .as_deref()
+                    .is_some_and(|id| wanted.contains(id))
+            });
+        }
+    }
     inject_from_meta(dest_dir, &meta)?;
     Ok(())
 }
@@ -892,7 +904,9 @@ impl VisitMut for Injector<'_> {
         let inserted_before = self.inserted;
         visit_mut::visit_trait_item_fn_mut(self, function);
         if !inserted_before && self.inserted {
-            preserve_target_caller_symbol(&mut function.attrs, self.injection);
+            // export_name is rejected on trait default methods; keep only inline(never).
+            function.attrs.retain(|attr| !attr.path().is_ident("inline"));
+            function.attrs.push(parse_quote! { #[inline(never)] });
         }
     }
 
@@ -1066,15 +1080,11 @@ struct RawPointerDerefRewriter<'a> {
     raw_pointer_places: &'a BTreeSet<String>,
 }
 
-impl VisitMut for RawPointerDerefRewriter<'_> {
-    fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
-        if self.inserted {
-            return;
-        }
-
-        if let syn::Expr::Unary(unary) = expr {
+impl RawPointerDerefRewriter<'_> {
+    fn rewrite_deref(&mut self, target: &mut syn::Expr, reborrow: bool) -> bool {
+        if let syn::Expr::Unary(unary) = target {
             if matches!(unary.op, syn::UnOp::Deref(_))
-                && span_matches(unary.span(), self.injection)
+                && (reborrow || span_matches(unary.span(), self.injection))
                 && is_known_raw_pointer_operand(&unary.expr, self.raw_pointer_places)
             {
                 let pointer = (*unary.expr).clone();
@@ -1083,8 +1093,34 @@ impl VisitMut for RawPointerDerefRewriter<'_> {
                     klee_ext_bind::raw_pointer_deref!(#literal, #pointer)
                 });
                 self.inserted = true;
-                return;
+                return true;
             }
+        }
+        false
+    }
+}
+
+impl VisitMut for RawPointerDerefRewriter<'_> {
+    fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
+        if self.inserted {
+            return;
+        }
+
+        // MIR attributes `&*ptr` / `&mut *ptr` reborrows to the `&` token, so
+        // the dereference may start one token after the injection location.
+        let reborrow_match = matches!(
+            &*expr,
+            syn::Expr::Reference(reference)
+                if span_starts_at_location(reference.span(), self.injection)
+        );
+        if reborrow_match {
+            if let syn::Expr::Reference(reference) = &mut *expr {
+                if self.rewrite_deref(&mut reference.expr, true) {
+                    return;
+                }
+            }
+        } else if self.rewrite_deref(expr, false) {
+            return;
         }
 
         visit_mut::visit_expr_mut(self, expr);
@@ -1117,6 +1153,20 @@ impl<'ast> Visit<'ast> for RawPointerPlaceCollector {
         visit::visit_fn_arg(self, arg);
     }
 
+    fn visit_local(&mut self, local: &'ast syn::Local) {
+        if let (syn::Pat::Ident(ident), Some(init)) = (&local.pat, &local.init) {
+            if let syn::Expr::MethodCall(call) = &*init.expr {
+                if matches!(
+                    call.method.to_string().as_str(),
+                    "as_ptr" | "as_mut_ptr" | "cast_mut" | "cast_const"
+                ) {
+                    self.places.insert(ident.ident.to_string());
+                }
+            }
+        }
+        visit::visit_local(self, local);
+    }
+
     fn visit_pat_type(&mut self, pat: &'ast syn::PatType) {
         if matches!(*pat.ty, syn::Type::Ptr(_)) {
             if let syn::Pat::Ident(ident) = &*pat.pat {
@@ -1130,7 +1180,13 @@ impl<'ast> Visit<'ast> for RawPointerPlaceCollector {
 fn is_known_raw_pointer_operand(expr: &syn::Expr, places: &BTreeSet<String>) -> bool {
     match expr {
         syn::Expr::Cast(cast) => matches!(&*cast.ty, syn::Type::Ptr(_)),
-        syn::Expr::MethodCall(call) => call.method == "cast" && call.args.is_empty(),
+        syn::Expr::MethodCall(call) => {
+            (call.method == "cast" && call.args.is_empty())
+                || (matches!(
+                    call.method.to_string().as_str(),
+                    "add" | "sub" | "offset" | "wrapping_add" | "wrapping_sub" | "wrapping_offset"
+                ) && is_known_raw_pointer_operand(&call.receiver, places))
+        }
         syn::Expr::Path(path) => path
             .path
             .segments

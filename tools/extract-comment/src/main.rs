@@ -229,6 +229,10 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
 
             // Handle trait blocks to extract trait method signatures.
             if let Item::Trait(trait_item) = &item {
+                // Trait methods inherit visibility from their trait; they have no `pub`.
+                if !matches!(trait_item.vis, Visibility::Public(_)) {
+                    continue;
+                }
                 for trait_item_inner in &trait_item.items {
                     if let syn::TraitItem::Fn(method) = trait_item_inner {
                         let comment = extract_doc_comment(&method.attrs);
@@ -272,6 +276,11 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
             if let Item::Impl(impl_item) = &item {
                 for impl_item_inner in &impl_item.items {
                     if let syn::ImplItem::Fn(method) = impl_item_inner {
+                        // Trait impl methods are covered by the trait declaration above.
+                        // Inherent methods must be explicitly public, not pub(crate), etc.
+                        if !matches!(method.vis, Visibility::Public(_)) {
+                            continue;
+                        }
                         let comment = extract_doc_comment(&method.attrs);
                         // Extract only the method signature, not the body
                         let declaration_text = method.sig.to_token_stream().to_string();
@@ -423,6 +432,9 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
             let without_semi = &trimmed[..trimmed.len() - 1];
             let with_body = format!("{} {{}}", without_semi);
             let fn_item = syn::parse_str::<syn::ItemFn>(&with_body).ok()?;
+            if !matches!(fn_item.vis, Visibility::Public(_)) {
+                return None;
+            }
             let comment = extract_doc_comment(&fn_item.attrs);
             let declaration_text = fn_item.sig.to_token_stream().to_string();
             let name = fn_item.sig.ident.to_string();
@@ -436,6 +448,9 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
         }
         // Extract standalone functions - only signature
         Item::Fn(func) => {
+            if !matches!(func.vis, Visibility::Public(_)) {
+                return None;
+            }
             let comment = extract_doc_comment(&func.attrs);
             // Extract only the function signature, not the body
             let declaration_text = func.sig.to_token_stream().to_string();
@@ -474,6 +489,9 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
         }
         // Extract traits - declaration with method signatures only
         Item::Trait(trait_item) => {
+            if !matches!(trait_item.vis, Visibility::Public(_)) {
+                return None;
+            }
             let comment = extract_doc_comment(&trait_item.attrs);
             // Build trait declaration: trait name + generics + bounds
             let mut declaration_parts = vec![
@@ -540,7 +558,7 @@ fn extract_doc_comment(attrs: &[Attribute]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{module_path, use_targets};
+    use super::{extract_unit_from_item, extract_units, keep_only_unsafe_fn_and_unsafe_trait, module_path, use_targets};
     use std::path::Path;
 
     #[test]
@@ -566,5 +584,90 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn only_public_unsafe_items_and_public_trait_methods_are_emitted() {
+        let directory = std::env::temp_dir().join(format!(
+            "extract-comment-visibility-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("lib.rs"), r#"
+            /// Public function.
+            pub unsafe fn public_function() {}
+            /// Private function.
+            unsafe fn private_function() {}
+            /// Crate-only function.
+            pub(crate) unsafe fn crate_function() {}
+            /// Restricted function.
+            pub(in crate) unsafe fn restricted_function() {}
+            /// Safe function.
+            pub fn safe_function() {}
+
+            pub struct Api;
+            impl Api {
+                /// Public method.
+                pub unsafe fn public_method() {}
+                /// Private method.
+                unsafe fn private_method() {}
+                /// Crate-only method.
+                pub(crate) unsafe fn crate_method() {}
+            }
+
+            /// Public unsafe trait.
+            pub unsafe trait PublicUnsafeTrait {
+                /// Public by virtue of the trait's visibility.
+                unsafe fn unsafe_trait_method();
+                /// Safe trait method.
+                fn safe_trait_method();
+            }
+            pub trait PublicSafeTrait {
+                /// An unsafe method of a safe public trait is also public.
+                unsafe fn safe_trait_unsafe_method();
+            }
+            /// Private unsafe trait.
+            unsafe trait PrivateTrait {
+                /// Private trait method.
+                unsafe fn private_trait_method();
+            }
+            /// Crate-only unsafe trait.
+            pub(crate) unsafe trait CrateTrait {
+                /// Crate-only trait method.
+                unsafe fn crate_trait_method();
+            }
+            unsafe impl PublicUnsafeTrait for Api {
+                /// Do not duplicate the trait declaration at its impl.
+                unsafe fn unsafe_trait_method() {}
+                fn safe_trait_method() {}
+            }
+        "#).unwrap();
+        let mut units = extract_units(vec![directory.clone()], vec![]).await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+        keep_only_unsafe_fn_and_unsafe_trait(&mut units);
+        let mut names: Vec<_> = units.files.values().flatten().map(|unit| unit.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, vec![
+            "PublicUnsafeTrait", "public_function", "public_method",
+            "safe_trait_unsafe_method", "unsafe_trait_method",
+        ]);
+        let function = units.files.values().flatten().find(|unit| unit.name == "public_function").unwrap();
+        assert_eq!(function.declaration_text, "unsafe fn public_function ()");
+    }
+
+    #[test]
+    fn bodyless_intrinsics_require_public_visibility() {
+        for visibility in ["", "pub(crate)", "pub"] {
+            let item: syn::Item = syn::parse_str(&format!(
+                "#[rustc_intrinsic] #[doc = \"Intrinsic.\"] {visibility} unsafe fn intrinsic<T>(value: T);"
+            )).unwrap();
+            let unit = extract_unit_from_item(&item);
+            assert_eq!(unit.is_some(), visibility == "pub");
+            if let Some(unit) = unit {
+                assert!(unit.is_unsafe);
+                assert!(!unit.declaration_text.contains("pub"));
+            }
+        }
     }
 }

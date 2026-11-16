@@ -1,4 +1,4 @@
-#![feature(rustc_private, stmt_expr_attributes)]
+#![feature(rustc_private, stmt_expr_attributes, let_chains)]
 #![allow(
     clippy::manual_range_contains,
     clippy::useless_format,
@@ -29,6 +29,7 @@ use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 use rustc_session::EarlyDiagCtxt;
 use rustc_session::config::ErrorOutputType;
+pub mod api_slice;
 pub mod report;
 // pub mod invariants;
 struct CompilerCalls {}
@@ -71,9 +72,28 @@ impl rustc_driver::Callbacks for CompilerCalls {
         }
 
         let report_output = std::env::var("ANALYSIS_OUT");
-        if report_output.is_err() {
+        let api_slice_output = std::env::var("API_SLICE_OUT");
+        if report_output.is_err() && api_slice_output.is_err() {
             // Not running in analysis mode - let compilation continue normally
             return Compilation::Continue;
+        }
+        if let Ok(api_slice_output) = api_slice_output {
+            let requested = std::env::var("API_SLICE_FUNCTIONS")
+                .ok()
+                .and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
+                .unwrap_or_default();
+            let output = PathBuf::from(api_slice_output);
+            if let Some(parent) = output.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let slice = api_slice::analyze(tcx, requested);
+            let json = serde_json::to_string_pretty(&slice).unwrap();
+            if let Err(error) = std::fs::write(&output, json.as_bytes()) {
+                eprintln!("Failed to write API slice {:?}: {}", output, error);
+            } else {
+                eprintln!("[+] {:?}", output);
+            }
+            return Compilation::Stop;
         }
         let report_output = PathBuf::from(report_output.unwrap());
 

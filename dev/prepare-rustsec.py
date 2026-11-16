@@ -11,6 +11,8 @@ import tomllib
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+# Later supplements may raise this before calling prepare().
+CUTOFF = "2026-03-01"
 CASES = [
     ("binary_vec_io", "0.1.12", "RUSTSEC-2025-0109"),
     ("borrowck_sacrifices", "0.1.0", "RUSTSEC-2025-0107"),
@@ -44,7 +46,7 @@ def prepare(case):
     if published is None:
         raise RuntimeError(f"Cannot establish issued date: {url}")
     issued = published.group(1)
-    assert issued < "2026-03-01", (advisory, issued)
+    assert issued < CUTOFF, (advisory, issued)
     md = ROOT / f".local/rustsec-research/crates/{name}/{advisory}.md"
     if not md.exists():
         md.parent.mkdir(parents=True, exist_ok=True)
@@ -52,7 +54,7 @@ def prepare(case):
     (evidence / "advisory.md").write_bytes(md.read_bytes())
     advisory_data = tomllib.loads(md.read_text().split("```toml", 1)[1].split("```", 1)[0])
     metadata = json.loads(fetch(f"https://crates.io/api/v1/crates/{name}/{version}"))["version"]
-    assert metadata["created_at"][:10] < "2026-03-01"
+    assert metadata["created_at"][:10] < CUTOFF
     archive_url = f"https://static.crates.io/crates/{name}/{name}-{version}.crate"
     data = fetch(archive_url)
     checksum = hashlib.sha256(data).hexdigest()

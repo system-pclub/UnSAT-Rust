@@ -1352,7 +1352,18 @@ fn collect_reachable_unsafe_calls<'tcx>(
         // A chain like `pub safe -> local safe fn -> core/std unsafe` is not a
         // target for this report.  The unsafe obligation is not exposed at the
         // public callsite unless the intermediate API is itself unsafe.
-        let _ = unsafe_visitor.local_safe_calls;
+        //
+        // MIRSCAN_FOLLOW_SAFE_HELPERS=1 opts into the longer chain, which is how
+        // an unsound public API that delegates to a private safe helper shows up.
+        if depth < max_call_depth && std::env::var_os("MIRSCAN_FOLLOW_SAFE_HELPERS").is_some() {
+            for (callee_def_id, callee_args, callsite_span) in unsafe_visitor.local_safe_calls {
+                let callee_args =
+                    ty::EarlyBinder::bind(callee_args).instantiate(tcx, current_args);
+                let next_root_callsite =
+                    root_callsite_span.or(Some(callsite_span.source_callsite()));
+                queue.push_back((callee_def_id, callee_args, depth + 1, next_root_callsite));
+            }
+        }
     }
 
     results
@@ -3810,10 +3821,23 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
         }
     }
 
-    // Also scan public safe free functions in the crate (non-methods).
+    // Also scan public safe free functions and associated functions (trait
+    // default bodies, trait impls, constructors) that the ADT-inherent pass above cannot
+    // see. A callsite already reported through an inherent method is kept once.
+    let suspect_key = |suspect: &Suspect| {
+        format!(
+            "{:?}:{}:{}:{}",
+            suspect.callsite.path, suspect.callsite.line, suspect.callsite.col, suspect.callee.name
+        )
+    };
+    let mut seen_suspects: HashSet<String> = targets.iter().map(suspect_key).collect();
     for local_def_id in tcx.hir_crate_items(()).definitions() {
         let def_id = local_def_id.to_def_id();
-        if !matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::Fn) {
+        let def_kind = tcx.def_kind(def_id);
+        // Associated functions (trait methods and receiver-less inherent
+        // functions such as constructors) are not roots of the ADT pass.
+        let is_trait_method = matches!(def_kind, rustc_hir::def::DefKind::AssocFn);
+        if !matches!(def_kind, rustc_hir::def::DefKind::Fn) && !is_trait_method {
             continue;
         }
 
@@ -3863,7 +3887,9 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                     mutators: vec![],
                 };
 
-                targets.push(suspect);
+                if seen_suspects.insert(suspect_key(&suspect)) {
+                    targets.push(suspect);
+                }
             }
 
             if let Some(body) = optimized_mir_if_available(tcx, def_id) {
@@ -3903,7 +3929,7 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                             .collect()
                     };
 
-                    targets.push(raw_pointer_deref_suspect(
+                    let suspect = raw_pointer_deref_suspect(
                         tcx,
                         None,
                         fn_info.clone(),
@@ -3916,7 +3942,10 @@ pub fn audit<'tcx>(tcx: TyCtxt<'tcx>) -> Report {
                         control_globals,
                         vec![],
                         vec![],
-                    ));
+                    );
+                    if seen_suspects.insert(suspect_key(&suspect)) {
+                        targets.push(suspect);
+                    }
                 }
             }
         }
