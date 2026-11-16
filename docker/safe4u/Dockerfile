@@ -1,4 +1,4 @@
-FROM rust:1.83-bookworm
+FROM rust:1.86.0-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -24,9 +24,12 @@ RUN python3 -m venv /opt/venv \
 
 COPY tools/safe4u/ /opt/safe4u/
 RUN chmod +x cargo-safe4u \
-    && cargo build --release --manifest-path context_retriever/Cargo.toml
+    && cargo build --locked --manifest-path context_retriever/Cargo.toml
+
+# rust-analyzer needs the standard-library sources for context retrieval.
+RUN rustup component add rust-src
 
 ENV PATH="/opt/venv/bin:/usr/local/cargo/bin:${PATH}"
-WORKDIR /workspace
+# Parser libraries are loaded relative to the Safe4U source directory.
 ENTRYPOINT ["/opt/safe4u/cargo-safe4u"]
 CMD ["--help"]
