@@ -1,0 +1,22 @@
+{
+  "path": "rust/library/core/src/slice/raw.rs",
+  "line": 212,
+  "name": "from_ptr_range",
+  "declaration": "const unsafe fn from_ptr_range < 'a , T > (range : Range < * const T >) -> & 'a [T]",
+  "parent": null,
+  "documentation": " Forms a slice from a pointer range.\n\n This function is useful for interacting with foreign interfaces which\n use two pointers to refer to a range of elements in memory, as is\n common in C++.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * The `start` pointer of the range must be a non-null, [valid] and properly aligned pointer\n   to the first element of a slice.\n\n * The `end` pointer must be a [valid] and properly aligned pointer to *one past*\n   the last element, such that the offset from the end to the start pointer is\n   the length of the slice.\n\n * The entire memory range of this slice must be contained within a single allocated object!\n   Slices can never span across multiple allocated objects.\n\n * The range must contain `N` consecutive properly initialized values of type `T`.\n\n * The memory referenced by the returned slice must not be mutated for the duration\n   of lifetime `'a`, except inside an `UnsafeCell`.\n\n * The total length of the range must be no larger than `isize::MAX`,\n   and adding that size to `start` must not \"wrap around\" the address space.\n   See the safety documentation of [`pointer::offset`].\n\n Note that a range created from [`slice::as_ptr_range`] fulfills these requirements.\n\n # Panics\n\n This function panics if `T` is a Zero-Sized Type (“ZST”).\n\n # Caveat\n\n The lifetime for the returned slice is inferred from its usage. To\n prevent accidental misuse, it's suggested to tie the lifetime to whichever\n source lifetime is safe in the context, such as by providing a helper\n function taking the lifetime of a host value for the slice, or by explicit\n annotation.\n\n # Examples\n\n ```\n #![feature(slice_from_ptr_range)]\n\n use core::slice;\n\n let x = [1, 2, 3];\n let range = x.as_ptr_range();\n\n unsafe {\n     assert_eq!(slice::from_ptr_range(range), &x);\n }\n ```\n\n [valid]: ptr#safety",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "`range.start` must be non-null.",
+    "`range.start` must be valid and properly aligned for the first element of a slice of `T`.",
+    "`range.end` must be valid and properly aligned for one past the last element, such that the offset from the end to the start pointer is the length of the slice.",
+    "The entire memory range of the slice must be contained within a single allocated object; it must not span multiple allocated objects.",
+    "The range must contain `N` consecutive properly initialized values of type `T`, where `N` is the slice length.",
+    "The memory referenced by the returned slice must not be mutated for the duration of lifetime `'a`, except inside an `UnsafeCell`.",
+    "The total length of the range must be no larger than `isize::MAX`.",
+    "Adding the total size of the range to `range.start` must not wrap around the address space.",
+    "A range created from `slice::as_ptr_range` fulfills the safety requirements for calling `from_ptr_range`."
+  ],
+  "status": "extracted"
+}

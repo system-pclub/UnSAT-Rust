@@ -1,0 +1,20 @@
+{
+  "path": "rust/library/core/src/ptr/mod.rs",
+  "line": 1672,
+  "name": "read_volatile",
+  "declaration": "unsafe fn read_volatile < T > (src : * const T) -> T",
+  "parent": null,
+  "documentation": " Performs a volatile read of the value from `src` without moving it. This\n leaves the memory in `src` unchanged.\n\n Volatile operations are intended to act on I/O memory, and are guaranteed\n to not be elided or reordered by the compiler across other volatile\n operations.\n\n # Notes\n\n Rust does not currently have a rigorously and formally defined memory model,\n so the precise semantics of what \"volatile\" means here is subject to change\n over time. That being said, the semantics will almost always end up pretty\n similar to [C11's definition of volatile][c11].\n\n The compiler shouldn't change the relative order or number of volatile\n memory operations. However, volatile memory operations on zero-sized types\n (e.g., if a zero-sized type is passed to `read_volatile`) are noops\n and may be ignored.\n\n [c11]: http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `src` must be [valid] for reads.\n\n * `src` must be properly aligned.\n\n * `src` must point to a properly initialized value of type `T`.\n\n Like [`read`], `read_volatile` creates a bitwise copy of `T`, regardless of\n whether `T` is [`Copy`]. If `T` is not [`Copy`], using both the returned\n value and the value at `*src` can [violate memory safety][read-ownership].\n However, storing non-[`Copy`] types in volatile memory is almost certainly\n incorrect.\n\n Note that even if `T` has size `0`, the pointer must be properly aligned.\n\n [valid]: self#safety\n [read-ownership]: read#ownership-of-the-returned-value\n\n Just like in C, whether an operation is volatile has no bearing whatsoever\n on questions involving concurrent access from multiple threads. Volatile\n accesses behave exactly like non-atomic accesses in that regard. In particular,\n a race between a `read_volatile` and any write operation to the same location\n is undefined behavior.\n\n # Examples\n\n Basic usage:\n\n ```\n let x = 12;\n let y = &x as *const i32;\n\n unsafe {\n     assert_eq!(std::ptr::read_volatile(y), 12);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "`src` must be valid for reading `size_of::<T>()` bytes. For a nonzero-sized read, `src` must be non-null, and the entire accessed range must lie within the allocated object from which `src` derives its provenance; these conditions are necessary but not always sufficient for validity, whose precise rules are not yet fully determined.",
+    "For a zero-sized `T`, any pointer, including null, satisfies the read-validity requirement for `src`; proper alignment and the requirement to point to a properly initialized value of `T` still apply.",
+    "`src` must be aligned to `align_of::<T>()`, even when `T` has size zero.",
+    "`src` must point to a properly initialized value of type `T`.",
+    "If `T` is not `Copy`, using both the returned value and the value at `*src` can violate memory safety, because `read_volatile` creates a bitwise copy regardless of whether `T` is `Copy`.",
+    "A `read_volatile(src)` must not race with a write to the same location from another thread. Volatile reads are non-atomic and cannot be used for inter-thread synchronization.",
+    "A pointer obtained by casting a reference is guaranteed valid for `read_volatile` while the underlying object remains live and no reference is used to access the same memory; under this guarantee, reference accesses and raw-pointer accesses cannot be interleaved."
+  ],
+  "status": "extracted"
+}

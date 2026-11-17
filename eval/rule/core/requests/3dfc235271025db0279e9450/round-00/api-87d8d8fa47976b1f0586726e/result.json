@@ -1,0 +1,25 @@
+{
+  "path": "rust/library/core/src/ptr/mut_ptr.rs",
+  "line": 1480,
+  "name": "drop_in_place",
+  "declaration": "unsafe fn drop_in_place (self)",
+  "parent": "* mut T",
+  "documentation": " Executes the destructor (if any) of the pointed-to value.\n\n See [`ptr::drop_in_place`] for safety concerns and examples.\n\n [`ptr::drop_in_place`]: crate::ptr::drop_in_place()",
+  "model": "gpt-6.1-sol",
+  "mode": "llm",
+  "rules": [
+    "`self` must be valid for reads.",
+    "`self` must be valid for writes.",
+    "`self` must be properly aligned, even if `T` has size 0.",
+    "`self` must be nonnull, even if `T` has size 0.",
+    "The value pointed to by `self` must be valid for dropping, including any additional invariants required by its type.",
+    "While `self.drop_in_place()` is executing, parts of the value pointed to by `self` may be accessed only through the `&mut self` references supplied to the `Drop::drop` methods it invokes.",
+    "If `T` is not `Copy`, using the pointed-to value after calling `self.drop_in_place()` can cause undefined behavior; assignment through `*self = foo` counts as such a use because it drops the value again.",
+    "After calling `self.drop_in_place()`, `ptr::write` may be used to overwrite the pointed-to storage without dropping the old value, provided the destination remains valid for writes and properly aligned, even for a zero-sized `T`.",
+    "`drop_in_place` must be used to drop unsized types, such as trait objects, which cannot be read onto the stack and dropped normally.",
+    "`self.drop_in_place()` may be used to drop pinned data when `T` is not `repr(packed)`.",
+    "Pinned data must not be moved before it is dropped.",
+    "Unaligned values cannot be dropped in place; they must first be copied to an aligned location using `ptr::read_unaligned`. For fields of packed structs, the compiler performs this move automatically."
+  ],
+  "status": "extracted"
+}

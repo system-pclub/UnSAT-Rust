@@ -1,0 +1,16 @@
+{
+  "path": "rust/library/core/src/ptr/mod.rs",
+  "line": 1752,
+  "name": "write_volatile",
+  "declaration": "unsafe fn write_volatile < T > (dst : * mut T , src : T)",
+  "parent": null,
+  "documentation": " Performs a volatile write of a memory location with the given value without\n reading or dropping the old value.\n\n Volatile operations are intended to act on I/O memory, and are guaranteed\n to not be elided or reordered by the compiler across other volatile\n operations.\n\n `write_volatile` does not drop the contents of `dst`. This is safe, but it\n could leak allocations or resources, so care should be taken not to overwrite\n an object that should be dropped.\n\n Additionally, it does not drop `src`. Semantically, `src` is moved into the\n location pointed to by `dst`.\n\n # Notes\n\n Rust does not currently have a rigorously and formally defined memory model,\n so the precise semantics of what \"volatile\" means here is subject to change\n over time. That being said, the semantics will almost always end up pretty\n similar to [C11's definition of volatile][c11].\n\n The compiler shouldn't change the relative order or number of volatile\n memory operations. However, volatile memory operations on zero-sized types\n (e.g., if a zero-sized type is passed to `write_volatile`) are noops\n and may be ignored.\n\n [c11]: http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `dst` must be [valid] for writes.\n\n * `dst` must be properly aligned.\n\n Note that even if `T` has size `0`, the pointer must be properly aligned.\n\n [valid]: self#safety\n\n Just like in C, whether an operation is volatile has no bearing whatsoever\n on questions involving concurrent access from multiple threads. Volatile\n accesses behave exactly like non-atomic accesses in that regard. In particular,\n a race between a `write_volatile` and any other operation (reading or writing)\n on the same location is undefined behavior.\n\n # Examples\n\n Basic usage:\n\n ```\n let mut x = 0;\n let y = &mut x as *mut i32;\n let z = 12;\n\n unsafe {\n     std::ptr::write_volatile(y, z);\n     assert_eq!(std::ptr::read_volatile(y), 12);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "dst must be valid for writes.",
+    "dst must be properly aligned, even if T has size 0.",
+    "A write_volatile must not race with any other operation (reading or writing) on the same memory location."
+  ],
+  "status": "extracted"
+}

@@ -36,6 +36,6 @@ manifest = {
     "selection": "Fourth supplement: advisories verified end to end with ./x verify; not a random sample.",
     "cases": cases,
 }
-(ROOT / "benchmark/rustsec/supplement4-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+(ROOT / "dev/rustsec/supplement4-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 for row in cases:
     print(row["advisory"], row["crate"], row["version"], row["issued"])

@@ -1,0 +1,53 @@
+tuple_term: (ok_term "[" "0" "]" | "(" tuple_term ")")
+memory_allocation_term: (memory_storage_3_term "." "allocation" | memory_storage_1_term "." "allocation" | memory_storage_7_term "." "allocation" | "(" memory_allocation_term ")")
+memory_bool_term: (memory_storage_3_term "." "exists" | memory_storage_3_term "." "readable" | memory_storage_3_term "." "writable" | memory_storage_3_term "." "initialized" | memory_storage_3_term "." "valid" | memory_storage_1_term "." "exists" | memory_storage_1_term "." "readable" | memory_storage_1_term "." "writable" | memory_storage_1_term "." "initialized" | memory_storage_1_term "." "valid" | memory_storage_7_term "." "exists" | memory_storage_7_term "." "readable" | memory_storage_7_term "." "writable" | memory_storage_7_term "." "initialized" | memory_storage_7_term "." "valid" | "(" memory_bool_term ")")
+memory_integer_term: (memory_storage_3_term "." "start" | memory_storage_3_term "." "size" | memory_storage_3_term "." "end" | memory_storage_3_term "." "align" | memory_storage_3_term "." "readable_size" | memory_storage_3_term "." "writable_size" | memory_storage_1_term "." "start" | memory_storage_1_term "." "size" | memory_storage_1_term "." "end" | memory_storage_1_term "." "align" | memory_storage_1_term "." "readable_size" | memory_storage_1_term "." "writable_size" | memory_storage_7_term "." "start" | memory_storage_7_term "." "size" | memory_storage_7_term "." "end" | memory_storage_7_term "." "align" | memory_storage_7_term "." "readable_size" | memory_storage_7_term "." "writable_size" | "(" memory_integer_term ")")
+memory_storage_1_term: (formatter_term "." "$mem" | "(" memory_storage_1_term ")")
+memory_storage_2_term: (formatting_options_term "." "$mem" | "(" memory_storage_2_term ")")
+memory_storage_3_term: (argument_term "." "$mem" | "(" memory_storage_3_term ")")
+memory_storage_4_term: (argument_type_term "." "$mem" | "(" memory_storage_4_term ")")
+memory_storage_5_term: (err_term "." "$mem" | "(" memory_storage_5_term ")")
+memory_storage_6_term: (ok_term "." "$mem" | "(" memory_storage_6_term ")")
+memory_storage_7_term: (result_term "." "$mem" | "(" memory_storage_7_term ")")
+memory_storage_8_term: (opaque_term "." "$mem" | "(" memory_storage_8_term ")")
+error_term: (err_term "[" "0" "]" | "(" error_term ")")
+formatter_term: ("$2" | "(" formatter_term ")")
+formatting_options_term: (formatter_term "." "options" | "(" formatting_options_term ")")
+result_term: ("$3" | "(" result_term ")")
+result_variant: ("\"Ok\"" | "'Ok'" | "\"Err\"" | "'Err'")
+result_test: "is_variant" "(" result_term "," result_variant ")"
+argument_term: ("$1" | "(" argument_term ")")
+argument_type_term: (argument_term "." "ty" | "(" argument_type_term ")")
+argument_type_variant: ("\"Placeholder\"" | "'Placeholder'" | "\"Count\"" | "'Count'")
+argument_type_test: "is_variant" "(" argument_type_term "," argument_type_variant ")"
+count_term: (argument_type_term "." "Count" | "(" count_term ")")
+placeholder_term: (argument_type_term "." "Placeholder" | "(" placeholder_term ")")
+err_term: (result_term "." "Err" | "(" err_term ")")
+ok_term: (result_term "." "Ok" | "(" ok_term ")")
+opaque_term: (formatter_term "." "buf" | "(" opaque_term ")")
+u16_term: (formatting_options_term "." "width" | formatting_options_term "." "precision" | "(" u16_term ")")
+u32_term: (formatting_options_term "." "flags" | "(" u32_term ")")
+typed_term: (tuple_term | memory_allocation_term | memory_bool_term | memory_integer_term | memory_storage_1_term | memory_storage_2_term | memory_storage_3_term | memory_storage_4_term | memory_storage_5_term | memory_storage_6_term | memory_storage_7_term | memory_storage_8_term | error_term | formatter_term | formatting_options_term | result_term | argument_term | argument_type_term | count_term | placeholder_term | err_term | ok_term | opaque_term | u16_term | u32_term)
+variant_test: (result_test | argument_type_test)
+formula: expression
+expression: disjunction ("if" disjunction "else" expression)?
+disjunction: conjunction ("or" conjunction)*
+conjunction: negation ("and" negation)*
+negation: ("not" negation | comparison)
+comparison: arithmetic (compare arithmetic)*
+compare: ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not" "in")
+arithmetic: product (("+" | "-") product)*
+product: unary (("*" | "//" | "%") unary)*
+unary: (("+" | "-"))? primary
+primary: (typed_term | integer | string | "True" | "False" | "None" | "(" expression ")" | collection | builtin)
+collection: ("[" (expression ("," expression)*)? "]" | "[" expression comprehension "]")
+comprehension: "for" identifier "in" disjunction ("if" disjunction)* (comprehension)?
+builtin: (("all" | "any") "(" expression ")" | "len" "(" expression ")" | variant_test)
+identifier: IDENTIFIER
+integer: INTEGER
+string: STRING
+IDENTIFIER: /[A-Za-z_][A-Za-z0-9_]*/
+INTEGER: /[0-9]+/
+STRING: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/
+%import common.WS
+%ignore WS

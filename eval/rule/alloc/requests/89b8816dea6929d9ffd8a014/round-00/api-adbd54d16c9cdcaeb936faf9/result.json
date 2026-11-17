@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/alloc/src/ffi/c_str.rs",
+  "line": 346,
+  "name": "from_raw",
+  "declaration": "unsafe fn from_raw (ptr : * mut c_char) -> CString",
+  "parent": "CString",
+  "documentation": " Retakes ownership of a `CString` that was transferred to C via\n [`CString::into_raw`].\n\n Additionally, the length of the string will be recalculated from the pointer.\n\n # Safety\n\n This should only ever be called with a pointer that was earlier\n obtained by calling [`CString::into_raw`]. Other usage (e.g., trying to take\n ownership of a string that was allocated by foreign code) is likely to lead\n to undefined behavior or allocator corruption.\n\n It should be noted that the length isn't just \"recomputed,\" but that\n the recomputed length must match the original length from the\n [`CString::into_raw`] call. This means the [`CString::into_raw`]/`from_raw`\n methods should not be used when passing the string to C functions that can\n modify the string's length.\n\n > **Note:** If you need to borrow a string that was allocated by\n > foreign code, use [`CStr`]. If you need to take ownership of\n > a string that was allocated by foreign code, you will need to\n > make your own provisions for freeing it appropriately, likely\n > with the foreign code's API to do that.\n\n # Examples\n\n Creates a `CString`, pass ownership to an `extern` function (via raw pointer), then retake\n ownership with `from_raw`:\n\n ```ignore (extern-declaration)\n use std::ffi::CString;\n use std::os::raw::c_char;\n\n extern \"C\" {\n     fn some_extern_function(s: *mut c_char);\n }\n\n let c_string = CString::from(c\"Hello!\");\n let raw = c_string.into_raw();\n unsafe {\n     some_extern_function(raw);\n     let c_string = CString::from_raw(raw);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must be a pointer previously obtained by calling `CString::into_raw`.",
+    "For safety, the string length recalculated from `ptr` by `CString::from_raw` must match the original string length at the corresponding `CString::into_raw` call; the `CString::into_raw`/`CString::from_raw` ownership round trip must not be used with C functions that can modify the string's length."
+  ],
+  "status": "extracted"
+}

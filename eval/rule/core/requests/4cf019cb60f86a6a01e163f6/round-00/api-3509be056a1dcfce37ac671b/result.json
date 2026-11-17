@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/core/src/iter/traits/marker.rs",
+  "line": 37,
+  "name": "TrustedLen",
+  "declaration": "trait TrustedLen : Iterator",
+  "parent": null,
+  "documentation": " An iterator that reports an accurate length using size_hint.\n\n The iterator reports a size hint where it is either exact\n (lower bound is equal to upper bound), or the upper bound is [`None`].\n The upper bound must only be [`None`] if the actual iterator length is\n larger than [`usize::MAX`]. In that case, the lower bound must be\n [`usize::MAX`], resulting in an [`Iterator::size_hint()`] of\n `(usize::MAX, None)`.\n\n The iterator must produce exactly the number of elements it reported\n or diverge before reaching the end.\n\n # When *shouldn't* an adapter be `TrustedLen`?\n\n If an adapter makes an iterator *shorter* by a given amount, then it's\n usually incorrect for that adapter to implement `TrustedLen`.  The inner\n iterator might return more than `usize::MAX` items, but there's no way to\n know what `k` elements less than that will be, since the `size_hint` from\n the inner iterator has already saturated and lost that information.\n\n This is why [`Skip<I>`](crate::iter::Skip) isn't `TrustedLen`, even when\n `I` implements `TrustedLen`.\n\n # Safety\n\n This trait must only be implemented when the contract is upheld. Consumers\n of this trait must inspect [`Iterator::size_hint()`]’s upper bound.",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "Implementors of TrustedLen must ensure that Iterator::size_hint() either has equal lower and upper bounds or has an upper bound of None.",
+    "Implementors of TrustedLen must ensure that Iterator::size_hint() has an upper bound of None only if the actual iterator length is greater than usize::MAX.",
+    "If Iterator::size_hint() has an upper bound of None, implementors of TrustedLen must ensure that its lower bound is usize::MAX, yielding (usize::MAX, None).",
+    "Implementors of TrustedLen must ensure that the iterator produces exactly the number of elements it reported or diverges before reaching the end.",
+    "Consumers of TrustedLen must inspect the upper bound returned by Iterator::size_hint()."
+  ],
+  "status": "extracted"
+}

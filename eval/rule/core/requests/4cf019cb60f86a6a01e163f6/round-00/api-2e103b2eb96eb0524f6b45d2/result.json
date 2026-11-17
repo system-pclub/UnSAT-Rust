@@ -1,0 +1,22 @@
+{
+  "path": "rust/library/core/src/alloc/mod.rs",
+  "line": 229,
+  "name": "grow_zeroed",
+  "declaration": "unsafe fn grow_zeroed (& self , ptr : NonNull < u8 > , old_layout : Layout , new_layout : Layout ,) -> Result < NonNull < [u8] > , AllocError >",
+  "parent": "Allocator",
+  "documentation": " Behaves like `grow`, but also ensures that the new contents are set to zero before being\n returned.\n\n The memory block will contain the following contents after a successful call to\n `grow_zeroed`:\n   * Bytes `0..old_layout.size()` are preserved from the original allocation.\n   * Bytes `old_layout.size()..old_size` will either be preserved or zeroed, depending on\n     the allocator implementation. `old_size` refers to the size of the memory block prior\n     to the `grow_zeroed` call, which may be larger than the size that was originally\n     requested when it was allocated.\n   * Bytes `old_size..new_size` are zeroed. `new_size` refers to the size of the memory\n     block returned by the `grow_zeroed` call.\n\n # Safety\n\n * `ptr` must denote a block of memory [*currently allocated*] via this allocator.\n * `old_layout` must [*fit*] that block of memory (The `new_layout` argument need not fit it.).\n * `new_layout.size()` must be greater than or equal to `old_layout.size()`.\n\n Note that `new_layout.align()` need not be the same as `old_layout.align()`.\n\n [*currently allocated*]: #currently-allocated-memory\n [*fit*]: #memory-fitting\n\n # Errors\n\n Returns `Err` if the new layout does not meet the allocator's size and alignment\n constraints of the allocator, or if growing otherwise fails.\n\n Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or\n aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement\n this trait atop an underlying native allocation library that aborts on memory exhaustion.)\n\n Clients wishing to abort computation in response to an allocation error are encouraged to\n call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.\n\n [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must denote a block currently allocated via this allocator: its starting address must have been returned by `allocate`, `grow`, or `shrink`, and it must not subsequently have been deallocated. A call to `deallocate`, or a call to `grow` or `shrink` that returns `Ok`, deallocates the block; a call to `grow` or `shrink` that returns `Err` does not.",
+    "For safety, the block denoted by `ptr` must be currently allocated with alignment `old_layout.align()`.",
+    "For safety, `old_layout.size()` must be at least the size of the layout used to allocate the block denoted by `ptr` and at most the actual block size returned by `allocate`, `grow`, or `shrink`.",
+    "For safety, `new_layout.size()` must be greater than or equal to `old_layout.size()`.",
+    "For safety, `new_layout` need not fit the existing block denoted by `ptr`.",
+    "For safety, `new_layout.align()` need not equal `old_layout.align()`.",
+    "After a successful call to `grow_zeroed`, bytes `0..old_layout.size()` must be preserved from the original allocation.",
+    "After a successful call to `grow_zeroed`, bytes `old_layout.size()..old_size` must each be preserved or zeroed, where `old_size` is the size of the memory block before the call and may exceed the size originally requested.",
+    "After a successful call to `grow_zeroed`, bytes `old_size..new_size` must be zeroed before being returned, where `old_size` is the size of the memory block before the call and `new_size` is the size of the returned memory block."
+  ],
+  "status": "extracted"
+}

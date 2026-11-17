@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/core/src/sync/atomic.rs",
+  "line": 433,
+  "name": "from_ptr",
+  "declaration": "const unsafe fn from_ptr < 'a > (ptr : * mut bool) -> & 'a AtomicBool",
+  "parent": "AtomicBool",
+  "documentation": " Creates a new `AtomicBool` from a pointer.\n\n # Examples\n\n ```\n use std::sync::atomic::{self, AtomicBool};\n\n // Get a pointer to an allocated value\n let ptr: *mut bool = Box::into_raw(Box::new(false));\n\n assert!(ptr.cast::<AtomicBool>().is_aligned());\n\n {\n     // Create an atomic view of the allocated value\n     let atomic = unsafe { AtomicBool::from_ptr(ptr) };\n\n     // Use `atomic` for atomic operations, possibly share it with other threads\n     atomic.store(true, atomic::Ordering::Relaxed);\n }\n\n // It's ok to non-atomically access the value behind `ptr`,\n // since the reference to the atomic ended its lifetime in the block above\n assert_eq!(unsafe { *ptr }, true);\n\n // Deallocate the value\n unsafe { drop(Box::from_raw(ptr)) }\n ```\n\n # Safety\n\n * `ptr` must be aligned to `align_of::<AtomicBool>()` (note that this is always true, since\n   `align_of::<AtomicBool>() == 1`).\n * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.\n * You must adhere to the [Memory model for atomic accesses]. In particular, it is not\n   allowed to mix atomic and non-atomic accesses, or atomic accesses of different sizes,\n   without synchronization.\n\n [valid]: crate::ptr#safety\n [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "`ptr` must be aligned to `align_of::<AtomicBool>()`; this alignment requirement is always satisfied because `align_of::<AtomicBool>() == 1`.",
+    "`ptr` must be valid for both reads and writes for the whole lifetime `'a` of the returned `&'a AtomicBool`.",
+    "Accesses to the memory at `ptr` must not create a data race: overlapping accesses, at least one of which is a write and at least one of which is non-atomic, must be synchronized so that one happens-before the other. An unsuccessful `compare_exchange` or `compare_exchange_weak` is not considered a write.",
+    "Every pair of non-synchronized atomic accesses involving the memory at `ptr` must either access disjoint regions, access exactly the same region with the same access size, or both be reads. Accesses are non-synchronized when neither happens-before the other.",
+    "Concurrent atomic and non-atomic reads of the same memory at `ptr` are permitted."
+  ],
+  "status": "extracted"
+}

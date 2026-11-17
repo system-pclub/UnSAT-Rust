@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/core/src/alloc/mod.rs",
+  "line": 49,
+  "name": "Allocator",
+  "declaration": "trait Allocator",
+  "parent": null,
+  "documentation": " An implementation of `Allocator` can allocate, grow, shrink, and deallocate arbitrary blocks of\n data described via [`Layout`][].\n\n `Allocator` is designed to be implemented on ZSTs, references, or smart pointers.\n An allocator for `MyAlloc([u8; N])` cannot be moved, without updating the pointers to the\n allocated memory.\n\n In contrast to [`GlobalAlloc`][], `Allocator` allows zero-sized allocations. If an underlying\n allocator does not support this (like jemalloc) or responds by returning a null pointer\n (such as `libc::malloc`), this must be caught by the implementation.\n\n ### Currently allocated memory\n\n Some of the methods require that a memory block is *currently allocated* by an allocator.\n This means that:\n  * the starting address for that memory block was previously\n    returned by [`allocate`], [`grow`], or [`shrink`], and\n  * the memory block has not subsequently been deallocated.\n\n A memory block is deallocated by a call to [`deallocate`],\n or by a call to [`grow`] or [`shrink`] that returns `Ok`.\n A call to `grow` or `shrink` that returns `Err`,\n does not deallocate the memory block passed to it.\n\n [`allocate`]: Allocator::allocate\n [`grow`]: Allocator::grow\n [`shrink`]: Allocator::shrink\n [`deallocate`]: Allocator::deallocate\n\n ### Memory fitting\n\n Some of the methods require that a `layout` *fit* a memory block or vice versa. This means that the\n following conditions must hold:\n  * the memory block must be *currently allocated* with alignment of [`layout.align()`], and\n  * [`layout.size()`] must fall in the range `min ..= max`, where:\n    - `min` is the size of the layout used to allocate the block, and\n    - `max` is the actual size returned from [`allocate`], [`grow`], or [`shrink`].\n\n [`layout.align()`]: Layout::align\n [`layout.size()`]: Layout::size\n\n # Safety\n\n Memory blocks that are [*currently allocated*] by an allocator,\n must point to valid memory, and retain their validity while until either:\n  - the memory block is deallocated, or\n  - the allocator is dropped.\n\n Copying, cloning, or moving the allocator must not invalidate memory blocks returned from it.\n A copied or cloned allocator must behave like the original allocator.\n\n A memory block which is [*currently allocated*] may be passed to\n any method of the allocator that accepts such an argument.\n\n [*currently allocated*]: #currently-allocated-memory",
+  "model": "gpt-6.1-sol",
+  "mode": "llm",
+  "rules": [
+    "An Allocator implementation must handle zero-sized allocations even if its underlying allocator does not support them or returns a null pointer for them; the implementation must catch those cases.",
+    "A memory block whose starting address was returned by an allocator's allocate, grow, or shrink method must point to valid memory until the block is deallocated or the allocator is dropped. A call to deallocate or a successful grow or shrink deallocates the block; a grow or shrink returning Err does not.",
+    "Copying, cloning, or moving an allocator must not invalidate memory blocks returned from it.",
+    "A copied or cloned allocator must behave like the original allocator.",
+    "A currently allocated memory block may be passed to any method of its allocator that accepts such an argument. Here, currently allocated means its starting address was previously returned by that allocator's allocate, grow, or shrink method and it has not subsequently been deallocated by deallocate or a successful grow or shrink; grow or shrink returning Err does not deallocate it."
+  ],
+  "status": "extracted"
+}

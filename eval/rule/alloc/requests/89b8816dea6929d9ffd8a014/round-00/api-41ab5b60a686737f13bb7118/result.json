@@ -1,0 +1,23 @@
+{
+  "path": "rust/library/alloc/src/alloc.rs",
+  "line": 116,
+  "name": "realloc",
+  "declaration": "unsafe fn realloc (ptr : * mut u8 , layout : Layout , new_size : usize) -> * mut u8",
+  "parent": null,
+  "documentation": " Reallocates memory with the global allocator.\n\n This function forwards calls to the [`GlobalAlloc::realloc`] method\n of the allocator registered with the `#[global_allocator]` attribute\n if there is one, or the `std` crate’s default.\n\n This function is expected to be deprecated in favor of the `grow` and `shrink` methods\n of the [`Global`] type when it and the [`Allocator`] trait become stable.\n\n # Safety\n\n See [`GlobalAlloc::realloc`].",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must point to memory allocated by the global allocator used by this function: the allocator registered with `#[global_allocator]`, if present, or otherwise the `std` crate's default allocator.",
+    "For safety, `layout` must be the same layout that was used to allocate the memory block pointed to by `ptr`.",
+    "For safety, `new_size` must be greater than zero.",
+    "For safety, `new_size` in bytes, rounded up to the nearest multiple of `layout.align()`, must be less than or equal to `isize::MAX`.",
+    "If `realloc` returns a non-null pointer, ownership of the memory block referenced by `ptr` is transferred to the global allocator.",
+    "If `realloc` returns a non-null pointer, any subsequent access through the old `ptr` is undefined behavior, even if the allocation remained in place; only the newly returned pointer is valid for accessing the reallocated memory.",
+    "If `realloc` returns a non-null pointer, deallocating the new memory block must use a layout with the alignment of `layout` and a size of `new_size` bytes.",
+    "If `realloc` returns a non-null pointer, the bytes in the range `0..min(layout.size(), new_size)` of the new memory block are guaranteed to have the same values as in the original block.",
+    "If `realloc` returns null, ownership of the memory block referenced by `ptr` is not transferred to the global allocator.",
+    "If `realloc` returns null, the contents of the memory block referenced by `ptr` remain unaltered."
+  ],
+  "status": "extracted"
+}

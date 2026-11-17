@@ -1,0 +1,19 @@
+{
+  "path": "rust/library/alloc/src/boxed.rs",
+  "line": 1104,
+  "name": "from_raw_in",
+  "declaration": "unsafe fn from_raw_in (raw : * mut T , alloc : A) -> Self",
+  "parent": "Box < T , A >",
+  "documentation": " Constructs a box from a raw pointer in the given allocator.\n\n After calling this function, the raw pointer is owned by the\n resulting `Box`. Specifically, the `Box` destructor will call\n the destructor of `T` and free the allocated memory. For this\n to be safe, the memory must have been allocated in accordance\n with the [memory layout] used by `Box` .\n\n # Safety\n\n This function is unsafe because improper use may lead to\n memory problems. For example, a double-free may occur if the\n function is called twice on the same raw pointer.\n\n The raw pointer must point to a block of memory allocated by `alloc`.\n\n # Examples\n\n Recreate a `Box` which was previously converted to a raw pointer\n using [`Box::into_raw_with_allocator`]:\n ```\n #![feature(allocator_api)]\n\n use std::alloc::System;\n\n let x = Box::new_in(5, System);\n let (ptr, alloc) = Box::into_raw_with_allocator(x);\n let x = unsafe { Box::from_raw_in(ptr, alloc) };\n ```\n Manually create a `Box` from scratch by using the system allocator:\n ```\n #![feature(allocator_api, slice_ptr_get)]\n\n use std::alloc::{Allocator, Layout, System};\n\n unsafe {\n     let ptr = System.allocate(Layout::new::<i32>())?.as_mut_ptr() as *mut i32;\n     // In general .write is required to avoid attempting to destruct\n     // the (uninitialized) previous contents of `ptr`, though for this\n     // simple example `*ptr = 5` would have worked as well.\n     ptr.write(5);\n     let x = Box::from_raw_in(ptr, System);\n }\n # Ok::<(), std::alloc::AllocError>(())\n ```\n\n [memory layout]: self#memory-layout",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "`raw` must point to a block of memory allocated by `alloc`.",
+    "For non-zero-sized `T`, the allocation pointed to by `raw` must have the layout `Layout::for_value(&*raw)`.",
+    "`raw` must be non-null, including when `T` is zero-sized.",
+    "`raw` must be sufficiently aligned for `T`, including when `T` is zero-sized.",
+    "`raw` must point to a valid value of `T`.",
+    "Calling `Box::from_raw_in(raw, alloc)` transfers ownership of `raw` to the resulting `Box`; repeated calls on the same pointer must not create ownership that would cause a double-free."
+  ],
+  "status": "extracted"
+}

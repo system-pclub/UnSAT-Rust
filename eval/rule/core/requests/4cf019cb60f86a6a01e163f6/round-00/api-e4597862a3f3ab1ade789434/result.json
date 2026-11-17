@@ -1,0 +1,14 @@
+{
+  "path": "rust/library/core/src/slice/rotate.rs",
+  "line": 84,
+  "name": "ptr_rotate_gcd",
+  "declaration": "unsafe fn ptr_rotate_gcd < T > (left : usize , mid : * mut T , right : usize)",
+  "parent": null,
+  "documentation": " Algorithm 2 is used for small values of `left + right` or for large `T`. The elements\n are moved into their final positions one at a time starting at `mid - left` and advancing by\n `right` steps modulo `left + right`, such that only one temporary is needed. Eventually, we\n arrive back at `mid - left`. However, if `gcd(left + right, right)` is not 1, the above steps\n skipped over elements. For example:\n ```text\n left = 10, right = 6\n the `^` indicates an element in its final place\n 6 7 8 9 10 11 12 13 14 15 . 0 1 2 3 4 5\n after using one step of the above algorithm (The X will be overwritten at the end of the round,\n and 12 is stored in a temporary):\n X 7 8 9 10 11 6 13 14 15 . 0 1 2 3 4 5\n               ^\n after using another step (now 2 is in the temporary):\n X 7 8 9 10 11 6 13 14 15 . 0 1 12 3 4 5\n               ^                 ^\n after the third step (the steps wrap around, and 8 is in the temporary):\n X 7 2 9 10 11 6 13 14 15 . 0 1 12 3 4 5\n     ^         ^                 ^\n after 7 more steps, the round ends with the temporary 0 getting put in the X:\n 0 7 2 9 4 11 6 13 8 15 . 10 1 12 3 14 5\n ^   ^   ^    ^    ^       ^    ^    ^\n ```\n Fortunately, the number of skipped over elements between finalized elements is always equal, so\n we can just offset our starting position and do more rounds (the total number of rounds is the\n `gcd(left + right, right)` value). The end result is that all elements are finalized once and\n only once.\n\n Algorithm 2 can be vectorized by chunking and performing many rounds at once, but there are too\n few rounds on average until `left + right` is enormous, and the worst case of a single\n round is always there.\n\n # Safety\n\n The specified range must be valid for reading and writing.",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The range of `left + right` elements of type `T` starting at `mid - left` and ending just before `mid + right` must be valid for reading and writing."
+  ],
+  "status": "extracted"
+}

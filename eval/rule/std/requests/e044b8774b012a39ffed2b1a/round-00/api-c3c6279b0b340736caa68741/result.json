@@ -1,0 +1,16 @@
+{
+  "path": "rust/library/std/src/env.rs",
+  "line": 371,
+  "name": "remove_var",
+  "declaration": "unsafe fn remove_var < K : AsRef < OsStr > > (key : K)",
+  "parent": null,
+  "documentation": " Removes an environment variable from the environment of the currently running process.\n\n # Safety\n\n This function is safe to call in a single-threaded program.\n\n This function is also always safe to call on Windows, in single-threaded\n and multi-threaded programs.\n\n In multi-threaded programs on other operating systems, the only safe option is\n to not use `set_var` or `remove_var` at all.\n\n The exact requirement is: you\n must ensure that there are no other threads concurrently writing or\n *reading*(!) the environment through functions or global variables other\n than the ones in this module. The problem is that these operating systems\n do not provide a thread-safe way to read the environment, and most C\n libraries, including libc itself, do not advertise which functions read\n from the environment. Even functions from the Rust standard library may\n read the environment without going through this module, e.g. for DNS\n lookups from [`std::net::ToSocketAddrs`]. No stable guarantee is made about\n which functions may read from the environment in future versions of a\n library. All this makes it not practically possible for you to guarantee\n that no other thread will read the environment, so the only safe option is\n to not use `set_var` or `remove_var` in multi-threaded programs at all.\n\n Discussion of this unsafety on Unix may be found in:\n\n  - [Austin Group Bugzilla](https://austingroupbugs.net/view.php?id=188)\n  - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=15607#c2)\n\n To prevent a child process from inheriting an environment variable, you can\n instead use [`Command::env_remove`] or [`Command::env_clear`].\n\n [`std::net::ToSocketAddrs`]: crate::net::ToSocketAddrs\n [`Command::env_remove`]: crate::process::Command::env_remove\n [`Command::env_clear`]: crate::process::Command::env_clear\n\n # Panics\n\n This function may panic if `key` is empty, contains an ASCII equals sign\n `'='` or the NUL character `'\\0'`, or when the value contains the NUL\n character.\n\n # Examples\n\n ```no_run\n use std::env;\n\n let key = \"KEY\";\n unsafe {\n     env::set_var(key, \"VALUE\");\n }\n assert_eq!(env::var(key), Ok(\"VALUE\".to_string()));\n\n unsafe {\n     env::remove_var(key);\n }\n assert!(env::var(key).is_err());\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "Calling remove_var is safe in a single-threaded program.",
+    "Calling remove_var on Windows is always safe, in both single-threaded and multi-threaded programs.",
+    "When calling remove_var in a multi-threaded program on an operating system other than Windows, the caller must ensure that no other threads concurrently read or write the environment through functions or global variables other than those in std::env."
+  ],
+  "status": "extracted"
+}

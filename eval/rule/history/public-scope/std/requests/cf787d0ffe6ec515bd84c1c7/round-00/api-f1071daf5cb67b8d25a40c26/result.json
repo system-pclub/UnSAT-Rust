@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/std/src/env.rs",
+  "line": 307,
+  "name": "set_var",
+  "declaration": "unsafe fn set_var < K : AsRef < OsStr > , V : AsRef < OsStr > > (key : K , value : V)",
+  "parent": null,
+  "documentation": " Sets the environment variable `key` to the value `value` for the currently running\n process.\n\n # Safety\n\n This function is safe to call in a single-threaded program.\n\n This function is also always safe to call on Windows, in single-threaded\n and multi-threaded programs.\n\n In multi-threaded programs on other operating systems, the only safe option is\n to not use `set_var` or `remove_var` at all.\n\n The exact requirement is: you\n must ensure that there are no other threads concurrently writing or\n *reading*(!) the environment through functions or global variables other\n than the ones in this module. The problem is that these operating systems\n do not provide a thread-safe way to read the environment, and most C\n libraries, including libc itself, do not advertise which functions read\n from the environment. Even functions from the Rust standard library may\n read the environment without going through this module, e.g. for DNS\n lookups from [`std::net::ToSocketAddrs`]. No stable guarantee is made about\n which functions may read from the environment in future versions of a\n library. All this makes it not practically possible for you to guarantee\n that no other thread will read the environment, so the only safe option is\n to not use `set_var` or `remove_var` in multi-threaded programs at all.\n\n Discussion of this unsafety on Unix may be found in:\n\n  - [Austin Group Bugzilla (for POSIX)](https://austingroupbugs.net/view.php?id=188)\n  - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=15607#c2)\n\n To pass an environment variable to a child process, you can instead use [`Command::env`].\n\n [`std::net::ToSocketAddrs`]: crate::net::ToSocketAddrs\n [`Command::env`]: crate::process::Command::env\n\n # Panics\n\n This function may panic if `key` is empty, contains an ASCII equals sign `'='`\n or the NUL character `'\\0'`, or when `value` contains the NUL character.\n\n # Examples\n\n ```\n use std::env;\n\n let key = \"KEY\";\n unsafe {\n     env::set_var(key, \"VALUE\");\n }\n assert_eq!(env::var(key), Ok(\"VALUE\".to_string()));\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "When calling set_var in a multi-threaded program on a non-Windows operating system, ensure that no other thread concurrently writes to the environment through functions or global variables other than those in std::env.",
+    "When calling set_var in a multi-threaded program on a non-Windows operating system, ensure that no other thread concurrently reads the environment through functions or global variables other than those in std::env."
+  ],
+  "status": "extracted"
+}

@@ -1,0 +1,21 @@
+{
+  "path": "rust/library/core/src/ptr/mod.rs",
+  "line": 1026,
+  "name": "swap_nonoverlapping",
+  "declaration": "const unsafe fn swap_nonoverlapping < T > (x : * mut T , y : * mut T , count : usize)",
+  "parent": null,
+  "documentation": " Swaps `count * size_of::<T>()` bytes between the two regions of memory\n beginning at `x` and `y`. The two regions must *not* overlap.\n\n The operation is \"untyped\" in the sense that data may be uninitialized or otherwise violate the\n requirements of `T`. The initialization state is preserved exactly.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * Both `x` and `y` must be [valid] for both reads and writes of `count *\n   size_of::<T>()` bytes.\n\n * Both `x` and `y` must be properly aligned.\n\n * The region of memory beginning at `x` with a size of `count *\n   size_of::<T>()` bytes must *not* overlap with the region of memory\n   beginning at `y` with the same size.\n\n Note that even if the effectively copied size (`count * size_of::<T>()`) is `0`,\n the pointers must be properly aligned.\n\n [valid]: self#safety\n\n # Examples\n\n Basic usage:\n\n ```\n use std::ptr;\n\n let mut x = [1, 2, 3, 4];\n let mut y = [7, 8, 9];\n\n unsafe {\n     ptr::swap_nonoverlapping(x.as_mut_ptr(), y.as_mut_ptr(), 2);\n }\n\n assert_eq!(x, [7, 8, 3, 4]);\n assert_eq!(y, [1, 2, 9]);\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, x must be valid for both reads and writes of count * size_of::<T>() bytes. For a nonzero byte count, x must be non-null and the entire accessed range must lie within the allocated object identified by x's provenance; these conditions are necessary but not always sufficient for validity. For a zero byte count, every pointer, including null, is valid for these accesses.",
+    "For safety, y must be valid for both reads and writes of count * size_of::<T>() bytes. For a nonzero byte count, y must be non-null and the entire accessed range must lie within the allocated object identified by y's provenance; these conditions are necessary but not always sufficient for validity. For a zero byte count, every pointer, including null, is valid for these accesses.",
+    "For safety, both x and y must be aligned to align_of::<T>(), even when count * size_of::<T>() is zero.",
+    "For safety, the region beginning at x of size count * size_of::<T>() bytes must not overlap the region beginning at y of the same size.",
+    "The data in the regions passed to swap_nonoverlapping may be uninitialized or otherwise violate the requirements of T; valid T values are not required for safety.",
+    "swap_nonoverlapping guarantees that the initialization state of the swapped data is preserved exactly.",
+    "The memory accesses performed by swap_nonoverlapping are non-atomic. For safety, no location accessed by this call may concurrently be accessed from another thread, since this call both reads and writes the regions.",
+    "A pointer obtained by casting a reference is guaranteed valid for access to the underlying object for as long as that object is live and no reference is used to access the same memory; reference accesses and raw-pointer accesses must not be interleaved during that validity interval. This validity guarantee does not waive swap_nonoverlapping's required access extent, alignment, or non-overlap conditions."
+  ],
+  "status": "extracted"
+}

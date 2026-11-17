@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/core/src/ptr/non_null.rs",
+  "line": 491,
+  "name": "offset",
+  "declaration": "const unsafe fn offset (self , count : isize) -> Self where T : Sized ,",
+  "parent": "NonNull < T >",
+  "documentation": " Adds an offset to a pointer.\n\n `count` is in units of T; e.g., a `count` of 3 represents a pointer\n offset of `3 * size_of::<T>()` bytes.\n\n # Safety\n\n If any of the following conditions are violated, the result is Undefined Behavior:\n\n * The computed offset, `count * size_of::<T>()` bytes, must not overflow `isize`.\n\n * If the computed offset is non-zero, then `self` must be derived from a pointer to some\n   [allocated object], and the entire memory range between `self` and the result must be in\n   bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n   of the address space.\n\n Allocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\n stays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\n This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\n safe.\n\n [allocated object]: crate::ptr#allocated-object\n\n # Examples\n\n ```\n use std::ptr::NonNull;\n\n let mut s = [1, 2, 3];\n let ptr: NonNull<u32> = NonNull::new(s.as_mut_ptr()).unwrap();\n\n unsafe {\n     println!(\"{}\", ptr.offset(1).read());\n     println!(\"{}\", ptr.offset(2).read());\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, the computed offset `count * size_of::<T>()` bytes must not overflow `isize`; `count` is measured in units of `T`.",
+    "For safety, if `count * size_of::<T>()` bytes is nonzero, `self` must be derived from a pointer to an allocated object, and the entire memory range between `self` and the resulting pointer must remain in bounds of that allocated object and must not wrap around the edge of the address space."
+  ],
+  "status": "extracted"
+}

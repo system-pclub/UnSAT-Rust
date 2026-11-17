@@ -1,0 +1,19 @@
+{
+  "path": "rust/library/core/src/ptr/non_null.rs",
+  "line": 1432,
+  "name": "as_uninit_slice",
+  "declaration": "const unsafe fn as_uninit_slice < 'a > (self) -> & 'a [MaybeUninit < T >]",
+  "parent": "NonNull < [T] >",
+  "documentation": " Returns a shared reference to a slice of possibly uninitialized values. In contrast to\n [`as_ref`], this does not require that the value has to be initialized.\n\n For the mutable counterpart see [`as_uninit_slice_mut`].\n\n [`as_ref`]: NonNull::as_ref\n [`as_uninit_slice_mut`]: NonNull::as_uninit_slice_mut\n\n # Safety\n\n When calling this method, you have to ensure that all of the following is true:\n\n * The pointer must be [valid] for reads for `ptr.len() * size_of::<T>()` many bytes,\n   and it must be properly aligned. This means in particular:\n\n     * The entire memory range of this slice must be contained within a single allocated object!\n       Slices can never span across multiple allocated objects.\n\n     * The pointer must be aligned even for zero-length slices. One\n       reason for this is that enum layout optimizations may rely on references\n       (including slices of any length) being aligned and non-null to distinguish\n       them from other data. You can obtain a pointer that is usable as `data`\n       for zero-length slices using [`NonNull::dangling()`].\n\n * The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.\n   See the safety documentation of [`pointer::offset`].\n\n * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is\n   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.\n   In particular, while this reference exists, the memory the pointer points to must\n   not get mutated (except inside `UnsafeCell`).\n\n This applies even if the result of this method is unused!\n\n See also [`slice::from_raw_parts`].\n\n [valid]: crate::ptr#safety",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "Even if the result is unused, the pointer must be valid for reads of `ptr.len() * size_of::<T>()` bytes.",
+    "Even if the result is unused, the pointer must be properly aligned, including for zero-length slices.",
+    "Even if the result is unused, the entire memory range of the slice must be contained within a single allocated object.",
+    "Even if the result is unused, the total slice size `ptr.len() * size_of::<T>()` must be no larger than `isize::MAX`.",
+    "Even if the result is unused, the caller must enforce Rust's aliasing rules for the arbitrarily chosen returned lifetime `'a`.",
+    "While the returned reference exists, the memory the pointer points to must not be mutated except inside `UnsafeCell`, even if the result is unused."
+  ],
+  "status": "extracted"
+}

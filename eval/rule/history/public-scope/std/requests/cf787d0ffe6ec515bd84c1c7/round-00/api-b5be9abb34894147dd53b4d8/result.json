@@ -1,0 +1,14 @@
+{
+  "path": "rust/library/std/src/ffi/os_str.rs",
+  "line": 824,
+  "name": "from_encoded_bytes_unchecked",
+  "declaration": "unsafe fn from_encoded_bytes_unchecked (bytes : & [u8]) -> & Self",
+  "parent": "OsStr",
+  "documentation": " Converts a slice of bytes to an OS string slice without checking that the string contains\n valid `OsStr`-encoded data.\n\n The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.\n By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit\n ASCII.\n\n See the [module's toplevel documentation about conversions][conversions] for safe,\n cross-platform [conversions] from/to native representations.\n\n # Safety\n\n As the encoding is unspecified, callers must pass in bytes that originated as a mixture of\n validated UTF-8 and bytes from [`OsStr::as_encoded_bytes`] from within the same Rust version\n built for the same target platform.  For example, reconstructing an `OsStr` from bytes sent\n over the network or stored in a file will likely violate these safety rules.\n\n Due to the encoding being self-synchronizing, the bytes from [`OsStr::as_encoded_bytes`] can be\n split either immediately before or immediately after any valid non-empty UTF-8 substring.\n\n # Example\n\n ```\n use std::ffi::OsStr;\n\n let os_str = OsStr::new(\"Mary had a little lamb\");\n let bytes = os_str.as_encoded_bytes();\n let words = bytes.split(|b| *b == b' ');\n let words: Vec<&OsStr> = words.map(|word| {\n     // SAFETY:\n     // - Each `word` only contains content that originated from `OsStr::as_encoded_bytes`\n     // - Only split with ASCII whitespace which is a non-empty UTF-8 substring\n     unsafe { OsStr::from_encoded_bytes_unchecked(word) }\n }).collect();\n ```\n\n [conversions]: super#conversions",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The bytes passed to `OsStr::from_encoded_bytes_unchecked` must originate as a mixture of validated UTF-8 and bytes from `OsStr::as_encoded_bytes` from within the same Rust version built for the same target platform."
+  ],
+  "status": "extracted"
+}

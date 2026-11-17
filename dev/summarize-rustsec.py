@@ -13,7 +13,7 @@ SYMBOLS = {"hit": "H", "miss": "M", "gap": "G", "error": "E", "partial": "P"}
 
 
 def main():
-    manifest = json.loads((ROOT / "benchmark/rustsec/manifest.json").read_text())
+    manifest = json.loads((ROOT / "dev/rustsec/manifest.json").read_text())
     cases = manifest["cases"]
     decisions = json.loads((OUT / "coverage-decisions.json").read_text())["decisions"]
     matrix = {(row["crate"], row["tool"]): row for row in decisions}
@@ -62,7 +62,7 @@ def main():
         "- Semgrep 固定 p/default Rust+generic 规则，LockBud 固定 deadlock 模式；二者并非通用 unsafe API 前置条件检查器。MIRAI 的无告警也不构成安全证明。",
         "- 未使用 cargo-audit/公告 ID 匹配作为源码检测结果；编译器 deprecated/invalid_value lint 单独保留在日志中，未混入 analyzer 命中数。",
         "- 这是 10 个已知缺陷的目的性样本；未计算 TN 或全量告警 precision。KLEE 的 full_rerun_passed 指工具内 LLVM IR 回放，不等于独立 native/Miri 复现。", "",
-        "[数据集与原始证据](../../benchmark/rustsec/README.md) · [逐项判定](coverage-decisions.json) · [机器结果](coverage.json) · [CSV](coverage.csv) · [选定告警复核](selected-reviews.json) · [原始告警统计](raw-alerts.json) · [所有运行](runs.json) · [环境](environment.json) · [源码完整性](source-integrity.json)", "",
+        "[数据集与原始证据](../../dev/rustsec/README.md) · [逐项判定](coverage-decisions.json) · [机器结果](coverage.json) · [CSV](coverage.csv) · [选定告警复核](selected-reviews.json) · [原始告警统计](raw-alerts.json) · [所有运行](runs.json) · [环境](environment.json) · [源码完整性](source-integrity.json)", "",
         "复现汇总：`python3 dev/summarize-rustsec.py`。逐次命令、版本/镜像 ID、返回码、耗时及 stdout/stderr 都位于各 crate/tool/attempt 下；失败尝试未覆盖。较大的 LLVM 文件保留在磁盘并通过本目录 .gitignore 排除版本控制。", ""])
     (OUT / "README.md").write_text("\n".join(lines))
     print(json.dumps(summary, ensure_ascii=False, indent=2))

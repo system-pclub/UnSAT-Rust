@@ -1,0 +1,230 @@
+{
+  "source_sha256": "cc9396c9eeaf4a2508a08cab10f6cc2704121c3b60750183c1fb0b3560c4793a",
+  "repairs": {
+    "390701cf120fc45d803cd7149fbb85e87d82b930a9ed2ca3217f0783bdd454a0": {
+      "result": {
+        "path": "rust/library/core/src/future/async_drop.rs",
+        "line": 221,
+        "name": "defer",
+        "declaration": "async unsafe fn defer < T : ? Sized > (to_drop : * mut T)",
+        "parent": null,
+        "documentation": " Basically a lazy version of `async_drop_in_place`. Returns a future\n that would call `AsyncDrop::async_drop` on a first poll.\n\n # Safety\n\n Same as `async_drop_in_place` except is lazy to avoid creating\n multiple mutable references.",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For safety, `to_drop` passed to `defer` must be valid for both reads and writes.",
+          "For safety, `to_drop` passed to `defer` must be properly aligned, even if `T` has size 0.",
+          "For safety, `to_drop` passed to `defer` must be nonnull, even if `T` has size 0.",
+          "For safety, the value pointed to by `to_drop` passed to `defer` must be valid for async dropping, including any additional invariants required by its type.",
+          "While `defer` is executing or its returned future is alive, the only permitted access to parts of the value pointed to by `to_drop` is through the `self: Pin<&mut Self>` references supplied to the `AsyncDrop::async_drop` methods invoked by the delegated `async_drop_in_place` operation or `AsyncDropInPlace<T>::poll`.",
+          "While `defer` is executing or its returned future is alive, the caller must guarantee that the value pointed to by `to_drop` does not move."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/772a95b3c25ec50f62cc2d98"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/772a95b3c25ec50f62cc2d98"
+    },
+    "3720579c7294fa3d4b7aab7aecd2aa960b89e23a5c96b12358c90f58400d647a": {
+      "result": {
+        "path": "rust/library/core/src/iter/adapters/mod.rs",
+        "line": 64,
+        "name": "SourceIter",
+        "declaration": "trait SourceIter",
+        "parent": null,
+        "documentation": " This trait provides transitive access to source-stage in an iterator-adapter pipeline\n under the conditions that\n * the iterator source `S` itself implements `SourceIter<Source = S>`\n * there is a delegating implementation of this trait for each adapter in the pipeline between\n   the source and the pipeline consumer.\n\n When the source is an owning iterator struct (commonly called `IntoIter`) then\n this can be useful for specializing [`FromIterator`] implementations or recovering the\n remaining elements after an iterator has been partially exhausted.\n\n Note that implementations do not necessarily have to provide access to the innermost\n source of a pipeline. A stateful intermediate adapter might eagerly evaluate a part\n of the pipeline and expose its internal storage as source.\n\n The trait is unsafe because implementers must uphold additional safety properties.\n See [`as_inner`] for details.\n\n The primary use of this trait is in-place iteration. Refer to the [`vec::in_place_collect`]\n module documentation for more information.\n\n [`vec::in_place_collect`]: ../../../../alloc/vec/in_place_collect/index.html\n\n # Examples\n\n Retrieving a partially consumed source:\n\n ```\n # #![feature(inplace_iteration)]\n # use std::iter::SourceIter;\n\n let mut iter = vec![9, 9, 9].into_iter().map(|i| i * i);\n let _ = iter.next();\n let mut remainder = std::mem::replace(unsafe { iter.as_inner() }, Vec::new().into_iter());\n println!(\"n = {} elements remaining\", remainder.len());\n ```\n\n [`FromIterator`]: crate::iter::FromIterator\n [`as_inner`]: SourceIter::as_inner",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "A SourceIter implementation must return the same mutable reference from as_inner for its lifetime, unless replaced by a caller.",
+          "A caller of SourceIter::as_inner may replace the reference only when iteration has stopped and the caller drops the iterator pipeline after extracting the source.",
+          "Iterator adapters implementing SourceIter may rely on the source not changing during iteration, but must not rely on it remaining unchanged in their Drop implementations.",
+          "Adapters implementing SourceIter::as_inner relinquish private-only access to their source and may rely only on guarantees based on method receiver types.",
+          "Adapters implementing SourceIter::as_inner must uphold the source's public API even when they have access to its internals.",
+          "Callers of SourceIter::as_inner must allow the source to be in any state consistent with its public API, including a state in which intervening adapters have consumed more elements than strictly necessary."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+    },
+    "d2100b0da409d333e1f040cc66272075b2608426e2c77ee229f59e1f14609cf2": {
+      "result": {
+        "path": "rust/library/core/src/iter/adapters/zip.rs",
+        "line": 606,
+        "name": "try_get_unchecked",
+        "declaration": "unsafe fn try_get_unchecked < I > (it : & mut I , idx : usize) -> I :: Item where I : Iterator ,",
+        "parent": null,
+        "documentation": " Like `Iterator::__iterator_get_unchecked`, but doesn't require the compiler to\n know that `U: TrustedRandomAccess`.\n\n ## Safety\n\n Same requirements calling `get_unchecked` directly.",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+    },
+    "05d55185249482fe38d215f926c6f222d789a2971676ddc9f1561f201507c5d2": {
+      "result": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs",
+        "line": 692,
+        "name": "byte_offset_from",
+        "declaration": "const unsafe fn byte_offset_from < U : ? Sized > (self , origin : * const U) -> isize",
+        "parent": "* const T",
+        "documentation": " Calculates the distance between two pointers within the same allocation. The returned value is in\n units of **bytes**.\n\n This is purely a convenience for casting to a `u8` pointer and\n using [`offset_from`][pointer::offset_from] on it. See that method for\n documentation and safety requirements.\n\n For non-`Sized` pointees this operation considers only the data pointers,\n ignoring the metadata.",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For safety, the data pointers of `self` and `origin` must either point to the same address, or both be derived from a pointer to the same allocated object with the entire memory range between them in bounds of that object; metadata of non-`Sized` pointees is ignored.",
+          "For safety, the distance in bytes between the data pointers of `self` and `origin` must be an exact multiple of `size_of::<u8>()`, which is 1 byte.",
+          "For safety, the absolute distance in bytes between the data pointers of `self` and `origin`, computed on mathematical integers without wrapping, must not exceed `isize::MAX`."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+    },
+    "ca4dc61c9333d9bf20bb37bc7fef6edcd70b15c07e7dc84e2b5193bfde7aab47": {
+      "result": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs",
+        "line": 710,
+        "name": "offset_from_unsigned",
+        "declaration": "const unsafe fn offset_from_unsigned (self , origin : * const T) -> usize where T : Sized ,",
+        "parent": "* const T",
+        "documentation": " Calculates the distance between two pointers within the same allocation, *where it's known that\n `self` is equal to or greater than `origin`*. The returned value is in\n units of T: the distance in bytes is divided by `size_of::<T>()`.\n\n This computes the same value that [`offset_from`](#method.offset_from)\n would compute, but with the added precondition that the offset is\n guaranteed to be non-negative.  This method is equivalent to\n `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,\n but it provides slightly more information to the optimizer, which can\n sometimes allow it to optimize slightly better with some backends.\n\n This method can be thought of as recovering the `count` that was passed\n to [`add`](#method.add) (or, with the parameters in the other order,\n to [`sub`](#method.sub)).  The following are all equivalent, assuming\n that their safety preconditions are met:\n ```rust\n # unsafe fn blah(ptr: *const i32, origin: *const i32, count: usize) -> bool { unsafe {\n ptr.offset_from_unsigned(origin) == count\n # &&\n origin.add(count) == ptr\n # &&\n ptr.sub(count) == origin\n # } }\n ```\n\n # Safety\n\n - The distance between the pointers must be non-negative (`self >= origin`)\n\n - *All* the safety conditions of [`offset_from`](#method.offset_from)\n   apply to this method as well; see it for the full details.\n\n Importantly, despite the return type of this method being able to represent\n a larger offset, it's still *not permitted* to pass pointers which differ\n by more than `isize::MAX` *bytes*.  As such, the result of this method will\n always be less than or equal to `isize::MAX as usize`.\n\n # Panics\n\n This function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n # Examples\n\n ```\n let a = [0; 5];\n let ptr1: *const i32 = &a[1];\n let ptr2: *const i32 = &a[3];\n unsafe {\n     assert_eq!(ptr2.offset_from_unsigned(ptr1), 2);\n     assert_eq!(ptr1.add(2), ptr2);\n     assert_eq!(ptr2.sub(2), ptr1);\n     assert_eq!(ptr2.offset_from_unsigned(ptr2), 0);\n }\n\n // This would be incorrect, as the pointers are not correctly ordered:\n // ptr1.offset_from_unsigned(ptr2)\n ```",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For `offset_from_unsigned(self, origin)` to be safe, `self` must be greater than or equal to `origin`.",
+          "For `offset_from_unsigned(self, origin)` to be safe, `self` and `origin` must either point to the same address, or both be derived from a pointer to the same allocated object with the entire memory range between them in bounds of that object.",
+          "For `offset_from_unsigned(self, origin)` to be safe, the distance between `self` and `origin`, in bytes, must be an exact multiple of `size_of::<T>()`.",
+          "For `offset_from_unsigned(self, origin)` to be safe, the distance between the pointers, in bytes and computed on mathematical integers without wrapping around, must not exceed `isize::MAX`."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+    },
+    "f672a32b754782ed007942b6bd2f320ae09eab70c5dd73d1230aeadb18f275b2": {
+      "result": {
+        "path": "rust/library/core/src/ptr/mod.rs",
+        "line": 1134,
+        "name": "swap_nonoverlapping_simple_untyped",
+        "declaration": "const unsafe fn swap_nonoverlapping_simple_untyped < T > (x : * mut T , y : * mut T , count : usize)",
+        "parent": null,
+        "documentation": " Same behavior and safety conditions as [`swap_nonoverlapping`]\n\n LLVM can vectorize this (at least it can for the power-of-two-sized types\n `swap_nonoverlapping` tries to use) so no need to manually SIMD it.",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "Both `x` and `y` must be valid for both reads and writes of `count * size_of::<T>()` bytes.",
+          "Both `x` and `y` must be properly aligned for `T`, even when `count * size_of::<T>()` is zero.",
+          "The memory region beginning at `x` of size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `y` of the same size.",
+          "The data in the regions may be uninitialized or otherwise violate the requirements of `T`.",
+          "The initialization state of the swapped data is preserved exactly."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
+    },
+    "215367869b30059043457e362a436a92d5c7eba94e4e155fb7975e48799658a9": {
+      "result": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs",
+        "line": 802,
+        "name": "byte_offset_from_unsigned",
+        "declaration": "const unsafe fn byte_offset_from_unsigned < U : ? Sized > (self , origin : * const U) -> usize",
+        "parent": "* const T",
+        "documentation": " Calculates the distance between two pointers within the same allocation, *where it's known that\n `self` is equal to or greater than `origin`*. The returned value is in\n units of **bytes**.\n\n This is purely a convenience for casting to a `u8` pointer and\n using [`sub_ptr`][pointer::offset_from_unsigned] on it. See that method for\n documentation and safety requirements.\n\n For non-`Sized` pointees this operation considers only the data pointers,\n ignoring the metadata.",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For `byte_offset_from_unsigned` to be safe, `self` and `origin` must be within the same allocation; for non-`Sized` pointees, only their data pointers are considered, ignoring metadata.",
+          "For `byte_offset_from_unsigned` to be safe, `self` must be equal to or greater than `origin`; for non-`Sized` pointees, this requirement concerns only their data pointers, ignoring metadata."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/772a95b3c25ec50f62cc2d98"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/772a95b3c25ec50f62cc2d98"
+    },
+    "c5d2edbe4638975401fd0dd15a11ca95035e55f97ce17edb236c6409a89535af": {
+      "result": {
+        "path": "rust/library/core/src/ptr/mut_ptr.rs",
+        "line": 882,
+        "name": "offset_from_unsigned",
+        "declaration": "const unsafe fn offset_from_unsigned (self , origin : * const T) -> usize where T : Sized ,",
+        "parent": "* mut T",
+        "documentation": " Calculates the distance between two pointers within the same allocation, *where it's known that\n `self` is equal to or greater than `origin`*. The returned value is in\n units of T: the distance in bytes is divided by `size_of::<T>()`.\n\n This computes the same value that [`offset_from`](#method.offset_from)\n would compute, but with the added precondition that the offset is\n guaranteed to be non-negative.  This method is equivalent to\n `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,\n but it provides slightly more information to the optimizer, which can\n sometimes allow it to optimize slightly better with some backends.\n\n This method can be thought of as recovering the `count` that was passed\n to [`add`](#method.add) (or, with the parameters in the other order,\n to [`sub`](#method.sub)).  The following are all equivalent, assuming\n that their safety preconditions are met:\n ```rust\n # unsafe fn blah(ptr: *mut i32, origin: *mut i32, count: usize) -> bool { unsafe {\n ptr.offset_from_unsigned(origin) == count\n # &&\n origin.add(count) == ptr\n # &&\n ptr.sub(count) == origin\n # } }\n ```\n\n # Safety\n\n - The distance between the pointers must be non-negative (`self >= origin`)\n\n - *All* the safety conditions of [`offset_from`](#method.offset_from)\n   apply to this method as well; see it for the full details.\n\n Importantly, despite the return type of this method being able to represent\n a larger offset, it's still *not permitted* to pass pointers which differ\n by more than `isize::MAX` *bytes*.  As such, the result of this method will\n always be less than or equal to `isize::MAX as usize`.\n\n # Panics\n\n This function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n # Examples\n\n ```\n let mut a = [0; 5];\n let p: *mut i32 = a.as_mut_ptr();\n unsafe {\n     let ptr1: *mut i32 = p.add(1);\n     let ptr2: *mut i32 = p.add(3);\n\n     assert_eq!(ptr2.offset_from_unsigned(ptr1), 2);\n     assert_eq!(ptr1.add(2), ptr2);\n     assert_eq!(ptr2.sub(2), ptr1);\n     assert_eq!(ptr2.offset_from_unsigned(ptr2), 0);\n }\n\n // This would be incorrect, as the pointers are not correctly ordered:\n // ptr1.offset_from(ptr2)",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For `offset_from_unsigned`, the distance between `self` and `origin` must be non-negative (`self >= origin`).",
+          "For `offset_from_unsigned`, `self` and `origin` must either point to the same address, or both be derived from a pointer to the same allocated object with the entire memory range between them in bounds of that object.",
+          "For `offset_from_unsigned`, the distance between `self` and `origin`, in bytes, must be an exact multiple of `size_of::<T>()`.",
+          "For `offset_from_unsigned`, the distance between `self` and `origin`, in bytes and computed on mathematical integers without wrapping around, must not exceed `isize::MAX`."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/547d88ace76212120e5f496d"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/547d88ace76212120e5f496d"
+    },
+    "d2bc8868f9bce0c96c4e17f1c6944354722acf26043a14c2541928df681e9462": {
+      "result": {
+        "path": "rust/library/core/src/ptr/non_null.rs",
+        "line": 842,
+        "name": "offset_from_unsigned",
+        "declaration": "const unsafe fn offset_from_unsigned (self , subtracted : NonNull < T >) -> usize where T : Sized ,",
+        "parent": "NonNull < T >",
+        "documentation": " Calculates the distance between two pointers within the same allocation, *where it's known that\n `self` is equal to or greater than `origin`*. The returned value is in\n units of T: the distance in bytes is divided by `size_of::<T>()`.\n\n This computes the same value that [`offset_from`](#method.offset_from)\n would compute, but with the added precondition that the offset is\n guaranteed to be non-negative.  This method is equivalent to\n `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,\n but it provides slightly more information to the optimizer, which can\n sometimes allow it to optimize slightly better with some backends.\n\n This method can be though of as recovering the `count` that was passed\n to [`add`](#method.add) (or, with the parameters in the other order,\n to [`sub`](#method.sub)).  The following are all equivalent, assuming\n that their safety preconditions are met:\n ```rust\n # unsafe fn blah(ptr: std::ptr::NonNull<u32>, origin: std::ptr::NonNull<u32>, count: usize) -> bool { unsafe {\n ptr.offset_from_unsigned(origin) == count\n # &&\n origin.add(count) == ptr\n # &&\n ptr.sub(count) == origin\n # } }\n ```\n\n # Safety\n\n - The distance between the pointers must be non-negative (`self >= origin`)\n\n - *All* the safety conditions of [`offset_from`](#method.offset_from)\n   apply to this method as well; see it for the full details.\n\n Importantly, despite the return type of this method being able to represent\n a larger offset, it's still *not permitted* to pass pointers which differ\n by more than `isize::MAX` *bytes*.  As such, the result of this method will\n always be less than or equal to `isize::MAX as usize`.\n\n # Panics\n\n This function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n # Examples\n\n ```\n use std::ptr::NonNull;\n\n let a = [0; 5];\n let ptr1: NonNull<u32> = NonNull::from(&a[1]);\n let ptr2: NonNull<u32> = NonNull::from(&a[3]);\n unsafe {\n     assert_eq!(ptr2.offset_from_unsigned(ptr1), 2);\n     assert_eq!(ptr1.add(2), ptr2);\n     assert_eq!(ptr2.sub(2), ptr1);\n     assert_eq!(ptr2.offset_from_unsigned(ptr2), 0);\n }\n\n // This would be incorrect, as the pointers are not correctly ordered:\n // ptr1.offset_from_unsigned(ptr2)\n ```",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For `offset_from_unsigned(self, subtracted)` to be safe, the distance must be non-negative: `self >= subtracted`.",
+          "For `offset_from_unsigned(self, subtracted)` to be safe, `self` and `subtracted` must either point to the same address, or both be derived from a pointer to the same allocated object with the entire memory range between them in bounds of that object; this requirement applies both at compile time and at runtime.",
+          "For `offset_from_unsigned(self, subtracted)` to be safe, the distance between the pointers in bytes must be an exact multiple of `size_of::<T>()`.",
+          "For `offset_from_unsigned(self, subtracted)` to be safe, the absolute distance between the pointers in bytes, computed on mathematical integers without wrapping around, must not exceed `isize::MAX`."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/cc771ed7bb716c764bc7d069"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/cc771ed7bb716c764bc7d069"
+    },
+    "e9e7a9f191be8eefad2a363524ca447e811a94fd6ed334ada51ba4438aee992d": {
+      "result": {
+        "path": "rust/library/core/src/ptr/non_null.rs",
+        "line": 822,
+        "name": "byte_offset_from",
+        "declaration": "const unsafe fn byte_offset_from < U : ? Sized > (self , origin : NonNull < U >) -> isize",
+        "parent": "NonNull < T >",
+        "documentation": " Calculates the distance between two pointers within the same allocation. The returned value is in\n units of **bytes**.\n\n This is purely a convenience for casting to a `u8` pointer and\n using [`offset_from`][NonNull::offset_from] on it. See that method for\n documentation and safety requirements.\n\n For non-`Sized` pointees this operation considers only the data pointers,\n ignoring the metadata.",
+        "model": "gpt-6.1-sol",
+        "mode": "llm",
+        "rules": [
+          "For safety, self and origin must either have the same data-pointer address, or both be derived from a pointer to the same allocated object with the entire memory range between their data pointers in bounds of that object. For non-Sized pointees, metadata is ignored. This requirement applies both at compile time and at runtime.",
+          "For safety, the distance between the data pointers of self and origin, in bytes, must be an exact multiple of size_of::<u8>() (1 byte), because byte_offset_from delegates to offset_from on u8 pointers; this divisibility requirement is always satisfied."
+        ],
+        "status": "extracted",
+        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/cc771ed7bb716c764bc7d069"
+      },
+      "mode": "llm",
+      "model": "gpt-6.1-sol",
+      "requests_directory": "/unsat-rust/eval/rule/core/requests/cc771ed7bb716c764bc7d069"
+    }
+  }
+}

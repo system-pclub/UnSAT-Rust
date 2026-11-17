@@ -1,0 +1,16 @@
+{
+  "path": "rust/library/alloc/src/rc.rs",
+  "line": 1749,
+  "name": "get_mut_unchecked",
+  "declaration": "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+  "parent": "Rc < T , A >",
+  "documentation": " Returns a mutable reference into the given `Rc`,\n without any check.\n\n See also [`get_mut`], which is safe and does appropriate checks.\n\n [`get_mut`]: Rc::get_mut\n\n # Safety\n\n If any other `Rc` or [`Weak`] pointers to the same allocation exist, then\n they must not be dereferenced or have active borrows for the duration\n of the returned borrow, and their inner type must be exactly the same as the\n inner type of this Rc (including lifetimes). This is trivially the case if no\n such pointers exist, for example immediately after `Rc::new`.\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let mut x = Rc::new(String::new());\n unsafe {\n     Rc::get_mut_unchecked(&mut x).push_str(\"foo\")\n }\n assert_eq!(*x, \"foo\");\n ```\n Other `Rc` pointers to the same allocation must be to the same type.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let x: Rc<str> = Rc::from(\"Hello, world!\");\n let mut y: Rc<[u8]> = x.clone().into();\n unsafe {\n     // this is Undefined Behavior, because x's inner type is str, not [u8]\n     Rc::get_mut_unchecked(&mut y).fill(0xff); // 0xff is invalid in UTF-8\n }\n println!(\"{}\", &*x); // Invalid UTF-8 in a str\n ```\n Other `Rc` pointers to the same allocation must be to the exact same type, including lifetimes.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let x: Rc<&str> = Rc::new(\"Hello, world!\");\n {\n     let s = String::from(\"Oh, no!\");\n     let mut y: Rc<&str> = x.clone();\n     unsafe {\n         // this is Undefined Behavior, because x's inner type\n         // is &'long str, not &'short str\n         *Rc::get_mut_unchecked(&mut y) = &s;\n     }\n }\n println!(\"{}\", &*x); // Use-after-free\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "If any other Rc or Weak pointers to the same allocation as this Rc exist, they must not be dereferenced for the duration of the mutable borrow returned by get_mut_unchecked.",
+    "If any other Rc or Weak pointers to the same allocation as this Rc exist, they must not have active borrows for the duration of the mutable borrow returned by get_mut_unchecked.",
+    "If any other Rc or Weak pointers to the same allocation as this Rc exist, their inner type must be exactly the same as this Rc's inner type, including lifetimes."
+  ],
+  "status": "extracted"
+}

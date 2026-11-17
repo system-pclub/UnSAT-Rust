@@ -22,7 +22,7 @@ for row in cases:
     # Keep the dependency resolution that produced the reviewed result.
     scan = ROOT / ".local/rustsec-scan/work" / Path(row["directory"]).name / "Cargo.lock"
     if scan.exists():
-        shutil.copy2(scan, ROOT / "benchmark/rustsec/evidence" / row["advisory"] / "Cargo.lock")
+        shutil.copy2(scan, ROOT / "dev/rustsec/evidence" / row["advisory"] / "Cargo.lock")
 manifest = {
     "cutoff_exclusive": "2026-03-01",
     "selection": (
@@ -32,5 +32,5 @@ manifest = {
     ),
     "cases": cases,
 }
-(ROOT / "benchmark/rustsec/supplement3-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-print(json.dumps({"cases": len(cases), "manifest": "benchmark/rustsec/supplement3-manifest.json"}))
+(ROOT / "dev/rustsec/supplement3-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+print(json.dumps({"cases": len(cases), "manifest": "dev/rustsec/supplement3-manifest.json"}))

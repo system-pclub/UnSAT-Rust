@@ -1,0 +1,33 @@
+{
+  "id": "rule-209",
+  "path": "rust/library/std/src/sys_common/wtf8.rs:631",
+  "name": "unsafe fn from_mut_bytes_unchecked (value : & mut [u8]) -> & mut Wtf8",
+  "rule": "The bytes in `value` must be valid WTF-8 when calling `Wtf8::from_mut_bytes_unchecked`.",
+  "api": "impl  std::sys_common::wtf8::Wtf8 { unsafe fn from_mut_bytes_unchecked (value : & mut [u8]) -> & mut std::sys_common::wtf8::Wtf8 }",
+  "attempt": 0,
+  "mode": "batch",
+  "validation": {
+    "generated_grammar": "passed",
+    "syntax_and_schema": "passed",
+    "semantic_fidelity": "not_verified"
+  },
+  "status": "translated",
+  "expression": "all([\n    b <= 127\n    or (\n        194 <= b <= 223\n        and any([\n            c.$mem.start == b.$mem.start + 1 and 128 <= c <= 191\n            for c in $1\n        ])\n    )\n    or (\n        224 <= b <= 239\n        and any([\n            c.$mem.start == b.$mem.start + 1\n            and 128 <= c <= 191\n            and (b != 224 or c >= 160)\n            and any([\n                d.$mem.start == b.$mem.start + 2 and 128 <= d <= 191\n                for d in $1\n            ])\n            and not (\n                b == 237 and 160 <= c <= 175\n                and any([\n                    e.$mem.start == b.$mem.start + 3\n                    and e == 237\n                    and any([\n                        f.$mem.start == b.$mem.start + 4 and 176 <= f <= 191\n                        for f in $1\n                    ])\n                    for e in $1\n                ])\n            )\n            for c in $1\n        ])\n    )\n    or (\n        240 <= b <= 244\n        and any([\n            c.$mem.start == b.$mem.start + 1\n            and 128 <= c <= 191\n            and (b != 240 or c >= 144)\n            and (b != 244 or c <= 143)\n            and any([\n                d.$mem.start == b.$mem.start + 2\n                and 128 <= d <= 191\n                and any([\n                    e.$mem.start == b.$mem.start + 3 and 128 <= e <= 191\n                    for e in $1\n                ])\n                for d in $1\n            ])\n            for c in $1\n        ])\n    )\n    or (\n        128 <= b <= 191\n        and any([\n            (194 <= a <= 223 and b.$mem.start == a.$mem.start + 1)\n            or (224 <= a <= 239 and a.$mem.start + 1 <= b.$mem.start <= a.$mem.start + 2)\n            or (240 <= a <= 244 and a.$mem.start + 1 <= b.$mem.start <= a.$mem.start + 3)\n            for a in $1\n        ])\n    )\n    for b in $1\n])",
+  "response_id": "resp_02d7c250a315e460016afafd6a78bc87d19961822497bc9ad1",
+  "usage": {
+    "input_tokens": 2920,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cache_write_tokens_details": {
+        "ttl_12h_tokens": 0,
+        "ttl_30m_tokens": 0
+      },
+      "cached_tokens": 2688
+    },
+    "output_tokens": 1821,
+    "output_tokens_details": {
+      "reasoning_tokens": 1302
+    },
+    "total_tokens": 4741
+  }
+}

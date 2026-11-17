@@ -31,6 +31,8 @@ class RuleTests(unittest.TestCase):
             root = Path(temporary)
             for name in ("std", "core", "alloc"):
                 (root / "library" / name).mkdir(parents=True)
+            (root / "tools/x/generated/dsl").mkdir(parents=True)
+            (root / "tools/x/generated/dsl/schema.json").write_text('{}')
             base = ["rule", "--output", "out", "library/std", "library/core", "library/alloc"]
 
             def comments(command, **kwargs):
@@ -45,10 +47,11 @@ class RuleTests(unittest.TestCase):
                 self.assertTrue((root / "out" / name / "step0.json").is_file())
                 self.assertFalse((root / "out" / name / "step1.json").exists())
 
-            def extracted(client, model, item, request_dir):
-                return {**item, "status": "extracted", "rules": ["Must be valid."]}
+            def extracted(destination, args):
+                items = extract._source_items(json.loads((destination / "step0.json").read_text()))
+                rule._write_json(destination / "step1.json", [{**item, "status": "extracted", "rules": ["Must be valid."]} for item in items])
 
-            with patch.object(rule, "_repo_root", return_value=root), patch.object(rule, "_extract_one", side_effect=extracted), patch.object(rule, "_translate") as translate, patch.object(rule.subprocess, "run") as process:
+            with patch.object(rule, "_repo_root", return_value=root), patch.object(rule, "_rules", side_effect=extracted), patch.object(rule, "_translate") as translate, patch.object(rule.subprocess, "run") as process:
                 self.assertEqual(rule.run(build_parser().parse_args(base + ["--step", "1"])), 0)
                 process.assert_not_called()
                 translate.assert_not_called()
@@ -66,6 +69,44 @@ class RuleTests(unittest.TestCase):
             with patch.object(rule, "_repo_root", return_value=root), patch.object(rule, "_rules"), patch.object(rule, "_translate"), patch.object(rule.subprocess, "run") as process:
                 self.assertEqual(rule.run(build_parser().parse_args(base)), 0)
                 process.assert_not_called()  # Existing step0.json files are reused.
+
+    def test_global_round_barrier_survives_pending_batch(self):
+        from llm.rule_jobs import BatchPending
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name in ("std", "core", "alloc"):
+                (root / "library" / name).mkdir(parents=True)
+                rule._write_json(root / "out" / name / "step0.json", {"files": {}})
+                rule._write_json(root / "out" / name / "step1.json", [])
+            rule._write_json(root / "tools/x/generated/dsl/schema.json", {})
+            args = build_parser().parse_args(["rule", "--output", "out", "--step", "2", "--batch-no-wait", "library/std", "library/core", "library/alloc"])
+            seen = []
+            def translating(repo, destination, settings):
+                seen.append((destination.name, settings._translation_round))
+                if destination.name == "core" and settings._translation_round == 0:
+                    raise BatchPending("batch pending")
+                return destination.name == "std" and settings._translation_round == 0
+            with patch.object(rule, "_repo_root", return_value=root), patch.object(rule, "_translate", side_effect=translating):
+                self.assertEqual(rule.run(args), 75)
+            self.assertEqual(seen, [("std", 0), ("core", 0), ("alloc", 0)])
+            seen.clear()
+            def completed(repo, destination, settings):
+                seen.append((destination.name, settings._translation_round))
+                return destination.name == "std" and settings._translation_round == 0
+            with patch.object(rule, "_repo_root", return_value=root), patch.object(rule, "_translate", side_effect=completed):
+                self.assertEqual(rule.run(args), 0)
+            self.assertEqual(seen, [("std", 0), ("core", 0), ("alloc", 0), ("std", 1), ("core", 1), ("alloc", 1)])
+
+    def test_unknown_smoke_location_is_rejected_before_paid_calls(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "core").mkdir()
+            rule._write_json(root / "out/core/step0.json", {"files": {}})
+            args = build_parser().parse_args(["rule", "--step", "1", "--output", "out", "--api-location", "missing.rs:1", "core"])
+            with patch.object(rule, "_repo_root", return_value=root), patch.object(rule, "_rules") as extract:
+                with self.assertRaisesRegex(RuntimeError, "unknown --api-location"):
+                    rule.run(args)
+                extract.assert_not_called()
 
     def test_missing_prerequisite_fails_before_requests(self):
         with TemporaryDirectory() as temporary:
@@ -96,6 +137,7 @@ class RuleTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "different input"):
                     rule.run(args)
                 comments.assert_not_called()
+            self.assertFalse((root / "out/inputs.json").exists())
 
     def test_changed_comments_require_extracting_rules_again(self):
         with TemporaryDirectory() as temporary:
@@ -109,34 +151,6 @@ class RuleTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "stale.*step1.json"):
                 rule._catalog(root / "out", [(root / "library/alloc", destination)])
             self.assertFalse((root / "out/rules.csv").exists())
-
-    def test_translation_writes_step2_and_reports_failed_results(self):
-        with TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            output = root / "out/alloc"
-            rule._write_json(output / "step0.json", {"files": {}})
-            rule._write_csv(output / "rules.csv", [])
-            (root / "operators.json").write_text('{"operators": []}')
-            args = build_parser().parse_args(["rule", "--output", "out", "alloc"])
-            results = [{"id": "rule-1", "status": "translated", "dsl": "true"}]
-            caches = []
-
-            def translate(command, **kwargs):
-                cache = Path(command[command.index("--output") + 1])
-                caches.append(cache)
-                rule._write_json(cache / "generation-results.json", results)
-
-            with patch.object(rule.subprocess, "run", side_effect=translate):
-                rule._translate(root, output, args)
-                self.assertEqual(json.loads((output / "step2.json").read_text()), results)
-                rule._translate(root, output, args)
-                self.assertEqual(caches[0], caches[1])
-                args.model = "other-model"
-                results[0]["status"] = "syntax_error"
-                with self.assertRaisesRegex(RuntimeError, "rerun --step 2"):
-                    rule._translate(root, output, args)
-                self.assertNotEqual(caches[1], caches[2])
-                self.assertEqual(json.loads((output / "step2.json").read_text())[0]["status"], "syntax_error")
 
     def test_extraction_cache_reused_but_source_changes_invalidate_it(self):
         with TemporaryDirectory() as temporary:

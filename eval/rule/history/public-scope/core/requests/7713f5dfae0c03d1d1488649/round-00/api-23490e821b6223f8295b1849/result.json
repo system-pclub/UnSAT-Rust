@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/core/src/mem/mod.rs",
+  "line": 959,
+  "name": "transmute_copy",
+  "declaration": "const unsafe fn transmute_copy < Src , Dst > (src : & Src) -> Dst",
+  "parent": null,
+  "documentation": " Interprets `src` as having type `&Dst`, and then reads `src` without moving\n the contained value.\n\n This function will unsafely assume the pointer `src` is valid for [`size_of::<Dst>`][size_of]\n bytes by transmuting `&Src` to `&Dst` and then reading the `&Dst` (except that this is done\n in a way that is correct even when `&Dst` has stricter alignment requirements than `&Src`).\n It will also unsafely create a copy of the contained value instead of moving out of `src`.\n\n It is not a compile-time error if `Src` and `Dst` have different sizes, but it\n is highly encouraged to only invoke this function where `Src` and `Dst` have the\n same size. This function triggers [undefined behavior][ub] if `Dst` is larger than\n `Src`.\n\n [ub]: ../../reference/behavior-considered-undefined.html\n\n # Examples\n\n ```\n use std::mem;\n\n #[repr(packed)]\n struct Foo {\n     bar: u8,\n }\n\n let foo_array = [10u8];\n\n unsafe {\n     // Copy the data from 'foo_array' and treat it as a 'Foo'\n     let mut foo_struct: Foo = mem::transmute_copy(&foo_array);\n     assert_eq!(foo_struct.bar, 10);\n\n     // Modify the copied data\n     foo_struct.bar = 20;\n     assert_eq!(foo_struct.bar, 20);\n }\n\n // The contents of 'foo_array' should not have changed\n assert_eq!(foo_array, [10]);\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The pointer `src` must be valid for `size_of::<Dst>()` bytes.",
+    "The size of `Dst` must not exceed the size of `Src`."
+  ],
+  "status": "extracted"
+}

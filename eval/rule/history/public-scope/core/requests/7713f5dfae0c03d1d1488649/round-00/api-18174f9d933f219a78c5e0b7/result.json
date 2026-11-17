@@ -1,0 +1,17 @@
+{
+  "path": "rust/library/core/src/ptr/mut_ptr.rs",
+  "line": 371,
+  "name": "offset",
+  "declaration": "const unsafe fn offset (self , count : isize) -> * mut T where T : Sized ,",
+  "parent": "* mut T",
+  "documentation": " Adds a signed offset to a pointer.\n\n `count` is in units of T; e.g., a `count` of 3 represents a pointer\n offset of `3 * size_of::<T>()` bytes.\n\n # Safety\n\n If any of the following conditions are violated, the result is Undefined Behavior:\n\n * The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without\n   \"wrapping around\"), must fit in an `isize`.\n\n * If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some\n   [allocated object], and the entire memory range between `self` and the result must be in\n   bounds of that allocated object. In particular, this range must not \"wrap around\" the edge\n   of the address space.\n\n Allocated objects can never be larger than `isize::MAX` bytes, so if the computed offset\n stays in bounds of the allocated object, it is guaranteed to satisfy the first requirement.\n This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always\n safe.\n\n Consider using [`wrapping_offset`] instead if these constraints are\n difficult to satisfy. The only advantage of this method is that it\n enables more aggressive compiler optimizations.\n\n [`wrapping_offset`]: #method.wrapping_offset\n [allocated object]: crate::ptr#allocated-object\n\n # Examples\n\n ```\n let mut s = [1, 2, 3];\n let ptr: *mut u32 = s.as_mut_ptr();\n\n unsafe {\n     assert_eq!(2, *ptr.offset(1));\n     assert_eq!(3, *ptr.offset(2));\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The byte offset count * size_of::<T>(), computed on mathematical integers without wrapping, must fit in an isize.",
+    "If the computed byte offset is non-zero, self must be derived from a pointer to an allocated object.",
+    "If the computed byte offset is non-zero, the entire memory range between self and the resulting pointer must be within the bounds of the allocated object from which self is derived.",
+    "If the computed byte offset is non-zero, the memory range between self and the resulting pointer must not wrap around the edge of the address space."
+  ],
+  "status": "extracted"
+}

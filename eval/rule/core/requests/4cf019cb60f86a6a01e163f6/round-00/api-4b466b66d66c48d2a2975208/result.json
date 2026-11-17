@@ -1,0 +1,21 @@
+{
+  "path": "rust/library/core/src/slice/raw.rs",
+  "line": 142,
+  "name": "from_raw_parts_mut",
+  "declaration": "const unsafe fn from_raw_parts_mut < 'a , T > (data : * mut T , len : usize) -> & 'a mut [T]",
+  "parent": null,
+  "documentation": " Performs the same functionality as [`from_raw_parts`], except that a\n mutable slice is returned.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `data` must be non-null, [valid] for both reads and writes for `len * size_of::<T>()` many bytes,\n   and it must be properly aligned. This means in particular:\n\n     * The entire memory range of this slice must be contained within a single allocated object!\n       Slices can never span across multiple allocated objects.\n     * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One\n       reason for this is that enum layout optimizations may rely on references\n       (including slices of any length) being aligned and non-null to distinguish\n       them from other data. You can obtain a pointer that is usable as `data`\n       for zero-length slices using [`NonNull::dangling()`].\n\n * `data` must point to `len` consecutive properly initialized values of type `T`.\n\n * The memory referenced by the returned slice must not be accessed through any other pointer\n   (not derived from the return value) for the duration of lifetime `'a`.\n   Both read and write accesses are forbidden.\n\n * The total size `len * size_of::<T>()` of the slice must be no larger than `isize::MAX`,\n   and adding that size to `data` must not \"wrap around\" the address space.\n   See the safety documentation of [`pointer::offset`].\n\n [valid]: ptr#safety\n [`NonNull::dangling()`]: ptr::NonNull::dangling",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "`data` must be non-null, including when `len` is zero or `T` is zero-sized.",
+    "`data` must be properly aligned for `T`, including when `len` is zero or `T` is zero-sized.",
+    "`data` must be valid for both reads and writes for `len * size_of::<T>()` bytes.",
+    "The entire memory range of the returned slice must be contained within a single allocated object; it must not span multiple allocated objects.",
+    "`data` must point to `len` consecutive properly initialized values of type `T`.",
+    "For the duration of lifetime `'a`, the memory referenced by the returned slice must not be read or written through any pointer not derived from the returned slice.",
+    "The total size `len * size_of::<T>()` in bytes must be no larger than `isize::MAX`.",
+    "Adding `len * size_of::<T>()` bytes to `data` must not wrap around the address space."
+  ],
+  "status": "extracted"
+}

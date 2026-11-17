@@ -1,0 +1,16 @@
+{
+  "path": "rust/library/alloc/src/sync.rs",
+  "line": 2461,
+  "name": "get_mut_unchecked",
+  "declaration": "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+  "parent": "Arc < T , A >",
+  "documentation": " Returns a mutable reference into the given `Arc`,\n without any check.\n\n See also [`get_mut`], which is safe and does appropriate checks.\n\n [`get_mut`]: Arc::get_mut\n\n # Safety\n\n If any other `Arc` or [`Weak`] pointers to the same allocation exist, then\n they must not be dereferenced or have active borrows for the duration\n of the returned borrow, and their inner type must be exactly the same as the\n inner type of this Rc (including lifetimes). This is trivially the case if no\n such pointers exist, for example immediately after `Arc::new`.\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let mut x = Arc::new(String::new());\n unsafe {\n     Arc::get_mut_unchecked(&mut x).push_str(\"foo\")\n }\n assert_eq!(*x, \"foo\");\n ```\n Other `Arc` pointers to the same allocation must be to the same type.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let x: Arc<str> = Arc::from(\"Hello, world!\");\n let mut y: Arc<[u8]> = x.clone().into();\n unsafe {\n     // this is Undefined Behavior, because x's inner type is str, not [u8]\n     Arc::get_mut_unchecked(&mut y).fill(0xff); // 0xff is invalid in UTF-8\n }\n println!(\"{}\", &*x); // Invalid UTF-8 in a str\n ```\n Other `Arc` pointers to the same allocation must be to the exact same type, including lifetimes.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let x: Arc<&str> = Arc::new(\"Hello, world!\");\n {\n     let s = String::from(\"Oh, no!\");\n     let mut y: Arc<&str> = x.clone();\n     unsafe {\n         // this is Undefined Behavior, because x's inner type\n         // is &'long str, not &'short str\n         *Arc::get_mut_unchecked(&mut y) = &s;\n     }\n }\n println!(\"{}\", &*x); // Use-after-free\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "If any other Arc or Weak pointers to the same allocation exist, they must not be dereferenced for the duration of the mutable borrow returned by Arc::get_mut_unchecked.",
+    "If any other Arc or Weak pointers to the same allocation exist, they must not have active borrows for the duration of the mutable borrow returned by Arc::get_mut_unchecked.",
+    "If any other Arc or Weak pointers to the same allocation exist, their inner types must be exactly the same as the inner type of the Arc passed to Arc::get_mut_unchecked, including lifetimes."
+  ],
+  "status": "extracted"
+}

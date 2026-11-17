@@ -2,6 +2,10 @@
 
 ## Extract and translate rules by directory
 
+For the `eval/rule` runbook, stage commands and cache/reproduction checks, see the
+[DSL eval skill](../../.agents/skills/dsl-eval/SKILL.md). Follow the environment
+skill's Docker build-first rule before running the commands below.
+
 ```bash
 ./x rule --output .local/rules \
   tools/rust/library/std tools/rust/library/core tools/rust/library/alloc
@@ -38,9 +42,42 @@ with the same globally unique IDs used by `step2.json`. IDs follow input
 directory order, then source path and line; use the same input list and order
 when resuming. Inputs with duplicate basenames are rejected. Requests and raw
 responses remain under each directory for inspection and resuming failed work.
-`--model`, `--workers`, `--reasoning-effort`, and `--limit` configure the LLM
-stages; `--limit` bounds the number of source APIs per directory for smoke runs.
-LLM requests require `OPENAI_API_KEY` (environment or a nearby `.env` file).
+`--step1-mode llm|batch` and `--step2-mode llm|batch` independently select the
+transport (default: `llm`). Both persist request inputs, raw responses and mode.
+Batch jobs also persist job IDs and upload/output/error file IDs. Batch waits by
+default; use `--batch-no-wait` to submit/poll and exit 75 while pending, then repeat
+the same command to resume. Results are joined by `custom_id`.
+
+For a corpus that includes private/restricted APIs, pass `--include-private` at
+step 0. Use repeatable `--api-location rust/library/...:LINE` selections for step
+1 prompt trials. After editing prompts, `--step 1 --resume-step1-input` resumes
+the exact saved requests, model, transport and Batch jobs. Targeted repairs can
+be merged with `scripts/apply_rule_repairs.py`; the original Batch results and
+the repair provenance are retained and survive frozen resume.
+
+The current source-based extraction comparison is documented in
+[`eval/rule/quality/README.md`](../../eval/rule/quality/README.md). Its clause
+coverage measures eligible std/core legacy rules; it is separate from DSL
+syntax/type acceptance and from the historical translation audit below.
+
+Step 2 uses the new source-derived DSL under `src/dsl*.py` and its modeled memory
+schema. The missing shared catalog is generated under `generated/dsl/` using
+`tools/dslgen`; `--dslgen PATH` overrides it. Source impl/trait context supplies
+receiver types and enclosing generics. All requested libraries finish a round before any repair round is submitted.
+Whole-round results are parsed, compiled
+into an exact Lark grammar, and type-checked before retrying only failed rules.
+`--retries 3` allows the initial attempt plus three repairs. `unexpressible` is a
+terminal model result and is reported separately from accepted translations.
+
+`--limit N` bounds step 1 APIs per library; `--rule-limit N` bounds step 2 rules
+per library. Use a separate smoke output to avoid truncating a full catalog.
+`--model`, `--workers`, `--reasoning-effort`, and `--max-output-tokens` configure
+requests. `OPENAI_API_KEY` is read from the environment or repository `.env`.
+
+```bash
+./x rule --output eval/rule --step1-mode batch --step2-mode batch --retries 3 \
+  tools/rust/library/std tools/rust/library/core tools/rust/library/alloc
+```
 
 ## Translate and review the current core/std catalog
 

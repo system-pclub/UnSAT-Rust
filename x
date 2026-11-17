@@ -117,6 +117,14 @@ if [[ "${1:-}" == "verify" ]]; then
         --env RUSTC="$CONTAINER_ROOT/tools/rust/build/x86_64-unknown-linux-gnu/stage1/bin/rustc"
         --env LD_LIBRARY_PATH="$CONTAINER_ROOT/tools/rust/build/x86_64-unknown-linux-gnu/stage1/lib"
         --env LLVM_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer-20
+        --env MIRSCAN_SYSROOT="$CONTAINER_ROOT/tools/rust/build/x86_64-unknown-linux-gnu/stage1"
     )
 fi
+# Preserve explicit extractor options across the Docker boundary.
+for option in MIRSCAN_FOLLOW_SAFE_HELPERS MIRSCAN_MAX_CALL_DEPTH; do
+    if [[ -n "${!option:-}" ]]; then
+        tool_args+=(--env "$option")
+    fi
+done
+
 docker run "${run_args[@]}" "${tool_args[@]}" "$IMAGE" python -m cli.cli "$@"

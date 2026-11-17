@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/core/src/ptr/mod.rs",
+  "line": 1584,
+  "name": "write_unaligned",
+  "declaration": "const unsafe fn write_unaligned < T > (dst : * mut T , src : T)",
+  "parent": null,
+  "documentation": " Overwrites a memory location with the given value without reading or\n dropping the old value.\n\n Unlike [`write()`], the pointer may be unaligned.\n\n `write_unaligned` does not drop the contents of `dst`. This is safe, but it\n could leak allocations or resources, so care should be taken not to overwrite\n an object that should be dropped.\n\n Additionally, it does not drop `src`. Semantically, `src` is moved into the\n location pointed to by `dst`.\n\n This is appropriate for initializing uninitialized memory, or overwriting\n memory that has previously been read with [`read_unaligned`].\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `dst` must be [valid] for writes.\n\n [valid]: self#safety\n\n ## On `packed` structs\n\n Attempting to create a raw pointer to an `unaligned` struct field with\n an expression such as `&packed.unaligned as *const FieldType` creates an\n intermediate unaligned reference before converting that to a raw pointer.\n That this reference is temporary and immediately cast is inconsequential\n as the compiler always expects references to be properly aligned.\n As a result, using `&packed.unaligned as *const FieldType` causes immediate\n *undefined behavior* in your program.\n\n Instead, you must use the `&raw mut` syntax to create the pointer.\n You may use that constructed pointer together with this function.\n\n An example of how to do it and how this relates to `write_unaligned` is:\n\n ```\n #[repr(packed, C)]\n struct Packed {\n     _padding: u8,\n     unaligned: u32,\n }\n\n let mut packed: Packed = unsafe { std::mem::zeroed() };\n\n // Take the address of a 32-bit integer which is not aligned.\n // In contrast to `&packed.unaligned as *mut _`, this has no undefined behavior.\n let unaligned = &raw mut packed.unaligned;\n\n unsafe { std::ptr::write_unaligned(unaligned, 42) };\n\n assert_eq!({packed.unaligned}, 42); // `{...}` forces copying the field instead of creating a reference.\n ```\n\n Accessing unaligned fields directly with e.g. `packed.unaligned` is safe however\n (as can be seen in the `assert_eq!` above).\n\n # Examples\n\n Write a `usize` value to a byte buffer:\n\n ```\n fn write_usize(x: &mut [u8], val: usize) {\n     assert!(x.len() >= size_of::<usize>());\n\n     let ptr = x.as_mut_ptr() as *mut usize;\n\n     unsafe { ptr.write_unaligned(val) }\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The destination pointer must be valid for writes.",
+    "When creating a raw pointer to an unaligned field of a packed struct, use raw mutable address-of syntax without creating an intermediate reference."
+  ],
+  "status": "extracted"
+}

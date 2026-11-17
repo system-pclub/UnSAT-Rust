@@ -1,0 +1,21 @@
+{
+  "path": "rust/library/alloc/src/rc.rs",
+  "line": 1672,
+  "name": "decrement_strong_count_in",
+  "declaration": "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+  "parent": "Rc < T , A >",
+  "documentation": " Decrements the strong reference count on the `Rc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Rc::into_raw`and must satisfy the\n same layout requirements specified in [`Rc::from_raw_in`][from_raw_in].\n The associated `Rc` instance must be valid (i.e. the strong count must be at\n least 1) when invoking this method, and `ptr` must point to a block of memory\n allocated by `alloc`. This method can be used to release the final `Rc` and\n backing storage, but **should not** be called after the final `Rc` has been released.\n\n [from_raw_in]: Rc::from_raw_in\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::rc::Rc;\n use std::alloc::System;\n\n let five = Rc::new_in(5, System);\n\n unsafe {\n     let ptr = Rc::into_raw(five);\n     Rc::increment_strong_count_in(ptr, System);\n\n     let five = Rc::from_raw_in(ptr, System);\n     assert_eq!(2, Rc::strong_count(&five));\n     Rc::decrement_strong_count_in(ptr, System);\n     assert_eq!(1, Rc::strong_count(&five));\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must have been obtained through `Rc::into_raw`.",
+    "For safety, if `ptr` was obtained from an `Rc<U, A>` and `U` is sized, `U` must have the same size and alignment as `T`.",
+    "For safety, if `ptr` was obtained from an `Rc<U, A>` and `U` is unsized, its data pointer must have the same size and alignment as `T`.",
+    "For safety, the `Rc` associated with `ptr` must be valid when `decrement_strong_count_in` is invoked: its strong count must be at least 1.",
+    "For safety, `ptr` must point to a block of memory allocated by `alloc`.",
+    "For safety, `decrement_strong_count_in` must not be called after the final `Rc` associated with `ptr` has been released.",
+    "For safety, the caller must ensure that a specific value of `T` is dropped only once.",
+    "Provided `ptr` was obtained through `Rc::into_raw`, satisfies the layout requirements that a sized source type `U` have the same size and alignment as `T` or an unsized source type `U` have a data pointer with the same size and alignment as `T`, points to memory allocated by `alloc`, and has an associated strong count of at least 1 at invocation, and the caller ensures the value of `T` is dropped only once, `decrement_strong_count_in` may be used to release the final `Rc` and its backing storage."
+  ],
+  "status": "extracted"
+}

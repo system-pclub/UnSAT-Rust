@@ -67,4 +67,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-202
     && rustup component add rust-src rustc-dev llvm-tools rust-analyzer \
     && rustup target add x86_64-unknown-linux-gnu
 
+# Keep benchmark Cargo invocations pinned without downloading a toolchain per run.
+RUN rustup toolchain install 1.87.0 --profile minimal
+
 WORKDIR /unsat-rust

@@ -1,0 +1,26 @@
+--- a/x
++++ b/x
+@@ -19,15 +19,14 @@
+     platform_args=(--platform linux/amd64)
+ fi
+ 
+-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+-    echo "x: building Docker image $IMAGE" >&2
+-    docker build \
+-        "${platform_args[@]}" \
+-        --build-arg "USER_ID=$(id -u)" \
+-        --build-arg "GROUP_ID=$(id -g)" \
+-        --tag "$IMAGE" \
+-        "$repo_root"
+-fi
++# Always refresh the image from the Dockerfile; unchanged layers stay cached.
++echo "x: building Docker image $IMAGE" >&2
++docker build \
++    "${platform_args[@]}" \
++    --build-arg "USER_ID=$(id -u)" \
++    --build-arg "GROUP_ID=$(id -g)" \
++    --tag "$IMAGE" \
++    "$repo_root"
+ 
+ run_args=(
+     --rm

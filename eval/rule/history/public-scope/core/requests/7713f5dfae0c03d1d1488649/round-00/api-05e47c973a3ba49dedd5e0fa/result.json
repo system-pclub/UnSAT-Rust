@@ -1,0 +1,17 @@
+{
+  "path": "rust/library/core/src/alloc/mod.rs",
+  "line": 292,
+  "name": "shrink",
+  "declaration": "unsafe fn shrink (& self , ptr : NonNull < u8 > , old_layout : Layout , new_layout : Layout ,) -> Result < NonNull < [u8] > , AllocError >",
+  "parent": "Allocator",
+  "documentation": " Attempts to shrink the memory block.\n\n Returns a new [`NonNull<[u8]>`][NonNull] containing a pointer and the actual size of the allocated\n memory. The pointer is suitable for holding data described by `new_layout`. To accomplish\n this, the allocator may shrink the allocation referenced by `ptr` to fit the new layout.\n\n If this returns `Ok`, then ownership of the memory block referenced by `ptr` has been\n transferred to this allocator. Any access to the old `ptr` is Undefined Behavior, even if the\n allocation was shrunk in-place. The newly returned pointer is the only valid pointer\n for accessing this memory now.\n\n If this method returns `Err`, then ownership of the memory block has not been transferred to\n this allocator, and the contents of the memory block are unaltered.\n\n # Safety\n\n * `ptr` must denote a block of memory [*currently allocated*] via this allocator.\n * `old_layout` must [*fit*] that block of memory (The `new_layout` argument need not fit it.).\n * `new_layout.size()` must be smaller than or equal to `old_layout.size()`.\n\n Note that `new_layout.align()` need not be the same as `old_layout.align()`.\n\n [*currently allocated*]: #currently-allocated-memory\n [*fit*]: #memory-fitting\n\n # Errors\n\n Returns `Err` if the new layout does not meet the allocator's size and alignment\n constraints of the allocator, or if shrinking otherwise fails.\n\n Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or\n aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement\n this trait atop an underlying native allocation library that aborts on memory exhaustion.)\n\n Clients wishing to abort computation in response to an allocation error are encouraged to\n call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.\n\n [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "ptr must denote a block of memory currently allocated via this allocator.",
+    "old_layout must fit the block of memory denoted by ptr; new_layout need not fit that block.",
+    "new_layout.size() must be less than or equal to old_layout.size().",
+    "If shrink returns Ok, the caller must not access the memory through the old ptr, even if the allocation was shrunk in place; only the newly returned pointer may be used to access that memory."
+  ],
+  "status": "extracted"
+}

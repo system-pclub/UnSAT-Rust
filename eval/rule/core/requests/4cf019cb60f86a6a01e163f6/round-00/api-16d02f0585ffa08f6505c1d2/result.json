@@ -1,0 +1,20 @@
+{
+  "path": "rust/library/core/src/ffi/c_str.rs",
+  "line": 195,
+  "name": "from_ptr",
+  "declaration": "const unsafe fn from_ptr < 'a > (ptr : * const c_char) -> & 'a CStr",
+  "parent": "CStr",
+  "documentation": " Wraps a raw C string with a safe C string wrapper.\n\n This function will wrap the provided `ptr` with a `CStr` wrapper, which\n allows inspection and interoperation of non-owned C strings. The total\n size of the terminated buffer must be smaller than [`isize::MAX`] **bytes**\n in memory (a restriction from [`slice::from_raw_parts`]).\n\n # Safety\n\n * The memory pointed to by `ptr` must contain a valid nul terminator at the\n   end of the string.\n\n * `ptr` must be [valid] for reads of bytes up to and including the nul terminator.\n   This means in particular:\n\n     * The entire memory range of this `CStr` must be contained within a single allocated object!\n     * `ptr` must be non-null even for a zero-length cstr.\n\n * The memory referenced by the returned `CStr` must not be mutated for\n   the duration of lifetime `'a`.\n\n * The nul terminator must be within `isize::MAX` from `ptr`\n\n > **Note**: This operation is intended to be a 0-cost cast but it is\n > currently implemented with an up-front calculation of the length of\n > the string. This is not guaranteed to always be the case.\n\n # Caveat\n\n The lifetime for the returned slice is inferred from its usage. To prevent accidental misuse,\n it's suggested to tie the lifetime to whichever source lifetime is safe in the context,\n such as by providing a helper function taking the lifetime of a host value for the slice,\n or by explicit annotation.\n\n # Examples\n\n ```\n use std::ffi::{c_char, CStr};\n\n fn my_string() -> *const c_char {\n     c\"hello\".as_ptr()\n }\n\n unsafe {\n     let slice = CStr::from_ptr(my_string());\n     assert_eq!(slice.to_str().unwrap(), \"hello\");\n }\n ```\n\n ```\n use std::ffi::{c_char, CStr};\n\n const HELLO_PTR: *const c_char = {\n     const BYTES: &[u8] = b\"Hello, world!\\0\";\n     BYTES.as_ptr().cast()\n };\n const HELLO: &CStr = unsafe { CStr::from_ptr(HELLO_PTR) };\n\n assert_eq!(c\"Hello, world!\", HELLO);\n ```\n\n [valid]: core::ptr#safety",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The total size in memory of the nul-terminated buffer pointed to by `ptr`, including the terminator, must be smaller than `isize::MAX` bytes.",
+    "The memory pointed to by `ptr` must contain a valid nul terminator at the end of the string.",
+    "`ptr` must be valid for reads of all bytes up to and including the nul terminator.",
+    "The entire memory range of the returned `CStr` must be contained within a single allocated object.",
+    "`ptr` must be non-null, even for a zero-length C string.",
+    "The memory referenced by the returned `CStr` must not be mutated for the duration of lifetime `'a`.",
+    "The nul terminator must be within `isize::MAX` bytes of `ptr`."
+  ],
+  "status": "extracted"
+}

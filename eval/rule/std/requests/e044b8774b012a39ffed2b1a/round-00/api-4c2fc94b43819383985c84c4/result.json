@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/std/src/os/fd/raw.rs",
+  "line": 72,
+  "name": "from_raw_fd",
+  "declaration": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+  "parent": "FromRawFd",
+  "documentation": " Constructs a new instance of `Self` from the given raw file\n descriptor.\n\n This function is typically used to **consume ownership** of the\n specified file descriptor. When used in this way, the returned object\n will take responsibility for closing it when the object goes out of\n scope.\n\n However, consuming ownership is not strictly required. Use a\n [`From<OwnedFd>::from`] implementation for an API which strictly\n consumes ownership.\n\n # Safety\n\n The `fd` passed in must be an [owned file descriptor][io-safety];\n in particular, it must be open.\n\n [io-safety]: io#io-safety\n\n # Example\n\n ```no_run\n use std::fs::File;\n # use std::io;\n #[cfg(any(unix, target_os = \"wasi\"))]\n use std::os::fd::{FromRawFd, IntoRawFd, RawFd};\n\n let f = File::open(\"foo.txt\")?;\n # #[cfg(any(unix, target_os = \"wasi\"))]\n let raw_fd: RawFd = f.into_raw_fd();\n // SAFETY: no other functions should call `from_raw_fd`, so there\n // is only one owner for the file descriptor.\n # #[cfg(any(unix, target_os = \"wasi\"))]\n let f = unsafe { File::from_raw_fd(raw_fd) };\n # Ok::<(), io::Error>(())\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open.",
+    "For safety, `from_raw_fd` need not consume ownership of `fd`."
+  ],
+  "status": "extracted"
+}

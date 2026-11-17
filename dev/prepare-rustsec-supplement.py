@@ -22,6 +22,6 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(prepare.prepare, CASES))
     data = {"cutoff_exclusive": "2026-03-01", "selection": "Supplement of known RustSec cases selected for unsafe APIs already covered by the frozen DSL; coverage experiment, not new vulnerability discovery. The original ten-case set remains separate.", "cases": rows}
-    (ROOT / "benchmark/rustsec/supplement-manifest.json").write_text(json.dumps(data, indent=2) + "\n")
+    (ROOT / "dev/rustsec/supplement-manifest.json").write_text(json.dumps(data, indent=2) + "\n")
     for row in rows:
         print(row["advisory"], row["crate"], row["version"], row["issued"])

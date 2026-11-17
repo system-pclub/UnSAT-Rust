@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/core/src/ptr/mut_ptr.rs",
+  "line": 882,
+  "name": "offset_from_unsigned",
+  "declaration": "const unsafe fn offset_from_unsigned (self , origin : * const T) -> usize where T : Sized ,",
+  "parent": "* mut T",
+  "documentation": " Calculates the distance between two pointers within the same allocation, *where it's known that\n `self` is equal to or greater than `origin`*. The returned value is in\n units of T: the distance in bytes is divided by `size_of::<T>()`.\n\n This computes the same value that [`offset_from`](#method.offset_from)\n would compute, but with the added precondition that the offset is\n guaranteed to be non-negative.  This method is equivalent to\n `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,\n but it provides slightly more information to the optimizer, which can\n sometimes allow it to optimize slightly better with some backends.\n\n This method can be thought of as recovering the `count` that was passed\n to [`add`](#method.add) (or, with the parameters in the other order,\n to [`sub`](#method.sub)).  The following are all equivalent, assuming\n that their safety preconditions are met:\n ```rust\n # unsafe fn blah(ptr: *mut i32, origin: *mut i32, count: usize) -> bool { unsafe {\n ptr.offset_from_unsigned(origin) == count\n # &&\n origin.add(count) == ptr\n # &&\n ptr.sub(count) == origin\n # } }\n ```\n\n # Safety\n\n - The distance between the pointers must be non-negative (`self >= origin`)\n\n - *All* the safety conditions of [`offset_from`](#method.offset_from)\n   apply to this method as well; see it for the full details.\n\n Importantly, despite the return type of this method being able to represent\n a larger offset, it's still *not permitted* to pass pointers which differ\n by more than `isize::MAX` *bytes*.  As such, the result of this method will\n always be less than or equal to `isize::MAX as usize`.\n\n # Panics\n\n This function panics if `T` is a Zero-Sized Type (\"ZST\").\n\n # Examples\n\n ```\n let mut a = [0; 5];\n let p: *mut i32 = a.as_mut_ptr();\n unsafe {\n     let ptr1: *mut i32 = p.add(1);\n     let ptr2: *mut i32 = p.add(3);\n\n     assert_eq!(ptr2.offset_from_unsigned(ptr1), 2);\n     assert_eq!(ptr1.add(2), ptr2);\n     assert_eq!(ptr2.sub(2), ptr1);\n     assert_eq!(ptr2.offset_from_unsigned(ptr2), 0);\n }\n\n // This would be incorrect, as the pointers are not correctly ordered:\n // ptr1.offset_from(ptr2)",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `self` must be equal to or greater than `origin` (`self >= origin`), so the distance between the pointers is non-negative.",
+    "For safety, `self` and `origin` must not differ by more than `isize::MAX` bytes."
+  ],
+  "status": "extracted"
+}

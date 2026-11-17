@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/alloc/src/rc.rs",
+  "line": 1325,
+  "name": "increment_strong_count",
+  "declaration": "unsafe fn increment_strong_count (ptr : * const T)",
+  "parent": "Rc < T >",
+  "documentation": " Increments the strong reference count on the `Rc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Rc::into_raw` and must satisfy the\n same layout requirements specified in [`Rc::from_raw_in`][from_raw_in].\n The associated `Rc` instance must be valid (i.e. the strong count must be at\n least 1) for the duration of this method, and `ptr` must point to a block of memory\n allocated by the global allocator.\n\n [from_raw_in]: Rc::from_raw_in\n\n # Examples\n\n ```\n use std::rc::Rc;\n\n let five = Rc::new(5);\n\n unsafe {\n     let ptr = Rc::into_raw(five);\n     Rc::increment_strong_count(ptr);\n\n     let five = Rc::from_raw(ptr);\n     assert_eq!(2, Rc::strong_count(&five));\n #   // Prevent leaks for Miri.\n #   Rc::decrement_strong_count(ptr);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must have been obtained through `Rc::into_raw`.",
+    "For safety, if `ptr` originated from `Rc<U>::into_raw` and `U` is sized, `U` must have the same size and alignment as `T`.",
+    "For safety, if `ptr` originated from `Rc<U>::into_raw` and `U` is unsized, its data pointer must have the same size and alignment as `T`.",
+    "For safety, the `Rc` instance associated with `ptr` must remain valid, meaning its strong count must be at least 1, for the duration of `Rc::increment_strong_count`.",
+    "For safety, `ptr` must point to a block of memory allocated by the global allocator."
+  ],
+  "status": "extracted"
+}

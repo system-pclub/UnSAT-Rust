@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/core/src/alloc/layout.rs",
+  "line": 190,
+  "name": "for_value_raw",
+  "declaration": "const unsafe fn for_value_raw < T : ? Sized > (t : * const T) -> Self",
+  "parent": "Layout",
+  "documentation": " Produces layout describing a record that could be used to\n allocate backing structure for `T` (which could be a trait\n or other unsized type like a slice).\n\n # Safety\n\n This function is only safe to call if the following conditions hold:\n\n - If `T` is `Sized`, this function is always safe to call.\n - If the unsized tail of `T` is:\n     - a [slice], then the length of the slice tail must be an initialized\n       integer, and the size of the *entire value*\n       (dynamic tail length + statically sized prefix) must fit in `isize`.\n       For the special case where the dynamic tail length is 0, this function\n       is safe to call.\n     - a [trait object], then the vtable part of the pointer must point\n       to a valid vtable for the type `T` acquired by an unsizing coercion,\n       and the size of the *entire value*\n       (dynamic tail length + statically sized prefix) must fit in `isize`.\n     - an (unstable) [extern type], then this function is always safe to\n       call, but may panic or otherwise return the wrong value, as the\n       extern type's layout is not known. This is the same behavior as\n       [`Layout::for_value`] on a reference to an extern type tail.\n     - otherwise, it is conservatively not allowed to call this function.\n\n [trait object]: ../../book/ch17-02-trait-objects.html\n [extern type]: ../../unstable-book/language-features/extern-types.html",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "If the unsized tail of T is a slice, its length must be an initialized integer, except when the dynamic tail length is 0.",
+    "If the unsized tail of T is a slice, the size of the entire value (dynamic tail length plus statically sized prefix) must fit in isize, except when the dynamic tail length is 0.",
+    "If the unsized tail of T is a trait object, the vtable part of t must point to a valid vtable for T acquired by an unsizing coercion.",
+    "If the unsized tail of T is a trait object, the size of the entire value (dynamic tail length plus statically sized prefix) must fit in isize.",
+    "If T has an unsized tail that is neither a slice, a trait object, nor an extern type, this function must not be called."
+  ],
+  "status": "extracted"
+}

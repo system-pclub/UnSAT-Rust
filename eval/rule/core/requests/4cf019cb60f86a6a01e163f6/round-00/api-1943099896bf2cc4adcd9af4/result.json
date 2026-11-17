@@ -1,0 +1,17 @@
+{
+  "path": "rust/library/core/src/array/iter.rs",
+  "line": 83,
+  "name": "new_unchecked",
+  "declaration": "const unsafe fn new_unchecked (buffer : [MaybeUninit < T > ; N] , initialized : Range < usize > ,) -> Self",
+  "parent": "IntoIter < T , N >",
+  "documentation": " Creates an iterator over the elements in a partially-initialized buffer.\n\n If you have a fully-initialized array, then use [`IntoIterator`].\n But this is useful for returning partial results from unsafe code.\n\n # Safety\n\n - The `buffer[initialized]` elements must all be initialized.\n - The range must be canonical, with `initialized.start <= initialized.end`.\n - The range must be in-bounds for the buffer, with `initialized.end <= N`.\n   (Like how indexing `[0][100..100]` fails despite the range being empty.)\n\n It's sound to have more elements initialized than mentioned, though that\n will most likely result in them being leaked.\n\n # Examples\n\n ```\n #![feature(array_into_iter_constructors)]\n #![feature(maybe_uninit_uninit_array_transpose)]\n use std::array::IntoIter;\n use std::mem::MaybeUninit;\n\n # // Hi!  Thanks for reading the code. This is restricted to `Copy` because\n # // otherwise it could leak. A fully-general version this would need a drop\n # // guard to handle panics from the iterator, but this works for an example.\n fn next_chunk<T: Copy, const N: usize>(\n     it: &mut impl Iterator<Item = T>,\n ) -> Result<[T; N], IntoIter<T, N>> {\n     let mut buffer = [const { MaybeUninit::uninit() }; N];\n     let mut i = 0;\n     while i < N {\n         match it.next() {\n             Some(x) => {\n                 buffer[i].write(x);\n                 i += 1;\n             }\n             None => {\n                 // SAFETY: We've initialized the first `i` items\n                 unsafe {\n                     return Err(IntoIter::new_unchecked(buffer, 0..i));\n                 }\n             }\n         }\n     }\n\n     // SAFETY: We've initialized all N items\n     unsafe { Ok(buffer.transpose().assume_init()) }\n }\n\n let r: [_; 4] = next_chunk(&mut (10..16)).unwrap();\n assert_eq!(r, [10, 11, 12, 13]);\n let r: IntoIter<_, 40> = next_chunk(&mut (10..16)).unwrap_err();\n assert_eq!(r.collect::<Vec<_>>(), vec![10, 11, 12, 13, 14, 15]);\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "All elements in `buffer[initialized]` must be initialized.",
+    "The range `initialized` must be canonical: `initialized.start <= initialized.end`.",
+    "The range `initialized` must be in bounds for `buffer`: `initialized.end <= N`, even if the range is empty.",
+    "Elements of `buffer` outside `initialized` may also be initialized without violating safety."
+  ],
+  "status": "extracted"
+}

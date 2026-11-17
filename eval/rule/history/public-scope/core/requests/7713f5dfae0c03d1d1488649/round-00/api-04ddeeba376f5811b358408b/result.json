@@ -1,0 +1,19 @@
+{
+  "path": "rust/library/core/src/sync/atomic.rs",
+  "line": 1354,
+  "name": "from_ptr",
+  "declaration": "const unsafe fn from_ptr < 'a > (ptr : * mut * mut T) -> & 'a AtomicPtr < T >",
+  "parent": "AtomicPtr < T >",
+  "documentation": " Creates a new `AtomicPtr` from a pointer.\n\n # Examples\n\n ```\n use std::sync::atomic::{self, AtomicPtr};\n\n // Get a pointer to an allocated value\n let ptr: *mut *mut u8 = Box::into_raw(Box::new(std::ptr::null_mut()));\n\n assert!(ptr.cast::<AtomicPtr<u8>>().is_aligned());\n\n {\n     // Create an atomic view of the allocated value\n     let atomic = unsafe { AtomicPtr::from_ptr(ptr) };\n\n     // Use `atomic` for atomic operations, possibly share it with other threads\n     atomic.store(std::ptr::NonNull::dangling().as_ptr(), atomic::Ordering::Relaxed);\n }\n\n // It's ok to non-atomically access the value behind `ptr`,\n // since the reference to the atomic ended its lifetime in the block above\n assert!(!unsafe { *ptr }.is_null());\n\n // Deallocate the value\n unsafe { drop(Box::from_raw(ptr)) }\n ```\n\n # Safety\n\n * `ptr` must be aligned to `align_of::<AtomicPtr<T>>()` (note that on some platforms this\n   can be bigger than `align_of::<*mut T>()`).\n * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.\n * You must adhere to the [Memory model for atomic accesses]. In particular, it is not\n   allowed to mix atomic and non-atomic accesses, or atomic accesses of different sizes,\n   without synchronization.\n\n [valid]: crate::ptr#safety\n [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The pointer ptr must be aligned to the alignment of AtomicPtr<T>, which on some platforms can be greater than the alignment of *mut T.",
+    "The pointer ptr must be valid for reads for the whole lifetime 'a.",
+    "The pointer ptr must be valid for writes for the whole lifetime 'a.",
+    "The caller must adhere to the memory model for atomic accesses.",
+    "Atomic and non-atomic accesses must not be mixed without synchronization.",
+    "Atomic accesses of different sizes must not be mixed without synchronization."
+  ],
+  "status": "extracted"
+}

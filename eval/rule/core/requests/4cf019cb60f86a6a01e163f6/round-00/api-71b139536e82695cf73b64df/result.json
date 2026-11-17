@@ -1,0 +1,24 @@
+{
+  "path": "rust/library/core/src/mem/manually_drop.rs",
+  "line": 228,
+  "name": "drop",
+  "declaration": "unsafe fn drop (slot : & mut ManuallyDrop < T >)",
+  "parent": "ManuallyDrop < T >",
+  "documentation": " Manually drops the contained value.\n\n This is exactly equivalent to calling [`ptr::drop_in_place`] with a\n pointer to the contained value. As such, unless the contained value is a\n packed struct, the destructor will be called in-place without moving the\n value, and thus can be used to safely drop [pinned] data.\n\n If you have ownership of the value, you can use [`ManuallyDrop::into_inner`] instead.\n\n # Safety\n\n This function runs the destructor of the contained value. Other than changes made by\n the destructor itself, the memory is left unchanged, and so as far as the compiler is\n concerned still holds a bit-pattern which is valid for the type `T`.\n\n However, this \"zombie\" value should not be exposed to safe code, and this function\n should not be called more than once. To use a value after it's been dropped, or drop\n a value multiple times, can cause Undefined Behavior (depending on what `drop` does).\n This is normally prevented by the type system, but users of `ManuallyDrop` must\n uphold those guarantees without assistance from the compiler.\n\n [pinned]: crate::pin",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The pointer to the value contained in `slot` must be valid for both reads and writes when `ManuallyDrop::drop(slot)` is called.",
+    "The pointer to the value contained in `slot` must be properly aligned, even if `T` has size zero.",
+    "The pointer to the value contained in `slot` must be nonnull, even if `T` has size zero.",
+    "The value contained in `slot` must be valid for dropping, including any type-specific invariants required by its destructor.",
+    "While `ManuallyDrop::drop(slot)` is executing, parts of the contained value may be accessed only through the `&mut self` references supplied to the `Drop::drop` methods it invokes.",
+    "After `ManuallyDrop::drop(slot)`, the dropped \"zombie\" value must not be exposed to safe code.",
+    "`ManuallyDrop::drop(slot)` must not be called more than once on the same contained value.",
+    "If `T` is not `Copy`, using the contained value after `ManuallyDrop::drop(slot)` can cause undefined behavior; assigning a new value over it counts as a use because that drops the old value again.",
+    "Except for changes made by the destructor itself, `ManuallyDrop::drop(slot)` leaves the contained value's memory unchanged, retaining a bit-pattern valid for `T` as far as the compiler is concerned.",
+    "Unless the contained value is a packed struct, `ManuallyDrop::drop(slot)` calls its destructor in place without moving the value.",
+    "`ManuallyDrop::drop(slot)` may safely be used to drop pinned data when `T` is not `repr(packed)`."
+  ],
+  "status": "extracted"
+}

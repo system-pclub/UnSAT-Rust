@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 
 pub trait Buffer<T>: Index<usize, Output = T> + IndexMut<usize> + Clone + Sized
 {
-    fn new_sized(&self, usize) -> Result<Self>;
-    fn resize(&mut self, usize) -> Result<()>;
+    fn new_sized(&self, _: usize) -> Result<Self>;
+    fn resize(&mut self, _: usize) -> Result<()>;
 }
 
 pub struct AnonymousBuffer<T>

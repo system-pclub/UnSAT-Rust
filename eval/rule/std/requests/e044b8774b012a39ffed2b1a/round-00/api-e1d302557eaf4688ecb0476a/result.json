@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/std/src/os/windows/process.rs",
+  "line": 507,
+  "name": "raw_attribute",
+  "declaration": "unsafe fn raw_attribute < T > (mut self , attribute : usize , value_ptr : * const T , value_size : usize ,) -> Self",
+  "parent": "ProcThreadAttributeListBuilder < 'a >",
+  "documentation": " Sets a raw attribute on the attribute list.\n\n This function is useful for setting attributes with pointers or sizes\n that cannot be derived directly from their values.\n\n # Safety\n\n This function is marked as `unsafe` because it deals with raw pointers\n and sizes. It is the responsibility of the caller to ensure the value\n lives longer than the resulting [`ProcThreadAttributeList`] as well as\n the validity of the size parameter.\n\n # Example\n\n ```\n #![feature(windows_process_extensions_raw_attribute)]\n use std::ffi::c_void;\n use std::os::windows::process::{CommandExt, ProcThreadAttributeList};\n use std::os::windows::raw::HANDLE;\n use std::process::Command;\n\n #[repr(C)]\n pub struct COORD {\n     pub X: i16,\n     pub Y: i16,\n }\n\n unsafe extern \"system\" {\n     fn CreatePipe(\n         hreadpipe: *mut HANDLE,\n         hwritepipe: *mut HANDLE,\n         lppipeattributes: *const c_void,\n         nsize: u32,\n     ) -> i32;\n     fn CreatePseudoConsole(\n         size: COORD,\n         hinput: HANDLE,\n         houtput: HANDLE,\n         dwflags: u32,\n         phpc: *mut isize,\n     ) -> i32;\n     fn CloseHandle(hobject: HANDLE) -> i32;\n }\n\n let [mut input_read_side, mut output_write_side, mut output_read_side, mut input_write_side] =\n     [unsafe { std::mem::zeroed::<HANDLE>() }; 4];\n\n unsafe {\n     CreatePipe(&mut input_read_side, &mut input_write_side, std::ptr::null(), 0);\n     CreatePipe(&mut output_read_side, &mut output_write_side, std::ptr::null(), 0);\n }\n\n let size = COORD { X: 60, Y: 40 };\n let mut h_pc = unsafe { std::mem::zeroed() };\n unsafe { CreatePseudoConsole(size, input_read_side, output_write_side, 0, &mut h_pc) };\n\n unsafe { CloseHandle(input_read_side) };\n unsafe { CloseHandle(output_write_side) };\n\n const PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 131094;\n\n let attribute_list = unsafe {\n     ProcThreadAttributeList::build()\n         .raw_attribute(\n             PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,\n             h_pc as *const c_void,\n             size_of::<isize>(),\n         )\n         .finish()?\n };\n\n let mut child = Command::new(\"cmd\").spawn_with_attributes(&attribute_list)?;\n #\n # child.kill()?;\n # Ok::<(), std::io::Error>(())\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The caller must ensure that the value pointed to by `value_ptr` lives longer than the resulting `ProcThreadAttributeList`.",
+    "The caller must ensure that `value_size` is valid for the value pointed to by `value_ptr`."
+  ],
+  "status": "extracted"
+}

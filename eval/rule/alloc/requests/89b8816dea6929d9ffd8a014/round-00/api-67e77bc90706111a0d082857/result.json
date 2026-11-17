@@ -1,0 +1,17 @@
+{
+  "path": "rust/library/alloc/src/rc.rs",
+  "line": 3252,
+  "name": "from_raw_in",
+  "declaration": "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+  "parent": "Weak < T , A >",
+  "documentation": " Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>`.\n\n This can be used to safely get a strong reference (by calling [`upgrade`]\n later) or to deallocate the weak count by dropping the `Weak<T>`.\n\n It takes ownership of one weak reference (with the exception of pointers created by [`new`],\n as these don't own anything; the method still works on them).\n\n # Safety\n\n The pointer must have originated from the [`into_raw`] and must still own its potential\n weak reference, and `ptr` must point to a block of memory allocated by `alloc`.\n\n It is allowed for the strong count to be 0 at the time of calling this. Nevertheless, this\n takes ownership of one weak reference currently represented as a raw pointer (the weak\n count is not modified by this operation) and therefore it must be paired with a previous\n call to [`into_raw`].\n\n # Examples\n\n ```\n use std::rc::{Rc, Weak};\n\n let strong = Rc::new(\"hello\".to_owned());\n\n let raw_1 = Rc::downgrade(&strong).into_raw();\n let raw_2 = Rc::downgrade(&strong).into_raw();\n\n assert_eq!(2, Rc::weak_count(&strong));\n\n assert_eq!(\"hello\", &*unsafe { Weak::from_raw(raw_1) }.upgrade().unwrap());\n assert_eq!(1, Rc::weak_count(&strong));\n\n drop(strong);\n\n // Decrement the last weak count.\n assert!(unsafe { Weak::from_raw(raw_2) }.upgrade().is_none());\n ```\n\n [`into_raw`]: Weak::into_raw\n [`upgrade`]: Weak::upgrade\n [`new`]: Weak::new",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, ptr must have originated from a previous call to Weak::into_raw.",
+    "For safety, ptr must still own its potential weak reference, which Weak::from_raw_in takes ownership of; pointers created by Weak::new are excepted from weak-reference ownership because they own nothing.",
+    "For safety, ptr must point to a block of memory allocated by alloc.",
+    "It is safe to call Weak::from_raw_in when the strong count is 0, provided ptr originated from Weak::into_raw, still owns its potential weak reference (except pointers created by Weak::new, which own nothing), and points to a block of memory allocated by alloc."
+  ],
+  "status": "extracted"
+}

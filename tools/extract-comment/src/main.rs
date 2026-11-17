@@ -21,6 +21,10 @@ struct Cli {
 
     #[arg(long)]
     out: PathBuf,
+
+    /// Include restricted/private documented unsafe APIs for full-corpus evaluation.
+    #[arg(long)]
+    include_private: bool,
 }
 
 
@@ -33,9 +37,7 @@ async fn main() -> Result<()> {
         bail!("Output file must have .json extension");
     }
 
-    let mut units = extract_units( cli.dirs, vec![
-        "intrinsics/"
-    ]).await?;
+    let mut units = extract_units_scoped(cli.dirs, vec!["intrinsics/"], cli.include_private).await?;
     keep_only_unsafe_fn_and_unsafe_trait(&mut units);
 
     // Output to json
@@ -73,6 +75,9 @@ pub struct Unit {
     pub members: Vec<String>,
     #[serde(default)]
     pub source_body: Option<String>,
+    /// Original declaration behind a public re-export.
+    #[serde(default)]
+    pub source_origin: Option<String>,
 
     pub is_unsafe: bool,
 
@@ -93,6 +98,7 @@ impl Unit {
             item_generics: Vec::new(),
             members: Vec::new(),
             source_body: None,
+            source_origin: None,
             comment
         }
     }
@@ -105,6 +111,8 @@ pub struct Units {
     pub files: HashMap<String, Vec<Unit>>,
     #[serde(default)]
     pub source_declarations: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub module_documentation: HashMap<String, String>,
 }
 
 pub fn keep_only_unsafe_fn_and_unsafe_trait(units: &mut Units) {
@@ -120,8 +128,13 @@ pub fn keep_only_unsafe_fn_and_unsafe_trait(units: &mut Units) {
 /// A Unit can be either a function (can associate with a struct or a trait), a struct, a trait.
 /// Step 3: For each Unit, extract the associated comments above them (doc comments).
 pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<Units> {
+    extract_units_scoped(dirs, blacklist, false).await
+}
+
+async fn extract_units_scoped(dirs: Vec<PathBuf>, blacklist: Vec<&str>, include_private: bool) -> Result<Units> {
     let mut files_map: HashMap<String, Vec<Unit>> = HashMap::new();
     let mut source_declarations = HashMap::new();
+    let mut module_documentation = HashMap::new();
     // Step 1: Collect all Rust source files from the target directories
     let mut rust_files = Vec::new();
     let mut blacklisted_rust_files = Vec::new();
@@ -188,6 +201,10 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
             _ => None,
         }).collect();
         source_declarations.insert(file_path.display().to_string(), declarations);
+        let module_comment = extract_doc_comment(&syntax.attrs);
+        if !module_comment.trim().is_empty() {
+            module_documentation.insert(file_path.display().to_string(), module_comment);
+        }
         // Extract units from the parsed file
         let mut file_has_unsafe = false;
         for item in syntax.items {
@@ -220,7 +237,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
                 }
             }
 
-            if let Some(unit) = extract_unit_from_item(&item) {
+            if let Some(unit) = extract_unit_from_item_scoped(&item, include_private) {
                 if unit.is_unsafe && !unit.comment.is_empty() {
                     file_has_unsafe = true;
                 }
@@ -230,7 +247,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
             // Handle trait blocks to extract trait method signatures.
             if let Item::Trait(trait_item) = &item {
                 // Trait methods inherit visibility from their trait; they have no `pub`.
-                if !matches!(trait_item.vis, Visibility::Public(_)) {
+                if !include_private && !matches!(trait_item.vis, Visibility::Public(_)) {
                     continue;
                 }
                 for trait_item_inner in &trait_item.items {
@@ -278,7 +295,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
                     if let syn::ImplItem::Fn(method) = impl_item_inner {
                         // Trait impl methods are covered by the trait declaration above.
                         // Inherent methods must be explicitly public, not pub(crate), etc.
-                        if !matches!(method.vis, Visibility::Public(_)) {
+                        if !include_private && !matches!(method.vis, Visibility::Public(_)) {
                             continue;
                         }
                         let comment = extract_doc_comment(&method.attrs);
@@ -328,7 +345,7 @@ pub async fn extract_units(dirs: Vec<PathBuf>, blacklist: Vec<&str>) -> Result<U
     
     println!("Files containing unsafe functions/traits with comments: {}", files_contains_unsafe_fn_or_trait);
     
-    Ok(Units { files: files_map, source_declarations })
+    Ok(Units { files: files_map, source_declarations, module_documentation })
 }
 
 /// Index documented unsafe functions in blacklisted modules. They are not emitted directly, but
@@ -354,10 +371,11 @@ fn index_blacklisted_units(files: &[PathBuf]) -> Result<HashMap<(String, String)
         };
 
         for item in syntax.items {
-            let Some(unit) = extract_unit_from_item(&item) else {
+            let Some(mut unit) = extract_unit_from_item(&item) else {
                 continue;
             };
             if unit.is_unsafe && !unit.comment.trim().is_empty() {
+                unit.source_origin = Some(format!("{}:{}", file_path.display(), unit.line_number_start));
                 units.insert((module_path.clone(), unit.name.clone()), unit);
             }
         }
@@ -420,6 +438,10 @@ fn use_targets(tree: &UseTree) -> Vec<(Vec<String>, String)> {
 
 /// Extract a Unit from a syn::Item
 fn extract_unit_from_item(item: &Item) -> Option<Unit> {
+    extract_unit_from_item_scoped(item, false)
+}
+
+fn extract_unit_from_item_scoped(item: &Item, include_private: bool) -> Option<Unit> {
     match item {
         // Handle bodyless fn declarations (e.g. #[rustc_intrinsic] pub unsafe fn foo() -> T;)
         // syn cannot parse these as Item::Fn (no body), so they become Item::Verbatim.
@@ -432,7 +454,7 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
             let without_semi = &trimmed[..trimmed.len() - 1];
             let with_body = format!("{} {{}}", without_semi);
             let fn_item = syn::parse_str::<syn::ItemFn>(&with_body).ok()?;
-            if !matches!(fn_item.vis, Visibility::Public(_)) {
+            if !include_private && !matches!(fn_item.vis, Visibility::Public(_)) {
                 return None;
             }
             let comment = extract_doc_comment(&fn_item.attrs);
@@ -448,7 +470,7 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
         }
         // Extract standalone functions - only signature
         Item::Fn(func) => {
-            if !matches!(func.vis, Visibility::Public(_)) {
+            if !include_private && !matches!(func.vis, Visibility::Public(_)) {
                 return None;
             }
             let comment = extract_doc_comment(&func.attrs);
@@ -489,7 +511,7 @@ fn extract_unit_from_item(item: &Item) -> Option<Unit> {
         }
         // Extract traits - declaration with method signatures only
         Item::Trait(trait_item) => {
-            if !matches!(trait_item.vis, Visibility::Public(_)) {
+            if !include_private && !matches!(trait_item.vis, Visibility::Public(_)) {
                 return None;
             }
             let comment = extract_doc_comment(&trait_item.attrs);
@@ -654,6 +676,46 @@ mod tests {
         ]);
         let function = units.files.values().flatten().find(|unit| unit.name == "public_function").unwrap();
         assert_eq!(function.declaration_text, "unsafe fn public_function ()");
+    }
+
+    #[tokio::test]
+    async fn full_corpus_scope_keeps_private_unsafe_contracts() {
+        let directory = std::env::temp_dir().join(format!("extract-comment-full-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("lib.rs"), r#"
+            /// Caller must initialize the pointer.
+            unsafe fn private_function() {}
+            /// Implementors must preserve validity.
+            pub(crate) unsafe trait Internal {
+                /// Caller must keep the object alive.
+                unsafe fn private_trait_method();
+            }
+            struct Inner;
+            impl Inner {
+                /// Caller must pass an initialized pointer.
+                pub(crate) unsafe fn restricted_method() {}
+            }
+        "#).unwrap();
+        let mut units = super::extract_units_scoped(vec![directory.clone()], vec![], true).await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+        keep_only_unsafe_fn_and_unsafe_trait(&mut units);
+        let mut names: Vec<_> = units.files.values().flatten().map(|unit| unit.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, vec!["Internal", "private_function", "private_trait_method", "restricted_method"]);
+    }
+
+    #[tokio::test]
+    async fn reexport_preserves_original_source_identity() {
+        let directory = std::env::temp_dir().join(format!("extract-comment-origin-{}", std::process::id()));
+        let source = directory.join("src");
+        std::fs::create_dir_all(source.join("intrinsics")).unwrap();
+        std::fs::write(source.join("intrinsics/mod.rs"), "/// Caller must align the pointer.\npub unsafe fn copied() {}\n").unwrap();
+        std::fs::write(source.join("lib.rs"), "pub use crate::intrinsics::copied;").unwrap();
+        let mut units = extract_units(vec![source], vec!["intrinsics/"]).await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+        keep_only_unsafe_fn_and_unsafe_trait(&mut units);
+        let item = units.files.values().flatten().find(|u| u.name == "copied").unwrap();
+        assert!(item.source_origin.as_ref().unwrap().contains("intrinsics/mod.rs:"));
     }
 
     #[test]

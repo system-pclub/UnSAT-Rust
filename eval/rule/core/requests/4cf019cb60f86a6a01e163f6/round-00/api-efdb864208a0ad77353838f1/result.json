@@ -1,0 +1,21 @@
+{
+  "path": "rust/library/core/src/ptr/mod.rs",
+  "line": 934,
+  "name": "swap",
+  "declaration": "const unsafe fn swap < T > (x : * mut T , y : * mut T)",
+  "parent": null,
+  "documentation": " Swaps the values at two mutable locations of the same type, without\n deinitializing either.\n\n But for the following exceptions, this function is semantically\n equivalent to [`mem::swap`]:\n\n * It operates on raw pointers instead of references. When references are\n   available, [`mem::swap`] should be preferred.\n\n * The two pointed-to values may overlap. If the values do overlap, then the\n   overlapping region of memory from `x` will be used. This is demonstrated\n   in the second example below.\n\n * The operation is \"untyped\" in the sense that data may be uninitialized or otherwise violate\n   the requirements of `T`. The initialization state is preserved exactly.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * Both `x` and `y` must be [valid] for both reads and writes. They must remain valid even when the\n   other pointer is written. (This means if the memory ranges overlap, the two pointers must not\n   be subject to aliasing restrictions relative to each other.)\n\n * Both `x` and `y` must be properly aligned.\n\n Note that even if `T` has size `0`, the pointers must be properly aligned.\n\n [valid]: self#safety\n\n # Examples\n\n Swapping two non-overlapping regions:\n\n ```\n use std::ptr;\n\n let mut array = [0, 1, 2, 3];\n\n let (x, y) = array.split_at_mut(2);\n let x = x.as_mut_ptr().cast::<[u32; 2]>(); // this is `array[0..2]`\n let y = y.as_mut_ptr().cast::<[u32; 2]>(); // this is `array[2..4]`\n\n unsafe {\n     ptr::swap(x, y);\n     assert_eq!([2, 3, 0, 1], array);\n }\n ```\n\n Swapping two overlapping regions:\n\n ```\n use std::ptr;\n\n let mut array: [i32; 4] = [0, 1, 2, 3];\n\n let array_ptr: *mut i32 = array.as_mut_ptr();\n\n let x = array_ptr as *mut [i32; 3]; // this is `array[0..3]`\n let y = unsafe { array_ptr.add(1) } as *mut [i32; 3]; // this is `array[1..4]`\n\n unsafe {\n     ptr::swap(x, y);\n     // The indices `1..3` of the slice overlap between `x` and `y`.\n     // Reasonable results would be for to them be `[2, 3]`, so that indices `0..3` are\n     // `[1, 2, 3]` (matching `y` before the `swap`); or for them to be `[0, 1]`\n     // so that indices `1..4` are `[0, 1, 2]` (matching `x` before the `swap`).\n     // This implementation is defined to make the latter choice.\n     assert_eq!([1, 0, 1, 2], array);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "Both `x` and `y` must be valid for reads and writes of `size_of::<T>()` bytes. For nonzero-sized accesses, each pointer must be non-null and the entire accessed range must lie within the allocated object determined by its provenance; these conditions are necessary but are not by themselves sufficient for validity.",
+    "Both `x` and `y` must remain valid for reads and writes even when the other pointer is written; if their memory ranges overlap, they must not be subject to aliasing restrictions relative to each other.",
+    "Both `x` and `y` must be aligned to `align_of::<T>()`, even when `size_of::<T>()` is zero.",
+    "For zero-sized accesses by `swap`, every pointer is valid, including a null pointer, but both `x` and `y` must still be aligned to `align_of::<T>()`.",
+    "The memory ranges pointed to by `x` and `y` may overlap, provided both pointers remain valid for reads and writes when the other is written and both are properly aligned.",
+    "The data pointed to by `x` and `y` may be uninitialized or otherwise violate the value requirements of `T`; `swap` preserves initialization state exactly.",
+    "The memory accesses performed by `swap` are non-atomic: another thread must not concurrently access the same locations unless both concurrent accesses only read memory.",
+    "A pointer obtained by casting a reference is valid for accesses by `swap` for as long as the underlying object is live and no reference is used to access the same memory; reference accesses and raw-pointer accesses must not be interleaved during that period."
+  ],
+  "status": "extracted"
+}

@@ -1,7 +1,7 @@
 # dslgen: source-derived library member catalog
 
 Generate one API-independent catalog from the actual core, alloc, and std source
-trees. API inputs and rule text are handled by `tools/dsltrans.py`.
+trees. API inputs and rule text are handled by `tools/x/src/dsltrans.py`.
 
 Run inside `unsat-rust:local`, with the repository mounted at `/unsat-rust` and
 `--platform linux/amd64`:
@@ -18,7 +18,7 @@ The default Rust checkout is `tools/rust`. The source trees are:
 
 `--rust-src PATH` selects another Rust checkout. `--source PATH` can be repeated
 to index specific source trees/files instead. `--out PATH` defaults to
-`tools/dslgen/generated`.
+`tools/x/generated/dsl`.
 
 ## Derivation
 
@@ -53,11 +53,11 @@ Type/lifetime parameters are opaque handles; const parameters carry values of
 their declared types. For `IntoIter<T, N>::new_unchecked`, T keeps a numbered type
 handle and N keeps a numbered usize value. Compiler syntax nodes are not inputs.
 
-The memory domain supplies a separate schema in `tools/dslmemory.json`, composed
+The memory domain supplies a separate schema in `tools/x/src/dslmemory.json`, composed
 by Python with these source selectors. Raw pointer type expressions retain their
 target type and mutability so storage and pointee views can be distinguished.
-See `tools/dslmemory.md` for the domain contract.
-See `tools/dsltrans.md` for the active input contract.
+See `tools/x/dslmemory.md` for the domain contract.
+See `tools/x/dsltrans.md` for the active input contract.
 
 ## Boundaries
 

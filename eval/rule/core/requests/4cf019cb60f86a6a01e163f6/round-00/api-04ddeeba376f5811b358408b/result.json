@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/core/src/sync/atomic.rs",
+  "line": 1354,
+  "name": "from_ptr",
+  "declaration": "const unsafe fn from_ptr < 'a > (ptr : * mut * mut T) -> & 'a AtomicPtr < T >",
+  "parent": "AtomicPtr < T >",
+  "documentation": " Creates a new `AtomicPtr` from a pointer.\n\n # Examples\n\n ```\n use std::sync::atomic::{self, AtomicPtr};\n\n // Get a pointer to an allocated value\n let ptr: *mut *mut u8 = Box::into_raw(Box::new(std::ptr::null_mut()));\n\n assert!(ptr.cast::<AtomicPtr<u8>>().is_aligned());\n\n {\n     // Create an atomic view of the allocated value\n     let atomic = unsafe { AtomicPtr::from_ptr(ptr) };\n\n     // Use `atomic` for atomic operations, possibly share it with other threads\n     atomic.store(std::ptr::NonNull::dangling().as_ptr(), atomic::Ordering::Relaxed);\n }\n\n // It's ok to non-atomically access the value behind `ptr`,\n // since the reference to the atomic ended its lifetime in the block above\n assert!(!unsafe { *ptr }.is_null());\n\n // Deallocate the value\n unsafe { drop(Box::from_raw(ptr)) }\n ```\n\n # Safety\n\n * `ptr` must be aligned to `align_of::<AtomicPtr<T>>()` (note that on some platforms this\n   can be bigger than `align_of::<*mut T>()`).\n * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.\n * You must adhere to the [Memory model for atomic accesses]. In particular, it is not\n   allowed to mix atomic and non-atomic accesses, or atomic accesses of different sizes,\n   without synchronization.\n\n [valid]: crate::ptr#safety\n [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "`ptr` must be aligned to `align_of::<AtomicPtr<T>>()`, which can be greater than `align_of::<*mut T>()` on some platforms.",
+    "`ptr` must be valid for both reads and writes for the entire lifetime `'a` of the returned `&'a AtomicPtr<T>`.",
+    "Accesses to the memory referenced by the returned `AtomicPtr<T>` must not cause data races: overlapping accesses where at least one is a write and at least one is non-atomic must be synchronized so that one happens-before the other. An unsuccessful `compare_exchange` or `compare_exchange_weak` is not considered a write.",
+    "Every pair of atomic accesses to the memory referenced by the returned `AtomicPtr<T>` for which neither happens-before the other must either be disjoint, access exactly the same memory with the same access size, or both be reads.",
+    "Concurrent atomic and non-atomic reads of the same memory referenced by the returned `AtomicPtr<T>` are permitted."
+  ],
+  "status": "extracted"
+}

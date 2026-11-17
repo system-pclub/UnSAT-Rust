@@ -1,0 +1,38 @@
+pointer_term: (dwarf_reader_term "." "ptr" | ehcontext_term "." "ip" | ehcontext_term "." "func_start" | "(" pointer_term ")")
+memory_storage_1_term: (result_term "." "$mem" | "(" memory_storage_1_term ")")
+memory_storage_2_term: (dwarf_reader_term "." "$mem" | "(" memory_storage_2_term ")")
+memory_storage_3_term: (ehcontext_term "." "$mem" | "(" memory_storage_3_term ")")
+memory_storage_4_term: (u8_term "." "$mem" | "(" memory_storage_4_term ")")
+err_term: (result_term "." "Err" | "(" err_term ")")
+ok_term: (result_term "." "Ok" | "(" ok_term ")")
+result_term: ("$4" | "(" result_term ")")
+result_variant: ("\"Ok\"" | "'Ok'" | "\"Err\"" | "'Err'")
+result_test: "is_variant" "(" result_term "," result_variant ")"
+opaque_term: (ehcontext_term "." "get_text_start" | ehcontext_term "." "get_data_start" | "(" opaque_term ")")
+dwarf_reader_term: ("$1" | "(" dwarf_reader_term ")")
+ehcontext_term: ("$2" | "(" ehcontext_term ")")
+u8_term: ("$3" | "(" u8_term ")")
+typed_term: (pointer_term | memory_storage_1_term | memory_storage_2_term | memory_storage_3_term | memory_storage_4_term | err_term | ok_term | result_term | opaque_term | dwarf_reader_term | ehcontext_term | u8_term)
+variant_test: (result_test)
+formula: expression
+expression: disjunction ("if" disjunction "else" expression)?
+disjunction: conjunction ("or" conjunction)*
+conjunction: negation ("and" negation)*
+negation: ("not" negation | comparison)
+comparison: arithmetic (compare arithmetic)*
+compare: ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not" "in")
+arithmetic: product (("+" | "-") product)*
+product: unary (("*" | "//" | "%") unary)*
+unary: (("+" | "-"))? primary
+primary: (typed_term | integer | string | "True" | "False" | "None" | "(" expression ")" | collection | builtin)
+collection: ("[" (expression ("," expression)*)? "]" | "[" expression comprehension "]")
+comprehension: "for" identifier "in" disjunction ("if" disjunction)* (comprehension)?
+builtin: (("all" | "any") "(" expression ")" | "len" "(" expression ")" | variant_test)
+identifier: IDENTIFIER
+integer: INTEGER
+string: STRING
+IDENTIFIER: /[A-Za-z_][A-Za-z0-9_]*/
+INTEGER: /[0-9]+/
+STRING: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/
+%import common.WS
+%ignore WS

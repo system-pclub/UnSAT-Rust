@@ -1,0 +1,14 @@
+{
+  "path": "rust/library/core/src/mem/maybe_uninit.rs",
+  "line": 722,
+  "name": "assume_init_ref",
+  "declaration": "const unsafe fn assume_init_ref (& self) -> & T",
+  "parent": "MaybeUninit < T >",
+  "documentation": " Gets a shared reference to the contained value.\n\n This can be useful when we want to access a `MaybeUninit` that has been\n initialized but don't have ownership of the `MaybeUninit` (preventing the use\n of `.assume_init()`).\n\n # Safety\n\n Calling this when the content is not yet fully initialized causes undefined\n behavior: it is up to the caller to guarantee that the `MaybeUninit<T>` really\n is in an initialized state.\n\n # Examples\n\n ### Correct usage of this method:\n\n ```rust\n use std::mem::MaybeUninit;\n\n let mut x = MaybeUninit::<Vec<u32>>::uninit();\n # let mut x_mu = x;\n # let mut x = &mut x_mu;\n // Initialize `x`:\n x.write(vec![1, 2, 3]);\n // Now that our `MaybeUninit<_>` is known to be initialized, it is okay to\n // create a shared reference to it:\n let x: &Vec<u32> = unsafe {\n     // SAFETY: `x` has been initialized.\n     x.assume_init_ref()\n };\n assert_eq!(x, &vec![1, 2, 3]);\n # // Prevent leaks for Miri\n # unsafe { MaybeUninit::assume_init_drop(&mut x_mu); }\n ```\n\n ### *Incorrect* usages of this method:\n\n ```rust,no_run\n use std::mem::MaybeUninit;\n\n let x = MaybeUninit::<Vec<u32>>::uninit();\n let x_vec: &Vec<u32> = unsafe { x.assume_init_ref() };\n // We have created a reference to an uninitialized vector! This is undefined behavior. ⚠️\n ```\n\n ```rust,no_run\n use std::{cell::Cell, mem::MaybeUninit};\n\n let b = MaybeUninit::<Cell<bool>>::uninit();\n // Initialize the `MaybeUninit` using `Cell::set`:\n unsafe {\n     b.assume_init_ref().set(true);\n    // ^^^^^^^^^^^^^^^\n    // Reference to an uninitialized `Cell<bool>`: UB!\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The caller must ensure that the value contained in `self` is fully initialized as a valid `T` before calling `assume_init_ref`; calling it on content that is not yet fully initialized causes undefined behavior."
+  ],
+  "status": "extracted"
+}

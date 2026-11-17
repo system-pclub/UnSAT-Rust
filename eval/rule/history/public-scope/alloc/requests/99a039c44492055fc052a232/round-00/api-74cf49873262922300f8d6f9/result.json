@@ -1,0 +1,17 @@
+{
+  "path": "rust/library/alloc/src/string.rs",
+  "line": 949,
+  "name": "from_raw_parts",
+  "declaration": "unsafe fn from_raw_parts (buf : * mut u8 , length : usize , capacity : usize) -> String",
+  "parent": "String",
+  "documentation": " Creates a new `String` from a pointer, a length and a capacity.\n\n # Safety\n\n This is highly unsafe, due to the number of invariants that aren't\n checked:\n\n * all safety requirements for [`Vec::<u8>::from_raw_parts`].\n * all safety requirements for [`String::from_utf8_unchecked`].\n\n Violating these may cause problems like corrupting the allocator's\n internal data structures. For example, it is normally **not** safe to\n build a `String` from a pointer to a C `char` array containing UTF-8\n _unless_ you are certain that array was originally allocated by the\n Rust standard library's allocator.\n\n The ownership of `buf` is effectively transferred to the\n `String` which may then deallocate, reallocate or change the\n contents of memory pointed to by the pointer at will. Ensure\n that nothing else uses the pointer after calling this\n function.\n\n # Examples\n\n ```\n use std::mem;\n\n unsafe {\n     let s = String::from(\"hello\");\n\n     // Prevent automatically dropping the String's data\n     let mut s = mem::ManuallyDrop::new(s);\n\n     let ptr = s.as_mut_ptr();\n     let len = s.len();\n     let capacity = s.capacity();\n\n     let s = String::from_raw_parts(ptr, len, capacity);\n\n     assert_eq!(String::from(\"hello\"), s);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "All safety requirements of Vec::<u8>::from_raw_parts must be satisfied.",
+    "All safety requirements of String::from_utf8_unchecked must be satisfied.",
+    "If buf points to a C char array containing UTF-8, that array must have been originally allocated by the Rust standard library's allocator.",
+    "Nothing else may use buf after calling this function."
+  ],
+  "status": "extracted"
+}

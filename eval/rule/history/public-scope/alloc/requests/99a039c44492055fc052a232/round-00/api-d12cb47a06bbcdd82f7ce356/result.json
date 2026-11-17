@@ -1,0 +1,21 @@
+{
+  "path": "rust/library/alloc/src/sync.rs",
+  "line": 1404,
+  "name": "from_raw",
+  "declaration": "unsafe fn from_raw (ptr : * const T) -> Self",
+  "parent": "Arc < T >",
+  "documentation": " Constructs an `Arc<T>` from a raw pointer.\n\n The raw pointer must have been previously returned by a call to\n [`Arc<U>::into_raw`][into_raw] with the following requirements:\n\n * If `U` is sized, it must have the same size and alignment as `T`. This\n   is trivially true if `U` is `T`.\n * If `U` is unsized, its data pointer must have the same size and\n   alignment as `T`. This is trivially true if `Arc<U>` was constructed\n   through `Arc<T>` and then converted to `Arc<U>` through an [unsized\n   coercion].\n\n Note that if `U` or `U`'s data pointer is not `T` but has the same size\n and alignment, this is basically like transmuting references of\n different types. See [`mem::transmute`][transmute] for more information\n on what restrictions apply in this case.\n\n The raw pointer must point to a block of memory allocated by the global allocator.\n\n The user of `from_raw` has to make sure a specific value of `T` is only\n dropped once.\n\n This function is unsafe because improper use may lead to memory unsafety,\n even if the returned `Arc<T>` is never accessed.\n\n [into_raw]: Arc::into_raw\n [transmute]: core::mem::transmute\n [unsized coercion]: https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions\n\n # Examples\n\n ```\n use std::sync::Arc;\n\n let x = Arc::new(\"hello\".to_owned());\n let x_ptr = Arc::into_raw(x);\n\n unsafe {\n     // Convert back to an `Arc` to prevent leak.\n     let x = Arc::from_raw(x_ptr);\n     assert_eq!(&*x, \"hello\");\n\n     // Further calls to `Arc::from_raw(x_ptr)` would be memory-unsafe.\n }\n\n // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!\n ```\n\n Convert a slice back into its original array:\n\n ```\n use std::sync::Arc;\n\n let x: Arc<[u32]> = Arc::new([1, 2, 3]);\n let x_ptr: *const [u32] = Arc::into_raw(x);\n\n unsafe {\n     let x: Arc<[u32; 3]> = Arc::from_raw(x_ptr.cast::<[u32; 3]>());\n     assert_eq!(&*x, &[1, 2, 3]);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The pointer passed to Arc<T>::from_raw must have been previously returned by Arc<U>::into_raw.",
+    "If U is sized, U must have the same size as T.",
+    "If U is sized, U must have the same alignment as T.",
+    "If U is unsized, its data pointer must have the same size as T.",
+    "If U is unsized, its data pointer must have the same alignment as T.",
+    "If U or U's data pointer is not T but has the same size and alignment, the restrictions on transmuting references between the different types must be satisfied.",
+    "The pointer passed to Arc<T>::from_raw must point to a block of memory allocated by the global allocator.",
+    "The caller must ensure that any specific value of T is dropped at most once."
+  ],
+  "status": "extracted"
+}

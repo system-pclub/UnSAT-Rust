@@ -1,0 +1,20 @@
+{
+  "path": "rust/library/core/src/clone.rs",
+  "line": 402,
+  "name": "clone_to_uninit",
+  "declaration": "unsafe fn clone_to_uninit (& self , dest : * mut u8)",
+  "parent": "CloneToUninit",
+  "documentation": " Performs copy-assignment from `self` to `dest`.\n\n This is analogous to `std::ptr::write(dest.cast(), self.clone())`,\n except that `Self` may be a dynamically-sized type ([`!Sized`](Sized)).\n\n Before this function is called, `dest` may point to uninitialized memory.\n After this function is called, `dest` will point to initialized memory; it will be\n sound to create a `&Self` reference from the pointer with the [pointer metadata]\n from `self`.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `dest` must be [valid] for writes for `size_of_val(self)` bytes.\n * `dest` must be properly aligned to `align_of_val(self)`.\n\n [valid]: crate::ptr#safety\n [pointer metadata]: crate::ptr::metadata()\n\n # Panics\n\n This function may panic. (For example, it might panic if memory allocation for a clone\n of a value owned by `self` fails.)\n If the call panics, then `*dest` should be treated as uninitialized memory; it must not be\n read or dropped, because even if it was previously valid, it may have been partially\n overwritten.\n\n The caller may wish to to take care to deallocate the allocation pointed to by `dest`,\n if applicable, to avoid a memory leak (but this is not a requirement).\n\n Implementors should avoid leaking values by, upon unwinding, dropping all component values\n that might have already been created. (For example, if a `[Foo]` of length 3 is being\n cloned, and the second of the three calls to `Foo::clone()` unwinds, then the first `Foo`\n cloned should be dropped.)",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `dest` must be valid for writes for `size_of_val(self)` bytes.",
+    "For safety, `dest` must be aligned to `align_of_val(self)`.",
+    "Before `clone_to_uninit` is called, `dest` may point to uninitialized memory.",
+    "After `clone_to_uninit` returns normally, `dest` points to initialized memory.",
+    "After `clone_to_uninit` returns normally, it is sound to create a `&Self` reference from `dest` using the pointer metadata from `self`.",
+    "If `clone_to_uninit` panics, `*dest` must not be read, even if it was valid before the call.",
+    "If `clone_to_uninit` panics, `*dest` must not be dropped, even if it was valid before the call."
+  ],
+  "status": "extracted"
+}

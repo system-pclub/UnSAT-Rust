@@ -11,7 +11,7 @@ fn main() {
 fn run() -> Result<(), String> {
     let mut inputs = vec![];
     let mut rust = PathBuf::from("tools/rust");
-    let mut output = PathBuf::from("tools/dslgen/generated");
+    let mut output = PathBuf::from("tools/x/generated/dsl");
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {

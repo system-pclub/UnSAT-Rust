@@ -1,0 +1,14 @@
+{
+  "path": "rust/library/std/src/collections/hash/map.rs",
+  "line": 1051,
+  "name": "get_disjoint_unchecked_mut",
+  "declaration": "unsafe fn get_disjoint_unchecked_mut < Q : ? Sized , const N : usize > (& mut self , ks : [& Q ; N] ,) -> [Option < & '_ mut V > ; N] where K : Borrow < Q > , Q : Hash + Eq ,",
+  "parent": "HashMap < K , V , S >",
+  "documentation": " Attempts to get mutable references to `N` values in the map at once, without validating that\n the values are unique.\n\n Returns an array of length `N` with the results of each query. `None` will be used if\n the key is missing.\n\n For a safe alternative see [`get_disjoint_mut`](`HashMap::get_disjoint_mut`).\n\n # Safety\n\n Calling this method with overlapping keys is *[undefined behavior]* even if the resulting\n references are not used.\n\n [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n # Examples\n\n ```\n use std::collections::HashMap;\n\n let mut libraries = HashMap::new();\n libraries.insert(\"Bodleian Library\".to_string(), 1602);\n libraries.insert(\"Athenæum\".to_string(), 1807);\n libraries.insert(\"Herzogin-Anna-Amalia-Bibliothek\".to_string(), 1691);\n libraries.insert(\"Library of Congress\".to_string(), 1800);\n\n // SAFETY: The keys do not overlap.\n let [Some(a), Some(b)] = (unsafe { libraries.get_disjoint_unchecked_mut([\n     \"Athenæum\",\n     \"Bodleian Library\",\n ]) }) else { panic!() };\n\n // SAFETY: The keys do not overlap.\n let got = unsafe { libraries.get_disjoint_unchecked_mut([\n     \"Athenæum\",\n     \"Library of Congress\",\n ]) };\n assert_eq!(\n     got,\n     [\n         Some(&mut 1807),\n         Some(&mut 1800),\n     ],\n );\n\n // SAFETY: The keys do not overlap.\n let got = unsafe { libraries.get_disjoint_unchecked_mut([\n     \"Athenæum\",\n     \"New York Public Library\",\n ]) };\n // Missing keys result in None\n assert_eq!(got, [Some(&mut 1807), None]);\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The keys passed to get_disjoint_unchecked_mut must not overlap, even if the resulting references are not used."
+  ],
+  "status": "extracted"
+}

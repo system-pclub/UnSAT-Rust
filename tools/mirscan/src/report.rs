@@ -334,7 +334,17 @@ fn source_span_is_visible(tcx: TyCtxt<'_>, span: Span) -> bool {
 }
 
 fn fn_is_public_or_source_visible<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    // Trait implementation methods cannot spell `pub`, but safe trait methods
+    // are callable through the trait's interface, including automatic Drop.
+    let is_trait_impl_method = if matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::AssocFn) {
+        let item = tcx.associated_item(def_id);
+        matches!(item.container, ty::AssocItemContainer::Impl)
+            && tcx.trait_id_of_impl(item.container_id(tcx)).is_some()
+    } else {
+        false
+    };
     tcx.visibility(def_id).is_public()
+        || is_trait_impl_method
         || source_span_is_visible(
             tcx,
             span_with_body_if_available(tcx, def_id, tcx.def_span(def_id)),
@@ -3969,6 +3979,39 @@ mod tests {
     use rustc_middle::ty::{Ty, TyCtxt};
     use rustc_session::config as sess_config;
     use rustc_span::FileName;
+
+    #[test]
+    fn test_safe_trait_and_nested_drop_methods_are_analysis_roots() {
+        let report = run_audit(
+            r#"
+                pub struct Buffer { pub ptr: *mut u8, pub count: usize }
+
+                impl Iterator for Buffer {
+                    type Item = u8;
+                    fn next(&mut self) -> Option<u8> {
+                        Some(unsafe { std::ptr::read(self.ptr) })
+                    }
+                }
+
+                impl Drop for Buffer {
+                    fn drop(&mut self) {
+                        struct Guard { ptr: *mut u8, count: usize }
+                        impl Drop for Guard {
+                            fn drop(&mut self) {
+                                unsafe { std::ptr::copy(self.ptr, self.ptr, self.count); }
+                            }
+                        }
+                        let guard = Guard { ptr: self.ptr, count: self.count };
+                        let _ = &guard;
+                    }
+                }
+            "#,
+        );
+        assert!(report.targets.iter().any(|target|
+            target.caller.name.ends_with("::next") && target.callee.name.ends_with("::read")));
+        assert!(report.targets.iter().any(|target|
+            target.caller.name.ends_with("::drop") && target.callee.name.ends_with("::copy")));
+    }
 
     struct TestAuditCallbacks {
         src: String,

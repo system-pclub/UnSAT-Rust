@@ -1,0 +1,1894 @@
+{
+  "files": {
+    "tools/rust/library/alloc/src/collections/btree/map.rs": [
+      {
+        "line_number_start": 3068,
+        "line_number_end": 3081,
+        "name": "with_mutable_key",
+        "declaration_text": "unsafe fn with_mutable_key (self) -> CursorMutKey < 'a , K , V , A >",
+        "parent_struct_or_trait": "CursorMut < 'a , K , V , A >",
+        "enclosing_declaration": "impl < 'a , K , V , A > CursorMut < 'a , K , V , A > ",
+        "enclosing_generics": [
+          "'a",
+          "K",
+          "V",
+          "A"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn next (& mut self) -> Option < (& K , & mut V) >",
+          "fn prev (& mut self) -> Option < (& K , & mut V) >",
+          "fn peek_next (& mut self) -> Option < (& K , & mut V) >",
+          "fn peek_prev (& mut self) -> Option < (& K , & mut V) >",
+          "fn as_cursor (& self) -> Cursor < '_ , K , V >",
+          "unsafe fn with_mutable_key (self) -> CursorMutKey < 'a , K , V , A >"
+        ],
+        "source_body": "{ self . inner }",
+        "is_unsafe": true,
+        "comment": " Converts the cursor into a [`CursorMutKey`], which allows mutating\n the key of elements in the tree.\n\n # Safety\n\n Since this cursor allows mutating keys, you must ensure that the `BTreeMap`\n invariants are maintained. Specifically:\n\n * The key of the newly inserted element must be unique in the tree.\n * All keys in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 3177,
+        "line_number_end": 3218,
+        "name": "insert_after_unchecked",
+        "declaration_text": "unsafe fn insert_after_unchecked (& mut self , key : K , value : V)",
+        "parent_struct_or_trait": "CursorMutKey < 'a , K , V , A >",
+        "enclosing_declaration": "impl < 'a , K : Ord , V , A : Allocator + Clone > CursorMutKey < 'a , K , V , A > ",
+        "enclosing_generics": [
+          "'a",
+          "K : Ord",
+          "V",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , key : K , value : V)",
+          "unsafe fn insert_before_unchecked (& mut self , key : K , value : V)",
+          "fn insert_after (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < (K , V) >",
+          "fn remove_prev (& mut self) -> Option < (K , V) >"
+        ],
+        "source_body": "{ let edge = match self . current . take () { None => { let root = unsafe { self . root . reborrow () } ; debug_assert ! (root . is_none ()) ; let mut node = NodeRef :: new_leaf (self . alloc . clone ()) ; let handle = unsafe { node . borrow_mut () . push_with_handle (key , value) } ; * root = Some (node . forget_type ()) ; * self . length += 1 ; self . current = Some (handle . left_edge ()) ; return ; } Some (current) => current , } ; let handle = edge . insert_recursing (key , value , self . alloc . clone () , | ins | { drop (ins . left) ; let root = unsafe { self . root . reborrow () . as_mut () . unwrap () } ; root . push_internal_level (self . alloc . clone ()) . push (ins . kv . 0 , ins . kv . 1 , ins . right) }) ; self . current = Some (handle . left_edge ()) ; * self . length += 1 ; }",
+        "is_unsafe": true,
+        "comment": " Inserts a new key-value pair into the map in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap before the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeMap` invariants are maintained.\n Specifically:\n\n * The key of the newly inserted element must be unique in the tree.\n * All keys in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 3220,
+        "line_number_end": 3264,
+        "name": "insert_before_unchecked",
+        "declaration_text": "unsafe fn insert_before_unchecked (& mut self , key : K , value : V)",
+        "parent_struct_or_trait": "CursorMutKey < 'a , K , V , A >",
+        "enclosing_declaration": "impl < 'a , K : Ord , V , A : Allocator + Clone > CursorMutKey < 'a , K , V , A > ",
+        "enclosing_generics": [
+          "'a",
+          "K : Ord",
+          "V",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , key : K , value : V)",
+          "unsafe fn insert_before_unchecked (& mut self , key : K , value : V)",
+          "fn insert_after (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < (K , V) >",
+          "fn remove_prev (& mut self) -> Option < (K , V) >"
+        ],
+        "source_body": "{ let edge = match self . current . take () { None => { match unsafe { self . root . reborrow () } { root @ None => { let mut node = NodeRef :: new_leaf (self . alloc . clone ()) ; let handle = unsafe { node . borrow_mut () . push_with_handle (key , value) } ; * root = Some (node . forget_type ()) ; * self . length += 1 ; self . current = Some (handle . right_edge ()) ; return ; } Some (root) => root . borrow_mut () . last_leaf_edge () , } } Some (current) => current , } ; let handle = edge . insert_recursing (key , value , self . alloc . clone () , | ins | { drop (ins . left) ; let root = unsafe { self . root . reborrow () . as_mut () . unwrap () } ; root . push_internal_level (self . alloc . clone ()) . push (ins . kv . 0 , ins . kv . 1 , ins . right) }) ; self . current = Some (handle . right_edge ()) ; * self . length += 1 ; }",
+        "is_unsafe": true,
+        "comment": " Inserts a new key-value pair into the map in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap after the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeMap` invariants are maintained.\n Specifically:\n\n * The key of the newly inserted element must be unique in the tree.\n * All keys in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 3382,
+        "line_number_end": 3398,
+        "name": "insert_after_unchecked",
+        "declaration_text": "unsafe fn insert_after_unchecked (& mut self , key : K , value : V)",
+        "parent_struct_or_trait": "CursorMut < 'a , K , V , A >",
+        "enclosing_declaration": "impl < 'a , K : Ord , V , A : Allocator + Clone > CursorMut < 'a , K , V , A > ",
+        "enclosing_generics": [
+          "'a",
+          "K : Ord",
+          "V",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , key : K , value : V)",
+          "unsafe fn insert_before_unchecked (& mut self , key : K , value : V)",
+          "fn insert_after (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < (K , V) >",
+          "fn remove_prev (& mut self) -> Option < (K , V) >"
+        ],
+        "source_body": "{ unsafe { self . inner . insert_after_unchecked (key , value) } }",
+        "is_unsafe": true,
+        "comment": " Inserts a new key-value pair into the map in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap after the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeMap` invariants are maintained.\n Specifically:\n\n * The key of the newly inserted element must be unique in the tree.\n * All keys in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 3400,
+        "line_number_end": 3416,
+        "name": "insert_before_unchecked",
+        "declaration_text": "unsafe fn insert_before_unchecked (& mut self , key : K , value : V)",
+        "parent_struct_or_trait": "CursorMut < 'a , K , V , A >",
+        "enclosing_declaration": "impl < 'a , K : Ord , V , A : Allocator + Clone > CursorMut < 'a , K , V , A > ",
+        "enclosing_generics": [
+          "'a",
+          "K : Ord",
+          "V",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , key : K , value : V)",
+          "unsafe fn insert_before_unchecked (& mut self , key : K , value : V)",
+          "fn insert_after (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , key : K , value : V) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < (K , V) >",
+          "fn remove_prev (& mut self) -> Option < (K , V) >"
+        ],
+        "source_body": "{ unsafe { self . inner . insert_before_unchecked (key , value) } }",
+        "is_unsafe": true,
+        "comment": " Inserts a new key-value pair into the map in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap after the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeMap` invariants are maintained.\n Specifically:\n\n * The key of the newly inserted element must be unique in the tree.\n * All keys in the tree must remain in sorted order."
+      }
+    ],
+    "tools/rust/library/alloc/src/boxed/convert.rs": [
+      {
+        "line_number_start": 368,
+        "line_number_end": 400,
+        "name": "downcast_unchecked",
+        "declaration_text": "unsafe fn downcast_unchecked < T : Any > (self) -> Box < T , A >",
+        "parent_struct_or_trait": "Box < dyn Any , A >",
+        "enclosing_declaration": "impl < A : Allocator > Box < dyn Any , A > ",
+        "enclosing_generics": [
+          "A : Allocator"
+        ],
+        "item_generics": [
+          "T : Any"
+        ],
+        "members": [
+          "fn downcast < T : Any > (self) -> Result < Box < T , A > , Self >",
+          "unsafe fn downcast_unchecked < T : Any > (self) -> Box < T , A >"
+        ],
+        "source_body": "{ debug_assert ! (self . is ::< T > ()) ; unsafe { let (raw , alloc) : (* mut dyn Any , _) = Box :: into_raw_with_allocator (self) ; Box :: from_raw_in (raw as * mut T , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Downcasts the box to a concrete type.\n\n For a safe alternative see [`downcast`].\n\n # Examples\n\n ```\n #![feature(downcast_unchecked)]\n\n use std::any::Any;\n\n let x: Box<dyn Any> = Box::new(1_usize);\n\n unsafe {\n     assert_eq!(*x.downcast_unchecked::<usize>(), 1);\n }\n ```\n\n # Safety\n\n The contained value must be of type `T`. Calling this method\n with the incorrect type is *undefined behavior*.\n\n [`downcast`]: Self::downcast"
+      },
+      {
+        "line_number_start": 427,
+        "line_number_end": 459,
+        "name": "downcast_unchecked",
+        "declaration_text": "unsafe fn downcast_unchecked < T : Any > (self) -> Box < T , A >",
+        "parent_struct_or_trait": "Box < dyn Any + Send , A >",
+        "enclosing_declaration": "impl < A : Allocator > Box < dyn Any + Send , A > ",
+        "enclosing_generics": [
+          "A : Allocator"
+        ],
+        "item_generics": [
+          "T : Any"
+        ],
+        "members": [
+          "fn downcast < T : Any > (self) -> Result < Box < T , A > , Self >",
+          "unsafe fn downcast_unchecked < T : Any > (self) -> Box < T , A >"
+        ],
+        "source_body": "{ debug_assert ! (self . is ::< T > ()) ; unsafe { let (raw , alloc) : (* mut (dyn Any + Send) , _) = Box :: into_raw_with_allocator (self) ; Box :: from_raw_in (raw as * mut T , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Downcasts the box to a concrete type.\n\n For a safe alternative see [`downcast`].\n\n # Examples\n\n ```\n #![feature(downcast_unchecked)]\n\n use std::any::Any;\n\n let x: Box<dyn Any + Send> = Box::new(1_usize);\n\n unsafe {\n     assert_eq!(*x.downcast_unchecked::<usize>(), 1);\n }\n ```\n\n # Safety\n\n The contained value must be of type `T`. Calling this method\n with the incorrect type is *undefined behavior*.\n\n [`downcast`]: Self::downcast"
+      },
+      {
+        "line_number_start": 486,
+        "line_number_end": 519,
+        "name": "downcast_unchecked",
+        "declaration_text": "unsafe fn downcast_unchecked < T : Any > (self) -> Box < T , A >",
+        "parent_struct_or_trait": "Box < dyn Any + Send + Sync , A >",
+        "enclosing_declaration": "impl < A : Allocator > Box < dyn Any + Send + Sync , A > ",
+        "enclosing_generics": [
+          "A : Allocator"
+        ],
+        "item_generics": [
+          "T : Any"
+        ],
+        "members": [
+          "fn downcast < T : Any > (self) -> Result < Box < T , A > , Self >",
+          "unsafe fn downcast_unchecked < T : Any > (self) -> Box < T , A >"
+        ],
+        "source_body": "{ debug_assert ! (self . is ::< T > ()) ; unsafe { let (raw , alloc) : (* mut (dyn Any + Send + Sync) , _) = Box :: into_raw_with_allocator (self) ; Box :: from_raw_in (raw as * mut T , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Downcasts the box to a concrete type.\n\n For a safe alternative see [`downcast`].\n\n # Examples\n\n ```\n #![feature(downcast_unchecked)]\n\n use std::any::Any;\n\n let x: Box<dyn Any + Send + Sync> = Box::new(1_usize);\n\n unsafe {\n     assert_eq!(*x.downcast_unchecked::<usize>(), 1);\n }\n ```\n\n # Safety\n\n The contained value must be of type `T`. Calling this method\n with the incorrect type is *undefined behavior*.\n\n [`downcast`]: Self::downcast"
+      }
+    ],
+    "tools/rust/library/alloc/src/alloc.rs": [
+      {
+        "line_number_start": 52,
+        "line_number_end": 95,
+        "name": "alloc",
+        "declaration_text": "unsafe fn alloc (layout : Layout) -> * mut u8",
+        "parent_struct_or_trait": null,
+        "enclosing_declaration": null,
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [],
+        "source_body": "{ unsafe { core :: ptr :: read_volatile (& __rust_no_alloc_shim_is_unstable) ; __rust_alloc (layout . size () , layout . align ()) } }",
+        "is_unsafe": true,
+        "comment": " Allocates memory with the global allocator.\n\n This function forwards calls to the [`GlobalAlloc::alloc`] method\n of the allocator registered with the `#[global_allocator]` attribute\n if there is one, or the `std` crate’s default.\n\n This function is expected to be deprecated in favor of the `allocate` method\n of the [`Global`] type when it and the [`Allocator`] trait become stable.\n\n # Safety\n\n See [`GlobalAlloc::alloc`].\n\n # Examples\n\n ```\n use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};\n\n unsafe {\n     let layout = Layout::new::<u16>();\n     let ptr = alloc(layout);\n     if ptr.is_null() {\n         handle_alloc_error(layout);\n     }\n\n     *(ptr as *mut u16) = 42;\n     assert_eq!(*(ptr as *mut u16), 42);\n\n     dealloc(ptr, layout);\n }\n ```"
+      },
+      {
+        "line_number_start": 97,
+        "line_number_end": 114,
+        "name": "dealloc",
+        "declaration_text": "unsafe fn dealloc (ptr : * mut u8 , layout : Layout)",
+        "parent_struct_or_trait": null,
+        "enclosing_declaration": null,
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [],
+        "source_body": "{ unsafe { __rust_dealloc (ptr , layout . size () , layout . align ()) } }",
+        "is_unsafe": true,
+        "comment": " Deallocates memory with the global allocator.\n\n This function forwards calls to the [`GlobalAlloc::dealloc`] method\n of the allocator registered with the `#[global_allocator]` attribute\n if there is one, or the `std` crate’s default.\n\n This function is expected to be deprecated in favor of the `deallocate` method\n of the [`Global`] type when it and the [`Allocator`] trait become stable.\n\n # Safety\n\n See [`GlobalAlloc::dealloc`]."
+      },
+      {
+        "line_number_start": 116,
+        "line_number_end": 134,
+        "name": "realloc",
+        "declaration_text": "unsafe fn realloc (ptr : * mut u8 , layout : Layout , new_size : usize) -> * mut u8",
+        "parent_struct_or_trait": null,
+        "enclosing_declaration": null,
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [],
+        "source_body": "{ unsafe { __rust_realloc (ptr , layout . size () , layout . align () , new_size) } }",
+        "is_unsafe": true,
+        "comment": " Reallocates memory with the global allocator.\n\n This function forwards calls to the [`GlobalAlloc::realloc`] method\n of the allocator registered with the `#[global_allocator]` attribute\n if there is one, or the `std` crate’s default.\n\n This function is expected to be deprecated in favor of the `grow` and `shrink` methods\n of the [`Global`] type when it and the [`Allocator`] trait become stable.\n\n # Safety\n\n See [`GlobalAlloc::realloc`]."
+      },
+      {
+        "line_number_start": 136,
+        "line_number_end": 178,
+        "name": "alloc_zeroed",
+        "declaration_text": "unsafe fn alloc_zeroed (layout : Layout) -> * mut u8",
+        "parent_struct_or_trait": null,
+        "enclosing_declaration": null,
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [],
+        "source_body": "{ unsafe { core :: ptr :: read_volatile (& __rust_no_alloc_shim_is_unstable) ; __rust_alloc_zeroed (layout . size () , layout . align ()) } }",
+        "is_unsafe": true,
+        "comment": " Allocates zero-initialized memory with the global allocator.\n\n This function forwards calls to the [`GlobalAlloc::alloc_zeroed`] method\n of the allocator registered with the `#[global_allocator]` attribute\n if there is one, or the `std` crate’s default.\n\n This function is expected to be deprecated in favor of the `allocate_zeroed` method\n of the [`Global`] type when it and the [`Allocator`] trait become stable.\n\n # Safety\n\n See [`GlobalAlloc::alloc_zeroed`].\n\n # Examples\n\n ```\n use std::alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout};\n\n unsafe {\n     let layout = Layout::new::<u16>();\n     let ptr = alloc_zeroed(layout);\n     if ptr.is_null() {\n         handle_alloc_error(layout);\n     }\n\n     assert_eq!(*(ptr as *mut u16), 0);\n\n     dealloc(ptr, layout);\n }\n ```"
+      }
+    ],
+    "tools/rust/library/alloc/src/boxed.rs": [
+      {
+        "line_number_start": 901,
+        "line_number_end": 928,
+        "name": "assume_init",
+        "declaration_text": "unsafe fn assume_init (self) -> Box < T , A >",
+        "parent_struct_or_trait": "Box < mem :: MaybeUninit < T > , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Box < mem :: MaybeUninit < T > , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn assume_init (self) -> Box < T , A >",
+          "fn write (mut boxed : Self , value : T) -> Box < T , A >"
+        ],
+        "source_body": "{ let (raw , alloc) = Box :: into_raw_with_allocator (self) ; unsafe { Box :: from_raw_in (raw as * mut T , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Converts to `Box<T, A>`.\n\n # Safety\n\n As with [`MaybeUninit::assume_init`],\n it is up to the caller to guarantee that the value\n really is in an initialized state.\n Calling this when the content is not yet fully initialized\n causes immediate undefined behavior.\n\n [`MaybeUninit::assume_init`]: mem::MaybeUninit::assume_init\n\n # Examples\n\n ```\n let mut five = Box::<u32>::new_uninit();\n // Deferred initialization:\n five.write(5);\n let five: Box<u32> = unsafe { five.assume_init() };\n\n assert_eq!(*five, 5)\n ```"
+      },
+      {
+        "line_number_start": 966,
+        "line_number_end": 995,
+        "name": "assume_init",
+        "declaration_text": "unsafe fn assume_init (self) -> Box < [T] , A >",
+        "parent_struct_or_trait": "Box < [mem :: MaybeUninit < T >] , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Box < [mem :: MaybeUninit < T >] , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn assume_init (self) -> Box < [T] , A >"
+        ],
+        "source_body": "{ let (raw , alloc) = Box :: into_raw_with_allocator (self) ; unsafe { Box :: from_raw_in (raw as * mut [T] , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Converts to `Box<[T], A>`.\n\n # Safety\n\n As with [`MaybeUninit::assume_init`],\n it is up to the caller to guarantee that the values\n really are in an initialized state.\n Calling this when the content is not yet fully initialized\n causes immediate undefined behavior.\n\n [`MaybeUninit::assume_init`]: mem::MaybeUninit::assume_init\n\n # Examples\n\n ```\n let mut values = Box::<[u32]>::new_uninit_slice(3);\n // Deferred initialization:\n values[0].write(1);\n values[1].write(2);\n values[2].write(3);\n let values = unsafe { values.assume_init() };\n\n assert_eq!(*values, [1, 2, 3])\n ```"
+      },
+      {
+        "line_number_start": 999,
+        "line_number_end": 1046,
+        "name": "from_raw",
+        "declaration_text": "unsafe fn from_raw (raw : * mut T) -> Self",
+        "parent_struct_or_trait": "Box < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Box < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (raw : * mut T) -> Self",
+          "unsafe fn from_non_null (ptr : NonNull < T >) -> Self"
+        ],
+        "source_body": "{ unsafe { Self :: from_raw_in (raw , Global) } }",
+        "is_unsafe": true,
+        "comment": " Constructs a box from a raw pointer.\n\n After calling this function, the raw pointer is owned by the\n resulting `Box`. Specifically, the `Box` destructor will call\n the destructor of `T` and free the allocated memory. For this\n to be safe, the memory must have been allocated in accordance\n with the [memory layout] used by `Box` .\n\n # Safety\n\n This function is unsafe because improper use may lead to\n memory problems. For example, a double-free may occur if the\n function is called twice on the same raw pointer.\n\n The raw pointer must point to a block of memory allocated by the global allocator.\n\n The safety conditions are described in the [memory layout] section.\n\n # Examples\n\n Recreate a `Box` which was previously converted to a raw pointer\n using [`Box::into_raw`]:\n ```\n let x = Box::new(5);\n let ptr = Box::into_raw(x);\n let x = unsafe { Box::from_raw(ptr) };\n ```\n Manually create a `Box` from scratch by using the global allocator:\n ```\n use std::alloc::{alloc, Layout};\n\n unsafe {\n     let ptr = alloc(Layout::new::<i32>()) as *mut i32;\n     // In general .write is required to avoid attempting to destruct\n     // the (uninitialized) previous contents of `ptr`, though for this\n     // simple example `*ptr = 5` would have worked as well.\n     ptr.write(5);\n     let x = Box::from_raw(ptr);\n }\n ```\n\n [memory layout]: self#memory-layout"
+      },
+      {
+        "line_number_start": 1048,
+        "line_number_end": 1100,
+        "name": "from_non_null",
+        "declaration_text": "unsafe fn from_non_null (ptr : NonNull < T >) -> Self",
+        "parent_struct_or_trait": "Box < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Box < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (raw : * mut T) -> Self",
+          "unsafe fn from_non_null (ptr : NonNull < T >) -> Self"
+        ],
+        "source_body": "{ unsafe { Self :: from_raw (ptr . as_ptr ()) } }",
+        "is_unsafe": true,
+        "comment": " Constructs a box from a `NonNull` pointer.\n\n After calling this function, the `NonNull` pointer is owned by\n the resulting `Box`. Specifically, the `Box` destructor will call\n the destructor of `T` and free the allocated memory. For this\n to be safe, the memory must have been allocated in accordance\n with the [memory layout] used by `Box` .\n\n # Safety\n\n This function is unsafe because improper use may lead to\n memory problems. For example, a double-free may occur if the\n function is called twice on the same `NonNull` pointer.\n\n The non-null pointer must point to a block of memory allocated by the global allocator.\n\n The safety conditions are described in the [memory layout] section.\n\n # Examples\n\n Recreate a `Box` which was previously converted to a `NonNull`\n pointer using [`Box::into_non_null`]:\n ```\n #![feature(box_vec_non_null)]\n\n let x = Box::new(5);\n let non_null = Box::into_non_null(x);\n let x = unsafe { Box::from_non_null(non_null) };\n ```\n Manually create a `Box` from scratch by using the global allocator:\n ```\n #![feature(box_vec_non_null)]\n\n use std::alloc::{alloc, Layout};\n use std::ptr::NonNull;\n\n unsafe {\n     let non_null = NonNull::new(alloc(Layout::new::<i32>()).cast::<i32>())\n         .expect(\"allocation failed\");\n     // In general .write is required to avoid attempting to destruct\n     // the (uninitialized) previous contents of `non_null`.\n     non_null.write(5);\n     let x = Box::from_non_null(non_null);\n }\n ```\n\n [memory layout]: self#memory-layout"
+      },
+      {
+        "line_number_start": 1104,
+        "line_number_end": 1155,
+        "name": "from_raw_in",
+        "declaration_text": "unsafe fn from_raw_in (raw : * mut T , alloc : A) -> Self",
+        "parent_struct_or_trait": "Box < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Box < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw_in (raw : * mut T , alloc : A) -> Self",
+          "unsafe fn from_non_null_in (raw : NonNull < T > , alloc : A) -> Self",
+          "fn into_raw (b : Self) -> * mut T",
+          "fn into_non_null (b : Self) -> NonNull < T >",
+          "fn into_raw_with_allocator (b : Self) -> (* mut T , A)",
+          "fn into_non_null_with_allocator (b : Self) -> (NonNull < T > , A)",
+          "fn into_unique (b : Self) -> (Unique < T > , A)",
+          "fn as_mut_ptr (b : & mut Self) -> * mut T",
+          "fn as_ptr (b : & Self) -> * const T",
+          "fn allocator (b : & Self) -> & A",
+          "fn leak < 'a > (b : Self) -> & 'a mut T where A : 'a ,",
+          "fn into_pin (boxed : Self) -> Pin < Self > where A : 'static ,"
+        ],
+        "source_body": "{ Box (unsafe { Unique :: new_unchecked (raw) } , alloc) }",
+        "is_unsafe": true,
+        "comment": " Constructs a box from a raw pointer in the given allocator.\n\n After calling this function, the raw pointer is owned by the\n resulting `Box`. Specifically, the `Box` destructor will call\n the destructor of `T` and free the allocated memory. For this\n to be safe, the memory must have been allocated in accordance\n with the [memory layout] used by `Box` .\n\n # Safety\n\n This function is unsafe because improper use may lead to\n memory problems. For example, a double-free may occur if the\n function is called twice on the same raw pointer.\n\n The raw pointer must point to a block of memory allocated by `alloc`.\n\n # Examples\n\n Recreate a `Box` which was previously converted to a raw pointer\n using [`Box::into_raw_with_allocator`]:\n ```\n #![feature(allocator_api)]\n\n use std::alloc::System;\n\n let x = Box::new_in(5, System);\n let (ptr, alloc) = Box::into_raw_with_allocator(x);\n let x = unsafe { Box::from_raw_in(ptr, alloc) };\n ```\n Manually create a `Box` from scratch by using the system allocator:\n ```\n #![feature(allocator_api, slice_ptr_get)]\n\n use std::alloc::{Allocator, Layout, System};\n\n unsafe {\n     let ptr = System.allocate(Layout::new::<i32>())?.as_mut_ptr() as *mut i32;\n     // In general .write is required to avoid attempting to destruct\n     // the (uninitialized) previous contents of `ptr`, though for this\n     // simple example `*ptr = 5` would have worked as well.\n     ptr.write(5);\n     let x = Box::from_raw_in(ptr, System);\n }\n # Ok::<(), std::alloc::AllocError>(())\n ```\n\n [memory layout]: self#memory-layout"
+      },
+      {
+        "line_number_start": 1157,
+        "line_number_end": 1209,
+        "name": "from_non_null_in",
+        "declaration_text": "unsafe fn from_non_null_in (raw : NonNull < T > , alloc : A) -> Self",
+        "parent_struct_or_trait": "Box < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Box < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw_in (raw : * mut T , alloc : A) -> Self",
+          "unsafe fn from_non_null_in (raw : NonNull < T > , alloc : A) -> Self",
+          "fn into_raw (b : Self) -> * mut T",
+          "fn into_non_null (b : Self) -> NonNull < T >",
+          "fn into_raw_with_allocator (b : Self) -> (* mut T , A)",
+          "fn into_non_null_with_allocator (b : Self) -> (NonNull < T > , A)",
+          "fn into_unique (b : Self) -> (Unique < T > , A)",
+          "fn as_mut_ptr (b : & mut Self) -> * mut T",
+          "fn as_ptr (b : & Self) -> * const T",
+          "fn allocator (b : & Self) -> & A",
+          "fn leak < 'a > (b : Self) -> & 'a mut T where A : 'a ,",
+          "fn into_pin (boxed : Self) -> Pin < Self > where A : 'static ,"
+        ],
+        "source_body": "{ unsafe { Box :: from_raw_in (raw . as_ptr () , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Constructs a box from a `NonNull` pointer in the given allocator.\n\n After calling this function, the `NonNull` pointer is owned by\n the resulting `Box`. Specifically, the `Box` destructor will call\n the destructor of `T` and free the allocated memory. For this\n to be safe, the memory must have been allocated in accordance\n with the [memory layout] used by `Box` .\n\n # Safety\n\n This function is unsafe because improper use may lead to\n memory problems. For example, a double-free may occur if the\n function is called twice on the same raw pointer.\n\n The non-null pointer must point to a block of memory allocated by `alloc`.\n\n # Examples\n\n Recreate a `Box` which was previously converted to a `NonNull` pointer\n using [`Box::into_non_null_with_allocator`]:\n ```\n #![feature(allocator_api, box_vec_non_null)]\n\n use std::alloc::System;\n\n let x = Box::new_in(5, System);\n let (non_null, alloc) = Box::into_non_null_with_allocator(x);\n let x = unsafe { Box::from_non_null_in(non_null, alloc) };\n ```\n Manually create a `Box` from scratch by using the system allocator:\n ```\n #![feature(allocator_api, box_vec_non_null, slice_ptr_get)]\n\n use std::alloc::{Allocator, Layout, System};\n\n unsafe {\n     let non_null = System.allocate(Layout::new::<i32>())?.cast::<i32>();\n     // In general .write is required to avoid attempting to destruct\n     // the (uninitialized) previous contents of `non_null`.\n     non_null.write(5);\n     let x = Box::from_non_null_in(non_null, System);\n }\n # Ok::<(), std::alloc::AllocError>(())\n ```\n\n [memory layout]: self#memory-layout"
+      }
+    ],
+    "tools/rust/library/alloc/src/string.rs": [
+      {
+        "line_number_start": 949,
+        "line_number_end": 996,
+        "name": "from_raw_parts",
+        "declaration_text": "unsafe fn from_raw_parts (buf : * mut u8 , length : usize , capacity : usize) -> String",
+        "parent_struct_or_trait": "String",
+        "enclosing_declaration": "impl  String ",
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [
+          "const fn new () -> String",
+          "fn with_capacity (capacity : usize) -> String",
+          "fn try_with_capacity (capacity : usize) -> Result < String , TryReserveError >",
+          "fn from_utf8 (vec : Vec < u8 >) -> Result < String , FromUtf8Error >",
+          "fn from_utf8_lossy (v : & [u8]) -> Cow < '_ , str >",
+          "fn from_utf8_lossy_owned (v : Vec < u8 >) -> String",
+          "fn from_utf16 (v : & [u16]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16_lossy (v : & [u16]) -> String",
+          "fn from_utf16le (v : & [u8]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16le_lossy (v : & [u8]) -> String",
+          "fn from_utf16be (v : & [u8]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16be_lossy (v : & [u8]) -> String",
+          "fn into_raw_parts (self) -> (* mut u8 , usize , usize)",
+          "unsafe fn from_raw_parts (buf : * mut u8 , length : usize , capacity : usize) -> String",
+          "unsafe fn from_utf8_unchecked (bytes : Vec < u8 >) -> String",
+          "const fn into_bytes (self) -> Vec < u8 >",
+          "const fn as_str (& self) -> & str",
+          "const fn as_mut_str (& mut self) -> & mut str",
+          "fn push_str (& mut self , string : & str)",
+          "fn extend_from_within < R > (& mut self , src : R) where R : RangeBounds < usize > ,",
+          "const fn capacity (& self) -> usize",
+          "fn reserve (& mut self , additional : usize)",
+          "fn reserve_exact (& mut self , additional : usize)",
+          "fn try_reserve (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn try_reserve_exact (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn shrink_to_fit (& mut self)",
+          "fn shrink_to (& mut self , min_capacity : usize)",
+          "fn push (& mut self , ch : char)",
+          "const fn as_bytes (& self) -> & [u8]",
+          "fn truncate (& mut self , new_len : usize)",
+          "fn pop (& mut self) -> Option < char >",
+          "fn remove (& mut self , idx : usize) -> char",
+          "fn remove_matches < P : Pattern > (& mut self , pat : P)",
+          "fn retain < F > (& mut self , mut f : F) where F : FnMut (char) -> bool ,",
+          "fn insert (& mut self , idx : usize , ch : char)",
+          "unsafe fn insert_bytes (& mut self , idx : usize , bytes : & [u8])",
+          "fn insert_str (& mut self , idx : usize , string : & str)",
+          "const unsafe fn as_mut_vec (& mut self) -> & mut Vec < u8 >",
+          "const fn len (& self) -> usize",
+          "const fn is_empty (& self) -> bool",
+          "fn split_off (& mut self , at : usize) -> String",
+          "fn clear (& mut self)",
+          "fn drain < R > (& mut self , range : R) -> Drain < '_ > where R : RangeBounds < usize > ,",
+          "fn into_chars (self) -> IntoChars",
+          "fn replace_range < R > (& mut self , range : R , replace_with : & str) where R : RangeBounds < usize > ,",
+          "fn into_boxed_str (self) -> Box < str >",
+          "fn leak < 'a > (self) -> & 'a mut str"
+        ],
+        "source_body": "{ unsafe { String { vec : Vec :: from_raw_parts (buf , length , capacity) } } }",
+        "is_unsafe": true,
+        "comment": " Creates a new `String` from a pointer, a length and a capacity.\n\n # Safety\n\n This is highly unsafe, due to the number of invariants that aren't\n checked:\n\n * all safety requirements for [`Vec::<u8>::from_raw_parts`].\n * all safety requirements for [`String::from_utf8_unchecked`].\n\n Violating these may cause problems like corrupting the allocator's\n internal data structures. For example, it is normally **not** safe to\n build a `String` from a pointer to a C `char` array containing UTF-8\n _unless_ you are certain that array was originally allocated by the\n Rust standard library's allocator.\n\n The ownership of `buf` is effectively transferred to the\n `String` which may then deallocate, reallocate or change the\n contents of memory pointed to by the pointer at will. Ensure\n that nothing else uses the pointer after calling this\n function.\n\n # Examples\n\n ```\n use std::mem;\n\n unsafe {\n     let s = String::from(\"hello\");\n\n     // Prevent automatically dropping the String's data\n     let mut s = mem::ManuallyDrop::new(s);\n\n     let ptr = s.as_mut_ptr();\n     let len = s.len();\n     let capacity = s.capacity();\n\n     let s = String::from_raw_parts(ptr, len, capacity);\n\n     assert_eq!(String::from(\"hello\"), s);\n }\n ```"
+      },
+      {
+        "line_number_start": 998,
+        "line_number_end": 1029,
+        "name": "from_utf8_unchecked",
+        "declaration_text": "unsafe fn from_utf8_unchecked (bytes : Vec < u8 >) -> String",
+        "parent_struct_or_trait": "String",
+        "enclosing_declaration": "impl  String ",
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [
+          "const fn new () -> String",
+          "fn with_capacity (capacity : usize) -> String",
+          "fn try_with_capacity (capacity : usize) -> Result < String , TryReserveError >",
+          "fn from_utf8 (vec : Vec < u8 >) -> Result < String , FromUtf8Error >",
+          "fn from_utf8_lossy (v : & [u8]) -> Cow < '_ , str >",
+          "fn from_utf8_lossy_owned (v : Vec < u8 >) -> String",
+          "fn from_utf16 (v : & [u16]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16_lossy (v : & [u16]) -> String",
+          "fn from_utf16le (v : & [u8]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16le_lossy (v : & [u8]) -> String",
+          "fn from_utf16be (v : & [u8]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16be_lossy (v : & [u8]) -> String",
+          "fn into_raw_parts (self) -> (* mut u8 , usize , usize)",
+          "unsafe fn from_raw_parts (buf : * mut u8 , length : usize , capacity : usize) -> String",
+          "unsafe fn from_utf8_unchecked (bytes : Vec < u8 >) -> String",
+          "const fn into_bytes (self) -> Vec < u8 >",
+          "const fn as_str (& self) -> & str",
+          "const fn as_mut_str (& mut self) -> & mut str",
+          "fn push_str (& mut self , string : & str)",
+          "fn extend_from_within < R > (& mut self , src : R) where R : RangeBounds < usize > ,",
+          "const fn capacity (& self) -> usize",
+          "fn reserve (& mut self , additional : usize)",
+          "fn reserve_exact (& mut self , additional : usize)",
+          "fn try_reserve (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn try_reserve_exact (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn shrink_to_fit (& mut self)",
+          "fn shrink_to (& mut self , min_capacity : usize)",
+          "fn push (& mut self , ch : char)",
+          "const fn as_bytes (& self) -> & [u8]",
+          "fn truncate (& mut self , new_len : usize)",
+          "fn pop (& mut self) -> Option < char >",
+          "fn remove (& mut self , idx : usize) -> char",
+          "fn remove_matches < P : Pattern > (& mut self , pat : P)",
+          "fn retain < F > (& mut self , mut f : F) where F : FnMut (char) -> bool ,",
+          "fn insert (& mut self , idx : usize , ch : char)",
+          "unsafe fn insert_bytes (& mut self , idx : usize , bytes : & [u8])",
+          "fn insert_str (& mut self , idx : usize , string : & str)",
+          "const unsafe fn as_mut_vec (& mut self) -> & mut Vec < u8 >",
+          "const fn len (& self) -> usize",
+          "const fn is_empty (& self) -> bool",
+          "fn split_off (& mut self , at : usize) -> String",
+          "fn clear (& mut self)",
+          "fn drain < R > (& mut self , range : R) -> Drain < '_ > where R : RangeBounds < usize > ,",
+          "fn into_chars (self) -> IntoChars",
+          "fn replace_range < R > (& mut self , range : R , replace_with : & str) where R : RangeBounds < usize > ,",
+          "fn into_boxed_str (self) -> Box < str >",
+          "fn leak < 'a > (self) -> & 'a mut str"
+        ],
+        "source_body": "{ String { vec : bytes } }",
+        "is_unsafe": true,
+        "comment": " Converts a vector of bytes to a `String` without checking that the\n string contains valid UTF-8.\n\n See the safe version, [`from_utf8`], for more details.\n\n [`from_utf8`]: String::from_utf8\n\n # Safety\n\n This function is unsafe because it does not check that the bytes passed\n to it are valid UTF-8. If this constraint is violated, it may cause\n memory unsafety issues with future users of the `String`, as the rest of\n the standard library assumes that `String`s are valid UTF-8.\n\n # Examples\n\n ```\n // some bytes, in a vector\n let sparkle_heart = vec![240, 159, 146, 150];\n\n let sparkle_heart = unsafe {\n     String::from_utf8_unchecked(sparkle_heart)\n };\n\n assert_eq!(\"💖\", sparkle_heart);\n ```"
+      },
+      {
+        "line_number_start": 1757,
+        "line_number_end": 1785,
+        "name": "as_mut_vec",
+        "declaration_text": "const unsafe fn as_mut_vec (& mut self) -> & mut Vec < u8 >",
+        "parent_struct_or_trait": "String",
+        "enclosing_declaration": "impl  String ",
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [
+          "const fn new () -> String",
+          "fn with_capacity (capacity : usize) -> String",
+          "fn try_with_capacity (capacity : usize) -> Result < String , TryReserveError >",
+          "fn from_utf8 (vec : Vec < u8 >) -> Result < String , FromUtf8Error >",
+          "fn from_utf8_lossy (v : & [u8]) -> Cow < '_ , str >",
+          "fn from_utf8_lossy_owned (v : Vec < u8 >) -> String",
+          "fn from_utf16 (v : & [u16]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16_lossy (v : & [u16]) -> String",
+          "fn from_utf16le (v : & [u8]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16le_lossy (v : & [u8]) -> String",
+          "fn from_utf16be (v : & [u8]) -> Result < String , FromUtf16Error >",
+          "fn from_utf16be_lossy (v : & [u8]) -> String",
+          "fn into_raw_parts (self) -> (* mut u8 , usize , usize)",
+          "unsafe fn from_raw_parts (buf : * mut u8 , length : usize , capacity : usize) -> String",
+          "unsafe fn from_utf8_unchecked (bytes : Vec < u8 >) -> String",
+          "const fn into_bytes (self) -> Vec < u8 >",
+          "const fn as_str (& self) -> & str",
+          "const fn as_mut_str (& mut self) -> & mut str",
+          "fn push_str (& mut self , string : & str)",
+          "fn extend_from_within < R > (& mut self , src : R) where R : RangeBounds < usize > ,",
+          "const fn capacity (& self) -> usize",
+          "fn reserve (& mut self , additional : usize)",
+          "fn reserve_exact (& mut self , additional : usize)",
+          "fn try_reserve (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn try_reserve_exact (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn shrink_to_fit (& mut self)",
+          "fn shrink_to (& mut self , min_capacity : usize)",
+          "fn push (& mut self , ch : char)",
+          "const fn as_bytes (& self) -> & [u8]",
+          "fn truncate (& mut self , new_len : usize)",
+          "fn pop (& mut self) -> Option < char >",
+          "fn remove (& mut self , idx : usize) -> char",
+          "fn remove_matches < P : Pattern > (& mut self , pat : P)",
+          "fn retain < F > (& mut self , mut f : F) where F : FnMut (char) -> bool ,",
+          "fn insert (& mut self , idx : usize , ch : char)",
+          "unsafe fn insert_bytes (& mut self , idx : usize , bytes : & [u8])",
+          "fn insert_str (& mut self , idx : usize , string : & str)",
+          "const unsafe fn as_mut_vec (& mut self) -> & mut Vec < u8 >",
+          "const fn len (& self) -> usize",
+          "const fn is_empty (& self) -> bool",
+          "fn split_off (& mut self , at : usize) -> String",
+          "fn clear (& mut self)",
+          "fn drain < R > (& mut self , range : R) -> Drain < '_ > where R : RangeBounds < usize > ,",
+          "fn into_chars (self) -> IntoChars",
+          "fn replace_range < R > (& mut self , range : R , replace_with : & str) where R : RangeBounds < usize > ,",
+          "fn into_boxed_str (self) -> Box < str >",
+          "fn leak < 'a > (self) -> & 'a mut str"
+        ],
+        "source_body": "{ & mut self . vec }",
+        "is_unsafe": true,
+        "comment": " Returns a mutable reference to the contents of this `String`.\n\n # Safety\n\n This function is unsafe because the returned `&mut Vec` allows writing\n bytes which are not valid UTF-8. If this constraint is violated, using\n the original `String` after dropping the `&mut Vec` may violate memory\n safety, as the rest of the standard library assumes that `String`s are\n valid UTF-8.\n\n # Examples\n\n ```\n let mut s = String::from(\"hello\");\n\n unsafe {\n     let vec = s.as_mut_vec();\n     assert_eq!(&[104, 101, 108, 108, 111][..], &vec[..]);\n\n     vec.reverse();\n }\n assert_eq!(s, \"olleh\");\n ```"
+      }
+    ],
+    "tools/rust/library/alloc/src/str.rs": [
+      {
+        "line_number_start": 603,
+        "line_number_end": 619,
+        "name": "from_boxed_utf8_unchecked",
+        "declaration_text": "unsafe fn from_boxed_utf8_unchecked (v : Box < [u8] >) -> Box < str >",
+        "parent_struct_or_trait": null,
+        "enclosing_declaration": null,
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [],
+        "source_body": "{ unsafe { Box :: from_raw (Box :: into_raw (v) as * mut str) } }",
+        "is_unsafe": true,
+        "comment": " Converts a boxed slice of bytes to a boxed string slice without checking\n that the string contains valid UTF-8.\n\n # Examples\n\n ```\n let smile_utf8 = Box::new([226, 152, 186]);\n let smile = unsafe { std::str::from_boxed_utf8_unchecked(smile_utf8) };\n\n assert_eq!(\"☺\", &*smile);\n ```"
+      }
+    ],
+    "tools/rust/library/alloc/src/collections/btree/set.rs": [
+      {
+        "line_number_start": 2273,
+        "line_number_end": 2286,
+        "name": "with_mutable_key",
+        "declaration_text": "unsafe fn with_mutable_key (self) -> CursorMutKey < 'a , T , A >",
+        "parent_struct_or_trait": "CursorMut < 'a , T , A >",
+        "enclosing_declaration": "impl < 'a , T , A > CursorMut < 'a , T , A > ",
+        "enclosing_generics": [
+          "'a",
+          "T",
+          "A"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn next (& mut self) -> Option < & T >",
+          "fn prev (& mut self) -> Option < & T >",
+          "fn peek_next (& mut self) -> Option < & T >",
+          "fn peek_prev (& mut self) -> Option < & T >",
+          "fn as_cursor (& self) -> Cursor < '_ , T >",
+          "unsafe fn with_mutable_key (self) -> CursorMutKey < 'a , T , A >"
+        ],
+        "source_body": "{ CursorMutKey { inner : unsafe { self . inner . with_mutable_key () } } }",
+        "is_unsafe": true,
+        "comment": " Converts the cursor into a [`CursorMutKey`], which allows mutating\n elements in the tree.\n\n # Safety\n\n Since this cursor allows mutating elements, you must ensure that the\n `BTreeSet` invariants are maintained. Specifically:\n\n * The newly inserted element must be unique in the tree.\n * All elements in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 2339,
+        "line_number_end": 2355,
+        "name": "insert_after_unchecked",
+        "declaration_text": "unsafe fn insert_after_unchecked (& mut self , value : T)",
+        "parent_struct_or_trait": "CursorMut < 'a , T , A >",
+        "enclosing_declaration": "impl < 'a , T : Ord , A : Allocator + Clone > CursorMut < 'a , T , A > ",
+        "enclosing_generics": [
+          "'a",
+          "T : Ord",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , value : T)",
+          "unsafe fn insert_before_unchecked (& mut self , value : T)",
+          "fn insert_after (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < T >",
+          "fn remove_prev (& mut self) -> Option < T >"
+        ],
+        "source_body": "{ unsafe { self . inner . insert_after_unchecked (value , SetValZST) } }",
+        "is_unsafe": true,
+        "comment": " Inserts a new element into the set in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap before the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeSet` invariants are maintained.\n Specifically:\n\n * The newly inserted element must be unique in the tree.\n * All elements in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 2357,
+        "line_number_end": 2373,
+        "name": "insert_before_unchecked",
+        "declaration_text": "unsafe fn insert_before_unchecked (& mut self , value : T)",
+        "parent_struct_or_trait": "CursorMut < 'a , T , A >",
+        "enclosing_declaration": "impl < 'a , T : Ord , A : Allocator + Clone > CursorMut < 'a , T , A > ",
+        "enclosing_generics": [
+          "'a",
+          "T : Ord",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , value : T)",
+          "unsafe fn insert_before_unchecked (& mut self , value : T)",
+          "fn insert_after (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < T >",
+          "fn remove_prev (& mut self) -> Option < T >"
+        ],
+        "source_body": "{ unsafe { self . inner . insert_before_unchecked (value , SetValZST) } }",
+        "is_unsafe": true,
+        "comment": " Inserts a new element into the set in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap after the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeSet` invariants are maintained.\n Specifically:\n\n * The newly inserted element must be unique in the tree.\n * All elements in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 2425,
+        "line_number_end": 2441,
+        "name": "insert_after_unchecked",
+        "declaration_text": "unsafe fn insert_after_unchecked (& mut self , value : T)",
+        "parent_struct_or_trait": "CursorMutKey < 'a , T , A >",
+        "enclosing_declaration": "impl < 'a , T : Ord , A : Allocator + Clone > CursorMutKey < 'a , T , A > ",
+        "enclosing_generics": [
+          "'a",
+          "T : Ord",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , value : T)",
+          "unsafe fn insert_before_unchecked (& mut self , value : T)",
+          "fn insert_after (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < T >",
+          "fn remove_prev (& mut self) -> Option < T >"
+        ],
+        "source_body": "{ unsafe { self . inner . insert_after_unchecked (value , SetValZST) } }",
+        "is_unsafe": true,
+        "comment": " Inserts a new element into the set in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap before the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeSet` invariants are maintained.\n Specifically:\n\n * The key of the newly inserted element must be unique in the tree.\n * All elements in the tree must remain in sorted order."
+      },
+      {
+        "line_number_start": 2443,
+        "line_number_end": 2459,
+        "name": "insert_before_unchecked",
+        "declaration_text": "unsafe fn insert_before_unchecked (& mut self , value : T)",
+        "parent_struct_or_trait": "CursorMutKey < 'a , T , A >",
+        "enclosing_declaration": "impl < 'a , T : Ord , A : Allocator + Clone > CursorMutKey < 'a , T , A > ",
+        "enclosing_generics": [
+          "'a",
+          "T : Ord",
+          "A : Allocator + Clone"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn insert_after_unchecked (& mut self , value : T)",
+          "unsafe fn insert_before_unchecked (& mut self , value : T)",
+          "fn insert_after (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn insert_before (& mut self , value : T) -> Result < () , UnorderedKeyError >",
+          "fn remove_next (& mut self) -> Option < T >",
+          "fn remove_prev (& mut self) -> Option < T >"
+        ],
+        "source_body": "{ unsafe { self . inner . insert_before_unchecked (value , SetValZST) } }",
+        "is_unsafe": true,
+        "comment": " Inserts a new element into the set in the gap that the\n cursor is currently pointing to.\n\n After the insertion the cursor will be pointing at the gap after the\n newly inserted element.\n\n # Safety\n\n You must ensure that the `BTreeSet` invariants are maintained.\n Specifically:\n\n * The newly inserted element must be unique in the tree.\n * All elements in the tree must remain in sorted order."
+      }
+    ],
+    "tools/rust/library/alloc/src/sync.rs": [
+      {
+        "line_number_start": 1325,
+        "line_number_end": 1359,
+        "name": "assume_init",
+        "declaration_text": "unsafe fn assume_init (self) -> Arc < T , A >",
+        "parent_struct_or_trait": "Arc < mem :: MaybeUninit < T > , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Arc < mem :: MaybeUninit < T > , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn assume_init (self) -> Arc < T , A >"
+        ],
+        "source_body": "{ let (ptr , alloc) = Arc :: into_inner_with_allocator (self) ; unsafe { Arc :: from_inner_in (ptr . cast () , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Converts to `Arc<T>`.\n\n # Safety\n\n As with [`MaybeUninit::assume_init`],\n it is up to the caller to guarantee that the inner value\n really is in an initialized state.\n Calling this when the content is not yet fully initialized\n causes immediate undefined behavior.\n\n [`MaybeUninit::assume_init`]: mem::MaybeUninit::assume_init\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let mut five = Arc::<u32>::new_uninit();\n\n // Deferred initialization:\n Arc::get_mut(&mut five).unwrap().write(5);\n\n let five = unsafe { five.assume_init() };\n\n assert_eq!(*five, 5)\n ```"
+      },
+      {
+        "line_number_start": 1363,
+        "line_number_end": 1400,
+        "name": "assume_init",
+        "declaration_text": "unsafe fn assume_init (self) -> Arc < [T] , A >",
+        "parent_struct_or_trait": "Arc < [mem :: MaybeUninit < T >] , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Arc < [mem :: MaybeUninit < T >] , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn assume_init (self) -> Arc < [T] , A >"
+        ],
+        "source_body": "{ let (ptr , alloc) = Arc :: into_inner_with_allocator (self) ; unsafe { Arc :: from_ptr_in (ptr . as_ptr () as _ , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Converts to `Arc<[T]>`.\n\n # Safety\n\n As with [`MaybeUninit::assume_init`],\n it is up to the caller to guarantee that the inner value\n really is in an initialized state.\n Calling this when the content is not yet fully initialized\n causes immediate undefined behavior.\n\n [`MaybeUninit::assume_init`]: mem::MaybeUninit::assume_init\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let mut values = Arc::<[u32]>::new_uninit_slice(3);\n\n // Deferred initialization:\n let data = Arc::get_mut(&mut values).unwrap();\n data[0].write(1);\n data[1].write(2);\n data[2].write(3);\n\n let values = unsafe { values.assume_init() };\n\n assert_eq!(*values, [1, 2, 3])\n ```"
+      },
+      {
+        "line_number_start": 1404,
+        "line_number_end": 1469,
+        "name": "from_raw",
+        "declaration_text": "unsafe fn from_raw (ptr : * const T) -> Self",
+        "parent_struct_or_trait": "Arc < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Arc < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self",
+          "unsafe fn increment_strong_count (ptr : * const T)",
+          "unsafe fn decrement_strong_count (ptr : * const T)"
+        ],
+        "source_body": "{ unsafe { Arc :: from_raw_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Constructs an `Arc<T>` from a raw pointer.\n\n The raw pointer must have been previously returned by a call to\n [`Arc<U>::into_raw`][into_raw] with the following requirements:\n\n * If `U` is sized, it must have the same size and alignment as `T`. This\n   is trivially true if `U` is `T`.\n * If `U` is unsized, its data pointer must have the same size and\n   alignment as `T`. This is trivially true if `Arc<U>` was constructed\n   through `Arc<T>` and then converted to `Arc<U>` through an [unsized\n   coercion].\n\n Note that if `U` or `U`'s data pointer is not `T` but has the same size\n and alignment, this is basically like transmuting references of\n different types. See [`mem::transmute`][transmute] for more information\n on what restrictions apply in this case.\n\n The raw pointer must point to a block of memory allocated by the global allocator.\n\n The user of `from_raw` has to make sure a specific value of `T` is only\n dropped once.\n\n This function is unsafe because improper use may lead to memory unsafety,\n even if the returned `Arc<T>` is never accessed.\n\n [into_raw]: Arc::into_raw\n [transmute]: core::mem::transmute\n [unsized coercion]: https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions\n\n # Examples\n\n ```\n use std::sync::Arc;\n\n let x = Arc::new(\"hello\".to_owned());\n let x_ptr = Arc::into_raw(x);\n\n unsafe {\n     // Convert back to an `Arc` to prevent leak.\n     let x = Arc::from_raw(x_ptr);\n     assert_eq!(&*x, \"hello\");\n\n     // Further calls to `Arc::from_raw(x_ptr)` would be memory-unsafe.\n }\n\n // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!\n ```\n\n Convert a slice back into its original array:\n\n ```\n use std::sync::Arc;\n\n let x: Arc<[u32]> = Arc::new([1, 2, 3]);\n let x_ptr: *const [u32] = Arc::into_raw(x);\n\n unsafe {\n     let x: Arc<[u32; 3]> = Arc::from_raw(x_ptr.cast::<[u32; 3]>());\n     assert_eq!(&*x, &[1, 2, 3]);\n }\n ```"
+      },
+      {
+        "line_number_start": 1471,
+        "line_number_end": 1507,
+        "name": "increment_strong_count",
+        "declaration_text": "unsafe fn increment_strong_count (ptr : * const T)",
+        "parent_struct_or_trait": "Arc < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Arc < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self",
+          "unsafe fn increment_strong_count (ptr : * const T)",
+          "unsafe fn decrement_strong_count (ptr : * const T)"
+        ],
+        "source_body": "{ unsafe { Arc :: increment_strong_count_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Increments the strong reference count on the `Arc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Arc::into_raw` and must satisfy the\n same layout requirements specified in [`Arc::from_raw_in`][from_raw_in].\n The associated `Arc` instance must be valid (i.e. the strong count must be at\n least 1) for the duration of this method, and `ptr` must point to a block of memory\n allocated by the global allocator.\n\n [from_raw_in]: Arc::from_raw_in\n\n # Examples\n\n ```\n use std::sync::Arc;\n\n let five = Arc::new(5);\n\n unsafe {\n     let ptr = Arc::into_raw(five);\n     Arc::increment_strong_count(ptr);\n\n     // This assertion is deterministic because we haven't shared\n     // the `Arc` between threads.\n     let five = Arc::from_raw(ptr);\n     assert_eq!(2, Arc::strong_count(&five));\n #   // Prevent leaks for Miri.\n #   Arc::decrement_strong_count(ptr);\n }\n ```"
+      },
+      {
+        "line_number_start": 1509,
+        "line_number_end": 1547,
+        "name": "decrement_strong_count",
+        "declaration_text": "unsafe fn decrement_strong_count (ptr : * const T)",
+        "parent_struct_or_trait": "Arc < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Arc < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self",
+          "unsafe fn increment_strong_count (ptr : * const T)",
+          "unsafe fn decrement_strong_count (ptr : * const T)"
+        ],
+        "source_body": "{ unsafe { Arc :: decrement_strong_count_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Decrements the strong reference count on the `Arc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Arc::into_raw` and must satisfy the\n same layout requirements specified in [`Arc::from_raw_in`][from_raw_in].\n The associated `Arc` instance must be valid (i.e. the strong count must be at\n least 1) when invoking this method, and `ptr` must point to a block of memory\n allocated by the global allocator. This method can be used to release the final\n `Arc` and backing storage, but **should not** be called after the final `Arc` has been\n released.\n\n [from_raw_in]: Arc::from_raw_in\n\n # Examples\n\n ```\n use std::sync::Arc;\n\n let five = Arc::new(5);\n\n unsafe {\n     let ptr = Arc::into_raw(five);\n     Arc::increment_strong_count(ptr);\n\n     // Those assertions are deterministic because we haven't shared\n     // the `Arc` between threads.\n     let five = Arc::from_raw(ptr);\n     assert_eq!(2, Arc::strong_count(&five));\n     Arc::decrement_strong_count(ptr);\n     assert_eq!(1, Arc::strong_count(&five));\n }\n ```"
+      },
+      {
+        "line_number_start": 1642,
+        "line_number_end": 1720,
+        "name": "from_raw_in",
+        "declaration_text": "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+        "parent_struct_or_trait": "Arc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Arc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn inner (& self) -> & ArcInner < T >",
+          "unsafe fn drop_slow (& mut self)",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ unsafe { let offset = data_offset (ptr) ; let arc_ptr = ptr . byte_sub (offset) as * mut ArcInner < T > ; Self :: from_ptr_in (arc_ptr , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Constructs an `Arc<T, A>` from a raw pointer.\n\n The raw pointer must have been previously returned by a call to [`Arc<U,\n A>::into_raw`][into_raw] with the following requirements:\n\n * If `U` is sized, it must have the same size and alignment as `T`. This\n   is trivially true if `U` is `T`.\n * If `U` is unsized, its data pointer must have the same size and\n   alignment as `T`. This is trivially true if `Arc<U>` was constructed\n   through `Arc<T>` and then converted to `Arc<U>` through an [unsized\n   coercion].\n\n Note that if `U` or `U`'s data pointer is not `T` but has the same size\n and alignment, this is basically like transmuting references of\n different types. See [`mem::transmute`][transmute] for more information\n on what restrictions apply in this case.\n\n The raw pointer must point to a block of memory allocated by `alloc`\n\n The user of `from_raw` has to make sure a specific value of `T` is only\n dropped once.\n\n This function is unsafe because improper use may lead to memory unsafety,\n even if the returned `Arc<T>` is never accessed.\n\n [into_raw]: Arc::into_raw\n [transmute]: core::mem::transmute\n [unsized coercion]: https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::sync::Arc;\n use std::alloc::System;\n\n let x = Arc::new_in(\"hello\".to_owned(), System);\n let x_ptr = Arc::into_raw(x);\n\n unsafe {\n     // Convert back to an `Arc` to prevent leak.\n     let x = Arc::from_raw_in(x_ptr, System);\n     assert_eq!(&*x, \"hello\");\n\n     // Further calls to `Arc::from_raw(x_ptr)` would be memory-unsafe.\n }\n\n // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!\n ```\n\n Convert a slice back into its original array:\n\n ```\n #![feature(allocator_api)]\n\n use std::sync::Arc;\n use std::alloc::System;\n\n let x: Arc<[u32], _> = Arc::new_in([1, 2, 3], System);\n let x_ptr: *const [u32] = Arc::into_raw(x);\n\n unsafe {\n     let x: Arc<[u32; 3], _> = Arc::from_raw_in(x_ptr.cast::<[u32; 3]>(), System);\n     assert_eq!(&*x, &[1, 2, 3]);\n }\n ```"
+      },
+      {
+        "line_number_start": 1830,
+        "line_number_end": 1875,
+        "name": "increment_strong_count_in",
+        "declaration_text": "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+        "parent_struct_or_trait": "Arc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Arc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn inner (& self) -> & ArcInner < T >",
+          "unsafe fn drop_slow (& mut self)",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ let arc = unsafe { mem :: ManuallyDrop :: new (Arc :: from_raw_in (ptr , alloc)) } ; let _arc_clone : mem :: ManuallyDrop < _ > = arc . clone () ; }",
+        "is_unsafe": true,
+        "comment": " Increments the strong reference count on the `Arc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Arc::into_raw` and must satisfy the\n same layout requirements specified in [`Arc::from_raw_in`][from_raw_in].\n The associated `Arc` instance must be valid (i.e. the strong count must be at\n least 1) for the duration of this method, and `ptr` must point to a block of memory\n allocated by `alloc`.\n\n [from_raw_in]: Arc::from_raw_in\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::sync::Arc;\n use std::alloc::System;\n\n let five = Arc::new_in(5, System);\n\n unsafe {\n     let ptr = Arc::into_raw(five);\n     Arc::increment_strong_count_in(ptr, System);\n\n     // This assertion is deterministic because we haven't shared\n     // the `Arc` between threads.\n     let five = Arc::from_raw_in(ptr, System);\n     assert_eq!(2, Arc::strong_count(&five));\n #   // Prevent leaks for Miri.\n #   Arc::decrement_strong_count_in(ptr, System);\n }\n ```"
+      },
+      {
+        "line_number_start": 1877,
+        "line_number_end": 1918,
+        "name": "decrement_strong_count_in",
+        "declaration_text": "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+        "parent_struct_or_trait": "Arc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Arc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn inner (& self) -> & ArcInner < T >",
+          "unsafe fn drop_slow (& mut self)",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ unsafe { drop (Arc :: from_raw_in (ptr , alloc)) } ; }",
+        "is_unsafe": true,
+        "comment": " Decrements the strong reference count on the `Arc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Arc::into_raw` and must satisfy the\n same layout requirements specified in [`Arc::from_raw_in`][from_raw_in].\n The associated `Arc` instance must be valid (i.e. the strong count must be at\n least 1) when invoking this method, and `ptr` must point to a block of memory\n allocated by `alloc`. This method can be used to release the final\n `Arc` and backing storage, but **should not** be called after the final `Arc` has been\n released.\n\n [from_raw_in]: Arc::from_raw_in\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::sync::Arc;\n use std::alloc::System;\n\n let five = Arc::new_in(5, System);\n\n unsafe {\n     let ptr = Arc::into_raw(five);\n     Arc::increment_strong_count_in(ptr, System);\n\n     // Those assertions are deterministic because we haven't shared\n     // the `Arc` between threads.\n     let five = Arc::from_raw_in(ptr, System);\n     assert_eq!(2, Arc::strong_count(&five));\n     Arc::decrement_strong_count_in(ptr, System);\n     assert_eq!(1, Arc::strong_count(&five));\n }\n ```"
+      },
+      {
+        "line_number_start": 2461,
+        "line_number_end": 2527,
+        "name": "get_mut_unchecked",
+        "declaration_text": "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+        "parent_struct_or_trait": "Arc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Arc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn get_mut (this : & mut Self) -> Option < & mut T >",
+          "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+          "fn is_unique (& mut self) -> bool"
+        ],
+        "source_body": "{ unsafe { & mut (* this . ptr . as_ptr ()) . data } }",
+        "is_unsafe": true,
+        "comment": " Returns a mutable reference into the given `Arc`,\n without any check.\n\n See also [`get_mut`], which is safe and does appropriate checks.\n\n [`get_mut`]: Arc::get_mut\n\n # Safety\n\n If any other `Arc` or [`Weak`] pointers to the same allocation exist, then\n they must not be dereferenced or have active borrows for the duration\n of the returned borrow, and their inner type must be exactly the same as the\n inner type of this Rc (including lifetimes). This is trivially the case if no\n such pointers exist, for example immediately after `Arc::new`.\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let mut x = Arc::new(String::new());\n unsafe {\n     Arc::get_mut_unchecked(&mut x).push_str(\"foo\")\n }\n assert_eq!(*x, \"foo\");\n ```\n Other `Arc` pointers to the same allocation must be to the same type.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let x: Arc<str> = Arc::from(\"Hello, world!\");\n let mut y: Arc<[u8]> = x.clone().into();\n unsafe {\n     // this is Undefined Behavior, because x's inner type is str, not [u8]\n     Arc::get_mut_unchecked(&mut y).fill(0xff); // 0xff is invalid in UTF-8\n }\n println!(\"{}\", &*x); // Invalid UTF-8 in a str\n ```\n Other `Arc` pointers to the same allocation must be to the exact same type, including lifetimes.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::sync::Arc;\n\n let x: Arc<&str> = Arc::new(\"Hello, world!\");\n {\n     let s = String::from(\"Oh, no!\");\n     let mut y: Arc<&str> = x.clone();\n     unsafe {\n         // this is Undefined Behavior, because x's inner type\n         // is &'long str, not &'short str\n         *Arc::get_mut_unchecked(&mut y) = &s;\n     }\n }\n println!(\"{}\", &*x); // Use-after-free\n ```"
+      },
+      {
+        "line_number_start": 2673,
+        "line_number_end": 2709,
+        "name": "downcast_unchecked",
+        "declaration_text": "unsafe fn downcast_unchecked < T > (self) -> Arc < T , A > where T : Any + Send + Sync ,",
+        "parent_struct_or_trait": "Arc < dyn Any + Send + Sync , A >",
+        "enclosing_declaration": "impl < A : Allocator > Arc < dyn Any + Send + Sync , A > ",
+        "enclosing_generics": [
+          "A : Allocator"
+        ],
+        "item_generics": [
+          "T"
+        ],
+        "members": [
+          "fn downcast < T > (self) -> Result < Arc < T , A > , Self > where T : Any + Send + Sync ,",
+          "unsafe fn downcast_unchecked < T > (self) -> Arc < T , A > where T : Any + Send + Sync ,"
+        ],
+        "source_body": "{ unsafe { let (ptr , alloc) = Arc :: into_inner_with_allocator (self) ; Arc :: from_inner_in (ptr . cast () , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Downcasts the `Arc<dyn Any + Send + Sync>` to a concrete type.\n\n For a safe alternative see [`downcast`].\n\n # Examples\n\n ```\n #![feature(downcast_unchecked)]\n\n use std::any::Any;\n use std::sync::Arc;\n\n let x: Arc<dyn Any + Send + Sync> = Arc::new(1_usize);\n\n unsafe {\n     assert_eq!(*x.downcast_unchecked::<usize>(), 1);\n }\n ```\n\n # Safety\n\n The contained value must be of type `T`. Calling this method\n with the incorrect type is *undefined behavior*.\n\n\n [`downcast`]: Self::downcast"
+      },
+      {
+        "line_number_start": 2768,
+        "line_number_end": 2813,
+        "name": "from_raw",
+        "declaration_text": "unsafe fn from_raw (ptr : * const T) -> Self",
+        "parent_struct_or_trait": "Weak < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Weak < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self"
+        ],
+        "source_body": "{ unsafe { Weak :: from_raw_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>`.\n\n This can be used to safely get a strong reference (by calling [`upgrade`]\n later) or to deallocate the weak count by dropping the `Weak<T>`.\n\n It takes ownership of one weak reference (with the exception of pointers created by [`new`],\n as these don't own anything; the method still works on them).\n\n # Safety\n\n The pointer must have originated from the [`into_raw`] and must still own its potential\n weak reference, and must point to a block of memory allocated by global allocator.\n\n It is allowed for the strong count to be 0 at the time of calling this. Nevertheless, this\n takes ownership of one weak reference currently represented as a raw pointer (the weak\n count is not modified by this operation) and therefore it must be paired with a previous\n call to [`into_raw`].\n # Examples\n\n ```\n use std::sync::{Arc, Weak};\n\n let strong = Arc::new(\"hello\".to_owned());\n\n let raw_1 = Arc::downgrade(&strong).into_raw();\n let raw_2 = Arc::downgrade(&strong).into_raw();\n\n assert_eq!(2, Arc::weak_count(&strong));\n\n assert_eq!(\"hello\", &*unsafe { Weak::from_raw(raw_1) }.upgrade().unwrap());\n assert_eq!(1, Arc::weak_count(&strong));\n\n drop(strong);\n\n // Decrement the last weak count.\n assert!(unsafe { Weak::from_raw(raw_2) }.upgrade().is_none());\n ```\n\n [`new`]: Weak::new\n [`into_raw`]: Weak::into_raw\n [`upgrade`]: Weak::upgrade"
+      },
+      {
+        "line_number_start": 2938,
+        "line_number_end": 2999,
+        "name": "from_raw_in",
+        "declaration_text": "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+        "parent_struct_or_trait": "Weak < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Weak < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (& self) -> & A",
+          "fn as_ptr (& self) -> * const T",
+          "fn into_raw (self) -> * const T",
+          "fn into_raw_with_allocator (self) -> (* const T , A)",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self"
+        ],
+        "source_body": "{ let ptr = if is_dangling (ptr) { ptr as * mut ArcInner < T > } else { let offset = unsafe { data_offset (ptr) } ; unsafe { ptr . byte_sub (offset) as * mut ArcInner < T > } } ; Weak { ptr : unsafe { NonNull :: new_unchecked (ptr) } , alloc } }",
+        "is_unsafe": true,
+        "comment": " Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>` in the provided\n allocator.\n\n This can be used to safely get a strong reference (by calling [`upgrade`]\n later) or to deallocate the weak count by dropping the `Weak<T>`.\n\n It takes ownership of one weak reference (with the exception of pointers created by [`new`],\n as these don't own anything; the method still works on them).\n\n # Safety\n\n The pointer must have originated from the [`into_raw`] and must still own its potential\n weak reference, and must point to a block of memory allocated by `alloc`.\n\n It is allowed for the strong count to be 0 at the time of calling this. Nevertheless, this\n takes ownership of one weak reference currently represented as a raw pointer (the weak\n count is not modified by this operation) and therefore it must be paired with a previous\n call to [`into_raw`].\n # Examples\n\n ```\n use std::sync::{Arc, Weak};\n\n let strong = Arc::new(\"hello\".to_owned());\n\n let raw_1 = Arc::downgrade(&strong).into_raw();\n let raw_2 = Arc::downgrade(&strong).into_raw();\n\n assert_eq!(2, Arc::weak_count(&strong));\n\n assert_eq!(\"hello\", &*unsafe { Weak::from_raw(raw_1) }.upgrade().unwrap());\n assert_eq!(1, Arc::weak_count(&strong));\n\n drop(strong);\n\n // Decrement the last weak count.\n assert!(unsafe { Weak::from_raw(raw_2) }.upgrade().is_none());\n ```\n\n [`new`]: Weak::new\n [`into_raw`]: Weak::into_raw\n [`upgrade`]: Weak::upgrade"
+      }
+    ],
+    "tools/rust/library/alloc/src/rc.rs": [
+      {
+        "line_number_start": 1181,
+        "line_number_end": 1214,
+        "name": "assume_init",
+        "declaration_text": "unsafe fn assume_init (self) -> Rc < T , A >",
+        "parent_struct_or_trait": "Rc < mem :: MaybeUninit < T > , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Rc < mem :: MaybeUninit < T > , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn assume_init (self) -> Rc < T , A >"
+        ],
+        "source_body": "{ let (ptr , alloc) = Rc :: into_inner_with_allocator (self) ; unsafe { Rc :: from_inner_in (ptr . cast () , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Converts to `Rc<T>`.\n\n # Safety\n\n As with [`MaybeUninit::assume_init`],\n it is up to the caller to guarantee that the inner value\n really is in an initialized state.\n Calling this when the content is not yet fully initialized\n causes immediate undefined behavior.\n\n [`MaybeUninit::assume_init`]: mem::MaybeUninit::assume_init\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let mut five = Rc::<u32>::new_uninit();\n\n // Deferred initialization:\n Rc::get_mut(&mut five).unwrap().write(5);\n\n let five = unsafe { five.assume_init() };\n\n assert_eq!(*five, 5)\n ```"
+      },
+      {
+        "line_number_start": 1218,
+        "line_number_end": 1254,
+        "name": "assume_init",
+        "declaration_text": "unsafe fn assume_init (self) -> Rc < [T] , A >",
+        "parent_struct_or_trait": "Rc < [mem :: MaybeUninit < T >] , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Rc < [mem :: MaybeUninit < T >] , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn assume_init (self) -> Rc < [T] , A >"
+        ],
+        "source_body": "{ let (ptr , alloc) = Rc :: into_inner_with_allocator (self) ; unsafe { Rc :: from_ptr_in (ptr . as_ptr () as _ , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Converts to `Rc<[T]>`.\n\n # Safety\n\n As with [`MaybeUninit::assume_init`],\n it is up to the caller to guarantee that the inner value\n really is in an initialized state.\n Calling this when the content is not yet fully initialized\n causes immediate undefined behavior.\n\n [`MaybeUninit::assume_init`]: mem::MaybeUninit::assume_init\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let mut values = Rc::<[u32]>::new_uninit_slice(3);\n\n // Deferred initialization:\n let data = Rc::get_mut(&mut values).unwrap();\n data[0].write(1);\n data[1].write(2);\n data[2].write(3);\n\n let values = unsafe { values.assume_init() };\n\n assert_eq!(*values, [1, 2, 3])\n ```"
+      },
+      {
+        "line_number_start": 1258,
+        "line_number_end": 1323,
+        "name": "from_raw",
+        "declaration_text": "unsafe fn from_raw (ptr : * const T) -> Self",
+        "parent_struct_or_trait": "Rc < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Rc < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self",
+          "unsafe fn increment_strong_count (ptr : * const T)",
+          "unsafe fn decrement_strong_count (ptr : * const T)"
+        ],
+        "source_body": "{ unsafe { Self :: from_raw_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Constructs an `Rc<T>` from a raw pointer.\n\n The raw pointer must have been previously returned by a call to\n [`Rc<U>::into_raw`][into_raw] with the following requirements:\n\n * If `U` is sized, it must have the same size and alignment as `T`. This\n   is trivially true if `U` is `T`.\n * If `U` is unsized, its data pointer must have the same size and\n   alignment as `T`. This is trivially true if `Rc<U>` was constructed\n   through `Rc<T>` and then converted to `Rc<U>` through an [unsized\n   coercion].\n\n Note that if `U` or `U`'s data pointer is not `T` but has the same size\n and alignment, this is basically like transmuting references of\n different types. See [`mem::transmute`][transmute] for more information\n on what restrictions apply in this case.\n\n The raw pointer must point to a block of memory allocated by the global allocator\n\n The user of `from_raw` has to make sure a specific value of `T` is only\n dropped once.\n\n This function is unsafe because improper use may lead to memory unsafety,\n even if the returned `Rc<T>` is never accessed.\n\n [into_raw]: Rc::into_raw\n [transmute]: core::mem::transmute\n [unsized coercion]: https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions\n\n # Examples\n\n ```\n use std::rc::Rc;\n\n let x = Rc::new(\"hello\".to_owned());\n let x_ptr = Rc::into_raw(x);\n\n unsafe {\n     // Convert back to an `Rc` to prevent leak.\n     let x = Rc::from_raw(x_ptr);\n     assert_eq!(&*x, \"hello\");\n\n     // Further calls to `Rc::from_raw(x_ptr)` would be memory-unsafe.\n }\n\n // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!\n ```\n\n Convert a slice back into its original array:\n\n ```\n use std::rc::Rc;\n\n let x: Rc<[u32]> = Rc::new([1, 2, 3]);\n let x_ptr: *const [u32] = Rc::into_raw(x);\n\n unsafe {\n     let x: Rc<[u32; 3]> = Rc::from_raw(x_ptr.cast::<[u32; 3]>());\n     assert_eq!(&*x, &[1, 2, 3]);\n }\n ```"
+      },
+      {
+        "line_number_start": 1325,
+        "line_number_end": 1359,
+        "name": "increment_strong_count",
+        "declaration_text": "unsafe fn increment_strong_count (ptr : * const T)",
+        "parent_struct_or_trait": "Rc < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Rc < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self",
+          "unsafe fn increment_strong_count (ptr : * const T)",
+          "unsafe fn decrement_strong_count (ptr : * const T)"
+        ],
+        "source_body": "{ unsafe { Self :: increment_strong_count_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Increments the strong reference count on the `Rc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Rc::into_raw` and must satisfy the\n same layout requirements specified in [`Rc::from_raw_in`][from_raw_in].\n The associated `Rc` instance must be valid (i.e. the strong count must be at\n least 1) for the duration of this method, and `ptr` must point to a block of memory\n allocated by the global allocator.\n\n [from_raw_in]: Rc::from_raw_in\n\n # Examples\n\n ```\n use std::rc::Rc;\n\n let five = Rc::new(5);\n\n unsafe {\n     let ptr = Rc::into_raw(five);\n     Rc::increment_strong_count(ptr);\n\n     let five = Rc::from_raw(ptr);\n     assert_eq!(2, Rc::strong_count(&five));\n #   // Prevent leaks for Miri.\n #   Rc::decrement_strong_count(ptr);\n }\n ```"
+      },
+      {
+        "line_number_start": 1361,
+        "line_number_end": 1396,
+        "name": "decrement_strong_count",
+        "declaration_text": "unsafe fn decrement_strong_count (ptr : * const T)",
+        "parent_struct_or_trait": "Rc < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Rc < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self",
+          "unsafe fn increment_strong_count (ptr : * const T)",
+          "unsafe fn decrement_strong_count (ptr : * const T)"
+        ],
+        "source_body": "{ unsafe { Self :: decrement_strong_count_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Decrements the strong reference count on the `Rc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Rc::into_raw`and must satisfy the\n same layout requirements specified in [`Rc::from_raw_in`][from_raw_in].\n The associated `Rc` instance must be valid (i.e. the strong count must be at\n least 1) when invoking this method, and `ptr` must point to a block of memory\n allocated by the global allocator. This method can be used to release the final `Rc` and\n backing storage, but **should not** be called after the final `Rc` has been released.\n\n [from_raw_in]: Rc::from_raw_in\n\n # Examples\n\n ```\n use std::rc::Rc;\n\n let five = Rc::new(5);\n\n unsafe {\n     let ptr = Rc::into_raw(five);\n     Rc::increment_strong_count(ptr);\n\n     let five = Rc::from_raw(ptr);\n     assert_eq!(2, Rc::strong_count(&five));\n     Rc::decrement_strong_count(ptr);\n     assert_eq!(1, Rc::strong_count(&five));\n }\n ```"
+      },
+      {
+        "line_number_start": 1490,
+        "line_number_end": 1565,
+        "name": "from_raw_in",
+        "declaration_text": "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+        "parent_struct_or_trait": "Rc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Rc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn is_unique (this : & Self) -> bool",
+          "fn get_mut (this : & mut Self) -> Option < & mut T >",
+          "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ let offset = unsafe { data_offset (ptr) } ; let rc_ptr = unsafe { ptr . byte_sub (offset) as * mut RcInner < T > } ; unsafe { Self :: from_ptr_in (rc_ptr , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Constructs an `Rc<T, A>` from a raw pointer in the provided allocator.\n\n The raw pointer must have been previously returned by a call to [`Rc<U,\n A>::into_raw`][into_raw] with the following requirements:\n\n * If `U` is sized, it must have the same size and alignment as `T`. This\n   is trivially true if `U` is `T`.\n * If `U` is unsized, its data pointer must have the same size and\n   alignment as `T`. This is trivially true if `Rc<U>` was constructed\n   through `Rc<T>` and then converted to `Rc<U>` through an [unsized\n   coercion].\n\n Note that if `U` or `U`'s data pointer is not `T` but has the same size\n and alignment, this is basically like transmuting references of\n different types. See [`mem::transmute`][transmute] for more information\n on what restrictions apply in this case.\n\n The raw pointer must point to a block of memory allocated by `alloc`\n\n The user of `from_raw` has to make sure a specific value of `T` is only\n dropped once.\n\n This function is unsafe because improper use may lead to memory unsafety,\n even if the returned `Rc<T>` is never accessed.\n\n [into_raw]: Rc::into_raw\n [transmute]: core::mem::transmute\n [unsized coercion]: https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::rc::Rc;\n use std::alloc::System;\n\n let x = Rc::new_in(\"hello\".to_owned(), System);\n let x_ptr = Rc::into_raw(x);\n\n unsafe {\n     // Convert back to an `Rc` to prevent leak.\n     let x = Rc::from_raw_in(x_ptr, System);\n     assert_eq!(&*x, \"hello\");\n\n     // Further calls to `Rc::from_raw(x_ptr)` would be memory-unsafe.\n }\n\n // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!\n ```\n\n Convert a slice back into its original array:\n\n ```\n #![feature(allocator_api)]\n\n use std::rc::Rc;\n use std::alloc::System;\n\n let x: Rc<[u32], _> = Rc::new_in([1, 2, 3], System);\n let x_ptr: *const [u32] = Rc::into_raw(x);\n\n unsafe {\n     let x: Rc<[u32; 3], _> = Rc::from_raw_in(x_ptr.cast::<[u32; 3]>(), System);\n     assert_eq!(&*x, &[1, 2, 3]);\n }\n ```"
+      },
+      {
+        "line_number_start": 1627,
+        "line_number_end": 1670,
+        "name": "increment_strong_count_in",
+        "declaration_text": "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+        "parent_struct_or_trait": "Rc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Rc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn is_unique (this : & Self) -> bool",
+          "fn get_mut (this : & mut Self) -> Option < & mut T >",
+          "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ let rc = unsafe { mem :: ManuallyDrop :: new (Rc :: < T , A > :: from_raw_in (ptr , alloc)) } ; let _rc_clone : mem :: ManuallyDrop < _ > = rc . clone () ; }",
+        "is_unsafe": true,
+        "comment": " Increments the strong reference count on the `Rc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Rc::into_raw` and must satisfy the\n same layout requirements specified in [`Rc::from_raw_in`][from_raw_in].\n The associated `Rc` instance must be valid (i.e. the strong count must be at\n least 1) for the duration of this method, and `ptr` must point to a block of memory\n allocated by `alloc`.\n\n [from_raw_in]: Rc::from_raw_in\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::rc::Rc;\n use std::alloc::System;\n\n let five = Rc::new_in(5, System);\n\n unsafe {\n     let ptr = Rc::into_raw(five);\n     Rc::increment_strong_count_in(ptr, System);\n\n     let five = Rc::from_raw_in(ptr, System);\n     assert_eq!(2, Rc::strong_count(&five));\n #   // Prevent leaks for Miri.\n #   Rc::decrement_strong_count_in(ptr, System);\n }\n ```"
+      },
+      {
+        "line_number_start": 1672,
+        "line_number_end": 1710,
+        "name": "decrement_strong_count_in",
+        "declaration_text": "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+        "parent_struct_or_trait": "Rc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Rc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn is_unique (this : & Self) -> bool",
+          "fn get_mut (this : & mut Self) -> Option < & mut T >",
+          "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ unsafe { drop (Rc :: from_raw_in (ptr , alloc)) } ; }",
+        "is_unsafe": true,
+        "comment": " Decrements the strong reference count on the `Rc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Rc::into_raw`and must satisfy the\n same layout requirements specified in [`Rc::from_raw_in`][from_raw_in].\n The associated `Rc` instance must be valid (i.e. the strong count must be at\n least 1) when invoking this method, and `ptr` must point to a block of memory\n allocated by `alloc`. This method can be used to release the final `Rc` and\n backing storage, but **should not** be called after the final `Rc` has been released.\n\n [from_raw_in]: Rc::from_raw_in\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::rc::Rc;\n use std::alloc::System;\n\n let five = Rc::new_in(5, System);\n\n unsafe {\n     let ptr = Rc::into_raw(five);\n     Rc::increment_strong_count_in(ptr, System);\n\n     let five = Rc::from_raw_in(ptr, System);\n     assert_eq!(2, Rc::strong_count(&five));\n     Rc::decrement_strong_count_in(ptr, System);\n     assert_eq!(1, Rc::strong_count(&five));\n }\n ```"
+      },
+      {
+        "line_number_start": 1749,
+        "line_number_end": 1815,
+        "name": "get_mut_unchecked",
+        "declaration_text": "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+        "parent_struct_or_trait": "Rc < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Rc < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (this : & Self) -> & A",
+          "fn into_raw (this : Self) -> * const T",
+          "fn into_raw_with_allocator (this : Self) -> (* const T , A)",
+          "fn as_ptr (this : & Self) -> * const T",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn downgrade (this : & Self) -> Weak < T , A > where A : Clone ,",
+          "fn weak_count (this : & Self) -> usize",
+          "fn strong_count (this : & Self) -> usize",
+          "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+          "unsafe fn decrement_strong_count_in (ptr : * const T , alloc : A)",
+          "fn is_unique (this : & Self) -> bool",
+          "fn get_mut (this : & mut Self) -> Option < & mut T >",
+          "unsafe fn get_mut_unchecked (this : & mut Self) -> & mut T",
+          "fn ptr_eq (this : & Self , other : & Self) -> bool"
+        ],
+        "source_body": "{ unsafe { & mut (* this . ptr . as_ptr ()) . value } }",
+        "is_unsafe": true,
+        "comment": " Returns a mutable reference into the given `Rc`,\n without any check.\n\n See also [`get_mut`], which is safe and does appropriate checks.\n\n [`get_mut`]: Rc::get_mut\n\n # Safety\n\n If any other `Rc` or [`Weak`] pointers to the same allocation exist, then\n they must not be dereferenced or have active borrows for the duration\n of the returned borrow, and their inner type must be exactly the same as the\n inner type of this Rc (including lifetimes). This is trivially the case if no\n such pointers exist, for example immediately after `Rc::new`.\n\n # Examples\n\n ```\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let mut x = Rc::new(String::new());\n unsafe {\n     Rc::get_mut_unchecked(&mut x).push_str(\"foo\")\n }\n assert_eq!(*x, \"foo\");\n ```\n Other `Rc` pointers to the same allocation must be to the same type.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let x: Rc<str> = Rc::from(\"Hello, world!\");\n let mut y: Rc<[u8]> = x.clone().into();\n unsafe {\n     // this is Undefined Behavior, because x's inner type is str, not [u8]\n     Rc::get_mut_unchecked(&mut y).fill(0xff); // 0xff is invalid in UTF-8\n }\n println!(\"{}\", &*x); // Invalid UTF-8 in a str\n ```\n Other `Rc` pointers to the same allocation must be to the exact same type, including lifetimes.\n ```no_run\n #![feature(get_mut_unchecked)]\n\n use std::rc::Rc;\n\n let x: Rc<&str> = Rc::new(\"Hello, world!\");\n {\n     let s = String::from(\"Oh, no!\");\n     let mut y: Rc<&str> = x.clone();\n     unsafe {\n         // this is Undefined Behavior, because x's inner type\n         // is &'long str, not &'short str\n         *Rc::get_mut_unchecked(&mut y) = &s;\n     }\n }\n println!(\"{}\", &*x); // Use-after-free\n ```"
+      },
+      {
+        "line_number_start": 2016,
+        "line_number_end": 2049,
+        "name": "downcast_unchecked",
+        "declaration_text": "unsafe fn downcast_unchecked < T : Any > (self) -> Rc < T , A >",
+        "parent_struct_or_trait": "Rc < dyn Any , A >",
+        "enclosing_declaration": "impl < A : Allocator > Rc < dyn Any , A > ",
+        "enclosing_generics": [
+          "A : Allocator"
+        ],
+        "item_generics": [
+          "T : Any"
+        ],
+        "members": [
+          "fn downcast < T : Any > (self) -> Result < Rc < T , A > , Self >",
+          "unsafe fn downcast_unchecked < T : Any > (self) -> Rc < T , A >"
+        ],
+        "source_body": "{ unsafe { let (ptr , alloc) = Rc :: into_inner_with_allocator (self) ; Rc :: from_inner_in (ptr . cast () , alloc) } }",
+        "is_unsafe": true,
+        "comment": " Downcasts the `Rc<dyn Any>` to a concrete type.\n\n For a safe alternative see [`downcast`].\n\n # Examples\n\n ```\n #![feature(downcast_unchecked)]\n\n use std::any::Any;\n use std::rc::Rc;\n\n let x: Rc<dyn Any> = Rc::new(1_usize);\n\n unsafe {\n     assert_eq!(*x.downcast_unchecked::<usize>(), 1);\n }\n ```\n\n # Safety\n\n The contained value must be of type `T`. Calling this method\n with the incorrect type is *undefined behavior*.\n\n\n [`downcast`]: Self::downcast"
+      },
+      {
+        "line_number_start": 3080,
+        "line_number_end": 3126,
+        "name": "from_raw",
+        "declaration_text": "unsafe fn from_raw (ptr : * const T) -> Self",
+        "parent_struct_or_trait": "Weak < T >",
+        "enclosing_declaration": "impl < T : ? Sized > Weak < T > ",
+        "enclosing_generics": [
+          "T : ? Sized"
+        ],
+        "item_generics": [],
+        "members": [
+          "unsafe fn from_raw (ptr : * const T) -> Self"
+        ],
+        "source_body": "{ unsafe { Self :: from_raw_in (ptr , Global) } }",
+        "is_unsafe": true,
+        "comment": " Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>`.\n\n This can be used to safely get a strong reference (by calling [`upgrade`]\n later) or to deallocate the weak count by dropping the `Weak<T>`.\n\n It takes ownership of one weak reference (with the exception of pointers created by [`new`],\n as these don't own anything; the method still works on them).\n\n # Safety\n\n The pointer must have originated from the [`into_raw`] and must still own its potential\n weak reference, and `ptr` must point to a block of memory allocated by the global allocator.\n\n It is allowed for the strong count to be 0 at the time of calling this. Nevertheless, this\n takes ownership of one weak reference currently represented as a raw pointer (the weak\n count is not modified by this operation) and therefore it must be paired with a previous\n call to [`into_raw`].\n\n # Examples\n\n ```\n use std::rc::{Rc, Weak};\n\n let strong = Rc::new(\"hello\".to_owned());\n\n let raw_1 = Rc::downgrade(&strong).into_raw();\n let raw_2 = Rc::downgrade(&strong).into_raw();\n\n assert_eq!(2, Rc::weak_count(&strong));\n\n assert_eq!(\"hello\", &*unsafe { Weak::from_raw(raw_1) }.upgrade().unwrap());\n assert_eq!(1, Rc::weak_count(&strong));\n\n drop(strong);\n\n // Decrement the last weak count.\n assert!(unsafe { Weak::from_raw(raw_2) }.upgrade().is_none());\n ```\n\n [`into_raw`]: Weak::into_raw\n [`upgrade`]: Weak::upgrade\n [`new`]: Weak::new"
+      },
+      {
+        "line_number_start": 3252,
+        "line_number_end": 3313,
+        "name": "from_raw_in",
+        "declaration_text": "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+        "parent_struct_or_trait": "Weak < T , A >",
+        "enclosing_declaration": "impl < T : ? Sized , A : Allocator > Weak < T , A > ",
+        "enclosing_generics": [
+          "T : ? Sized",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "fn allocator (& self) -> & A",
+          "fn as_ptr (& self) -> * const T",
+          "fn into_raw (self) -> * const T",
+          "fn into_raw_with_allocator (self) -> (* const T , A)",
+          "unsafe fn from_raw_in (ptr : * const T , alloc : A) -> Self",
+          "fn upgrade (& self) -> Option < Rc < T , A > > where A : Clone ,",
+          "fn strong_count (& self) -> usize",
+          "fn weak_count (& self) -> usize",
+          "fn inner (& self) -> Option < WeakInner < '_ > >",
+          "fn ptr_eq (& self , other : & Self) -> bool"
+        ],
+        "source_body": "{ let ptr = if is_dangling (ptr) { ptr as * mut RcInner < T > } else { let offset = unsafe { data_offset (ptr) } ; unsafe { ptr . byte_sub (offset) as * mut RcInner < T > } } ; Weak { ptr : unsafe { NonNull :: new_unchecked (ptr) } , alloc } }",
+        "is_unsafe": true,
+        "comment": " Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>`.\n\n This can be used to safely get a strong reference (by calling [`upgrade`]\n later) or to deallocate the weak count by dropping the `Weak<T>`.\n\n It takes ownership of one weak reference (with the exception of pointers created by [`new`],\n as these don't own anything; the method still works on them).\n\n # Safety\n\n The pointer must have originated from the [`into_raw`] and must still own its potential\n weak reference, and `ptr` must point to a block of memory allocated by `alloc`.\n\n It is allowed for the strong count to be 0 at the time of calling this. Nevertheless, this\n takes ownership of one weak reference currently represented as a raw pointer (the weak\n count is not modified by this operation) and therefore it must be paired with a previous\n call to [`into_raw`].\n\n # Examples\n\n ```\n use std::rc::{Rc, Weak};\n\n let strong = Rc::new(\"hello\".to_owned());\n\n let raw_1 = Rc::downgrade(&strong).into_raw();\n let raw_2 = Rc::downgrade(&strong).into_raw();\n\n assert_eq!(2, Rc::weak_count(&strong));\n\n assert_eq!(\"hello\", &*unsafe { Weak::from_raw(raw_1) }.upgrade().unwrap());\n assert_eq!(1, Rc::weak_count(&strong));\n\n drop(strong);\n\n // Decrement the last weak count.\n assert!(unsafe { Weak::from_raw(raw_2) }.upgrade().is_none());\n ```\n\n [`into_raw`]: Weak::into_raw\n [`upgrade`]: Weak::upgrade\n [`new`]: Weak::new"
+      }
+    ],
+    "tools/rust/library/alloc/src/vec/mod.rs": [
+      {
+        "line_number_start": 514,
+        "line_number_end": 619,
+        "name": "from_raw_parts",
+        "declaration_text": "unsafe fn from_raw_parts (ptr : * mut T , length : usize , capacity : usize) -> Self",
+        "parent_struct_or_trait": "Vec < T >",
+        "enclosing_declaration": "impl < T > Vec < T > ",
+        "enclosing_generics": [
+          "T"
+        ],
+        "item_generics": [],
+        "members": [
+          "const fn new () -> Self",
+          "fn with_capacity (capacity : usize) -> Self",
+          "fn try_with_capacity (capacity : usize) -> Result < Self , TryReserveError >",
+          "unsafe fn from_raw_parts (ptr : * mut T , length : usize , capacity : usize) -> Self",
+          "unsafe fn from_parts (ptr : NonNull < T > , length : usize , capacity : usize) -> Self"
+        ],
+        "source_body": "{ unsafe { Self :: from_raw_parts_in (ptr , length , capacity , Global) } }",
+        "is_unsafe": true,
+        "comment": " Creates a `Vec<T>` directly from a pointer, a length, and a capacity.\n\n # Safety\n\n This is highly unsafe, due to the number of invariants that aren't\n checked:\n\n * `ptr` must have been allocated using the global allocator, such as via\n   the [`alloc::alloc`] function.\n * `T` needs to have the same alignment as what `ptr` was allocated with.\n   (`T` having a less strict alignment is not sufficient, the alignment really\n   needs to be equal to satisfy the [`dealloc`] requirement that memory must be\n   allocated and deallocated with the same layout.)\n * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs\n   to be the same size as the pointer was allocated with. (Because similar to\n   alignment, [`dealloc`] must be called with the same layout `size`.)\n * `length` needs to be less than or equal to `capacity`.\n * The first `length` values must be properly initialized values of type `T`.\n * `capacity` needs to be the capacity that the pointer was allocated with.\n * The allocated size in bytes must be no larger than `isize::MAX`.\n   See the safety documentation of [`pointer::offset`].\n\n These requirements are always upheld by any `ptr` that has been allocated\n via `Vec<T>`. Other allocation sources are allowed if the invariants are\n upheld.\n\n Violating these may cause problems like corrupting the allocator's\n internal data structures. For example it is normally **not** safe\n to build a `Vec<u8>` from a pointer to a C `char` array with length\n `size_t`, doing so is only safe if the array was initially allocated by\n a `Vec` or `String`.\n It's also not safe to build one from a `Vec<u16>` and its length, because\n the allocator cares about the alignment, and these two types have different\n alignments. The buffer was allocated with alignment 2 (for `u16`), but after\n turning it into a `Vec<u8>` it'll be deallocated with alignment 1. To avoid\n these issues, it is often preferable to do casting/transmuting using\n [`slice::from_raw_parts`] instead.\n\n The ownership of `ptr` is effectively transferred to the\n `Vec<T>` which may then deallocate, reallocate or change the\n contents of memory pointed to by the pointer at will. Ensure\n that nothing else uses the pointer after calling this\n function.\n\n [`String`]: crate::string::String\n [`alloc::alloc`]: crate::alloc::alloc\n [`dealloc`]: crate::alloc::GlobalAlloc::dealloc\n\n # Examples\n\n ```\n use std::ptr;\n use std::mem;\n\n let v = vec![1, 2, 3];\n\n // Prevent running `v`'s destructor so we are in complete control\n // of the allocation.\n let mut v = mem::ManuallyDrop::new(v);\n\n // Pull out the various important pieces of information about `v`\n let p = v.as_mut_ptr();\n let len = v.len();\n let cap = v.capacity();\n\n unsafe {\n     // Overwrite memory with 4, 5, 6\n     for i in 0..len {\n         ptr::write(p.add(i), 4 + i);\n     }\n\n     // Put everything back together into a Vec\n     let rebuilt = Vec::from_raw_parts(p, len, cap);\n     assert_eq!(rebuilt, [4, 5, 6]);\n }\n ```\n\n Using memory that was allocated elsewhere:\n\n ```rust\n use std::alloc::{alloc, Layout};\n\n fn main() {\n     let layout = Layout::array::<u32>(16).expect(\"overflow cannot happen\");\n\n     let vec = unsafe {\n         let mem = alloc(layout).cast::<u32>();\n         if mem.is_null() {\n             return;\n         }\n\n         mem.write(1_000_000);\n\n         Vec::from_raw_parts(mem, 1, 16)\n     };\n\n     assert_eq!(vec, &[1_000_000]);\n     assert_eq!(vec.capacity(), 16);\n }\n ```"
+      },
+      {
+        "line_number_start": 621,
+        "line_number_end": 731,
+        "name": "from_parts",
+        "declaration_text": "unsafe fn from_parts (ptr : NonNull < T > , length : usize , capacity : usize) -> Self",
+        "parent_struct_or_trait": "Vec < T >",
+        "enclosing_declaration": "impl < T > Vec < T > ",
+        "enclosing_generics": [
+          "T"
+        ],
+        "item_generics": [],
+        "members": [
+          "const fn new () -> Self",
+          "fn with_capacity (capacity : usize) -> Self",
+          "fn try_with_capacity (capacity : usize) -> Result < Self , TryReserveError >",
+          "unsafe fn from_raw_parts (ptr : * mut T , length : usize , capacity : usize) -> Self",
+          "unsafe fn from_parts (ptr : NonNull < T > , length : usize , capacity : usize) -> Self"
+        ],
+        "source_body": "{ unsafe { Self :: from_parts_in (ptr , length , capacity , Global) } }",
+        "is_unsafe": true,
+        "comment": " Creates a `Vec<T>` directly from a `NonNull` pointer, a length, and a capacity.\n\n # Safety\n\n This is highly unsafe, due to the number of invariants that aren't\n checked:\n\n * `ptr` must have been allocated using the global allocator, such as via\n   the [`alloc::alloc`] function.\n * `T` needs to have the same alignment as what `ptr` was allocated with.\n   (`T` having a less strict alignment is not sufficient, the alignment really\n   needs to be equal to satisfy the [`dealloc`] requirement that memory must be\n   allocated and deallocated with the same layout.)\n * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs\n   to be the same size as the pointer was allocated with. (Because similar to\n   alignment, [`dealloc`] must be called with the same layout `size`.)\n * `length` needs to be less than or equal to `capacity`.\n * The first `length` values must be properly initialized values of type `T`.\n * `capacity` needs to be the capacity that the pointer was allocated with.\n * The allocated size in bytes must be no larger than `isize::MAX`.\n   See the safety documentation of [`pointer::offset`].\n\n These requirements are always upheld by any `ptr` that has been allocated\n via `Vec<T>`. Other allocation sources are allowed if the invariants are\n upheld.\n\n Violating these may cause problems like corrupting the allocator's\n internal data structures. For example it is normally **not** safe\n to build a `Vec<u8>` from a pointer to a C `char` array with length\n `size_t`, doing so is only safe if the array was initially allocated by\n a `Vec` or `String`.\n It's also not safe to build one from a `Vec<u16>` and its length, because\n the allocator cares about the alignment, and these two types have different\n alignments. The buffer was allocated with alignment 2 (for `u16`), but after\n turning it into a `Vec<u8>` it'll be deallocated with alignment 1. To avoid\n these issues, it is often preferable to do casting/transmuting using\n [`NonNull::slice_from_raw_parts`] instead.\n\n The ownership of `ptr` is effectively transferred to the\n `Vec<T>` which may then deallocate, reallocate or change the\n contents of memory pointed to by the pointer at will. Ensure\n that nothing else uses the pointer after calling this\n function.\n\n [`String`]: crate::string::String\n [`alloc::alloc`]: crate::alloc::alloc\n [`dealloc`]: crate::alloc::GlobalAlloc::dealloc\n\n # Examples\n\n ```\n #![feature(box_vec_non_null)]\n\n use std::ptr::NonNull;\n use std::mem;\n\n let v = vec![1, 2, 3];\n\n // Prevent running `v`'s destructor so we are in complete control\n // of the allocation.\n let mut v = mem::ManuallyDrop::new(v);\n\n // Pull out the various important pieces of information about `v`\n let p = unsafe { NonNull::new_unchecked(v.as_mut_ptr()) };\n let len = v.len();\n let cap = v.capacity();\n\n unsafe {\n     // Overwrite memory with 4, 5, 6\n     for i in 0..len {\n         p.add(i).write(4 + i);\n     }\n\n     // Put everything back together into a Vec\n     let rebuilt = Vec::from_parts(p, len, cap);\n     assert_eq!(rebuilt, [4, 5, 6]);\n }\n ```\n\n Using memory that was allocated elsewhere:\n\n ```rust\n #![feature(box_vec_non_null)]\n\n use std::alloc::{alloc, Layout};\n use std::ptr::NonNull;\n\n fn main() {\n     let layout = Layout::array::<u32>(16).expect(\"overflow cannot happen\");\n\n     let vec = unsafe {\n         let Some(mem) = NonNull::new(alloc(layout).cast::<u32>()) else {\n             return;\n         };\n\n         mem.write(1_000_000);\n\n         Vec::from_parts(mem, 1, 16)\n     };\n\n     assert_eq!(vec, &[1_000_000]);\n     assert_eq!(vec.capacity(), 16);\n }\n ```"
+      },
+      {
+        "line_number_start": 836,
+        "line_number_end": 948,
+        "name": "from_raw_parts_in",
+        "declaration_text": "unsafe fn from_raw_parts_in (ptr : * mut T , length : usize , capacity : usize , alloc : A) -> Self",
+        "parent_struct_or_trait": "Vec < T , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Vec < T , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "const fn new_in (alloc : A) -> Self",
+          "fn with_capacity_in (capacity : usize , alloc : A) -> Self",
+          "fn try_with_capacity_in (capacity : usize , alloc : A) -> Result < Self , TryReserveError >",
+          "unsafe fn from_raw_parts_in (ptr : * mut T , length : usize , capacity : usize , alloc : A) -> Self",
+          "unsafe fn from_parts_in (ptr : NonNull < T > , length : usize , capacity : usize , alloc : A) -> Self",
+          "fn into_raw_parts (self) -> (* mut T , usize , usize)",
+          "fn into_parts (self) -> (NonNull < T > , usize , usize)",
+          "fn into_raw_parts_with_alloc (self) -> (* mut T , usize , usize , A)",
+          "fn into_parts_with_alloc (self) -> (NonNull < T > , usize , usize , A)",
+          "const fn capacity (& self) -> usize",
+          "fn reserve (& mut self , additional : usize)",
+          "fn reserve_exact (& mut self , additional : usize)",
+          "fn try_reserve (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn try_reserve_exact (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn shrink_to_fit (& mut self)",
+          "fn shrink_to (& mut self , min_capacity : usize)",
+          "fn into_boxed_slice (mut self) -> Box < [T] , A >",
+          "fn truncate (& mut self , len : usize)",
+          "const fn as_slice (& self) -> & [T]",
+          "const fn as_mut_slice (& mut self) -> & mut [T]",
+          "const fn as_ptr (& self) -> * const T",
+          "const fn as_mut_ptr (& mut self) -> * mut T",
+          "fn as_non_null (& mut self) -> NonNull < T >",
+          "fn allocator (& self) -> & A",
+          "unsafe fn set_len (& mut self , new_len : usize)",
+          "fn swap_remove (& mut self , index : usize) -> T",
+          "fn insert (& mut self , index : usize , element : T)",
+          "fn remove (& mut self , index : usize) -> T",
+          "fn retain < F > (& mut self , mut f : F) where F : FnMut (& T) -> bool ,",
+          "fn retain_mut < F > (& mut self , mut f : F) where F : FnMut (& mut T) -> bool ,",
+          "fn dedup_by_key < F , K > (& mut self , mut key : F) where F : FnMut (& mut T) -> K , K : PartialEq ,",
+          "fn dedup_by < F > (& mut self , mut same_bucket : F) where F : FnMut (& mut T , & mut T) -> bool ,",
+          "fn push (& mut self , value : T)",
+          "fn push_within_capacity (& mut self , value : T) -> Result < () , T >",
+          "fn pop (& mut self) -> Option < T >",
+          "fn pop_if (& mut self , predicate : impl FnOnce (& mut T) -> bool) -> Option < T >",
+          "fn append (& mut self , other : & mut Self)",
+          "unsafe fn append_elements (& mut self , other : * const [T])",
+          "fn drain < R > (& mut self , range : R) -> Drain < '_ , T , A > where R : RangeBounds < usize > ,",
+          "fn clear (& mut self)",
+          "const fn len (& self) -> usize",
+          "const fn is_empty (& self) -> bool",
+          "fn split_off (& mut self , at : usize) -> Self where A : Clone ,",
+          "fn resize_with < F > (& mut self , new_len : usize , f : F) where F : FnMut () -> T ,",
+          "fn leak < 'a > (self) -> & 'a mut [T] where A : 'a ,",
+          "fn spare_capacity_mut (& mut self) -> & mut [MaybeUninit < T >]",
+          "fn split_at_spare_mut (& mut self) -> (& mut [T] , & mut [MaybeUninit < T >])",
+          "unsafe fn split_at_spare_mut_with_len (& mut self ,) -> (& mut [T] , & mut [MaybeUninit < T >] , & mut usize)"
+        ],
+        "source_body": "{ unsafe { Vec { buf : RawVec :: from_raw_parts_in (ptr , capacity , alloc) , len : length } } }",
+        "is_unsafe": true,
+        "comment": " Creates a `Vec<T, A>` directly from a pointer, a length, a capacity,\n and an allocator.\n\n # Safety\n\n This is highly unsafe, due to the number of invariants that aren't\n checked:\n\n * `ptr` must be [*currently allocated*] via the given allocator `alloc`.\n * `T` needs to have the same alignment as what `ptr` was allocated with.\n   (`T` having a less strict alignment is not sufficient, the alignment really\n   needs to be equal to satisfy the [`dealloc`] requirement that memory must be\n   allocated and deallocated with the same layout.)\n * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs\n   to be the same size as the pointer was allocated with. (Because similar to\n   alignment, [`dealloc`] must be called with the same layout `size`.)\n * `length` needs to be less than or equal to `capacity`.\n * The first `length` values must be properly initialized values of type `T`.\n * `capacity` needs to [*fit*] the layout size that the pointer was allocated with.\n * The allocated size in bytes must be no larger than `isize::MAX`.\n   See the safety documentation of [`pointer::offset`].\n\n These requirements are always upheld by any `ptr` that has been allocated\n via `Vec<T, A>`. Other allocation sources are allowed if the invariants are\n upheld.\n\n Violating these may cause problems like corrupting the allocator's\n internal data structures. For example it is **not** safe\n to build a `Vec<u8>` from a pointer to a C `char` array with length `size_t`.\n It's also not safe to build one from a `Vec<u16>` and its length, because\n the allocator cares about the alignment, and these two types have different\n alignments. The buffer was allocated with alignment 2 (for `u16`), but after\n turning it into a `Vec<u8>` it'll be deallocated with alignment 1.\n\n The ownership of `ptr` is effectively transferred to the\n `Vec<T>` which may then deallocate, reallocate or change the\n contents of memory pointed to by the pointer at will. Ensure\n that nothing else uses the pointer after calling this\n function.\n\n [`String`]: crate::string::String\n [`dealloc`]: crate::alloc::GlobalAlloc::dealloc\n [*currently allocated*]: crate::alloc::Allocator#currently-allocated-memory\n [*fit*]: crate::alloc::Allocator#memory-fitting\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::alloc::System;\n\n use std::ptr;\n use std::mem;\n\n let mut v = Vec::with_capacity_in(3, System);\n v.push(1);\n v.push(2);\n v.push(3);\n\n // Prevent running `v`'s destructor so we are in complete control\n // of the allocation.\n let mut v = mem::ManuallyDrop::new(v);\n\n // Pull out the various important pieces of information about `v`\n let p = v.as_mut_ptr();\n let len = v.len();\n let cap = v.capacity();\n let alloc = v.allocator();\n\n unsafe {\n     // Overwrite memory with 4, 5, 6\n     for i in 0..len {\n         ptr::write(p.add(i), 4 + i);\n     }\n\n     // Put everything back together into a Vec\n     let rebuilt = Vec::from_raw_parts_in(p, len, cap, alloc.clone());\n     assert_eq!(rebuilt, [4, 5, 6]);\n }\n ```\n\n Using memory that was allocated elsewhere:\n\n ```rust\n #![feature(allocator_api)]\n\n use std::alloc::{AllocError, Allocator, Global, Layout};\n\n fn main() {\n     let layout = Layout::array::<u32>(16).expect(\"overflow cannot happen\");\n\n     let vec = unsafe {\n         let mem = match Global.allocate(layout) {\n             Ok(mem) => mem.cast::<u32>().as_ptr(),\n             Err(AllocError) => return,\n         };\n\n         mem.write(1_000_000);\n\n         Vec::from_raw_parts_in(mem, 1, 16, Global)\n     };\n\n     assert_eq!(vec, &[1_000_000]);\n     assert_eq!(vec.capacity(), 16);\n }\n ```"
+      },
+      {
+        "line_number_start": 950,
+        "line_number_end": 1064,
+        "name": "from_parts_in",
+        "declaration_text": "unsafe fn from_parts_in (ptr : NonNull < T > , length : usize , capacity : usize , alloc : A) -> Self",
+        "parent_struct_or_trait": "Vec < T , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Vec < T , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "const fn new_in (alloc : A) -> Self",
+          "fn with_capacity_in (capacity : usize , alloc : A) -> Self",
+          "fn try_with_capacity_in (capacity : usize , alloc : A) -> Result < Self , TryReserveError >",
+          "unsafe fn from_raw_parts_in (ptr : * mut T , length : usize , capacity : usize , alloc : A) -> Self",
+          "unsafe fn from_parts_in (ptr : NonNull < T > , length : usize , capacity : usize , alloc : A) -> Self",
+          "fn into_raw_parts (self) -> (* mut T , usize , usize)",
+          "fn into_parts (self) -> (NonNull < T > , usize , usize)",
+          "fn into_raw_parts_with_alloc (self) -> (* mut T , usize , usize , A)",
+          "fn into_parts_with_alloc (self) -> (NonNull < T > , usize , usize , A)",
+          "const fn capacity (& self) -> usize",
+          "fn reserve (& mut self , additional : usize)",
+          "fn reserve_exact (& mut self , additional : usize)",
+          "fn try_reserve (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn try_reserve_exact (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn shrink_to_fit (& mut self)",
+          "fn shrink_to (& mut self , min_capacity : usize)",
+          "fn into_boxed_slice (mut self) -> Box < [T] , A >",
+          "fn truncate (& mut self , len : usize)",
+          "const fn as_slice (& self) -> & [T]",
+          "const fn as_mut_slice (& mut self) -> & mut [T]",
+          "const fn as_ptr (& self) -> * const T",
+          "const fn as_mut_ptr (& mut self) -> * mut T",
+          "fn as_non_null (& mut self) -> NonNull < T >",
+          "fn allocator (& self) -> & A",
+          "unsafe fn set_len (& mut self , new_len : usize)",
+          "fn swap_remove (& mut self , index : usize) -> T",
+          "fn insert (& mut self , index : usize , element : T)",
+          "fn remove (& mut self , index : usize) -> T",
+          "fn retain < F > (& mut self , mut f : F) where F : FnMut (& T) -> bool ,",
+          "fn retain_mut < F > (& mut self , mut f : F) where F : FnMut (& mut T) -> bool ,",
+          "fn dedup_by_key < F , K > (& mut self , mut key : F) where F : FnMut (& mut T) -> K , K : PartialEq ,",
+          "fn dedup_by < F > (& mut self , mut same_bucket : F) where F : FnMut (& mut T , & mut T) -> bool ,",
+          "fn push (& mut self , value : T)",
+          "fn push_within_capacity (& mut self , value : T) -> Result < () , T >",
+          "fn pop (& mut self) -> Option < T >",
+          "fn pop_if (& mut self , predicate : impl FnOnce (& mut T) -> bool) -> Option < T >",
+          "fn append (& mut self , other : & mut Self)",
+          "unsafe fn append_elements (& mut self , other : * const [T])",
+          "fn drain < R > (& mut self , range : R) -> Drain < '_ , T , A > where R : RangeBounds < usize > ,",
+          "fn clear (& mut self)",
+          "const fn len (& self) -> usize",
+          "const fn is_empty (& self) -> bool",
+          "fn split_off (& mut self , at : usize) -> Self where A : Clone ,",
+          "fn resize_with < F > (& mut self , new_len : usize , f : F) where F : FnMut () -> T ,",
+          "fn leak < 'a > (self) -> & 'a mut [T] where A : 'a ,",
+          "fn spare_capacity_mut (& mut self) -> & mut [MaybeUninit < T >]",
+          "fn split_at_spare_mut (& mut self) -> (& mut [T] , & mut [MaybeUninit < T >])",
+          "unsafe fn split_at_spare_mut_with_len (& mut self ,) -> (& mut [T] , & mut [MaybeUninit < T >] , & mut usize)"
+        ],
+        "source_body": "{ unsafe { Vec { buf : RawVec :: from_nonnull_in (ptr , capacity , alloc) , len : length } } }",
+        "is_unsafe": true,
+        "comment": " Creates a `Vec<T, A>` directly from a `NonNull` pointer, a length, a capacity,\n and an allocator.\n\n # Safety\n\n This is highly unsafe, due to the number of invariants that aren't\n checked:\n\n * `ptr` must be [*currently allocated*] via the given allocator `alloc`.\n * `T` needs to have the same alignment as what `ptr` was allocated with.\n   (`T` having a less strict alignment is not sufficient, the alignment really\n   needs to be equal to satisfy the [`dealloc`] requirement that memory must be\n   allocated and deallocated with the same layout.)\n * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs\n   to be the same size as the pointer was allocated with. (Because similar to\n   alignment, [`dealloc`] must be called with the same layout `size`.)\n * `length` needs to be less than or equal to `capacity`.\n * The first `length` values must be properly initialized values of type `T`.\n * `capacity` needs to [*fit*] the layout size that the pointer was allocated with.\n * The allocated size in bytes must be no larger than `isize::MAX`.\n   See the safety documentation of [`pointer::offset`].\n\n These requirements are always upheld by any `ptr` that has been allocated\n via `Vec<T, A>`. Other allocation sources are allowed if the invariants are\n upheld.\n\n Violating these may cause problems like corrupting the allocator's\n internal data structures. For example it is **not** safe\n to build a `Vec<u8>` from a pointer to a C `char` array with length `size_t`.\n It's also not safe to build one from a `Vec<u16>` and its length, because\n the allocator cares about the alignment, and these two types have different\n alignments. The buffer was allocated with alignment 2 (for `u16`), but after\n turning it into a `Vec<u8>` it'll be deallocated with alignment 1.\n\n The ownership of `ptr` is effectively transferred to the\n `Vec<T>` which may then deallocate, reallocate or change the\n contents of memory pointed to by the pointer at will. Ensure\n that nothing else uses the pointer after calling this\n function.\n\n [`String`]: crate::string::String\n [`dealloc`]: crate::alloc::GlobalAlloc::dealloc\n [*currently allocated*]: crate::alloc::Allocator#currently-allocated-memory\n [*fit*]: crate::alloc::Allocator#memory-fitting\n\n # Examples\n\n ```\n #![feature(allocator_api, box_vec_non_null)]\n\n use std::alloc::System;\n\n use std::ptr::NonNull;\n use std::mem;\n\n let mut v = Vec::with_capacity_in(3, System);\n v.push(1);\n v.push(2);\n v.push(3);\n\n // Prevent running `v`'s destructor so we are in complete control\n // of the allocation.\n let mut v = mem::ManuallyDrop::new(v);\n\n // Pull out the various important pieces of information about `v`\n let p = unsafe { NonNull::new_unchecked(v.as_mut_ptr()) };\n let len = v.len();\n let cap = v.capacity();\n let alloc = v.allocator();\n\n unsafe {\n     // Overwrite memory with 4, 5, 6\n     for i in 0..len {\n         p.add(i).write(4 + i);\n     }\n\n     // Put everything back together into a Vec\n     let rebuilt = Vec::from_parts_in(p, len, cap, alloc.clone());\n     assert_eq!(rebuilt, [4, 5, 6]);\n }\n ```\n\n Using memory that was allocated elsewhere:\n\n ```rust\n #![feature(allocator_api, box_vec_non_null)]\n\n use std::alloc::{AllocError, Allocator, Global, Layout};\n\n fn main() {\n     let layout = Layout::array::<u32>(16).expect(\"overflow cannot happen\");\n\n     let vec = unsafe {\n         let mem = match Global.allocate(layout) {\n             Ok(mem) => mem.cast::<u32>(),\n             Err(AllocError) => return,\n         };\n\n         mem.write(1_000_000);\n\n         Vec::from_parts_in(mem, 1, 16, Global)\n     };\n\n     assert_eq!(vec, &[1_000_000]);\n     assert_eq!(vec.capacity(), 16);\n }\n ```"
+      },
+      {
+        "line_number_start": 1832,
+        "line_number_end": 1924,
+        "name": "set_len",
+        "declaration_text": "unsafe fn set_len (& mut self , new_len : usize)",
+        "parent_struct_or_trait": "Vec < T , A >",
+        "enclosing_declaration": "impl < T , A : Allocator > Vec < T , A > ",
+        "enclosing_generics": [
+          "T",
+          "A : Allocator"
+        ],
+        "item_generics": [],
+        "members": [
+          "const fn new_in (alloc : A) -> Self",
+          "fn with_capacity_in (capacity : usize , alloc : A) -> Self",
+          "fn try_with_capacity_in (capacity : usize , alloc : A) -> Result < Self , TryReserveError >",
+          "unsafe fn from_raw_parts_in (ptr : * mut T , length : usize , capacity : usize , alloc : A) -> Self",
+          "unsafe fn from_parts_in (ptr : NonNull < T > , length : usize , capacity : usize , alloc : A) -> Self",
+          "fn into_raw_parts (self) -> (* mut T , usize , usize)",
+          "fn into_parts (self) -> (NonNull < T > , usize , usize)",
+          "fn into_raw_parts_with_alloc (self) -> (* mut T , usize , usize , A)",
+          "fn into_parts_with_alloc (self) -> (NonNull < T > , usize , usize , A)",
+          "const fn capacity (& self) -> usize",
+          "fn reserve (& mut self , additional : usize)",
+          "fn reserve_exact (& mut self , additional : usize)",
+          "fn try_reserve (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn try_reserve_exact (& mut self , additional : usize) -> Result < () , TryReserveError >",
+          "fn shrink_to_fit (& mut self)",
+          "fn shrink_to (& mut self , min_capacity : usize)",
+          "fn into_boxed_slice (mut self) -> Box < [T] , A >",
+          "fn truncate (& mut self , len : usize)",
+          "const fn as_slice (& self) -> & [T]",
+          "const fn as_mut_slice (& mut self) -> & mut [T]",
+          "const fn as_ptr (& self) -> * const T",
+          "const fn as_mut_ptr (& mut self) -> * mut T",
+          "fn as_non_null (& mut self) -> NonNull < T >",
+          "fn allocator (& self) -> & A",
+          "unsafe fn set_len (& mut self , new_len : usize)",
+          "fn swap_remove (& mut self , index : usize) -> T",
+          "fn insert (& mut self , index : usize , element : T)",
+          "fn remove (& mut self , index : usize) -> T",
+          "fn retain < F > (& mut self , mut f : F) where F : FnMut (& T) -> bool ,",
+          "fn retain_mut < F > (& mut self , mut f : F) where F : FnMut (& mut T) -> bool ,",
+          "fn dedup_by_key < F , K > (& mut self , mut key : F) where F : FnMut (& mut T) -> K , K : PartialEq ,",
+          "fn dedup_by < F > (& mut self , mut same_bucket : F) where F : FnMut (& mut T , & mut T) -> bool ,",
+          "fn push (& mut self , value : T)",
+          "fn push_within_capacity (& mut self , value : T) -> Result < () , T >",
+          "fn pop (& mut self) -> Option < T >",
+          "fn pop_if (& mut self , predicate : impl FnOnce (& mut T) -> bool) -> Option < T >",
+          "fn append (& mut self , other : & mut Self)",
+          "unsafe fn append_elements (& mut self , other : * const [T])",
+          "fn drain < R > (& mut self , range : R) -> Drain < '_ , T , A > where R : RangeBounds < usize > ,",
+          "fn clear (& mut self)",
+          "const fn len (& self) -> usize",
+          "const fn is_empty (& self) -> bool",
+          "fn split_off (& mut self , at : usize) -> Self where A : Clone ,",
+          "fn resize_with < F > (& mut self , new_len : usize , f : F) where F : FnMut () -> T ,",
+          "fn leak < 'a > (self) -> & 'a mut [T] where A : 'a ,",
+          "fn spare_capacity_mut (& mut self) -> & mut [MaybeUninit < T >]",
+          "fn split_at_spare_mut (& mut self) -> (& mut [T] , & mut [MaybeUninit < T >])",
+          "unsafe fn split_at_spare_mut_with_len (& mut self ,) -> (& mut [T] , & mut [MaybeUninit < T >] , & mut usize)"
+        ],
+        "source_body": "{ debug_assert ! (new_len <= self . capacity ()) ; self . len = new_len ; }",
+        "is_unsafe": true,
+        "comment": " Forces the length of the vector to `new_len`.\n\n This is a low-level operation that maintains none of the normal\n invariants of the type. Normally changing the length of a vector\n is done using one of the safe operations instead, such as\n [`truncate`], [`resize`], [`extend`], or [`clear`].\n\n [`truncate`]: Vec::truncate\n [`resize`]: Vec::resize\n [`extend`]: Extend::extend\n [`clear`]: Vec::clear\n\n # Safety\n\n - `new_len` must be less than or equal to [`capacity()`].\n - The elements at `old_len..new_len` must be initialized.\n\n [`capacity()`]: Vec::capacity\n\n # Examples\n\n See [`spare_capacity_mut()`] for an example with safe\n initialization of capacity elements and use of this method.\n\n `set_len()` can be useful for situations in which the vector\n is serving as a buffer for other code, particularly over FFI:\n\n ```no_run\n # #![allow(dead_code)]\n # // This is just a minimal skeleton for the doc example;\n # // don't use this as a starting point for a real library.\n # pub struct StreamWrapper { strm: *mut std::ffi::c_void }\n # const Z_OK: i32 = 0;\n # unsafe extern \"C\" {\n #     fn deflateGetDictionary(\n #         strm: *mut std::ffi::c_void,\n #         dictionary: *mut u8,\n #         dictLength: *mut usize,\n #     ) -> i32;\n # }\n # impl StreamWrapper {\n pub fn get_dictionary(&self) -> Option<Vec<u8>> {\n     // Per the FFI method's docs, \"32768 bytes is always enough\".\n     let mut dict = Vec::with_capacity(32_768);\n     let mut dict_length = 0;\n     // SAFETY: When `deflateGetDictionary` returns `Z_OK`, it holds that:\n     // 1. `dict_length` elements were initialized.\n     // 2. `dict_length` <= the capacity (32_768)\n     // which makes `set_len` safe to call.\n     unsafe {\n         // Make the FFI call...\n         let r = deflateGetDictionary(self.strm, dict.as_mut_ptr(), &mut dict_length);\n         if r == Z_OK {\n             // ...and update the length to what was initialized.\n             dict.set_len(dict_length);\n             Some(dict)\n         } else {\n             None\n         }\n     }\n }\n # }\n ```\n\n While the following example is sound, there is a memory leak since\n the inner vectors were not freed prior to the `set_len` call:\n\n ```\n let mut vec = vec![vec![1, 0, 0],\n                    vec![0, 1, 0],\n                    vec![0, 0, 1]];\n // SAFETY:\n // 1. `old_len..0` is empty so no elements need to be initialized.\n // 2. `0 <= capacity` always holds whatever `capacity` is.\n unsafe {\n     vec.set_len(0);\n #   // FIXME(https://github.com/rust-lang/miri/issues/3670):\n #   // use -Zmiri-disable-leak-check instead of unleaking in tests meant to leak.\n #   vec.set_len(3);\n }\n ```\n\n Normally, here, one would use [`clear`] instead to correctly drop\n the contents and thus not leak memory.\n\n [`spare_capacity_mut()`]: Vec::spare_capacity_mut"
+      }
+    ],
+    "tools/rust/library/alloc/src/ffi/c_str.rs": [
+      {
+        "line_number_start": 314,
+        "line_number_end": 338,
+        "name": "from_vec_unchecked",
+        "declaration_text": "unsafe fn from_vec_unchecked (v : Vec < u8 >) -> Self",
+        "parent_struct_or_trait": "CString",
+        "enclosing_declaration": "impl  CString ",
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [
+          "fn new < T : Into < Vec < u8 > > > (t : T) -> Result < CString , NulError >",
+          "unsafe fn from_vec_unchecked (v : Vec < u8 >) -> Self",
+          "unsafe fn _from_vec_unchecked (mut v : Vec < u8 >) -> Self",
+          "unsafe fn from_raw (ptr : * mut c_char) -> CString",
+          "fn into_raw (self) -> * mut c_char",
+          "fn into_string (self) -> Result < String , IntoStringError >",
+          "fn into_bytes (self) -> Vec < u8 >",
+          "fn into_bytes_with_nul (self) -> Vec < u8 >",
+          "fn as_bytes (& self) -> & [u8]",
+          "fn as_bytes_with_nul (& self) -> & [u8]",
+          "fn as_c_str (& self) -> & CStr",
+          "fn into_boxed_c_str (self) -> Box < CStr >",
+          "fn into_inner (self) -> Box < [u8] >",
+          "unsafe fn from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+          "unsafe fn _from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+          "fn from_vec_with_nul (v : Vec < u8 >) -> Result < Self , FromVecWithNulError >"
+        ],
+        "source_body": "{ debug_assert ! (memchr :: memchr (0 , & v) . is_none ()) ; unsafe { Self :: _from_vec_unchecked (v) } }",
+        "is_unsafe": true,
+        "comment": " Creates a C-compatible string by consuming a byte vector,\n without checking for interior 0 bytes.\n\n Trailing 0 byte will be appended by this function.\n\n This method is equivalent to [`CString::new`] except that no runtime\n assertion is made that `v` contains no 0 bytes, and it requires an\n actual byte vector, not anything that can be converted to one with Into.\n\n # Examples\n\n ```\n use std::ffi::CString;\n\n let raw = b\"foo\".to_vec();\n unsafe {\n     let c_string = CString::from_vec_unchecked(raw);\n }\n ```"
+      },
+      {
+        "line_number_start": 346,
+        "line_number_end": 407,
+        "name": "from_raw",
+        "declaration_text": "unsafe fn from_raw (ptr : * mut c_char) -> CString",
+        "parent_struct_or_trait": "CString",
+        "enclosing_declaration": "impl  CString ",
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [
+          "fn new < T : Into < Vec < u8 > > > (t : T) -> Result < CString , NulError >",
+          "unsafe fn from_vec_unchecked (v : Vec < u8 >) -> Self",
+          "unsafe fn _from_vec_unchecked (mut v : Vec < u8 >) -> Self",
+          "unsafe fn from_raw (ptr : * mut c_char) -> CString",
+          "fn into_raw (self) -> * mut c_char",
+          "fn into_string (self) -> Result < String , IntoStringError >",
+          "fn into_bytes (self) -> Vec < u8 >",
+          "fn into_bytes_with_nul (self) -> Vec < u8 >",
+          "fn as_bytes (& self) -> & [u8]",
+          "fn as_bytes_with_nul (& self) -> & [u8]",
+          "fn as_c_str (& self) -> & CStr",
+          "fn into_boxed_c_str (self) -> Box < CStr >",
+          "fn into_inner (self) -> Box < [u8] >",
+          "unsafe fn from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+          "unsafe fn _from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+          "fn from_vec_with_nul (v : Vec < u8 >) -> Result < Self , FromVecWithNulError >"
+        ],
+        "source_body": "{ unsafe { unsafe extern \"C\" { # [doc = \" Provided by libc or compiler_builtins.\"] fn strlen (s : * const c_char) -> usize ; } let len = strlen (ptr) + 1 ; let slice = slice :: from_raw_parts_mut (ptr , len) ; CString { inner : Box :: from_raw (slice as * mut [c_char] as * mut [u8]) } } }",
+        "is_unsafe": true,
+        "comment": " Retakes ownership of a `CString` that was transferred to C via\n [`CString::into_raw`].\n\n Additionally, the length of the string will be recalculated from the pointer.\n\n # Safety\n\n This should only ever be called with a pointer that was earlier\n obtained by calling [`CString::into_raw`]. Other usage (e.g., trying to take\n ownership of a string that was allocated by foreign code) is likely to lead\n to undefined behavior or allocator corruption.\n\n It should be noted that the length isn't just \"recomputed,\" but that\n the recomputed length must match the original length from the\n [`CString::into_raw`] call. This means the [`CString::into_raw`]/`from_raw`\n methods should not be used when passing the string to C functions that can\n modify the string's length.\n\n > **Note:** If you need to borrow a string that was allocated by\n > foreign code, use [`CStr`]. If you need to take ownership of\n > a string that was allocated by foreign code, you will need to\n > make your own provisions for freeing it appropriately, likely\n > with the foreign code's API to do that.\n\n # Examples\n\n Creates a `CString`, pass ownership to an `extern` function (via raw pointer), then retake\n ownership with `from_raw`:\n\n ```ignore (extern-declaration)\n use std::ffi::CString;\n use std::os::raw::c_char;\n\n extern \"C\" {\n     fn some_extern_function(s: *mut c_char);\n }\n\n let c_string = CString::from(c\"Hello!\");\n let raw = c_string.into_raw();\n unsafe {\n     some_extern_function(raw);\n     let c_string = CString::from_raw(raw);\n }\n ```"
+      },
+      {
+        "line_number_start": 606,
+        "line_number_end": 628,
+        "name": "from_vec_with_nul_unchecked",
+        "declaration_text": "unsafe fn from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+        "parent_struct_or_trait": "CString",
+        "enclosing_declaration": "impl  CString ",
+        "enclosing_generics": [],
+        "item_generics": [],
+        "members": [
+          "fn new < T : Into < Vec < u8 > > > (t : T) -> Result < CString , NulError >",
+          "unsafe fn from_vec_unchecked (v : Vec < u8 >) -> Self",
+          "unsafe fn _from_vec_unchecked (mut v : Vec < u8 >) -> Self",
+          "unsafe fn from_raw (ptr : * mut c_char) -> CString",
+          "fn into_raw (self) -> * mut c_char",
+          "fn into_string (self) -> Result < String , IntoStringError >",
+          "fn into_bytes (self) -> Vec < u8 >",
+          "fn into_bytes_with_nul (self) -> Vec < u8 >",
+          "fn as_bytes (& self) -> & [u8]",
+          "fn as_bytes_with_nul (& self) -> & [u8]",
+          "fn as_c_str (& self) -> & CStr",
+          "fn into_boxed_c_str (self) -> Box < CStr >",
+          "fn into_inner (self) -> Box < [u8] >",
+          "unsafe fn from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+          "unsafe fn _from_vec_with_nul_unchecked (v : Vec < u8 >) -> Self",
+          "fn from_vec_with_nul (v : Vec < u8 >) -> Result < Self , FromVecWithNulError >"
+        ],
+        "source_body": "{ debug_assert ! (memchr :: memchr (0 , & v) . unwrap () + 1 == v . len ()) ; unsafe { Self :: _from_vec_with_nul_unchecked (v) } }",
+        "is_unsafe": true,
+        "comment": " Converts a <code>[Vec]<[u8]></code> to a [`CString`] without checking the\n invariants on the given [`Vec`].\n\n # Safety\n\n The given [`Vec`] **must** have one nul byte as its last element.\n This means it cannot be empty nor have any other nul byte anywhere else.\n\n # Example\n\n ```\n use std::ffi::CString;\n assert_eq!(\n     unsafe { CString::from_vec_with_nul_unchecked(b\"abc\\0\".to_vec()) },\n     unsafe { CString::from_vec_unchecked(b\"abc\".to_vec()) }\n );\n ```"
+      }
+    ]
+  },
+  "source_declarations": {
+    "tools/rust/library/alloc/src/collections/btree/node.rs": [
+      "const B : usize = 6 ;",
+      "pub (super) const CAPACITY : usize = 2 * B - 1 ;",
+      "pub (super) const MIN_LEN_AFTER_SPLIT : usize = B - 1 ;",
+      "const KV_IDX_CENTER : usize = B - 1 ;",
+      "const EDGE_IDX_LEFT_OF_CENTER : usize = B - 1 ;",
+      "const EDGE_IDX_RIGHT_OF_CENTER : usize = B ;",
+      "struct LeafNode < K , V > { # [doc = \" We want to be covariant in `K` and `V`.\"] parent : Option < NonNull < InternalNode < K , V > > > , # [doc = \" This node's index into the parent node's `edges` array.\"] # [doc = \" `*node.parent.edges[node.parent_idx]` should be the same thing as `node`.\"] # [doc = \" This is only guaranteed to be initialized when `parent` is non-null.\"] parent_idx : MaybeUninit < u16 > , # [doc = \" The number of keys and values this node stores.\"] len : u16 , # [doc = \" The arrays storing the actual data of the node. Only the first `len` elements of each\"] # [doc = \" array are initialized and valid.\"] keys : [MaybeUninit < K > ; CAPACITY] , vals : [MaybeUninit < V > ; CAPACITY] , }",
+      "struct InternalNode < K , V > { data : LeafNode < K , V > , # [doc = \" The pointers to the children of this node. `len + 1` of these are considered\"] # [doc = \" initialized and valid, except that near the end, while the tree is held\"] # [doc = \" through borrow type `Dying`, some of these pointers are dangling.\"] edges : [MaybeUninit < BoxedNode < K , V > > ; 2 * B] , }",
+      "type BoxedNode < K , V > = NonNull < LeafNode < K , V > > ;",
+      "pub (super) struct NodeRef < BorrowType , K , V , Type > { # [doc = \" The number of levels that the node and the level of leaves are apart, a\"] # [doc = \" constant of the node that cannot be entirely described by `Type`, and that\"] # [doc = \" the node itself does not store. We only need to store the height of the root\"] # [doc = \" node, and derive every other node's height from it.\"] # [doc = \" Must be zero if `Type` is `Leaf` and non-zero if `Type` is `Internal`.\"] height : usize , # [doc = \" The pointer to the leaf or internal node. The definition of `InternalNode`\"] # [doc = \" ensures that the pointer is valid either way.\"] node : NonNull < LeafNode < K , V > > , _marker : PhantomData < (BorrowType , Type) > , }",
+      "pub (super) type Root < K , V > = NodeRef < marker :: Owned , K , V , marker :: LeafOrInternal > ;",
+      "pub (super) struct Handle < Node , Type > { node : Node , idx : usize , _marker : PhantomData < Type > , }",
+      "pub (super) enum LeftOrRight < T > { Left (T) , Right (T) , }",
+      "pub (super) struct BalancingContext < 'a , K , V > { parent : Handle < NodeRef < marker :: Mut < 'a > , K , V , marker :: Internal > , marker :: KV > , left_child : NodeRef < marker :: Mut < 'a > , K , V , marker :: LeafOrInternal > , right_child : NodeRef < marker :: Mut < 'a > , K , V , marker :: LeafOrInternal > , }",
+      "pub (super) enum ForceResult < Leaf , Internal > { Leaf (Leaf) , Internal (Internal) , }",
+      "pub (super) struct SplitResult < 'a , K , V , NodeType > { pub left : NodeRef < marker :: Mut < 'a > , K , V , NodeType > , pub kv : (K , V) , pub right : NodeRef < marker :: Owned , K , V , NodeType > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/vec_deque/into_iter.rs": [
+      "pub struct IntoIter < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { inner : VecDeque < T , A > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/mod.rs": [
+      "pub struct TryReserveError { kind : TryReserveErrorKind , }",
+      "pub enum TryReserveErrorKind { # [doc = \" Error due to the computed capacity exceeding the collection's maximum\"] # [doc = \" (usually `isize::MAX` bytes).\"] CapacityOverflow , # [doc = \" The memory allocator returned an error\"] AllocError { # [doc = \" The layout of allocation request that failed\"] layout : Layout , # [doc (hidden)] # [unstable (feature = \"container_error_extra\" , issue = \"none\" , reason = \"\\\n            Enable exposing the allocator’s custom error value \\\n            if an associated type is added in the future: \\\n            https://github.com/rust-lang/wg-allocators/issues/23\")] non_exhaustive : () , } , }"
+    ],
+    "tools/rust/library/alloc/src/vec/spec_from_elem.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/map/tests.rs": [
+      "const MIN_INSERTS_HEIGHT_1 : usize = node :: CAPACITY + 1 ;",
+      "const MIN_INSERTS_HEIGHT_2 : usize = 89 ;",
+      "struct Align32 (usize) ;"
+    ],
+    "tools/rust/library/alloc/src/collections/vec_deque/tests.rs": [],
+    "tools/rust/library/alloc/src/bstr.rs": [
+      "pub struct ByteString (pub Vec < u8 >) ;"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/borrow/tests.rs": [],
+    "tools/rust/library/alloc/src/task.rs": [],
+    "tools/rust/library/alloc/src/vec/in_place_collect.rs": [],
+    "tools/rust/library/alloc/src/fmt.rs": [],
+    "tools/rust/library/alloc/src/ffi/mod.rs": [],
+    "tools/rust/library/alloc/src/collections/linked_list/tests.rs": [],
+    "tools/rust/library/alloc/src/vec/in_place_drop.rs": [
+      "pub (super) struct InPlaceDrop < T > { pub (super) inner : * mut T , pub (super) dst : * mut T , }",
+      "pub (super) struct InPlaceDstDataSrcBufDrop < Src , Dest > { pub (super) ptr : NonNull < Dest > , pub (super) len : usize , pub (super) src_cap : usize , pub (super) src : PhantomData < Src > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/set.rs": [
+      "pub struct BTreeSet < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { map : BTreeMap < T , SetValZST , A > , }",
+      "pub struct Iter < 'a , T : 'a > { iter : Keys < 'a , T , SetValZST > , }",
+      "pub struct IntoIter < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { iter : super :: map :: IntoIter < T , SetValZST , A > , }",
+      "pub struct Range < 'a , T : 'a > { iter : super :: map :: Range < 'a , T , SetValZST > , }",
+      "pub struct Difference < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { inner : DifferenceInner < 'a , T , A > , }",
+      "enum DifferenceInner < 'a , T : 'a , A : Allocator + Clone > { Stitch { self_iter : Iter < 'a , T > , other_iter : Peekable < Iter < 'a , T > > , } , Search { self_iter : Iter < 'a , T > , other_set : & 'a BTreeSet < T , A > , } , Iterate (Iter < 'a , T >) , }",
+      "pub struct SymmetricDifference < 'a , T : 'a > (MergeIterInner < Iter < 'a , T > >) ;",
+      "pub struct Intersection < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { inner : IntersectionInner < 'a , T , A > , }",
+      "enum IntersectionInner < 'a , T : 'a , A : Allocator + Clone > { Stitch { a : Iter < 'a , T > , b : Iter < 'a , T > , } , Search { small_iter : Iter < 'a , T > , large_set : & 'a BTreeSet < T , A > , } , Answer (Option < & 'a T >) , }",
+      "pub struct Union < 'a , T : 'a > (MergeIterInner < Iter < 'a , T > >) ;",
+      "const ITER_PERFORMANCE_TIPPING_SIZE_DIFF : usize = 16 ;",
+      "pub struct ExtractIf < 'a , T , F , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > where T : 'a , F : 'a + FnMut (& T) -> bool , { pred : F , inner : super :: map :: ExtractIfInner < 'a , T , SetValZST > , # [doc = \" The BTreeMap will outlive this IntoIter so we don't care about drop order for `alloc`.\"] alloc : A , }",
+      "pub struct Cursor < 'a , K : 'a > { inner : super :: map :: Cursor < 'a , K , SetValZST > , }",
+      "pub struct CursorMut < 'a , K : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A = Global > { inner : super :: map :: CursorMut < 'a , K , SetValZST , A > , }",
+      "pub struct CursorMutKey < 'a , K : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A = Global , > { inner : super :: map :: CursorMutKey < 'a , K , SetValZST , A > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/vec_deque/iter.rs": [
+      "pub struct Iter < 'a , T : 'a > { i1 : slice :: Iter < 'a , T > , i2 : slice :: Iter < 'a , T > , }"
+    ],
+    "tools/rust/library/alloc/src/vec/spec_from_iter.rs": [],
+    "tools/rust/library/alloc/src/raw_vec/tests.rs": [
+      "struct ZST ;"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/mem.rs": [],
+    "tools/rust/library/alloc/src/collections/vec_deque/spec_extend.rs": [],
+    "tools/rust/library/alloc/src/collections/vec_deque/macros.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/set/tests.rs": [],
+    "tools/rust/library/alloc/src/boxed/thin.rs": [
+      "pub struct ThinBox < T : ? Sized > { ptr : WithOpaqueHeader , _marker : PhantomData < T > , }",
+      "struct WithHeader < H > (NonNull < u8 > , PhantomData < H >) ;",
+      "struct WithOpaqueHeader (NonNull < u8 >) ;"
+    ],
+    "tools/rust/library/alloc/src/str.rs": [],
+    "tools/rust/library/alloc/src/collections/binary_heap/mod.rs": [
+      "pub struct BinaryHeap < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { data : Vec < T , A > , }",
+      "pub struct PeekMut < 'a , T : 'a + Ord , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { heap : & 'a mut BinaryHeap < T , A > , original_len : Option < NonZero < usize > > , }",
+      "struct RebuildOnDrop < 'a , T : Ord , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { heap : & 'a mut BinaryHeap < T , A > , rebuild_from : usize , }",
+      "struct Hole < 'a , T : 'a > { data : & 'a mut [T] , elt : ManuallyDrop < T > , pos : usize , }",
+      "pub struct Iter < 'a , T : 'a > { iter : slice :: Iter < 'a , T > , }",
+      "pub struct IntoIter < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { iter : vec :: IntoIter < T , A > , }",
+      "pub struct IntoIterSorted < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { inner : BinaryHeap < T , A > , }",
+      "pub struct Drain < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { iter : vec :: Drain < 'a , T , A > , }",
+      "pub struct DrainSorted < 'a , T : Ord , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { inner : & 'a mut BinaryHeap < T , A > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/vec_deque/iter_mut.rs": [
+      "pub struct IterMut < 'a , T : 'a > { i1 : slice :: IterMut < 'a , T > , i2 : slice :: IterMut < 'a , T > , }"
+    ],
+    "tools/rust/library/alloc/src/string.rs": [
+      "pub struct String { vec : Vec < u8 > , }",
+      "pub struct FromUtf8Error { bytes : Vec < u8 > , error : Utf8Error , }",
+      "pub struct FromUtf16Error (()) ;",
+      "pub type ParseError = core :: convert :: Infallible ;",
+      "pub struct IntoChars { bytes : vec :: IntoIter < u8 > , }",
+      "pub struct Drain < 'a > { # [doc = \" Will be used as &'a mut String in the destructor\"] string : * mut String , # [doc = \" Start of part to remove\"] start : usize , # [doc = \" End of part to remove\"] end : usize , # [doc = \" Current remaining range to remove\"] iter : Chars < 'a > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/map/entry.rs": [
+      "pub enum Entry < 'a , K : 'a , V : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { # [doc = \" A vacant entry.\"] # [stable (feature = \"rust1\" , since = \"1.0.0\")] Vacant (# [stable (feature = \"rust1\" , since = \"1.0.0\")] VacantEntry < 'a , K , V , A >) , # [doc = \" An occupied entry.\"] # [stable (feature = \"rust1\" , since = \"1.0.0\")] Occupied (# [stable (feature = \"rust1\" , since = \"1.0.0\")] OccupiedEntry < 'a , K , V , A >) , }",
+      "pub struct VacantEntry < 'a , K , V , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { pub (super) key : K , # [doc = \" `None` for a (empty) map without root\"] pub (super) handle : Option < Handle < NodeRef < marker :: Mut < 'a > , K , V , marker :: Leaf > , marker :: Edge > > , pub (super) dormant_map : DormantMutRef < 'a , BTreeMap < K , V , A > > , # [doc = \" The BTreeMap will outlive this IntoIter so we don't care about drop order for `alloc`.\"] pub (super) alloc : A , pub (super) _marker : PhantomData < & 'a mut (K , V) > , }",
+      "pub struct OccupiedEntry < 'a , K , V , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { pub (super) handle : Handle < NodeRef < marker :: Mut < 'a > , K , V , marker :: LeafOrInternal > , marker :: KV > , pub (super) dormant_map : DormantMutRef < 'a , BTreeMap < K , V , A > > , # [doc = \" The BTreeMap will outlive this IntoIter so we don't care about drop order for `alloc`.\"] pub (super) alloc : A , pub (super) _marker : PhantomData < & 'a mut (K , V) > , }",
+      "pub struct OccupiedError < 'a , K : 'a , V : 'a , A : Allocator + Clone = Global > { # [doc = \" The entry in the map that was already occupied.\"] pub entry : OccupiedEntry < 'a , K , V , A > , # [doc = \" The value which was not inserted, because the entry was already occupied.\"] pub value : V , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/fix.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/append.rs": [
+      "struct MergeIter < K , V , I : Iterator < Item = (K , V) > > (MergeIterInner < I >) ;"
+    ],
+    "tools/rust/library/alloc/src/sync.rs": [
+      "const MAX_REFCOUNT : usize = (isize :: MAX) as usize ;",
+      "const INTERNAL_OVERFLOW_ERROR : & str = \"Arc counter overflow\" ;",
+      "pub struct Arc < T : ? Sized , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { ptr : NonNull < ArcInner < T > > , phantom : PhantomData < ArcInner < T > > , alloc : A , }",
+      "pub struct Weak < T : ? Sized , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { ptr : NonNull < ArcInner < T > > , alloc : A , }",
+      "struct ArcInner < T : ? Sized > { strong : atomic :: AtomicUsize , weak : atomic :: AtomicUsize , data : T , }",
+      "struct WeakInner < 'a > { weak : & 'a atomic :: AtomicUsize , strong : & 'a atomic :: AtomicUsize , }",
+      "struct SliceArcInnerForStatic { inner : ArcInner < [u8 ; 1] > , }",
+      "const MAX_STATIC_INNER_SLICE_ALIGNMENT : usize = 16 ;",
+      "static STATIC_INNER_SLICE : SliceArcInnerForStatic = SliceArcInnerForStatic { inner : ArcInner { strong : atomic :: AtomicUsize :: new (1) , weak : atomic :: AtomicUsize :: new (1) , data : [0] , } , } ;",
+      "struct UniqueArcUninit < T : ? Sized , A : Allocator > { ptr : NonNull < ArcInner < T > > , layout_for_value : Layout , alloc : Option < A > , }"
+    ],
+    "tools/rust/library/alloc/src/vec/splice.rs": [
+      "pub struct Splice < 'a , I : Iterator + 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + 'a = Global , > { pub (super) drain : Drain < 'a , I :: Item , A > , pub (super) replace_with : I , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/search.rs": [
+      "pub (super) enum SearchBound < T > { # [doc = \" An inclusive bound to look for, just like `Bound::Included(T)`.\"] Included (T) , # [doc = \" An exclusive bound to look for, just like `Bound::Excluded(T)`.\"] Excluded (T) , # [doc = \" An unconditional inclusive bound, just like `Bound::Unbounded`.\"] AllIncluded , # [doc = \" An unconditional exclusive bound.\"] AllExcluded , }",
+      "pub (super) enum SearchResult < BorrowType , K , V , FoundType , GoDownType > { Found (Handle < NodeRef < BorrowType , K , V , FoundType > , marker :: KV >) , GoDown (Handle < NodeRef < BorrowType , K , V , GoDownType > , marker :: Edge >) , }",
+      "pub (super) enum IndexResult { KV (usize) , Edge (usize) , }"
+    ],
+    "tools/rust/library/alloc/src/vec/cow.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/dedup_sorted_iter.rs": [
+      "pub (super) struct DedupSortedIter < K , V , I > where I : Iterator < Item = (K , V) > , { iter : Peekable < I > , }"
+    ],
+    "tools/rust/library/alloc/src/lib.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/navigate.rs": [
+      "pub (super) struct LeafRange < BorrowType , K , V > { front : Option < Handle < NodeRef < BorrowType , K , V , marker :: Leaf > , marker :: Edge > > , back : Option < Handle < NodeRef < BorrowType , K , V , marker :: Leaf > , marker :: Edge > > , }",
+      "enum LazyLeafHandle < BorrowType , K , V > { Root (NodeRef < BorrowType , K , V , marker :: LeafOrInternal >) , Edge (Handle < NodeRef < BorrowType , K , V , marker :: Leaf > , marker :: Edge >) , }",
+      "pub (super) struct LazyLeafRange < BorrowType , K , V > { front : Option < LazyLeafHandle < BorrowType , K , V > > , back : Option < LazyLeafHandle < BorrowType , K , V > > , }",
+      "pub (super) enum Position < BorrowType , K , V > { Leaf (NodeRef < BorrowType , K , V , marker :: Leaf >) , Internal (NodeRef < BorrowType , K , V , marker :: Internal >) , InternalKV , }"
+    ],
+    "tools/rust/library/alloc/src/raw_vec/mod.rs": [
+      "enum AllocInit { # [doc = \" The contents of the new memory are uninitialized.\"] Uninitialized , # [cfg (not (no_global_oom_handling))] # [doc = \" The new memory is guaranteed to be zeroed.\"] Zeroed , }",
+      "type Cap = core :: num :: niche_types :: UsizeNoHighBit ;",
+      "const ZERO_CAP : Cap = unsafe { Cap :: new_unchecked (0) } ;",
+      "pub (crate) struct RawVec < T , A : Allocator = Global > { inner : RawVecInner < A > , _marker : PhantomData < T > , }",
+      "struct RawVecInner < A : Allocator = Global > { ptr : Unique < u8 > , # [doc = \" Never used for ZSTs; it's `capacity()`'s responsibility to return usize::MAX in that case.\"] # [doc = \"\"] # [doc = \" # Safety\"] # [doc = \"\"] # [doc = \" `cap` must be in the `0..=isize::MAX` range.\"] cap : Cap , alloc : A , }"
+    ],
+    "tools/rust/library/alloc/src/boxed.rs": [
+      "pub struct Box < T : ? Sized , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > (Unique < T > , A) ;"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/set/entry.rs": [
+      "pub enum Entry < 'a , T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { # [doc = \" An occupied entry.\"] # [doc = \"\"] # [doc = \" # Examples\"] # [doc = \"\"] # [doc = \" ```\"] # [doc = \" #![feature(btree_set_entry)]\"] # [doc = \"\"] # [doc = \" use std::collections::btree_set::{Entry, BTreeSet};\"] # [doc = \"\"] # [doc = \" let mut set = BTreeSet::from([\\\"a\\\", \\\"b\\\"]);\"] # [doc = \"\"] # [doc = \" match set.entry(\\\"a\\\") {\"] # [doc = \"     Entry::Vacant(_) => unreachable!(),\"] # [doc = \"     Entry::Occupied(_) => { }\"] # [doc = \" }\"] # [doc = \" ```\"] # [unstable (feature = \"btree_set_entry\" , issue = \"133549\")] Occupied (OccupiedEntry < 'a , T , A >) , # [doc = \" A vacant entry.\"] # [doc = \"\"] # [doc = \" # Examples\"] # [doc = \"\"] # [doc = \" ```\"] # [doc = \" #![feature(btree_set_entry)]\"] # [doc = \"\"] # [doc = \" use std::collections::btree_set::{Entry, BTreeSet};\"] # [doc = \"\"] # [doc = \" let mut set = BTreeSet::new();\"] # [doc = \"\"] # [doc = \" match set.entry(\\\"a\\\") {\"] # [doc = \"     Entry::Occupied(_) => unreachable!(),\"] # [doc = \"     Entry::Vacant(_) => { }\"] # [doc = \" }\"] # [doc = \" ```\"] # [unstable (feature = \"btree_set_entry\" , issue = \"133549\")] Vacant (VacantEntry < 'a , T , A >) , }",
+      "pub struct OccupiedEntry < 'a , T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { pub (super) inner : map :: OccupiedEntry < 'a , T , SetValZST , A > , }",
+      "pub struct VacantEntry < 'a , T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { pub (super) inner : map :: VacantEntry < 'a , T , SetValZST , A > , }"
+    ],
+    "tools/rust/library/alloc/src/macros.rs": [],
+    "tools/rust/library/alloc/src/rc.rs": [
+      "struct RcInner < T : ? Sized > { strong : Cell < usize > , weak : Cell < usize > , value : T , }",
+      "pub struct Rc < T : ? Sized , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { ptr : NonNull < RcInner < T > > , phantom : PhantomData < RcInner < T > > , alloc : A , }",
+      "pub struct Weak < T : ? Sized , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { ptr : NonNull < RcInner < T > > , alloc : A , }",
+      "struct WeakInner < 'a > { weak : & 'a Cell < usize > , strong : & 'a Cell < usize > , }",
+      "pub struct UniqueRc < T : ? Sized , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { ptr : NonNull < RcInner < T > > , _marker : PhantomData < RcInner < T > > , _marker2 : PhantomData < * mut T > , alloc : A , }",
+      "struct UniqueRcUninit < T : ? Sized , A : Allocator > { ptr : NonNull < RcInner < T > > , layout_for_value : Layout , alloc : Option < A > , }"
+    ],
+    "tools/rust/library/alloc/src/boxed/iter.rs": [],
+    "tools/rust/library/alloc/src/vec/partial_eq.rs": [],
+    "tools/rust/library/alloc/src/collections/vec_deque/mod.rs": [
+      "pub struct VecDeque < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { head : usize , len : usize , buf : RawVec < T , A > , }"
+    ],
+    "tools/rust/library/alloc/src/slice.rs": [],
+    "tools/rust/library/alloc/src/collections/vec_deque/drain.rs": [
+      "pub struct Drain < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { deque : NonNull < VecDeque < T , A > > , drain_len : usize , idx : usize , new_len : usize , remaining : usize , _marker : PhantomData < & 'a T > , }"
+    ],
+    "tools/rust/library/alloc/src/boxed/convert.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/node/tests.rs": [],
+    "tools/rust/library/alloc/src/vec/spec_from_iter_nested.rs": [],
+    "tools/rust/library/alloc/src/alloc.rs": [
+      "pub struct Global ;"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/remove.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/merge_iter.rs": [
+      "pub (super) struct MergeIterInner < I : Iterator > { a : I , b : I , peeked : Option < Peeked < I > > , }",
+      "enum Peeked < I : Iterator > { A (I :: Item) , B (I :: Item) , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/set_val.rs": [
+      "pub (super) struct SetValZST ;"
+    ],
+    "tools/rust/library/alloc/src/borrow.rs": [
+      "pub enum Cow < 'a , B : ? Sized + 'a > where B : ToOwned , { # [doc = \" Borrowed data.\"] # [stable (feature = \"rust1\" , since = \"1.0.0\")] Borrowed (# [stable (feature = \"rust1\" , since = \"1.0.0\")] & 'a B) , # [doc = \" Owned data.\"] # [stable (feature = \"rust1\" , since = \"1.0.0\")] Owned (# [stable (feature = \"rust1\" , since = \"1.0.0\")] < B as ToOwned > :: Owned) , }"
+    ],
+    "tools/rust/library/alloc/src/collections/linked_list.rs": [
+      "pub struct LinkedList < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { head : Option < NonNull < Node < T > > > , tail : Option < NonNull < Node < T > > > , len : usize , alloc : A , marker : PhantomData < Box < Node < T > , A > > , }",
+      "struct Node < T > { next : Option < NonNull < Node < T > > > , prev : Option < NonNull < Node < T > > > , element : T , }",
+      "pub struct Iter < 'a , T : 'a > { head : Option < NonNull < Node < T > > > , tail : Option < NonNull < Node < T > > > , len : usize , marker : PhantomData < & 'a Node < T > > , }",
+      "pub struct IterMut < 'a , T : 'a > { head : Option < NonNull < Node < T > > > , tail : Option < NonNull < Node < T > > > , len : usize , marker : PhantomData < & 'a mut Node < T > > , }",
+      "pub struct IntoIter < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { list : LinkedList < T , A > , }",
+      "pub struct Cursor < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { index : usize , current : Option < NonNull < Node < T > > > , list : & 'a LinkedList < T , A > , }",
+      "pub struct CursorMut < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { index : usize , current : Option < NonNull < Node < T > > > , list : & 'a mut LinkedList < T , A > , }",
+      "pub struct ExtractIf < 'a , T : 'a , F : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { list : & 'a mut LinkedList < T , A > , it : Option < NonNull < Node < T > > > , pred : F , idx : usize , old_len : usize , }"
+    ],
+    "tools/rust/library/alloc/src/vec/mod.rs": [
+      "pub struct Vec < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global > { buf : RawVec < T , A > , len : usize , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/split.rs": [],
+    "tools/rust/library/alloc/src/vec/spec_extend.rs": [],
+    "tools/rust/library/alloc/src/vec/into_iter.rs": [
+      "pub struct IntoIter < T , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { pub (super) buf : NonNull < T > , pub (super) phantom : PhantomData < T > , pub (super) cap : usize , pub (super) alloc : ManuallyDrop < A > , pub (super) ptr : NonNull < T > , # [doc = \" If T is a ZST, this is actually ptr+len. This encoding is picked so that\"] # [doc = \" ptr == end is a quick test for the Iterator being empty, that works\"] # [doc = \" for both ZST and non-ZST.\"] # [doc = \" For non-ZSTs the pointer is treated as `NonNull<T>`\"] pub (super) end : * const T , }"
+    ],
+    "tools/rust/library/alloc/src/vec/drain.rs": [
+      "pub struct Drain < 'a , T : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + 'a = Global , > { # [doc = \" Index of tail to preserve\"] pub (super) tail_start : usize , # [doc = \" Length of tail\"] pub (super) tail_len : usize , # [doc = \" Current remaining range to remove\"] pub (super) iter : slice :: Iter < 'a , T > , pub (super) vec : NonNull < Vec < T , A > > , }"
+    ],
+    "tools/rust/library/alloc/src/collections/vec_deque/spec_from_iter.rs": [],
+    "tools/rust/library/alloc/src/lib.miri.rs": [],
+    "tools/rust/library/alloc/src/ffi/c_str.rs": [
+      "pub struct CString { inner : Box < [u8] > , }",
+      "pub struct NulError (usize , Vec < u8 >) ;",
+      "enum FromBytesWithNulErrorKind { InteriorNul (usize) , NotNulTerminated , }",
+      "pub struct FromVecWithNulError { error_kind : FromBytesWithNulErrorKind , bytes : Vec < u8 > , }",
+      "pub struct IntoStringError { inner : CString , error : Utf8Error , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/map.rs": [
+      "pub (super) const MIN_LEN : usize = node :: MIN_LEN_AFTER_SPLIT ;",
+      "pub struct BTreeMap < K , V , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { root : Option < Root < K , V > > , length : usize , # [doc = \" `ManuallyDrop` to control drop order (needs to be dropped after all the nodes).\"] pub (super) alloc : ManuallyDrop < A > , _marker : PhantomData < crate :: boxed :: Box < (K , V) , A > > , }",
+      "pub struct Iter < 'a , K : 'a , V : 'a > { range : LazyLeafRange < marker :: Immut < 'a > , K , V > , length : usize , }",
+      "pub struct IterMut < 'a , K : 'a , V : 'a > { range : LazyLeafRange < marker :: ValMut < 'a > , K , V > , length : usize , _marker : PhantomData < & 'a mut (K , V) > , }",
+      "pub struct IntoIter < K , V , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { range : LazyLeafRange < marker :: Dying , K , V > , length : usize , # [doc = \" The BTreeMap will outlive this IntoIter so we don't care about drop order for `alloc`.\"] alloc : A , }",
+      "pub struct Keys < 'a , K , V > { inner : Iter < 'a , K , V > , }",
+      "pub struct Values < 'a , K , V > { inner : Iter < 'a , K , V > , }",
+      "pub struct ValuesMut < 'a , K , V > { inner : IterMut < 'a , K , V > , }",
+      "pub struct IntoKeys < K , V , A : Allocator + Clone = Global > { inner : IntoIter < K , V , A > , }",
+      "pub struct IntoValues < K , V , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > { inner : IntoIter < K , V , A > , }",
+      "pub struct Range < 'a , K : 'a , V : 'a > { inner : LeafRange < marker :: Immut < 'a > , K , V > , }",
+      "pub struct RangeMut < 'a , K : 'a , V : 'a > { inner : LeafRange < marker :: ValMut < 'a > , K , V > , _marker : PhantomData < & 'a mut (K , V) > , }",
+      "pub struct ExtractIf < 'a , K , V , F , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator + Clone = Global , > where F : 'a + FnMut (& K , & mut V) -> bool , { pred : F , inner : ExtractIfInner < 'a , K , V > , # [doc = \" The BTreeMap will outlive this IntoIter so we don't care about drop order for `alloc`.\"] alloc : A , }",
+      "pub (super) struct ExtractIfInner < 'a , K , V > { # [doc = \" Reference to the length field in the borrowed map, updated live.\"] length : & 'a mut usize , # [doc = \" Buried reference to the root field in the borrowed map.\"] # [doc = \" Wrapped in `Option` to allow drop handler to `take` it.\"] dormant_root : Option < DormantMutRef < 'a , Root < K , V > > > , # [doc = \" Contains a leaf edge preceding the next element to be returned, or the last leaf edge.\"] # [doc = \" Empty if the map has no root, if iteration went beyond the last leaf edge,\"] # [doc = \" or if a panic occurred in the predicate.\"] cur_leaf_edge : Option < Handle < NodeRef < marker :: Mut < 'a > , K , V , marker :: Leaf > , marker :: Edge > > , }",
+      "pub struct Cursor < 'a , K : 'a , V : 'a > { current : Option < Handle < NodeRef < marker :: Immut < 'a > , K , V , marker :: Leaf > , marker :: Edge > > , root : Option < & 'a node :: Root < K , V > > , }",
+      "pub struct CursorMut < 'a , K : 'a , V : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A = Global , > { inner : CursorMutKey < 'a , K , V , A > , }",
+      "pub struct CursorMutKey < 'a , K : 'a , V : 'a , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A = Global , > { current : Option < Handle < NodeRef < marker :: Mut < 'a > , K , V , marker :: Leaf > , marker :: Edge > > , root : DormantMutRef < 'a , Option < node :: Root < K , V > > > , length : & 'a mut usize , alloc : & 'a mut A , }",
+      "pub struct UnorderedKeyError { }"
+    ],
+    "tools/rust/library/alloc/src/vec/extract_if.rs": [
+      "pub struct ExtractIf < 'a , T , F , # [unstable (feature = \"allocator_api\" , issue = \"32838\")] A : Allocator = Global , > { vec : & 'a mut Vec < T , A > , # [doc = \" The index of the item that will be inspected by the next call to `next`.\"] idx : usize , # [doc = \" Elements at and beyond this point will be retained. Must be equal or smaller than `old_len`.\"] end : usize , # [doc = \" The number of items that have been drained (removed) thus far.\"] del : usize , # [doc = \" The original length of `vec` prior to draining.\"] old_len : usize , # [doc = \" The filter test predicate.\"] pred : F , }"
+    ],
+    "tools/rust/library/alloc/src/collections/btree/mod.rs": [],
+    "tools/rust/library/alloc/src/vec/set_len_on_drop.rs": [
+      "pub (super) struct SetLenOnDrop < 'a > { len : & 'a mut usize , local_len : usize , }"
+    ],
+    "tools/rust/library/alloc/src/vec/is_zero.rs": [],
+    "tools/rust/library/alloc/src/collections/btree/borrow.rs": [
+      "pub (super) struct DormantMutRef < 'a , T > { ptr : NonNull < T > , _marker : PhantomData < & 'a mut T > , }"
+    ]
+  }
+}

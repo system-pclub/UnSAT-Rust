@@ -13,7 +13,7 @@ import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = json.loads((ROOT / "benchmark/rustsec/manifest.json").read_text())
+MANIFEST = json.loads((ROOT / "dev/rustsec/manifest.json").read_text())
 RESULT_ROOT = ROOT / "eval/rustsec"
 TOOLCHAIN = ROOT / ".local/rustsec-toolchain/nightly-2025-03-28-x86_64-unknown-linux-gnu"
 
@@ -69,10 +69,10 @@ def workcopy(case, tool, attempt):
     if dest.exists():
         return dest
     parent.mkdir(parents=True, exist_ok=True)
-    archive = ROOT / "benchmark/rustsec/evidence" / case["advisory"] / f'{case["crate"]}-{case["version"]}.crate'
+    archive = ROOT / "dev/rustsec/evidence" / case["advisory"] / f'{case["crate"]}-{case["version"]}.crate'
     with tarfile.open(archive) as tar:
         tar.extractall(parent, filter="data")
-    lock = ROOT / "benchmark/rustsec/evidence" / case["advisory"] / "Cargo.lock"
+    lock = ROOT / "dev/rustsec/evidence" / case["advisory"] / "Cargo.lock"
     if lock.exists():
         shutil.copy2(lock, dest / "Cargo.lock")
     # scanner's optional pelite 0.2 default feature no longer compiles on the
@@ -103,7 +103,7 @@ def baseline(job):
             command.append("--no-default-features")
     elif tool != "semgrep":
         command.extend(["--prepare-lock", "--lock-version", "3"])
-    lock = ROOT / "benchmark/rustsec/evidence" / case["advisory"] / "Cargo.lock"
+    lock = ROOT / "dev/rustsec/evidence" / case["advisory"] / "Cargo.lock"
     if args.pinned and lock.exists() and tool != "semgrep":
         command.extend(["--lockfile", str(lock)])
         if tool in ("rudra", "mirchecker"):
@@ -172,7 +172,7 @@ def local(case, args):
         if not args.instantiate and not args.tests:
             command.append("--no-test")
         if not args.full:
-            calls = ROOT / "benchmark/rustsec/targets" / (crate + ".txt")
+            calls = ROOT / "dev/rustsec/targets" / (crate + ".txt")
             if calls.exists():
                 command.extend(["--callsites-file", str(calls)])
             else:
@@ -203,7 +203,7 @@ def local(case, args):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("mode", choices=["baselines", "sync", "safe4u", "ruklee"])
-    p.add_argument("--manifest", type=Path, default=ROOT / "benchmark/rustsec/manifest.json")
+    p.add_argument("--manifest", type=Path, default=ROOT / "dev/rustsec/manifest.json")
     p.add_argument("--output-root", type=Path, default=RESULT_ROOT)
     p.add_argument("--attempt", default="initial")
     p.add_argument("--timeout", type=int, default=240)

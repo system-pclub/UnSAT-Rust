@@ -1,0 +1,18 @@
+{
+  "path": "rust/library/alloc/src/sync.rs",
+  "line": 1830,
+  "name": "increment_strong_count_in",
+  "declaration": "unsafe fn increment_strong_count_in (ptr : * const T , alloc : A) where A : Clone ,",
+  "parent": "Arc < T , A >",
+  "documentation": " Increments the strong reference count on the `Arc<T>` associated with the\n provided pointer by one.\n\n # Safety\n\n The pointer must have been obtained through `Arc::into_raw` and must satisfy the\n same layout requirements specified in [`Arc::from_raw_in`][from_raw_in].\n The associated `Arc` instance must be valid (i.e. the strong count must be at\n least 1) for the duration of this method, and `ptr` must point to a block of memory\n allocated by `alloc`.\n\n [from_raw_in]: Arc::from_raw_in\n\n # Examples\n\n ```\n #![feature(allocator_api)]\n\n use std::sync::Arc;\n use std::alloc::System;\n\n let five = Arc::new_in(5, System);\n\n unsafe {\n     let ptr = Arc::into_raw(five);\n     Arc::increment_strong_count_in(ptr, System);\n\n     // This assertion is deterministic because we haven't shared\n     // the `Arc` between threads.\n     let five = Arc::from_raw_in(ptr, System);\n     assert_eq!(2, Arc::strong_count(&five));\n #   // Prevent leaks for Miri.\n #   Arc::decrement_strong_count_in(ptr, System);\n }\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must have been obtained through `Arc::into_raw`.",
+    "For safety, if `ptr` was obtained from an `Arc<U, A>` where `U` is sized, `U` must have the same size and alignment as `T`.",
+    "For safety, if `ptr` was obtained from an `Arc<U, A>` where `U` is unsized, its data pointer must have the same size and alignment as `T`.",
+    "For safety, the `Arc` instance associated with `ptr` must remain valid, meaning its strong reference count must be at least 1, for the duration of `increment_strong_count_in`.",
+    "For safety, `ptr` must point to a block of memory allocated by `alloc`."
+  ],
+  "status": "extracted"
+}

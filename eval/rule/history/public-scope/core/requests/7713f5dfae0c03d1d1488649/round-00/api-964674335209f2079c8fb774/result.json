@@ -1,0 +1,19 @@
+{
+  "path": "rust/library/core/src/ptr/mut_ptr.rs",
+  "line": 1995,
+  "name": "as_uninit_slice_mut",
+  "declaration": "const unsafe fn as_uninit_slice_mut < 'a > (self) -> Option < & 'a mut [MaybeUninit < T >] >",
+  "parent": "* mut [T]",
+  "documentation": " Returns `None` if the pointer is null, or else returns a unique slice to\n the value wrapped in `Some`. In contrast to [`as_mut`], this does not require\n that the value has to be initialized.\n\n For the shared counterpart see [`as_uninit_slice`].\n\n [`as_mut`]: #method.as_mut\n [`as_uninit_slice`]: #method.as_uninit_slice-1\n\n # Safety\n\n When calling this method, you have to ensure that *either* the pointer is null *or*\n all of the following is true:\n\n * The pointer must be [valid] for reads and writes for `ptr.len() * size_of::<T>()`\n   many bytes, and it must be properly aligned. This means in particular:\n\n     * The entire memory range of this slice must be contained within a single [allocated object]!\n       Slices can never span across multiple allocated objects.\n\n     * The pointer must be aligned even for zero-length slices. One\n       reason for this is that enum layout optimizations may rely on references\n       (including slices of any length) being aligned and non-null to distinguish\n       them from other data. You can obtain a pointer that is usable as `data`\n       for zero-length slices using [`NonNull::dangling()`].\n\n * The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.\n   See the safety documentation of [`pointer::offset`].\n\n * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is\n   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.\n   In particular, while this reference exists, the memory the pointer points to must\n   not get accessed (read or written) through any other pointer.\n\n This applies even if the result of this method is unused!\n\n See also [`slice::from_raw_parts_mut`][].\n\n [valid]: crate::ptr#safety\n [allocated object]: crate::ptr#allocated-object\n\n # Panics during const evaluation\n\n This method will panic during const evaluation if the pointer cannot be\n determined to be null or not. See [`is_null`] for more information.\n\n [`is_null`]: #method.is_null-1",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "If the pointer is non-null, it must be valid for reads and writes for `ptr.len() * size_of::<T>()` bytes, even if the method's result is unused.",
+    "If the pointer is non-null, it must be properly aligned, including for zero-length slices, even if the method's result is unused.",
+    "If the pointer is non-null, the entire memory range of the slice must be contained within a single allocated object, even if the method's result is unused.",
+    "If the pointer is non-null, the total slice size `ptr.len() * size_of::<T>()` must be no larger than `isize::MAX`, even if the method's result is unused.",
+    "If the pointer is non-null, Rust's aliasing rules must be enforced for the returned reference's arbitrarily chosen lifetime `'a`, even if the method's result is unused.",
+    "If the pointer is non-null, while the returned reference exists, the memory it points to must not be read or written through any other pointer, even if the method's result is unused."
+  ],
+  "status": "extracted"
+}

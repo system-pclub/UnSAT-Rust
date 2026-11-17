@@ -1,0 +1,23 @@
+{
+  "path": "rust/library/core/src/alloc/global.rs",
+  "line": 203,
+  "name": "realloc",
+  "declaration": "unsafe fn realloc (& self , ptr : * mut u8 , layout : Layout , new_size : usize) -> * mut u8",
+  "parent": "GlobalAlloc",
+  "documentation": " Shrinks or grows a block of memory to the given `new_size` in bytes.\n The block is described by the given `ptr` pointer and `layout`.\n\n If this returns a non-null pointer, then ownership of the memory block\n referenced by `ptr` has been transferred to this allocator.\n Any access to the old `ptr` is Undefined Behavior, even if the\n allocation remained in-place. The newly returned pointer is the only valid pointer\n for accessing this memory now.\n\n The new memory block is allocated with `layout`,\n but with the `size` updated to `new_size` in bytes.\n This new layout must be used when deallocating the new memory block with `dealloc`.\n The range `0..min(layout.size(), new_size)` of the new memory block is\n guaranteed to have the same values as the original block.\n\n If this method returns null, then ownership of the memory\n block has not been transferred to this allocator, and the\n contents of the memory block are unaltered.\n\n # Safety\n\n The caller must ensure that:\n\n * `ptr` is allocated via this allocator,\n\n * `layout` is the same layout that was used\n   to allocate that block of memory,\n\n * `new_size` is greater than zero.\n\n * `new_size`, when rounded up to the nearest multiple of `layout.align()`,\n   does not overflow `isize` (i.e., the rounded value must be less than or\n   equal to `isize::MAX`).\n\n If these are not followed, undefined behavior can result.\n\n (Extension subtraits might provide more specific bounds on\n behavior, e.g., guarantee a sentinel address or a null pointer\n in response to a zero-size allocation request.)\n\n # Errors\n\n Returns null if the new layout does not meet the size\n and alignment constraints of the allocator, or if reallocation\n otherwise fails.\n\n Implementations are encouraged to return null on memory\n exhaustion rather than panicking or aborting, but this is not\n a strict requirement. (Specifically: it is *legal* to\n implement this trait atop an underlying native allocation\n library that aborts on memory exhaustion.)\n\n Clients wishing to abort computation in response to a\n reallocation error are encouraged to call the [`handle_alloc_error`] function,\n rather than directly invoking `panic!` or similar.\n\n [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `ptr` must have been allocated via this allocator.",
+    "For safety, `layout` must be the same layout used to allocate the block referenced by `ptr`.",
+    "For safety, `new_size` must be greater than zero.",
+    "For safety, `new_size` in bytes, rounded up to the nearest multiple of `layout.align()`, must be less than or equal to `isize::MAX`.",
+    "If `realloc` returns a non-null pointer, ownership of the memory block referenced by `ptr` is transferred to this allocator.",
+    "If `realloc` returns a non-null pointer, any access through the old `ptr` is undefined behavior, even if the allocation remained in place; only the newly returned pointer is valid for accessing this memory.",
+    "If `realloc` returns a non-null pointer, deallocating the new memory block with `dealloc` must use `layout` with its size updated to `new_size` bytes.",
+    "If `realloc` returns a non-null pointer, the bytes in the range `0..min(layout.size(), new_size)` of the new memory block are guaranteed to have the same values as the corresponding bytes of the original block.",
+    "If `realloc` returns null, ownership of the memory block referenced by `ptr` is not transferred to this allocator.",
+    "If `realloc` returns null, the contents of the memory block referenced by `ptr` are unaltered."
+  ],
+  "status": "extracted"
+}

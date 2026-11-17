@@ -1,0 +1,22 @@
+{
+  "path": "rust/library/core/src/mem/mod.rs",
+  "line": 484,
+  "name": "align_of_val_raw",
+  "declaration": "const unsafe fn align_of_val_raw < T : ? Sized > (val : * const T) -> usize",
+  "parent": null,
+  "documentation": " Returns the [ABI]-required minimum alignment of the type of the value that `val` points to in\n bytes.\n\n Every reference to a value of the type `T` must be a multiple of this number.\n\n [ABI]: https://en.wikipedia.org/wiki/Application_binary_interface\n\n # Safety\n\n This function is only safe to call if the following conditions hold:\n\n - If `T` is `Sized`, this function is always safe to call.\n - If the unsized tail of `T` is:\n     - a [slice], then the length of the slice tail must be an initialized\n       integer, and the size of the *entire value*\n       (dynamic tail length + statically sized prefix) must fit in `isize`.\n       For the special case where the dynamic tail length is 0, this function\n       is safe to call.\n     - a [trait object], then the vtable part of the pointer must point\n       to a valid vtable acquired by an unsizing coercion, and the size\n       of the *entire value* (dynamic tail length + statically sized prefix)\n       must fit in `isize`.\n     - an (unstable) [extern type], then this function is always safe to\n       call, but may panic or otherwise return the wrong value, as the\n       extern type's layout is not known. This is the same behavior as\n       [`align_of_val`] on a reference to a type with an extern type tail.\n     - otherwise, it is conservatively not allowed to call this function.\n\n [trait object]: ../../book/ch17-02-trait-objects.html\n [extern type]: ../../unstable-book/language-features/extern-types.html\n\n # Examples\n\n ```\n #![feature(layout_for_ptr)]\n use std::mem;\n\n assert_eq!(4, unsafe { mem::align_of_val_raw(&5i32) });\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "Every reference to a value of type T must have an address that is a multiple of the alignment in bytes returned by align_of_val_raw(val).",
+    "If T is Sized, align_of_val_raw(val) is always safe to call.",
+    "If T has a slice unsized tail with nonzero dynamic length, calling align_of_val_raw(val) requires the slice-tail length in val to be an initialized integer.",
+    "If T has a slice unsized tail with nonzero dynamic length, calling align_of_val_raw(val) requires the size of the entire value, including the dynamic tail and statically sized prefix, to fit in isize.",
+    "If T has a slice unsized tail whose dynamic length is 0, align_of_val_raw(val) is safe to call.",
+    "If T has a trait-object unsized tail, calling align_of_val_raw(val) requires the vtable part of val to point to a valid vtable acquired by an unsizing coercion.",
+    "If T has a trait-object unsized tail, calling align_of_val_raw(val) requires the size of the entire value, including the dynamic tail and statically sized prefix, to fit in isize.",
+    "If T has an extern-type unsized tail, align_of_val_raw(val) is always safe to call, even though it may panic or return the wrong value.",
+    "If T is unsized and its unsized tail is neither a slice, a trait object, nor an extern type, calling align_of_val_raw(val) is not allowed for safety."
+  ],
+  "status": "extracted"
+}

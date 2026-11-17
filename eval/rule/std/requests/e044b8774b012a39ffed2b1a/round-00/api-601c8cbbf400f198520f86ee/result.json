@@ -1,0 +1,14 @@
+{
+  "path": "rust/library/std/src/thread/mod.rs",
+  "line": 402,
+  "name": "spawn_unchecked",
+  "declaration": "unsafe fn spawn_unchecked < F , T > (self , f : F) -> io :: Result < JoinHandle < T > > where F : FnOnce () -> T , F : Send , T : Send ,",
+  "parent": "Builder",
+  "documentation": " Spawns a new thread without any lifetime restrictions by taking ownership\n of the `Builder`, and returns an [`io::Result`] to its [`JoinHandle`].\n\n The spawned thread may outlive the caller (unless the caller thread\n is the main thread; the whole process is terminated when the main\n thread finishes). The join handle can be used to block on\n termination of the spawned thread, including recovering its panics.\n\n This method is identical to [`thread::Builder::spawn`][`Builder::spawn`],\n except for the relaxed lifetime bounds, which render it unsafe.\n For a more complete documentation see [`thread::spawn`][`spawn`].\n\n # Errors\n\n Unlike the [`spawn`] free function, this method yields an\n [`io::Result`] to capture any failure to create the thread at\n the OS level.\n\n # Panics\n\n Panics if a thread name was set and it contained null bytes.\n\n # Safety\n\n The caller has to ensure that the spawned thread does not outlive any\n references in the supplied thread closure and its return type.\n This can be guaranteed in two ways:\n\n - ensure that [`join`][`JoinHandle::join`] is called before any referenced\n data is dropped\n - use only types with `'static` lifetime bounds, i.e., those with no or only\n `'static` references (both [`thread::Builder::spawn`][`Builder::spawn`]\n and [`thread::spawn`][`spawn`] enforce this property statically)\n\n # Examples\n\n ```\n use std::thread;\n\n let builder = thread::Builder::new();\n\n let x = 1;\n let thread_x = &x;\n\n let handler = unsafe {\n     builder.spawn_unchecked(move || {\n         println!(\"x = {}\", *thread_x);\n     }).unwrap()\n };\n\n // caller has to ensure `join()` is called, otherwise\n // it is possible to access freed memory if `x` gets\n // dropped before the thread closure is executed!\n handler.join().unwrap();\n ```\n\n [`io::Result`]: crate::io::Result",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The caller must ensure that the thread spawned by `Builder::spawn_unchecked` does not outlive any references in the supplied closure `f` or its return type `T`. This may be guaranteed by calling `JoinHandle::join` before any referenced data is dropped, or by using only types with `'static` lifetime bounds—types containing no references or only `'static` references—for both `f` and `T`."
+  ],
+  "status": "extracted"
+}

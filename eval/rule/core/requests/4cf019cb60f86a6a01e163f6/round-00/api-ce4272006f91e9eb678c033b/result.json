@@ -1,0 +1,19 @@
+{
+  "path": "rust/library/core/src/ptr/mod.rs",
+  "line": 1170,
+  "name": "replace",
+  "declaration": "const unsafe fn replace < T > (dst : * mut T , src : T) -> T",
+  "parent": null,
+  "documentation": " Moves `src` into the pointed `dst`, returning the previous `dst` value.\n\n Neither value is dropped.\n\n This function is semantically equivalent to [`mem::replace`] except that it\n operates on raw pointers instead of references. When references are\n available, [`mem::replace`] should be preferred.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `dst` must be [valid] for both reads and writes.\n\n * `dst` must be properly aligned.\n\n * `dst` must point to a properly initialized value of type `T`.\n\n Note that even if `T` has size `0`, the pointer must be properly aligned.\n\n [valid]: self#safety\n\n # Examples\n\n ```\n use std::ptr;\n\n let mut rust = vec!['b', 'u', 's', 't'];\n\n // `mem::replace` would have the same effect without requiring the unsafe\n // block.\n let b = unsafe {\n     ptr::replace(&mut rust[0], 'r')\n };\n\n assert_eq!(b, 'b');\n assert_eq!(rust, &['r', 'u', 's', 't']);\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "For safety, `dst` must be valid for both reading and writing `size_of::<T>()` bytes. For a non-zero-sized access, this requires, but is not necessarily ensured by, `dst` being non-null and the entire accessed memory range lying within the allocated object determined by its provenance; each stack-allocated variable is a separate allocated object.",
+    "If `size_of::<T>()` is zero, every pointer, including null, satisfies the read/write validity requirement for `dst`; the alignment requirement still applies.",
+    "For safety, `dst` must be aligned to `align_of::<T>()`, even if `T` has size zero.",
+    "For safety, `dst` must point to a properly initialized value of type `T`.",
+    "The accesses performed by `replace` are non-atomic. For safety, no other thread may concurrently access the same memory location accessed by `replace`, since `replace` writes to that location.",
+    "If `dst` is obtained by casting a reference to a pointer, its validity is guaranteed for as long as the underlying object is live and no reference is used to access the same memory; reference accesses and raw-pointer accesses must not be interleaved within that guaranteed period."
+  ],
+  "status": "extracted"
+}

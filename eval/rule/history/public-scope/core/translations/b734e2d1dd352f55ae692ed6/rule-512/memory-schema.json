@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "projection": ".$mem",
+  "views": {
+    "storage": "Memory of the Rust value/place itself. Available on API value terms, Rust fields and sequence elements, including opaque generic values. It is not the pointee memory of a pointer.",
+    "region": "A typed logical region designating exactly one pointee value. Obtained as p.$mem.pointee for a raw pointer or explicitly supported pointer wrapper. Constructing this observation does not dereference the pointer and remains possible for null/dangling/misaligned pointers.",
+    "allocation": "The originating allocation record, retained after deallocation. Identity includes allocation generation, so address reuse does not establish identity."
+  },
+  "fields": {
+    "exists": {
+      "type": "bool",
+      "meaning": "Whether the view has represented backing storage. start/size/align observations do not by themselves imply this flag."
+    },
+    "start": {
+      "type": "integer",
+      "meaning": "Byte address of this view's beginning. For p.$mem it is the address of the pointer slot; for p.$mem.pointee it is the pointer's data address, including 0 for null."
+    },
+    "size": {
+      "type": "integer",
+      "meaning": "Byte size of the view's type: pointer-slot size for p.$mem, sizeof(T) for the region designated by *const T/*mut T. DST views use the full dynamic size. Nonnegative; never the containing allocation's capacity."
+    },
+    "end": {
+      "type": "integer",
+      "meaning": "start + size on mathematical integers, without machine wrapping."
+    },
+    "align": {
+      "type": "integer",
+      "meaning": "Positive byte alignment REQUIRED by the view's type, not proof that start satisfies it. Proper alignment is start % align == 0, also when size is zero."
+    },
+    "readable": {
+      "type": "bool",
+      "meaning": "The whole size-byte view is valid for reads in the current state, respecting allocation provenance, liveness, range containment and access permission. Does not imply alignment or initialized/valid contents. Zero-byte read access is vacuous."
+    },
+    "writable": {
+      "type": "bool",
+      "meaning": "The whole size-byte view is valid for writes in the current state, respecting allocation provenance, liveness, range containment and access permission. Does not imply alignment or initialized/valid contents. Zero-byte write access is vacuous."
+    },
+    "readable_size": {
+      "type": "integer",
+      "meaning": "Maximum nonnegative contiguous byte extent valid for reads from start in the current state, within one live provenance-compatible allocation. Zero if no positive extent is accessible. An n-byte read needs n <= readable_size for nonnegative n."
+    },
+    "writable_size": {
+      "type": "integer",
+      "meaning": "Maximum nonnegative contiguous byte extent valid for writes from start under the same range/provenance rules. An n-byte write needs n <= writable_size for nonnegative n."
+    },
+    "initialized": {
+      "type": "bool",
+      "meaning": "Every byte of this size-byte view has been written/initialized, including padding. Does not imply a valid typed bit pattern, alignment, liveness or permission."
+    },
+    "valid": {
+      "type": "bool",
+      "meaning": "The view represents a language-valid initialized value of its associated Rust type, including discriminants/niches and required initialized bytes. Allows uninitialized padding. This is the predicate for 'properly initialized value of T'; do NOT additionally require initialized. Does not imply library safety invariants, alignment, access permission or liveness."
+    },
+    "allocation": {
+      "type": "allocation",
+      "meaning": "Originating allocation record. Never inferred merely by finding a currently live allocation at the same numeric address."
+    }
+  },
+  "allocation_fields": {
+    "exists": {
+      "type": "bool",
+      "meaning": "Whether this pointer/place has an originating allocation record."
+    },
+    "id": {
+      "type": "string",
+      "meaning": "Stable allocation-generation identity. Identity/bounds fields require an existing record; same-allocation formulas must establish existence before comparing IDs. Equal originating IDs alone do not imply pointer addresses lie within the allocation: an out-of-bounds derived pointer retains its originating ID."
+    },
+    "start": {
+      "type": "integer",
+      "meaning": "Allocation beginning in bytes."
+    },
+    "size": {
+      "type": "integer",
+      "meaning": "Actual returned allocation size in bytes."
+    },
+    "end": {
+      "type": "integer",
+      "meaning": "Allocation start + size."
+    },
+    "align": {
+      "type": "integer",
+      "meaning": "Alignment guaranteed by this allocation's allocation contract."
+    },
+    "minimum_size": {
+      "type": "integer",
+      "meaning": "Minimum fitting-layout size retained from the allocation request/contract. Not derivable from actual capacity alone."
+    },
+    "live": {
+      "type": "bool",
+      "meaning": "Record exists and this allocation generation is currently live."
+    },
+    "allocator": {
+      "type": "string",
+      "meaning": "Allocator contract identity. This is not the numeric address of an allocator object's own storage."
+    }
+  },
+  "pointer_wrappers": [
+    "core::ptr::non_null::NonNull",
+    "core::ptr::unique::Unique"
+  ],
+  "rules": [
+    "A pointer safety rule about what src/dst points to must use src.$mem.pointee or dst.$mem.pointee, not the pointer slot's $mem fields.",
+    "The pointee view covers ONE T. A copy of count T values has byte length count * pointee.size. For variable-length accesses compare that length with readable_size/writable_size; overlap checks use that length and starts, not single-value end or entire allocation size.",
+    "Read/write access, alignment, byte initialization, typed validity and allocation identity are separate properties. Preserve precisely the supplied atomic obligation; do not silently add the others.",
+    "Provenance and containment are distinct. If a rule says pointers are within the same allocation, establish existing allocation records, equal allocation-generation IDs, and address bounds for both pointers. Pointer-arithmetic bounds allow one-past-the-end; do not require the entire pointee value to fit merely to compare byte positions. A rule that only asks equal origin IDs does not itself add containment or liveness.",
+    "All views describe the current observation state. They do not express future non-mutation, borrow lifetimes, data races, post-call states or library behavioral invariants.",
+    "Type/lifetime parameter handles and modeled-memory metadata scalars have no $mem. Literals and computed arithmetic expressions do not expose $mem; source fields and elements do.",
+    "Missing backend observations are unknown, never silently true or zero. This schema declares symbolic specification observations; it does not execute or simulate Rust memory."
+  ]
+}

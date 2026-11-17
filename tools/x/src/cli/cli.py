@@ -263,6 +263,17 @@ def build_parser() -> argparse.ArgumentParser:
     rule_parser.add_argument("--workers", type=int, default=8)
     rule_parser.add_argument("--reasoning-effort", default="medium")
     rule_parser.add_argument("--limit", type=int, help="Process at most N documented APIs per input directory.")
+    rule_parser.add_argument("--step1-mode", choices=("llm", "batch"), default="llm")
+    rule_parser.add_argument("--step2-mode", choices=("llm", "batch"), default="llm")
+    rule_parser.add_argument("--retries", type=int, default=3, help="Step 2 repair retries after the initial attempt (default: 3).")
+    rule_parser.add_argument("--batch-no-wait", action="store_true", help="Submit/poll once and exit 75 while pending; rerun unchanged to resume.")
+    rule_parser.add_argument("--batch-poll-seconds", type=float, default=30)
+    rule_parser.add_argument("--dslgen", default="tools/x/generated/dsl", help="Source-derived schema directory; generated if missing.")
+    rule_parser.add_argument("--max-output-tokens", type=int, default=6000)
+    rule_parser.add_argument("--include-private", action="store_true", help="Include private/restricted unsafe APIs in step 0, matching the legacy full-corpus baseline.")
+    rule_parser.add_argument("--resume-step1-input", action="store_true", help="Resume the exact saved step 1 inputs/jobs, even after editing prompts; do not prepare new requests.")
+    rule_parser.add_argument("--api-location", action="append", default=[], help="Step 1 smoke selection: exact normalized source path:line; repeat for several APIs.")
+    rule_parser.add_argument("--rule-limit", type=int, help="Translate at most N saved rules per directory; use a separate smoke output.")
     rule_parser.set_defaults(func=_run_rule)
 
     verify_parser = subparsers.add_parser(

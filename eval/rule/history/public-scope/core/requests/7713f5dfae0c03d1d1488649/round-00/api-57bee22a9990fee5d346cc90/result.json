@@ -1,0 +1,15 @@
+{
+  "path": "rust/library/core/src/mem/maybe_uninit.rs",
+  "line": 623,
+  "name": "assume_init_read",
+  "declaration": "const unsafe fn assume_init_read (& self) -> T",
+  "parent": "MaybeUninit < T >",
+  "documentation": " Reads the value from the `MaybeUninit<T>` container. The resulting `T` is subject\n to the usual drop handling.\n\n Whenever possible, it is preferable to use [`assume_init`] instead, which\n prevents duplicating the content of the `MaybeUninit<T>`.\n\n # Safety\n\n It is up to the caller to guarantee that the `MaybeUninit<T>` really is in an initialized\n state. Calling this when the content is not yet fully initialized causes undefined\n behavior. The [type-level documentation][inv] contains more information about\n this initialization invariant.\n\n Moreover, similar to the [`ptr::read`] function, this function creates a\n bitwise copy of the contents, regardless whether the contained type\n implements the [`Copy`] trait or not. When using multiple copies of the\n data (by calling `assume_init_read` multiple times, or first calling\n `assume_init_read` and then [`assume_init`]), it is your responsibility\n to ensure that data may indeed be duplicated.\n\n [inv]: #initialization-invariant\n [`assume_init`]: MaybeUninit::assume_init\n\n # Examples\n\n Correct usage of this method:\n\n ```rust\n use std::mem::MaybeUninit;\n\n let mut x = MaybeUninit::<u32>::uninit();\n x.write(13);\n let x1 = unsafe { x.assume_init_read() };\n // `u32` is `Copy`, so we may read multiple times.\n let x2 = unsafe { x.assume_init_read() };\n assert_eq!(x1, x2);\n\n let mut x = MaybeUninit::<Option<Vec<u32>>>::uninit();\n x.write(None);\n let x1 = unsafe { x.assume_init_read() };\n // Duplicating a `None` value is okay, so we may read multiple times.\n let x2 = unsafe { x.assume_init_read() };\n assert_eq!(x1, x2);\n ```\n\n *Incorrect* usage of this method:\n\n ```rust,no_run\n use std::mem::MaybeUninit;\n\n let mut x = MaybeUninit::<Option<Vec<u32>>>::uninit();\n x.write(Some(vec![0, 1, 2]));\n let x1 = unsafe { x.assume_init_read() };\n let x2 = unsafe { x.assume_init_read() };\n // We now created two copies of the same vector, leading to a double-free ⚠️ when\n // they both get dropped!\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "The `MaybeUninit<T>` must be fully initialized before calling `assume_init_read`.",
+    "When using multiple copies of the data, whether by calling `assume_init_read` multiple times or by calling `assume_init_read` and then `assume_init`, the caller must ensure that the data may be duplicated."
+  ],
+  "status": "extracted"
+}

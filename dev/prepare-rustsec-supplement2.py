@@ -25,7 +25,7 @@ manifest = {
     ),
     "cases": cases,
 }
-(ROOT / "benchmark/rustsec/supplement2-manifest.json").write_text(
+(ROOT / "dev/rustsec/supplement2-manifest.json").write_text(
     json.dumps(manifest, indent=2) + "\n"
 )
-print(json.dumps({"cases": len(cases), "manifest": "benchmark/rustsec/supplement2-manifest.json"}))
+print(json.dumps({"cases": len(cases), "manifest": "dev/rustsec/supplement2-manifest.json"}))

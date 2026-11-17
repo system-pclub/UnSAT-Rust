@@ -1,0 +1,16 @@
+{
+  "path": "rust/library/std/src/os/unix/process.rs",
+  "line": 109,
+  "name": "before_exec",
+  "declaration": "unsafe fn before_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static ,",
+  "parent": "CommandExt",
+  "documentation": " Schedules a closure to be run just before the `exec` function is\n invoked.\n\n `before_exec` used to be a safe method, but it needs to be unsafe since the closure may only\n perform operations that are *async-signal-safe*. Hence it got deprecated in favor of the\n unsafe [`pre_exec`]. Meanwhile, Rust gained the ability to make an existing safe method\n fully unsafe in a new edition, which is how `before_exec` became `unsafe`. It still also\n remains deprecated; `pre_exec` should be used instead.\n\n [`pre_exec`]: CommandExt::pre_exec",
+  "model": "gpt-6.1-sol",
+  "mode": "llm",
+  "rules": [
+    "The closure `f` must perform only async-signal-safe operations when run in the child process after `fork` and before `exec`.",
+    "The closure `f` must not violate library invariants through invalid use of resources duplicated by `fork`, such as file descriptors and memory-mapped regions.",
+    "Panicking in `f` is safe only if all format arguments for the panic message can be safely formatted, even though `Command` calls `std::panic::always_abort` before invoking `f`."
+  ],
+  "status": "extracted"
+}

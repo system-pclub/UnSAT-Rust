@@ -2,11 +2,11 @@
 """Download ten pinned vulnerable crates and their primary RustSec evidence."""
 import concurrent.futures
 import hashlib
-import io
 import json
 from pathlib import Path
 import re
-import tarfile
+import subprocess
+import sys
 import tomllib
 import urllib.request
 
@@ -34,7 +34,11 @@ def fetch(url):
 
 def prepare(case):
     name, version, advisory = case
-    evidence = ROOT / "benchmark/rustsec/evidence" / advisory
+    allowed = json.loads((ROOT / "dev/rustsec/allowlist.json").read_text())["cases"]
+    selection = next((row for row in allowed if (row["crate"], row["version"], row["advisory"]) == case), None)
+    if selection is None:
+        raise ValueError(f"Retired RustSec selection: {case}; use dev/rustsec/allowlist.json")
+    evidence = ROOT / "dev/rustsec/evidence" / advisory
     evidence.mkdir(parents=True, exist_ok=True)
     url = f"https://rustsec.org/advisories/{advisory}.html"
     html = fetch(url)
@@ -63,8 +67,8 @@ def prepare(case):
     archive.write_bytes(data)
     source = ROOT / f"benchmark/rustsec/{name}-{version}"
     if not source.exists():
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-            tar.extractall(source.parent, filter="data")
+        subprocess.run([sys.executable, str(ROOT / "tools/crates.py"), "download-one", name, version,
+                        "--output-dir", str(ROOT / "benchmark/rustsec")], check=True)
     row = {"crate": name, "version": version, "directory": str(source.relative_to(ROOT)),
            "advisory": advisory, "advisory_url": url, "issued": issued,
            "reported": str(advisory_data["advisory"]["date"]),
@@ -82,6 +86,6 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
         rows = list(pool.map(prepare, CASES))
     manifest = {"cutoff_exclusive": "2026-03-01", "selection": "Purposive sample of unsafe API misuses across bounds, initialization, layout, and ownership; not a random sample.", "cases": rows}
-    (ROOT / "benchmark/rustsec/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (ROOT / "dev/rustsec/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     for row in rows:
         print(row["advisory"], row["crate"], row["version"], row["issued"])

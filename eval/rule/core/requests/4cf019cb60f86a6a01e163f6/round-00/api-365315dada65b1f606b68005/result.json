@@ -1,0 +1,14 @@
+{
+  "path": "rust/library/core/src/mem/mod.rs",
+  "line": 596,
+  "name": "zeroed",
+  "declaration": "const unsafe fn zeroed < T > () -> T",
+  "parent": null,
+  "documentation": " Returns the value of type `T` represented by the all-zero byte-pattern.\n\n This means that, for example, the padding byte in `(u8, u16)` is not\n necessarily zeroed.\n\n There is no guarantee that an all-zero byte-pattern represents a valid value\n of some type `T`. For example, the all-zero byte-pattern is not a valid value\n for reference types (`&T`, `&mut T`) and function pointers. Using `zeroed`\n on such types causes immediate [undefined behavior][ub] because [the Rust\n compiler assumes][inv] that there always is a valid value in a variable it\n considers initialized.\n\n This has the same effect as [`MaybeUninit::zeroed().assume_init()`][zeroed].\n It is useful for FFI sometimes, but should generally be avoided.\n\n [zeroed]: MaybeUninit::zeroed\n [ub]: ../../reference/behavior-considered-undefined.html\n [inv]: MaybeUninit#initialization-invariant\n\n # Examples\n\n Correct usage of this function: initializing an integer with zero.\n\n ```\n use std::mem;\n\n let x: i32 = unsafe { mem::zeroed() };\n assert_eq!(0, x);\n ```\n\n *Incorrect* usage of this function: initializing a reference with zero.\n\n ```rust,no_run\n # #![allow(invalid_value)]\n use std::mem;\n\n let _x: &i32 = unsafe { mem::zeroed() }; // Undefined behavior!\n let _y: fn() = unsafe { mem::zeroed() }; // And again!\n ```",
+  "model": "gpt-6.1-sol",
+  "mode": "batch",
+  "rules": [
+    "Calling `zeroed::<T>()` is safe only if the all-zero byte-pattern represents a valid value of `T`; reference types (`&U`, `&mut U`) and function-pointer types do not satisfy this requirement, and calling `zeroed` for them causes immediate undefined behavior."
+  ],
+  "status": "extracted"
+}

@@ -1,0 +1,22 @@
+{
+  "path": "rust/library/core/src/ptr/mut_ptr.rs",
+  "line": 1480,
+  "name": "drop_in_place",
+  "declaration": "unsafe fn drop_in_place (self)",
+  "parent": "* mut T",
+  "documentation": " Executes the destructor (if any) of the pointed-to value.\n\n See [`ptr::drop_in_place`] for safety concerns and examples.\n\n [`ptr::drop_in_place`]: crate::ptr::drop_in_place()",
+  "model": "gpt-6.1-sol",
+  "mode": "llm",
+  "rules": [
+    "`self` must be valid for both reads and writes.",
+    "`self` must be properly aligned, even if `T` has size 0.",
+    "`self` must be nonnull, even if `T` has size 0.",
+    "The value pointed to by `self` must be valid for dropping, including any additional invariants required by its type.",
+    "While `drop_in_place` is executing, parts of the value pointed to by `self` may be accessed only through the `&mut self` references supplied to the `Drop::drop` methods it invokes.",
+    "If `T` is not `Copy`, using the pointed-to value after calling `drop_in_place` can cause undefined behavior; assigning through `*self` counts as a use because it drops the value again.",
+    "`write()` may be used to overwrite the data after dropping without causing it to be dropped again.",
+    "This method may be used to drop pinned data when `T` is not `repr(packed)`; pinned data must not be moved before it is dropped.",
+    "Unaligned values must be copied to an aligned location using `ptr::read_unaligned` before being dropped; for packed structs, the compiler performs this move automatically, so their fields are not dropped in place."
+  ],
+  "status": "extracted"
+}

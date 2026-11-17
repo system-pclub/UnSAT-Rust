@@ -190,7 +190,7 @@ AST 中的字段名字和类型    → 该项的 name 和 ty
 
 `core::ops::range::Range` 是规范名称，用于区分可能同名的类型。API 中常见的 `core::ops::Range` 可以通过已解析的 import/re-export 映射到这个定义。
 
-生成的通用目录位于 [tools/dslgen/generated/schema.json](../tools/dslgen/generated/schema.json)。它可由多个 API 共用，尚未绑定本例的 `$1`、`$2`。
+生成的通用目录位于 [tools/x/generated/dsl/schema.json](../tools/x/generated/dsl/schema.json)。它可由多个 API 共用，尚未绑定本例的 `$1`、`$2`。
 
 完整目录的顶层内容是：
 
@@ -286,7 +286,7 @@ Range<usize> ── .end   ──▶ usize
 
 同时，工具按 API 选择类型及其依赖，然后从实际输入类型出发构造可达访问关系。基础类型 `usize` 由类型引擎直接识别，无需寻找一个同名 struct。
 
-相关实现是 [dslapi.py](../tools/dslapi.py) 和 [dsltypes.py](../tools/dsltypes.py)。
+相关实现是 [dslapi.py](../tools/x/src/dslapi.py) 和 [dsltypes.py](../tools/x/src/dsltypes.py)。
 
 ## 9. 第六步：访问边变成 grammar 产生式
 
@@ -374,7 +374,7 @@ usize_term = child_term, ".", "length" ;
 
 同一个类型可以被多处引用，递归关系也通过引用保存。因此工具处理的是类型图，而非不断复制展开的树。
 
-图到产生式的实现位于 [dslgrammar.py](../tools/dslgrammar.py)。
+图到产生式的实现位于 [dslgrammar.py](../tools/x/src/dslgrammar.py)。
 
 ## 10. 第七步：加入比较等表达式模板，得到 formula
 
@@ -482,7 +482,7 @@ Range<usize> 声明了 start 和 end
 
 为了理解公式的含义，可以手算：如果 initialized 的 start 为 2、end 为 5，公式为真；如果 start 为 7、end 为 3，公式为假。本次翻译记录没有提供这两个具体对象，也没有执行 API 来取得它们。
 
-相关实现在 [dsltrans.py](../tools/dsltrans.py)；Python AST 和 Lark 均用于读取、检查表达式，不通过 Python `eval` 执行它。
+相关实现在 [dsltrans.py](../tools/x/src/dsltrans.py)；Python AST 和 Lark 均用于读取、检查表达式，不通过 Python `eval` 执行它。
 
 ## 13. 当前实现里需要知道的两个边界
 
@@ -508,7 +508,7 @@ Range<usize> ── .start/.end ──▶ usize
 
 ### 13.2 `$mem` 来自单独建模的域
 
-Rust 的 Range AST 没有 `$mem` 字段。内存视图由 [dslmemory.json](../tools/dslmemory.json) 明确定义，再注入相同的类型访问图：
+Rust 的 Range AST 没有 `$mem` 字段。内存视图由 [dslmemory.json](../tools/x/src/dslmemory.json) 明确定义，再注入相同的类型访问图：
 
 ```text
 Range<usize> ── .$mem ──▶ MemoryStorage<Range<usize>>
@@ -524,7 +524,7 @@ MemoryStorage<Range<usize>> ── .size ──▶ MemoryInteger
 
 本例的 rule 需要第一种含义。类型信息足以把第二种观察语法加入 grammar，但不会因此让它成为本条 rule 应使用的条件。
 
-已知指针类型还可以访问 `p.$mem.pointee`，表示指针指向区域的内存视图。详细语义见 [内存域说明](../tools/dslmemory.md)。这些字段是规格观察接口，目前尚未绑定 KLEE 运行时。
+已知指针类型还可以访问 `p.$mem.pointee`，表示指针指向区域的内存视图。详细语义见 [内存域说明](../tools/x/dslmemory.md)。这些字段是规格观察接口，目前尚未绑定 KLEE 运行时。
 
 ## 14. 把核心算法压缩成伪代码
 
@@ -574,7 +574,8 @@ schema := 保存这些定义、选择器和名称映射
 
 ```sh
 dsl_docker() {
-  docker run --rm --platform linux/amd64 -i \
+  docker build --platform linux/amd64 --build-arg "USER_ID=$(id -u)" --build-arg "GROUP_ID=$(id -g)" -t unsat-rust:local . || return
+  docker run --rm --platform linux/amd64 -i -e PYTHONPATH=/unsat-rust/tools/x/src \
     -v "$PWD:/unsat-rust" -w /unsat-rust \
     -v "$PWD/.local/cargo-home/registry:/home/user/.cargo/registry" \
     -v "$PWD/.local/cargo-home/git:/home/user/.cargo/git" \
@@ -588,7 +589,7 @@ dsl_docker() {
 dsl_docker cargo run --locked --manifest-path tools/dslgen/Cargo.toml
 ```
 
-输出文件为 `tools/dslgen/generated/schema.json` 和 `selectors.md`。通用 EBNF 已移除，具体 API 的语法由 Python 从 schema 生成。
+输出文件为 `tools/x/generated/dsl/schema.json` 和 `selectors.md`。通用 EBNF 已移除，具体 API 的语法由 Python 从 schema 生成。
 
 接着准备本例输入：
 
@@ -599,7 +600,7 @@ from pathlib import Path
 
 out = Path("eval/dsltrans/dslgen-doc-example")
 out.mkdir(parents=True, exist_ok=True)
-rows = json.loads(Path("tools/dsltrans_samples.json").read_text())
+rows = json.loads(Path("tools/x/dsltrans_samples.json").read_text())
 case = next(row for row in rows if row["id"] == "rule-40")
 (out / "cases.json").write_text(json.dumps([case], indent=2) + "\n")
 PY
@@ -608,8 +609,8 @@ PY
 只生成变量表、裁剪目录、grammar 和 prompt，不调用模型：
 
 ```sh
-dsl_docker python tools/dsltrans.py \
-  --dslgen tools/dslgen/generated \
+dsl_docker python tools/x/src/dsltrans.py \
+  --dslgen tools/x/generated/dsl \
   --batch eval/dsltrans/dslgen-doc-example/cases.json \
   --out eval/dsltrans/dslgen-doc-example/run \
   --model gpt-6.1-sol --workers 1 --dry-run
@@ -629,8 +630,8 @@ dsl_docker python tools/dsltrans.py \
 实际调用模型，并由工具自动解析和检查返回的表达式：
 
 ```sh
-dsl_docker python tools/dsltrans.py \
-  --dslgen tools/dslgen/generated \
+dsl_docker python tools/x/src/dsltrans.py \
+  --dslgen tools/x/generated/dsl \
   --batch eval/dsltrans/dslgen-doc-example/cases.json \
   --out eval/dsltrans/dslgen-doc-example/run \
   --model gpt-6.1-sol --workers 1 --resume

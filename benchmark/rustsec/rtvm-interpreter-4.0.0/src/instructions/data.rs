@@ -130,7 +130,7 @@ mod test {
         interp.step(&table, &mut host);
         assert_eq!(
             interp.stack.data(),
-            &vec![b256!("0500000000000000000000000000000000000000000000000000000000000000").into()]
+            &vec![U256::from_be_bytes(b256!("0500000000000000000000000000000000000000000000000000000000000000").0)]
         );
         interp.stack.pop().unwrap();
 
@@ -138,7 +138,7 @@ mod test {
         interp.step(&table, &mut host);
         assert_eq!(
             interp.stack.data(),
-            &vec![b256!("0500000000000000000000000000000000000000000000000000000000000000").into()]
+            &vec![U256::from_be_bytes(b256!("0500000000000000000000000000000000000000000000000000000000000000").0)]
         );
         interp.stack.pop().unwrap();
 

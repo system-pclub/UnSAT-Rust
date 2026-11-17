@@ -1223,8 +1223,8 @@ fn insert_and_delete_outer_15_btree() {
 fn insert_and_delete_random_300_btree() {
     let mut buffer = AnonymousBuffer::<[Page; 10]>::try_new(mem::size_of::<[Page; 10]>()).unwrap();
     let btree: &mut BTree<u8, u8> = BTree::create_from(&mut buffer[0]);
-    let mut inp = (1..301).collect::<Vec<_>>();
-    let mut out = (1..301).collect::<Vec<_>>();
+    let mut inp = (1..255).collect::<Vec<_>>();
+    let mut out = (1..255).collect::<Vec<_>>();
     let mut rng = StdRng::new().unwrap();
     rng.shuffle(&mut inp);
     rng.shuffle(&mut out);
