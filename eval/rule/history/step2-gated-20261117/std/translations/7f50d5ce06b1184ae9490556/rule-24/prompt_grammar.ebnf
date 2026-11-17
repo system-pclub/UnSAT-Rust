@@ -1,0 +1,43 @@
+(* Generated concrete EBNF. Every field, tuple position and enum tag is a literal. *)
+(* $1 is fd: std::os::solid::io::RawFd [argument]. *)
+(* $2 is result: Self [return_value]. *)
+(* Bare identifier entries are comprehension locals only; scope and element types are checked separately. *)
+
+(* < T as NotAllOnesHelper > :: Type; core::num::niche_types::NotAllOnes<T>; std::os::solid::io::ValidRawFd *)
+not_all_ones_term = (owned_fd_term, ".", "fd" | "(", not_all_ones_term, ")") ;
+(* MemoryAllocation *)
+memory_allocation_term = (memory_storage_2_term, ".", "allocation" | memory_storage_3_term, ".", "allocation" | memory_storage_1_term, ".", "allocation" | "(", memory_allocation_term, ")") ;
+(* MemoryBool *)
+memory_bool_term = (memory_storage_2_term, ".", "exists" | memory_storage_2_term, ".", "readable" | memory_storage_2_term, ".", "writable" | memory_storage_2_term, ".", "initialized" | memory_storage_2_term, ".", "valid" | memory_storage_3_term, ".", "exists" | memory_storage_3_term, ".", "readable" | memory_storage_3_term, ".", "writable" | memory_storage_3_term, ".", "initialized" | memory_storage_3_term, ".", "valid" | memory_allocation_term, ".", "exists" | memory_allocation_term, ".", "live" | memory_storage_1_term, ".", "exists" | memory_storage_1_term, ".", "readable" | memory_storage_1_term, ".", "writable" | memory_storage_1_term, ".", "initialized" | memory_storage_1_term, ".", "valid" | "(", memory_bool_term, ")") ;
+(* MemoryInteger *)
+memory_integer_term = (memory_storage_2_term, ".", "start" | memory_storage_2_term, ".", "size" | memory_storage_2_term, ".", "end" | memory_storage_2_term, ".", "align" | memory_storage_2_term, ".", "readable_size" | memory_storage_2_term, ".", "writable_size" | memory_storage_3_term, ".", "start" | memory_storage_3_term, ".", "size" | memory_storage_3_term, ".", "end" | memory_storage_3_term, ".", "align" | memory_storage_3_term, ".", "readable_size" | memory_storage_3_term, ".", "writable_size" | memory_allocation_term, ".", "start" | memory_allocation_term, ".", "size" | memory_allocation_term, ".", "end" | memory_allocation_term, ".", "align" | memory_allocation_term, ".", "minimum_size" | memory_storage_1_term, ".", "start" | memory_storage_1_term, ".", "size" | memory_storage_1_term, ".", "end" | memory_storage_1_term, ".", "align" | memory_storage_1_term, ".", "readable_size" | memory_storage_1_term, ".", "writable_size" | "(", memory_integer_term, ")") ;
+(* MemoryStorage<< T as NotAllOnesHelper > :: Type> *)
+memory_storage_1_term = (not_all_ones_term, ".", "$mem" | "(", memory_storage_1_term, ")") ;
+(* MemoryStorage<i32> *)
+memory_storage_2_term = (raw_fd_term, ".", "$mem" | "(", memory_storage_2_term, ")") ;
+(* MemoryStorage<std::os::solid::io::OwnedFd> *)
+memory_storage_3_term = (owned_fd_term, ".", "$mem" | "(", memory_storage_3_term, ")") ;
+(* MemoryString *)
+memory_string_term = (memory_allocation_term, ".", "id" | memory_allocation_term, ".", "allocator" | "(", memory_string_term, ")") ;
+(* i32; std::os::solid::io::RawFd *)
+raw_fd_term = ("$1" | "(", raw_fd_term, ")") ;
+(* std::os::solid::io::OwnedFd *)
+owned_fd_term = ("$2" | "(", owned_fd_term, ")") ;
+typed_term = (not_all_ones_term | memory_allocation_term | memory_bool_term | memory_integer_term | memory_storage_1_term | memory_storage_2_term | memory_storage_3_term | memory_string_term | raw_fd_term | owned_fd_term) ;
+formula = expression ;
+expression = disjunction, [ "if", disjunction, "else", expression ] ;
+disjunction = conjunction, { "or", conjunction } ;
+conjunction = negation, { "and", negation } ;
+negation = ("not", negation | comparison) ;
+comparison = arithmetic, { compare, arithmetic } ;
+compare = ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not", "in") ;
+arithmetic = product, { ("+" | "-"), product } ;
+product = unary, { ("*" | "//" | "%"), unary } ;
+unary = [ ("+" | "-") ], primary ;
+primary = (typed_term | integer | string | "True" | "False" | "None" | "(", expression, ")" | collection | builtin) ;
+collection = ("[", [ expression, { ",", expression } ], "]" | "[", expression, comprehension, "]") ;
+comprehension = "for", identifier, "in", disjunction, { "if", disjunction }, [ comprehension ] ;
+builtin = (("all" | "any"), "(", expression, ")" | "len", "(", expression, ")") ;
+identifier = ? ASCII identifier [A-Za-z_][A-Za-z0-9_]* ? ;
+integer = ? nonnegative decimal integer literal ? ;
+string = ? single- or double-quoted escaped string literal ? ;

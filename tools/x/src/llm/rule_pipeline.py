@@ -142,7 +142,7 @@ def translate(root, output, args):
                 'retries': args.retries, 'rules': rows, 'translations_directory': str(directory)})
     requests, cases = {}, {}
     # Prepare every input before any paid call. Preparation errors remain visible
-    # per rule and never masquerade as unexpressible translations.
+    # per rule and never masquerade as accepted translations.
     results = {}
     for row in rows:
         key = row['id']

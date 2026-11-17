@@ -1,0 +1,34 @@
+i_term: ("$2" | "(" i_term ")")
+output_term: ("$4" | "(" output_term ")")
+memory_allocation_term: (memory_storage_3_term "." "allocation" | memory_storage_2_term "." "allocation" | memory_storage_1_term "." "allocation" | "(" memory_allocation_term ")")
+memory_bool_term: (memory_storage_3_term "." "exists" | memory_storage_3_term "." "readable" | memory_storage_3_term "." "writable" | memory_storage_3_term "." "initialized" | memory_storage_3_term "." "valid" | memory_storage_2_term "." "exists" | memory_storage_2_term "." "readable" | memory_storage_2_term "." "writable" | memory_storage_2_term "." "initialized" | memory_storage_2_term "." "valid" | memory_storage_1_term "." "exists" | memory_storage_1_term "." "readable" | memory_storage_1_term "." "writable" | memory_storage_1_term "." "initialized" | memory_storage_1_term "." "valid" | memory_allocation_term "." "exists" | memory_allocation_term "." "live" | "(" memory_bool_term ")")
+memory_integer_term: (memory_storage_3_term "." "start" | memory_storage_3_term "." "size" | memory_storage_3_term "." "end" | memory_storage_3_term "." "align" | memory_storage_3_term "." "readable_size" | memory_storage_3_term "." "writable_size" | memory_storage_2_term "." "start" | memory_storage_2_term "." "size" | memory_storage_2_term "." "end" | memory_storage_2_term "." "align" | memory_storage_2_term "." "readable_size" | memory_storage_2_term "." "writable_size" | memory_storage_1_term "." "start" | memory_storage_1_term "." "size" | memory_storage_1_term "." "end" | memory_storage_1_term "." "align" | memory_storage_1_term "." "readable_size" | memory_storage_1_term "." "writable_size" | memory_allocation_term "." "start" | memory_allocation_term "." "size" | memory_allocation_term "." "end" | memory_allocation_term "." "align" | memory_allocation_term "." "minimum_size" | "(" memory_integer_term ")")
+memory_storage_1_term: (output_term "." "$mem" | "(" memory_storage_1_term ")")
+memory_storage_2_term: (i_term "." "$mem" | "(" memory_storage_2_term ")")
+memory_storage_3_term: (str_term "." "$mem" | "(" memory_storage_3_term ")")
+memory_string_term: (memory_allocation_term "." "id" | memory_allocation_term "." "allocator" | "(" memory_string_term ")")
+str_term: ("$1" | "(" str_term ")")
+opaque_term: ("$3" | "(" opaque_term ")")
+typed_term: (i_term | output_term | memory_allocation_term | memory_bool_term | memory_integer_term | memory_storage_1_term | memory_storage_2_term | memory_storage_3_term | memory_string_term | str_term | opaque_term)
+formula: expression
+expression: disjunction ("if" disjunction "else" expression)?
+disjunction: conjunction ("or" conjunction)*
+conjunction: negation ("and" negation)*
+negation: ("not" negation | comparison)
+comparison: arithmetic (compare arithmetic)*
+compare: ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not" "in")
+arithmetic: product (("+" | "-") product)*
+product: unary (("*" | "//" | "%") unary)*
+unary: (("+" | "-"))? primary
+primary: (typed_term | integer | string | "True" | "False" | "None" | "(" expression ")" | collection | builtin)
+collection: ("[" (expression ("," expression)*)? "]" | "[" expression comprehension "]")
+comprehension: "for" identifier "in" disjunction ("if" disjunction)* (comprehension)?
+builtin: (("all" | "any") "(" expression ")" | "len" "(" expression ")")
+identifier: IDENTIFIER
+integer: INTEGER
+string: STRING
+IDENTIFIER: /[A-Za-z_][A-Za-z0-9_]*/
+INTEGER: /[0-9]+/
+STRING: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/
+%import common.WS
+%ignore WS

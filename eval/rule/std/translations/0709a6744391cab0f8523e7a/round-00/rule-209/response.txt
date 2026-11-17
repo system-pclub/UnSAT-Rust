@@ -1,0 +1,41 @@
+all([
+    b < 128
+    or (
+        128 <= b <= 191
+        and any([
+            (194 <= c <= 223 and b.$mem.start == c.$mem.start + 1)
+            or (224 <= c <= 239 and 1 <= b.$mem.start - c.$mem.start <= 2)
+            or (240 <= c <= 244 and 1 <= b.$mem.start - c.$mem.start <= 3)
+            for c in $1
+        ])
+    )
+    or (
+        194 <= b <= 223
+        and b.$mem.start - $1.$mem.start + 2 <= len($1)
+        and 128 <= $1[b.$mem.start - $1.$mem.start + 1] <= 191
+    )
+    or (
+        224 <= b <= 239
+        and b.$mem.start - $1.$mem.start + 3 <= len($1)
+        and 128 <= $1[b.$mem.start - $1.$mem.start + 1] <= 191
+        and 128 <= $1[b.$mem.start - $1.$mem.start + 2] <= 191
+        and (b != 224 or $1[b.$mem.start - $1.$mem.start + 1] >= 160)
+        and not (
+            b == 237
+            and 160 <= $1[b.$mem.start - $1.$mem.start + 1] <= 175
+            and b.$mem.start - $1.$mem.start + 6 <= len($1)
+            and $1[b.$mem.start - $1.$mem.start + 3] == 237
+            and 176 <= $1[b.$mem.start - $1.$mem.start + 4] <= 191
+        )
+    )
+    or (
+        240 <= b <= 244
+        and b.$mem.start - $1.$mem.start + 4 <= len($1)
+        and 128 <= $1[b.$mem.start - $1.$mem.start + 1] <= 191
+        and 128 <= $1[b.$mem.start - $1.$mem.start + 2] <= 191
+        and 128 <= $1[b.$mem.start - $1.$mem.start + 3] <= 191
+        and (b != 240 or $1[b.$mem.start - $1.$mem.start + 1] >= 144)
+        and (b != 244 or $1[b.$mem.start - $1.$mem.start + 1] <= 143)
+    )
+    for b in $1
+])

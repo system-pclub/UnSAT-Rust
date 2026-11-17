@@ -69,15 +69,11 @@ The model returns the raw expression:
 $2.size != 0
 ```
 
-If the complete requirement cannot be expressed, it returns exactly:
-
-```text
-UNEXPRESSIBLE
-```
+The prompt requests a complete expression directly, with no expressibility classification or refusal marker.
 
 There is no JSON response schema and no model-generated explanation/status
 wrapper. The generated parser and type checker validate the raw expression.
-`False` is a valid Boolean formula, distinct from the failure marker. Local
+`False` is a valid Boolean formula; semantic fidelity must still be reviewed. Local
 `result.json` and the SDK's `response.json` retain execution metadata; the model's
 unchanged plain-text output is saved in `response.txt`.
 
@@ -102,8 +98,8 @@ outside this implementation. Current-state fields do not express future history.
 
 ## Evidence and limits
 
-Unavailable observations produce the UNEXPRESSIBLE marker. Unresolved generic values
-and external aliases are not silently numeric. Sufficient safe-call cases are
+All replies are checked as DSL expressions. Refusal/status labels fail validation.
+Unresolved generic values and external aliases are not silently numeric. Sufficient safe-call cases are
 not turned into mandatory preconditions. Parsing never executes expressions;
 passing grammar/type checks does not prove semantic equivalence or backend support.
 

@@ -1,0 +1,1 @@
+Expression-only Batch run cancelled at user request because of queue latency. Cancellation requests were accepted with status cancelling and zero completed requests. Active step2 now uses direct API calls with eight workers; step1 is unchanged.

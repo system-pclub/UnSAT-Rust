@@ -1,0 +1,39 @@
+maybe_uninit_term: (sequence_1_term "[" index "]" | "(" maybe_uninit_term ")")
+memory_storage_1_term: (sequence_1_term "." "$mem" | "(" memory_storage_1_term ")")
+memory_storage_2_term: (into_iter_term "." "$mem" | "(" memory_storage_2_term ")")
+memory_storage_3_term: (range_term "." "$mem" | "(" memory_storage_3_term ")")
+memory_storage_4_term: (usize_term "." "$mem" | "(" memory_storage_4_term ")")
+sequence_1_term: ("$1" | "(" sequence_1_term ")")
+sequence_2_term: (into_iter_term "." "data" | "(" sequence_2_term ")")
+into_iter_term: ("$5" | "(" into_iter_term ")")
+index_range_term: (into_iter_term "." "alive" | "(" index_range_term ")")
+range_term: ("$2" | "(" range_term ")")
+opaque_term: ("$3" | "(" opaque_term ")")
+usize_term: ("$4" | range_term "." "start" | range_term "." "end" | "(" usize_term ")")
+typed_term: (maybe_uninit_term | memory_storage_1_term | memory_storage_2_term | memory_storage_3_term | memory_storage_4_term | sequence_1_term | sequence_2_term | into_iter_term | index_range_term | range_term | opaque_term | usize_term)
+formula: expression
+expression: disjunction ("if" disjunction "else" expression)?
+disjunction: conjunction ("or" conjunction)*
+conjunction: negation ("and" negation)*
+negation: ("not" negation | comparison)
+comparison: arithmetic (compare arithmetic)*
+compare: ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not" "in")
+arithmetic: product (("+" | "-") product)*
+product: unary (("*" | "//" | "%") unary)*
+unary: (("+" | "-"))? primary
+primary: (typed_term | integer | string | "True" | "False" | "None" | "(" expression ")" | collection | builtin)
+collection: ("[" (expression ("," expression)*)? "]" | "[" expression comprehension "]")
+comprehension: "for" identifier "in" disjunction ("if" disjunction)* (comprehension)?
+builtin: (("all" | "any") "(" expression ")" | "len" "(" expression ")")
+index: index_product (("+" | "-") index_product)*
+index_product: index_unary (("*" | "//" | "%") index_unary)*
+index_unary: (("+" | "-"))? index_primary
+index_primary: (integer | "(" index ")" | "len" "(" expression ")" | usize_term)
+identifier: IDENTIFIER
+integer: INTEGER
+string: STRING
+IDENTIFIER: /[A-Za-z_][A-Za-z0-9_]*/
+INTEGER: /[0-9]+/
+STRING: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/
+%import common.WS
+%ignore WS

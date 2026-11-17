@@ -66,8 +66,9 @@ schema. The missing shared catalog is generated under `generated/dsl/` using
 receiver types and enclosing generics. All requested libraries finish a round before any repair round is submitted.
 Whole-round results are parsed, compiled
 into an exact Lark grammar, and type-checked before retrying only failed rules.
-`--retries 3` allows the initial attempt plus three repairs. `unexpressible` is a
-terminal model result and is reported separately from accepted translations.
+`--retries 3` allows the initial attempt plus three repairs. The prompt requests
+only a complete DSL expression, without an expressibility decision. Refusal/status
+labels fail validation and enter the retry queue; exhausted failures remain errors.
 
 `--limit N` bounds step 1 APIs per library; `--rule-limit N` bounds step 2 rules
 per library. Use a separate smoke output to avoid truncating a full catalog.

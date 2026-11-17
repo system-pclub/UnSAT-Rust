@@ -1,0 +1,21 @@
+(* Generated concrete EBNF. Every field, tuple position and enum tag is a literal. *)
+
+(* Bare identifier entries are comprehension locals only; scope and element types are checked separately. *)
+
+formula = expression ;
+expression = disjunction, [ "if", disjunction, "else", expression ] ;
+disjunction = conjunction, { "or", conjunction } ;
+conjunction = negation, { "and", negation } ;
+negation = ("not", negation | comparison) ;
+comparison = arithmetic, { compare, arithmetic } ;
+compare = ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not", "in") ;
+arithmetic = product, { ("+" | "-"), product } ;
+product = unary, { ("*" | "//" | "%"), unary } ;
+unary = [ ("+" | "-") ], primary ;
+primary = (integer | string | "True" | "False" | "None" | "(", expression, ")" | collection | builtin) ;
+collection = ("[", [ expression, { ",", expression } ], "]" | "[", expression, comprehension, "]") ;
+comprehension = "for", identifier, "in", disjunction, { "if", disjunction }, [ comprehension ] ;
+builtin = (("all" | "any"), "(", expression, ")" | "len", "(", expression, ")") ;
+identifier = ? ASCII identifier [A-Za-z_][A-Za-z0-9_]* ? ;
+integer = ? nonnegative decimal integer literal ? ;
+string = ? single- or double-quoted escaped string literal ? ;

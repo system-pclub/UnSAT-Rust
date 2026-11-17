@@ -64,9 +64,11 @@ refresh step 0. The old operator DSL and `llm.translate_rules` remain legacy too
 A global barrier waits for every requested library in a round before any library
 submits repairs. After every whole round completes, parse each raw Starlark-style expression,
 compile its exact Lark grammar, and check its types. Only failed rules enter the
-next round, with the prior output and diagnostic. `UNEXPRESSIBLE` is a terminal
-model result, not a successful formula or proof of inexpressibility. Preparation
-errors are reported separately; do not relabel them as unexpressible.
+next round, with the prior output and diagnostic. The prompt requests only a
+complete DSL expression, with no expressibility classification. Refusal/status
+labels fail DSL validation and enter the same retry queue. Preparation errors and
+errors remaining after the retry budget must be reported as errors. Historical
+archives may contain `unexpressible` labels from the removed prompt policy.
 
 ## Batch resume
 
@@ -159,7 +161,8 @@ docker run --rm -e PYTHONDONTWRITEBYTECODE=1 \
 
 Check real run exit status, source identity/order, all expected step 1 items marked
 `extracted`, catalog IDs and every step 2 status. Report counts of `translated`,
-`unexpressible`, preparation and request/validation errors separately. Grammar/type
+preparation and request/validation errors separately (and legacy `unexpressible`
+labels only when describing a historical run). Grammar/type
 acceptance proves neither semantic fidelity nor KLEE execution. Do not overwrite
 `ptr_rule_dsl.json`, root `rules.csv`, or benchmark rule IDs with generated output.
 An explicitly requested root-catalog supplement must preserve existing IDs and

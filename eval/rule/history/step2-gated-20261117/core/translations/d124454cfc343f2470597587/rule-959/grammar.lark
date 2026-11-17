@@ -1,0 +1,34 @@
+memory_storage_1_term: (t_term "." "$mem" | "(" memory_storage_1_term ")")
+memory_storage_2_term: (result_term "." "$mem" | "(" memory_storage_2_term ")")
+t_term: ("$4" | "(" t_term ")")
+err_term: (result_term "." "Err" | "(" err_term ")")
+ok_term: (result_term "." "Ok" | "(" ok_term ")")
+result_term: ("$1" | "(" result_term ")")
+result_variant: ("\"Ok\"" | "'Ok'" | "\"Err\"" | "'Err'")
+result_test: "is_variant" "(" result_term "," result_variant ")"
+opaque_1_term: ("$3" | "(" opaque_1_term ")")
+opaque_2_term: ("$2" | "(" opaque_2_term ")")
+typed_term: (memory_storage_1_term | memory_storage_2_term | t_term | err_term | ok_term | result_term | opaque_1_term | opaque_2_term)
+variant_test: (result_test)
+formula: expression
+expression: disjunction ("if" disjunction "else" expression)?
+disjunction: conjunction ("or" conjunction)*
+conjunction: negation ("and" negation)*
+negation: ("not" negation | comparison)
+comparison: arithmetic (compare arithmetic)*
+compare: ("==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not" "in")
+arithmetic: product (("+" | "-") product)*
+product: unary (("*" | "//" | "%") unary)*
+unary: (("+" | "-"))? primary
+primary: (typed_term | integer | string | "True" | "False" | "None" | "(" expression ")" | collection | builtin)
+collection: ("[" (expression ("," expression)*)? "]" | "[" expression comprehension "]")
+comprehension: "for" identifier "in" disjunction ("if" disjunction)* (comprehension)?
+builtin: (("all" | "any") "(" expression ")" | "len" "(" expression ")" | variant_test)
+identifier: IDENTIFIER
+integer: INTEGER
+string: STRING
+IDENTIFIER: /[A-Za-z_][A-Za-z0-9_]*/
+INTEGER: /[0-9]+/
+STRING: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/
+%import common.WS
+%ignore WS

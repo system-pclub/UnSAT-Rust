@@ -1,0 +1,2015 @@
+[
+  {
+    "path": "rust/library/std/src/collections/hash/map.rs",
+    "line": 1051,
+    "name": "get_disjoint_unchecked_mut",
+    "declaration": "unsafe fn get_disjoint_unchecked_mut < Q : ? Sized , const N : usize > (& mut self , ks : [& Q ; N] ,) -> [Option < & '_ mut V > ; N] where K : Borrow < Q > , Q : Hash + Eq ,",
+    "parent": "HashMap < K , V , S >",
+    "documentation": " Attempts to get mutable references to `N` values in the map at once, without validating that\n the values are unique.\n\n Returns an array of length `N` with the results of each query. `None` will be used if\n the key is missing.\n\n For a safe alternative see [`get_disjoint_mut`](`HashMap::get_disjoint_mut`).\n\n # Safety\n\n Calling this method with overlapping keys is *[undefined behavior]* even if the resulting\n references are not used.\n\n [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html\n\n # Examples\n\n ```\n use std::collections::HashMap;\n\n let mut libraries = HashMap::new();\n libraries.insert(\"Bodleian Library\".to_string(), 1602);\n libraries.insert(\"Athenæum\".to_string(), 1807);\n libraries.insert(\"Herzogin-Anna-Amalia-Bibliothek\".to_string(), 1691);\n libraries.insert(\"Library of Congress\".to_string(), 1800);\n\n // SAFETY: The keys do not overlap.\n let [Some(a), Some(b)] = (unsafe { libraries.get_disjoint_unchecked_mut([\n     \"Athenæum\",\n     \"Bodleian Library\",\n ]) }) else { panic!() };\n\n // SAFETY: The keys do not overlap.\n let got = unsafe { libraries.get_disjoint_unchecked_mut([\n     \"Athenæum\",\n     \"Library of Congress\",\n ]) };\n assert_eq!(\n     got,\n     [\n         Some(&mut 1807),\n         Some(&mut 1800),\n     ],\n );\n\n // SAFETY: The keys do not overlap.\n let got = unsafe { libraries.get_disjoint_unchecked_mut([\n     \"Athenæum\",\n     \"New York Public Library\",\n ]) };\n // Missing keys result in None\n assert_eq!(got, [Some(&mut 1807), None]);\n ```",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "When calling `get_disjoint_unchecked_mut`, the keys in `ks` must not overlap; overlapping keys cause undefined behavior even if the resulting references are not used."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/env.rs",
+    "line": 307,
+    "name": "set_var",
+    "declaration": "unsafe fn set_var < K : AsRef < OsStr > , V : AsRef < OsStr > > (key : K , value : V)",
+    "parent": null,
+    "documentation": " Sets the environment variable `key` to the value `value` for the currently running\n process.\n\n # Safety\n\n This function is safe to call in a single-threaded program.\n\n This function is also always safe to call on Windows, in single-threaded\n and multi-threaded programs.\n\n In multi-threaded programs on other operating systems, the only safe option is\n to not use `set_var` or `remove_var` at all.\n\n The exact requirement is: you\n must ensure that there are no other threads concurrently writing or\n *reading*(!) the environment through functions or global variables other\n than the ones in this module. The problem is that these operating systems\n do not provide a thread-safe way to read the environment, and most C\n libraries, including libc itself, do not advertise which functions read\n from the environment. Even functions from the Rust standard library may\n read the environment without going through this module, e.g. for DNS\n lookups from [`std::net::ToSocketAddrs`]. No stable guarantee is made about\n which functions may read from the environment in future versions of a\n library. All this makes it not practically possible for you to guarantee\n that no other thread will read the environment, so the only safe option is\n to not use `set_var` or `remove_var` in multi-threaded programs at all.\n\n Discussion of this unsafety on Unix may be found in:\n\n  - [Austin Group Bugzilla (for POSIX)](https://austingroupbugs.net/view.php?id=188)\n  - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=15607#c2)\n\n To pass an environment variable to a child process, you can instead use [`Command::env`].\n\n [`std::net::ToSocketAddrs`]: crate::net::ToSocketAddrs\n [`Command::env`]: crate::process::Command::env\n\n # Panics\n\n This function may panic if `key` is empty, contains an ASCII equals sign `'='`\n or the NUL character `'\\0'`, or when `value` contains the NUL character.\n\n # Examples\n\n ```\n use std::env;\n\n let key = \"KEY\";\n unsafe {\n     env::set_var(key, \"VALUE\");\n }\n assert_eq!(env::var(key), Ok(\"VALUE\".to_string()));\n ```",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Calling `set_var` is safe in a single-threaded program.",
+      "Calling `set_var` on Windows is always safe, in both single-threaded and multi-threaded programs.",
+      "When calling `set_var` in a multi-threaded program on an operating system other than Windows, the caller must ensure that no other threads concurrently write or read the environment through functions or global variables other than those in `std::env`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/env.rs",
+    "line": 371,
+    "name": "remove_var",
+    "declaration": "unsafe fn remove_var < K : AsRef < OsStr > > (key : K)",
+    "parent": null,
+    "documentation": " Removes an environment variable from the environment of the currently running process.\n\n # Safety\n\n This function is safe to call in a single-threaded program.\n\n This function is also always safe to call on Windows, in single-threaded\n and multi-threaded programs.\n\n In multi-threaded programs on other operating systems, the only safe option is\n to not use `set_var` or `remove_var` at all.\n\n The exact requirement is: you\n must ensure that there are no other threads concurrently writing or\n *reading*(!) the environment through functions or global variables other\n than the ones in this module. The problem is that these operating systems\n do not provide a thread-safe way to read the environment, and most C\n libraries, including libc itself, do not advertise which functions read\n from the environment. Even functions from the Rust standard library may\n read the environment without going through this module, e.g. for DNS\n lookups from [`std::net::ToSocketAddrs`]. No stable guarantee is made about\n which functions may read from the environment in future versions of a\n library. All this makes it not practically possible for you to guarantee\n that no other thread will read the environment, so the only safe option is\n to not use `set_var` or `remove_var` in multi-threaded programs at all.\n\n Discussion of this unsafety on Unix may be found in:\n\n  - [Austin Group Bugzilla](https://austingroupbugs.net/view.php?id=188)\n  - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=15607#c2)\n\n To prevent a child process from inheriting an environment variable, you can\n instead use [`Command::env_remove`] or [`Command::env_clear`].\n\n [`std::net::ToSocketAddrs`]: crate::net::ToSocketAddrs\n [`Command::env_remove`]: crate::process::Command::env_remove\n [`Command::env_clear`]: crate::process::Command::env_clear\n\n # Panics\n\n This function may panic if `key` is empty, contains an ASCII equals sign\n `'='` or the NUL character `'\\0'`, or when the value contains the NUL\n character.\n\n # Examples\n\n ```no_run\n use std::env;\n\n let key = \"KEY\";\n unsafe {\n     env::set_var(key, \"VALUE\");\n }\n assert_eq!(env::var(key), Ok(\"VALUE\".to_string()));\n\n unsafe {\n     env::remove_var(key);\n }\n assert!(env::var(key).is_err());\n ```",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Calling remove_var is safe in a single-threaded program.",
+      "Calling remove_var on Windows is always safe, in both single-threaded and multi-threaded programs.",
+      "When calling remove_var in a multi-threaded program on an operating system other than Windows, the caller must ensure that no other threads concurrently read or write the environment through functions or global variables other than those in std::env."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/ffi/os_str.rs",
+    "line": 144,
+    "name": "from_encoded_bytes_unchecked",
+    "declaration": "unsafe fn from_encoded_bytes_unchecked (bytes : Vec < u8 >) -> Self",
+    "parent": "OsString",
+    "documentation": " Converts bytes to an `OsString` without checking that the bytes contains\n valid [`OsStr`]-encoded data.\n\n The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.\n By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit\n ASCII.\n\n See the [module's toplevel documentation about conversions][conversions] for safe,\n cross-platform [conversions] from/to native representations.\n\n # Safety\n\n As the encoding is unspecified, callers must pass in bytes that originated as a mixture of\n validated UTF-8 and bytes from [`OsStr::as_encoded_bytes`] from within the same Rust version\n built for the same target platform.  For example, reconstructing an `OsString` from bytes sent\n over the network or stored in a file will likely violate these safety rules.\n\n Due to the encoding being self-synchronizing, the bytes from [`OsStr::as_encoded_bytes`] can be\n split either immediately before or immediately after any valid non-empty UTF-8 substring.\n\n # Example\n\n ```\n use std::ffi::OsStr;\n\n let os_str = OsStr::new(\"Mary had a little lamb\");\n let bytes = os_str.as_encoded_bytes();\n let words = bytes.split(|b| *b == b' ');\n let words: Vec<&OsStr> = words.map(|word| {\n     // SAFETY:\n     // - Each `word` only contains content that originated from `OsStr::as_encoded_bytes`\n     // - Only split with ASCII whitespace which is a non-empty UTF-8 substring\n     unsafe { OsStr::from_encoded_bytes_unchecked(word) }\n }).collect();\n ```\n\n [conversions]: super#conversions",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `bytes` must originate as a mixture of validated UTF-8 and bytes obtained from `OsStr::as_encoded_bytes` within the same Rust version built for the same target platform.",
+      "When constructing `bytes` from validated UTF-8 and bytes obtained from `OsStr::as_encoded_bytes` within the same Rust version built for the same target platform, the `OsStr::as_encoded_bytes` bytes may safely be split immediately before or immediately after any valid non-empty UTF-8 substring."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/ffi/os_str.rs",
+    "line": 824,
+    "name": "from_encoded_bytes_unchecked",
+    "declaration": "unsafe fn from_encoded_bytes_unchecked (bytes : & [u8]) -> & Self",
+    "parent": "OsStr",
+    "documentation": " Converts a slice of bytes to an OS string slice without checking that the string contains\n valid `OsStr`-encoded data.\n\n The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.\n By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit\n ASCII.\n\n See the [module's toplevel documentation about conversions][conversions] for safe,\n cross-platform [conversions] from/to native representations.\n\n # Safety\n\n As the encoding is unspecified, callers must pass in bytes that originated as a mixture of\n validated UTF-8 and bytes from [`OsStr::as_encoded_bytes`] from within the same Rust version\n built for the same target platform.  For example, reconstructing an `OsStr` from bytes sent\n over the network or stored in a file will likely violate these safety rules.\n\n Due to the encoding being self-synchronizing, the bytes from [`OsStr::as_encoded_bytes`] can be\n split either immediately before or immediately after any valid non-empty UTF-8 substring.\n\n # Example\n\n ```\n use std::ffi::OsStr;\n\n let os_str = OsStr::new(\"Mary had a little lamb\");\n let bytes = os_str.as_encoded_bytes();\n let words = bytes.split(|b| *b == b' ');\n let words: Vec<&OsStr> = words.map(|word| {\n     // SAFETY:\n     // - Each `word` only contains content that originated from `OsStr::as_encoded_bytes`\n     // - Only split with ASCII whitespace which is a non-empty UTF-8 substring\n     unsafe { OsStr::from_encoded_bytes_unchecked(word) }\n }).collect();\n ```\n\n [conversions]: super#conversions",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `bytes` must originate as a mixture of validated UTF-8 and bytes from `OsStr::as_encoded_bytes` produced within the same Rust version built for the same target platform.",
+      "For use as `bytes`, bytes from `OsStr::as_encoded_bytes` produced within the same Rust version built for the same target platform may safely be split immediately before or immediately after any valid non-empty UTF-8 substring."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/io/cursor.rs",
+    "line": 505,
+    "name": "vec_write_all_unchecked",
+    "declaration": "unsafe fn vec_write_all_unchecked < A > (pos : usize , vec : & mut Vec < u8 , A > , buf : & [u8]) -> usize where A : Allocator ,",
+    "parent": null,
+    "documentation": " Writes the slice to the vec without allocating.\n\n # Safety\n\n `vec` must have `buf.len()` spare capacity.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `vec` has at least `buf.len()` bytes of spare capacity."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/fd/owned.rs",
+    "line": 71,
+    "name": "borrow_raw",
+    "declaration": "const unsafe fn borrow_raw (fd : RawFd) -> Self",
+    "parent": "BorrowedFd < '_ >",
+    "documentation": " Returns a `BorrowedFd` holding the given raw file descriptor.\n\n # Safety\n\n The resource pointed to by `fd` must remain open for the duration of\n the returned `BorrowedFd`, and it must not have the value `-1`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The resource pointed to by `fd` must remain open for the duration of the returned `BorrowedFd`.",
+      "`fd` must not have the value `-1`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/fd/owned.rs",
+    "line": 154,
+    "name": "from_raw_fd",
+    "declaration": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+    "parent": "OwnedFd",
+    "documentation": " Constructs a new instance of `Self` from the given raw file descriptor.\n\n # Safety\n\n The resource pointed to by `fd` must be open and suitable for assuming\n [ownership][io-safety]. The resource must not require any cleanup other than `close`.\n\n [io-safety]: io#io-safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The resource referred to by `fd` must be open and suitable for `OwnedFd` to assume ownership.",
+      "The resource referred to by `fd` must not require any cleanup other than `close`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/fd/raw.rs",
+    "line": 72,
+    "name": "from_raw_fd",
+    "declaration": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+    "parent": "FromRawFd",
+    "documentation": " Constructs a new instance of `Self` from the given raw file\n descriptor.\n\n This function is typically used to **consume ownership** of the\n specified file descriptor. When used in this way, the returned object\n will take responsibility for closing it when the object goes out of\n scope.\n\n However, consuming ownership is not strictly required. Use a\n [`From<OwnedFd>::from`] implementation for an API which strictly\n consumes ownership.\n\n # Safety\n\n The `fd` passed in must be an [owned file descriptor][io-safety];\n in particular, it must be open.\n\n [io-safety]: io#io-safety\n\n # Example\n\n ```no_run\n use std::fs::File;\n # use std::io;\n #[cfg(any(unix, target_os = \"wasi\"))]\n use std::os::fd::{FromRawFd, IntoRawFd, RawFd};\n\n let f = File::open(\"foo.txt\")?;\n # #[cfg(any(unix, target_os = \"wasi\"))]\n let raw_fd: RawFd = f.into_raw_fd();\n // SAFETY: no other functions should call `from_raw_fd`, so there\n // is only one owner for the file descriptor.\n # #[cfg(any(unix, target_os = \"wasi\"))]\n let f = unsafe { File::from_raw_fd(raw_fd) };\n # Ok::<(), io::Error>(())\n ```",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open.",
+      "For safety, `from_raw_fd` need not consume ownership of `fd`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/fortanix_sgx/io.rs",
+    "line": 31,
+    "name": "from_raw_fd",
+    "declaration": "unsafe fn from_raw_fd (fd : RawFd , metadata : Self :: Metadata) -> Self",
+    "parent": "FromRawFd",
+    "documentation": " Constructs a new instance of `Self` from the given raw file\n descriptor and metadata.\n\n This function is typically used to **consume ownership** of the\n specified file descriptor. When used in this way, the returned object\n will take responsibility for closing it when the object goes out of\n scope.\n\n However, consuming ownership is not strictly required. Use a\n [`From<OwnedFd>::from`] implementation for an API which strictly\n consumes ownership.\n\n # Safety\n\n The `fd` passed in must be an [owned file descriptor][io-safety];\n in particular, it must be open.\n\n [io-safety]: io#io-safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open.",
+      "Consuming ownership of `fd` is not required for safety when calling `from_raw_fd`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/solid/io.rs",
+    "line": 96,
+    "name": "borrow_raw",
+    "declaration": "const unsafe fn borrow_raw (fd : RawFd) -> Self",
+    "parent": "BorrowedFd < '_ >",
+    "documentation": " Returns a `BorrowedFd` holding the given raw file descriptor.\n\n # Safety\n\n The resource pointed to by `fd` must remain open for the duration of\n the returned `BorrowedFd`, and it must not have the value\n `SOLID_NET_INVALID_FD`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The resource pointed to by `fd` must remain open for the lifetime of the returned `BorrowedFd`.",
+      "`fd` must not have the value `SOLID_NET_INVALID_FD`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/solid/io.rs",
+    "line": 149,
+    "name": "from_raw_fd",
+    "declaration": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+    "parent": "OwnedFd",
+    "documentation": " Constructs a new instance of `Self` from the given raw file descriptor.\n\n # Safety\n\n The resource pointed to by `fd` must be open and suitable for assuming\n ownership. The resource must not require any cleanup other than `close`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The resource pointed to by `fd` must be open and suitable for `OwnedFd` to assume ownership.",
+      "The resource pointed to by `fd` must not require any cleanup other than `close`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/solid/io.rs",
+    "line": 309,
+    "name": "from_raw_fd",
+    "declaration": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+    "parent": "FromRawFd",
+    "documentation": " Constructs a new instance of `Self` from the given raw file\n descriptor.\n\n This function is typically used to **consume ownership** of the\n specified file descriptor. When used in this way, the returned object\n will take responsibility for closing it when the object goes out of\n scope.\n\n However, consuming ownership is not strictly required. Use a\n [`From<OwnedFd>::from`] implementation for an API which strictly\n consumes ownership.\n\n # Safety\n\n The `fd` passed in must be an [owned file descriptor][io-safety];\n in particular, it must be open.\n\n [io-safety]: io#io-safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open.",
+      "For safety, `from_raw_fd` is not required to consume ownership of `fd`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/uefi/env.rs",
+    "line": 15,
+    "name": "init_globals",
+    "declaration": "unsafe fn init_globals (handle : NonNull < c_void > , system_table : NonNull < c_void >)",
+    "parent": null,
+    "documentation": " Initializes the global System Table and Image Handle pointers.\n\n The standard library requires access to the UEFI System Table and the Application Image Handle\n to operate. Those are provided to UEFI Applications via their application entry point. By\n calling `init_globals()`, those pointers are retained by the standard library for future use.\n Thus this function must be called before any of the standard library services are used.\n\n The pointers are never exposed to any entity outside of this application and it is guaranteed\n that, once the application exited, these pointers are never dereferenced again.\n\n Callers are required to ensure the pointers are valid for the entire lifetime of this\n application. In particular, UEFI Boot Services must not be exited while an application with the\n standard library is loaded.\n\n # SAFETY\n Calling this function more than once will panic.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "init_globals must be called before any standard library services are used.",
+      "The caller must ensure that handle and system_table remain valid for the entire lifetime of the application.",
+      "UEFI Boot Services must not be exited while an application using the standard library is loaded.",
+      "The handle and system_table pointers retained by init_globals are never exposed to any entity outside the application.",
+      "After the application has exited, the handle and system_table pointers retained by init_globals are never dereferenced again."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/unix/net/ancillary.rs",
+    "line": 167,
+    "name": "new",
+    "declaration": "unsafe fn new (data : & 'a [u8]) -> AncillaryDataIter < 'a , T >",
+    "parent": "AncillaryDataIter < 'a , T >",
+    "documentation": " Creates `AncillaryDataIter` struct to iterate through the data unit in the control message.\n\n # Safety\n\n `data` must contain a valid control message.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `data` contains a valid control message."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/unix/net/ancillary.rs",
+    "line": 469,
+    "name": "as_rights",
+    "declaration": "unsafe fn as_rights (data : & 'a [u8]) -> Self",
+    "parent": "AncillaryData < 'a >",
+    "documentation": " Creates an `AncillaryData::ScmRights` variant.\n\n # Safety\n\n `data` must contain a valid control message and the control message must be type of\n `SOL_SOCKET` and level of `SCM_RIGHTS`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `data` must contain a valid control message whose type is `SOL_SOCKET` and whose level is `SCM_RIGHTS`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/unix/net/ancillary.rs",
+    "line": 481,
+    "name": "as_credentials",
+    "declaration": "unsafe fn as_credentials (data : & 'a [u8]) -> Self",
+    "parent": "AncillaryData < 'a >",
+    "documentation": " Creates an `AncillaryData::ScmCredentials` variant.\n\n # Safety\n\n `data` must contain a valid control message and the control message must be type of\n `SOL_SOCKET` and level of `SCM_CREDENTIALS` or `SCM_CREDS`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`data` must contain a valid control message.",
+      "The control message in `data` must have type `SOL_SOCKET` and level `SCM_CREDENTIALS` or `SCM_CREDS`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/unix/process.rs",
+    "line": 60,
+    "name": "pre_exec",
+    "declaration": "unsafe fn pre_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static",
+    "parent": "CommandExt",
+    "documentation": " Schedules a closure to be run just before the `exec` function is\n invoked.\n\n The closure is allowed to return an I/O error whose OS error code will\n be communicated back to the parent and returned as an error from when\n the spawn was requested.\n\n Multiple closures can be registered and they will be called in order of\n their registration. If a closure returns `Err` then no further closures\n will be called and the spawn operation will immediately return with a\n failure.\n\n # Notes and Safety\n\n This closure will be run in the context of the child process after a\n `fork`. This primarily means that any modifications made to memory on\n behalf of this closure will **not** be visible to the parent process.\n This is often a very constrained environment where normal operations\n like `malloc`, accessing environment variables through [`std::env`]\n or acquiring a mutex are not guaranteed to work (due to\n other threads perhaps still running when the `fork` was run).\n\n For further details refer to the [POSIX fork() specification]\n and the equivalent documentation for any targeted\n platform, especially the requirements around *async-signal-safety*.\n\n This also means that all resources such as file descriptors and\n memory-mapped regions got duplicated. It is your responsibility to make\n sure that the closure does not violate library invariants by making\n invalid use of these duplicates.\n\n Panicking in the closure is safe only if all the format arguments for the\n panic message can be safely formatted; this is because although\n `Command` calls [`std::panic::always_abort`](crate::panic::always_abort)\n before calling the pre_exec hook, panic will still try to format the\n panic message.\n\n When this closure is run, aspects such as the stdio file descriptors and\n working directory have successfully been changed, so output to these\n locations might not appear where intended.\n\n [POSIX fork() specification]:\n     https://pubs.opengroup.org/onlinepubs/9699919799/functions/fork.html\n [`std::env`]: mod@crate::env",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that f is safe to run in the child process after fork, including compliance with applicable async-signal-safety requirements. Operations such as malloc, accessing environment variables through std::env, and acquiring a mutex are not guaranteed to be safe in this context.",
+      "The caller must ensure that f does not violate library invariants through invalid use of resources duplicated by fork, including file descriptors and memory-mapped regions.",
+      "Panicking in f is safe only if all format arguments for the panic message can be safely formatted in the child process after fork, even though Command calls std::panic::always_abort before invoking f."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/unix/process.rs",
+    "line": 109,
+    "name": "before_exec",
+    "declaration": "unsafe fn before_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static ,",
+    "parent": "CommandExt",
+    "documentation": " Schedules a closure to be run just before the `exec` function is\n invoked.\n\n `before_exec` used to be a safe method, but it needs to be unsafe since the closure may only\n perform operations that are *async-signal-safe*. Hence it got deprecated in favor of the\n unsafe [`pre_exec`]. Meanwhile, Rust gained the ability to make an existing safe method\n fully unsafe in a new edition, which is how `before_exec` became `unsafe`. It still also\n remains deprecated; `pre_exec` should be used instead.\n\n [`pre_exec`]: CommandExt::pre_exec",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The closure `f`, which runs in the child process after `fork` and just before `exec`, must perform only async-signal-safe operations.",
+      "The closure `f`, which runs in the child process after `fork` and just before `exec`, must not violate library invariants by making invalid use of resources duplicated by `fork`, including file descriptors and memory-mapped regions.",
+      "Panicking in the closure `f`, which runs in the child process after `fork` and just before `exec`, is safe only if all format arguments for the panic message can be safely formatted, even though `Command` calls `std::panic::always_abort` before invoking the closure."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/io/handle.rs",
+    "line": 134,
+    "name": "borrow_raw",
+    "declaration": "const unsafe fn borrow_raw (handle : RawHandle) -> Self",
+    "parent": "BorrowedHandle < '_ >",
+    "documentation": " Returns a `BorrowedHandle` holding the given raw handle.\n\n # Safety\n\n The resource pointed to by `handle` must be a valid open handle, it\n must remain open for the duration of the returned `BorrowedHandle`.\n\n Note that it *may* have the value `INVALID_HANDLE_VALUE` (-1), which is\n sometimes a valid handle value. See [here] for the full story.\n\n And, it *may* have the value `NULL` (0), which can occur when consoles are\n detached from processes, or when `windows_subsystem` is used.\n\n [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The resource pointed to by `handle` must be a valid open handle.",
+      "The resource pointed to by `handle` must remain open for the duration of the returned `BorrowedHandle`.",
+      "For safety, `handle` may have the value `INVALID_HANDLE_VALUE` (-1), which is sometimes a valid handle value.",
+      "For safety, `handle` may have the value `NULL` (0), which can occur when consoles are detached from processes or when `windows_subsystem` is used."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/io/handle.rs",
+    "line": 331,
+    "name": "from_raw_handle",
+    "declaration": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+    "parent": "HandleOrNull",
+    "documentation": " Constructs a new instance of `Self` from the given `RawHandle` returned\n from a Windows API that uses null to indicate failure, such as\n `CreateThread`.\n\n Use `HandleOrInvalid` instead of `HandleOrNull` for APIs that\n use `INVALID_HANDLE_VALUE` to indicate failure.\n\n # Safety\n\n The passed `handle` value must either satisfy the safety requirements\n of [`FromRawHandle::from_raw_handle`], or be null. Note that not all\n Windows APIs use null for errors; see [here] for the full story.\n\n [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "If `handle` is not null, it must be an owned, open handle.",
+      "If `handle` is not null, it must refer to a resource that may be freed via `CloseHandle`, rather than `RegCloseKey` or another close function.",
+      "`handle` may be null.",
+      "`handle` may have the value `INVALID_HANDLE_VALUE` (-1), provided it is an owned, open handle for a resource that may be freed via `CloseHandle`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/io/handle.rs",
+    "line": 357,
+    "name": "from_raw_handle",
+    "declaration": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+    "parent": "HandleOrInvalid",
+    "documentation": " Constructs a new instance of `Self` from the given `RawHandle` returned\n from a Windows API that uses `INVALID_HANDLE_VALUE` to indicate\n failure, such as `CreateFileW`.\n\n Use `HandleOrNull` instead of `HandleOrInvalid` for APIs that\n use null to indicate failure.\n\n # Safety\n\n The passed `handle` value must either satisfy the safety requirements\n of [`FromRawHandle::from_raw_handle`], or be\n `INVALID_HANDLE_VALUE` (-1). Note that not all Windows APIs use\n `INVALID_HANDLE_VALUE` for errors; see [here] for the full story.\n\n [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Unless `handle` is `INVALID_HANDLE_VALUE` (-1), it must be an owned handle; in particular, it must be open.",
+      "Unless `handle` is `INVALID_HANDLE_VALUE` (-1), it must refer to a resource that may be freed via `CloseHandle`, rather than `RegCloseKey` or another close function.",
+      "`handle` may be `INVALID_HANDLE_VALUE` (-1), without satisfying the requirements for an owned, open handle to a resource that may be freed via `CloseHandle`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/io/raw.rs",
+    "line": 46,
+    "name": "from_raw_handle",
+    "declaration": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+    "parent": "FromRawHandle",
+    "documentation": " Constructs a new I/O object from the specified raw handle.\n\n This function is typically used to **consume ownership** of the handle\n given, passing responsibility for closing the handle to the returned\n object. When used in this way, the returned object\n will take responsibility for closing it when the object goes out of\n scope.\n\n However, consuming ownership is not strictly required. Use a\n `From<OwnedHandle>::from` implementation for an API which strictly\n consumes ownership.\n\n # Safety\n\n The `handle` passed in must:\n   - be an [owned handle][io-safety]; in particular, it must be open.\n   - be a handle for a resource that may be freed via [`CloseHandle`]\n     (as opposed to `RegCloseKey` or other close functions).\n\n Note that the handle *may* have the value `INVALID_HANDLE_VALUE` (-1),\n which is sometimes a valid handle value. See [here] for the full story.\n\n [`CloseHandle`]: https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle\n [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443\n [io-safety]: io#io-safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `handle` must be an owned handle; in particular, it must be open.",
+      "For safety, `handle` must refer to a resource that may be freed via `CloseHandle`, rather than requiring `RegCloseKey` or another close function.",
+      "For safety, `handle` may have the value `INVALID_HANDLE_VALUE` (-1) when that value is a valid handle.",
+      "Consuming ownership of `handle` is not required for safety.",
+      "When `from_raw_handle` is used to consume ownership of `handle`, the returned object takes responsibility for closing the handle when the object goes out of scope."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/io/raw.rs",
+    "line": 195,
+    "name": "from_raw_socket",
+    "declaration": "unsafe fn from_raw_socket (sock : RawSocket) -> Self",
+    "parent": "FromRawSocket",
+    "documentation": " Constructs a new I/O object from the specified raw socket.\n\n This function is typically used to **consume ownership** of the socket\n given, passing responsibility for closing the socket to the returned\n object. When used in this way, the returned object\n will take responsibility for closing it when the object goes out of\n scope.\n\n However, consuming ownership is not strictly required. Use a\n `From<OwnedSocket>::from` implementation for an API which strictly\n consumes ownership.\n\n # Safety\n\n The `socket` passed in must:\n   - be an [owned socket][io-safety]; in particular, it must be open.\n   - be a socket that may be freed via [`closesocket`].\n\n [`closesocket`]: https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-closesocket\n [io-safety]: io#io-safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The sock passed to from_raw_socket must be an owned socket; in particular, it must be open.",
+      "The sock passed to from_raw_socket must be a socket that may be freed via closesocket.",
+      "from_raw_socket is not required to consume ownership of sock."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/io/socket.rs",
+    "line": 53,
+    "name": "borrow_raw",
+    "declaration": "const unsafe fn borrow_raw (socket : RawSocket) -> Self",
+    "parent": "BorrowedSocket < '_ >",
+    "documentation": " Returns a `BorrowedSocket` holding the given raw socket.\n\n # Safety\n\n The resource pointed to by `raw` must remain open for the duration of\n the returned `BorrowedSocket`, and it must not have the value\n `INVALID_SOCKET`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The resource identified by `socket` must remain open for the duration of the returned `BorrowedSocket`.",
+      "`socket` must not have the value `INVALID_SOCKET`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/windows/process.rs",
+    "line": 507,
+    "name": "raw_attribute",
+    "declaration": "unsafe fn raw_attribute < T > (mut self , attribute : usize , value_ptr : * const T , value_size : usize ,) -> Self",
+    "parent": "ProcThreadAttributeListBuilder < 'a >",
+    "documentation": " Sets a raw attribute on the attribute list.\n\n This function is useful for setting attributes with pointers or sizes\n that cannot be derived directly from their values.\n\n # Safety\n\n This function is marked as `unsafe` because it deals with raw pointers\n and sizes. It is the responsibility of the caller to ensure the value\n lives longer than the resulting [`ProcThreadAttributeList`] as well as\n the validity of the size parameter.\n\n # Example\n\n ```\n #![feature(windows_process_extensions_raw_attribute)]\n use std::ffi::c_void;\n use std::os::windows::process::{CommandExt, ProcThreadAttributeList};\n use std::os::windows::raw::HANDLE;\n use std::process::Command;\n\n #[repr(C)]\n pub struct COORD {\n     pub X: i16,\n     pub Y: i16,\n }\n\n unsafe extern \"system\" {\n     fn CreatePipe(\n         hreadpipe: *mut HANDLE,\n         hwritepipe: *mut HANDLE,\n         lppipeattributes: *const c_void,\n         nsize: u32,\n     ) -> i32;\n     fn CreatePseudoConsole(\n         size: COORD,\n         hinput: HANDLE,\n         houtput: HANDLE,\n         dwflags: u32,\n         phpc: *mut isize,\n     ) -> i32;\n     fn CloseHandle(hobject: HANDLE) -> i32;\n }\n\n let [mut input_read_side, mut output_write_side, mut output_read_side, mut input_write_side] =\n     [unsafe { std::mem::zeroed::<HANDLE>() }; 4];\n\n unsafe {\n     CreatePipe(&mut input_read_side, &mut input_write_side, std::ptr::null(), 0);\n     CreatePipe(&mut output_read_side, &mut output_write_side, std::ptr::null(), 0);\n }\n\n let size = COORD { X: 60, Y: 40 };\n let mut h_pc = unsafe { std::mem::zeroed() };\n unsafe { CreatePseudoConsole(size, input_read_side, output_write_side, 0, &mut h_pc) };\n\n unsafe { CloseHandle(input_read_side) };\n unsafe { CloseHandle(output_write_side) };\n\n const PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 131094;\n\n let attribute_list = unsafe {\n     ProcThreadAttributeList::build()\n         .raw_attribute(\n             PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,\n             h_pc as *const c_void,\n             size_of::<isize>(),\n         )\n         .finish()?\n };\n\n let mut child = Command::new(\"cmd\").spawn_with_attributes(&attribute_list)?;\n #\n # child.kill()?;\n # Ok::<(), std::io::Error>(())\n ```",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that the value pointed to by `value_ptr` lives longer than the resulting `ProcThreadAttributeList`.",
+      "The caller must ensure that `value_size` is valid for the value pointed to by `value_ptr`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/xous/ffi.rs",
+    "line": 351,
+    "name": "map_memory",
+    "declaration": "unsafe fn map_memory < T > (phys : Option < core :: ptr :: NonNull < T > > , virt : Option < core :: ptr :: NonNull < T > > , count : usize , flags : MemoryFlags ,) -> Result < & 'static mut [T] , Error >",
+    "parent": null,
+    "documentation": " Allocates memory from the system.\n\n An optional physical and/or virtual address may be specified in order to\n ensure memory is allocated at specific offsets, otherwise the kernel will\n select an address.\n\n # Safety\n\n This function is safe unless a virtual address is specified. In that case,\n the kernel will return an alias to the existing range. This violates Rust's\n pointer uniqueness guarantee.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Calling map_memory is safe when virt is None.",
+      "If virt is Some, the caller must uphold Rust's pointer uniqueness guarantee because the kernel returns an alias to the existing range."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/xous/ffi.rs",
+    "line": 405,
+    "name": "unmap_memory",
+    "declaration": "unsafe fn unmap_memory < T > (range : * mut [T]) -> Result < () , Error >",
+    "parent": null,
+    "documentation": " Destroys the given memory, returning it to the compiler.\n\n Safety: The memory pointed to by `range` should not be used after this\n function returns, even if this function returns Err().",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The memory pointed to by `range` must not be used after `unmap_memory` returns, even if it returns `Err()`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/os/xous/ffi.rs",
+    "line": 444,
+    "name": "update_memory_flags",
+    "declaration": "unsafe fn update_memory_flags < T > (range : * mut [T] , new_flags : MemoryFlags ,) -> Result < () , Error >",
+    "parent": null,
+    "documentation": " Adjusts the memory flags for the given range.\n\n This can be used to remove flags from a given region in order to harden\n memory access. Note that flags may only be removed and may never be added.\n\n Safety: The memory pointed to by `range` may become inaccessible or have its\n mutability removed. It is up to the caller to ensure that the flags specified\n by `new_flags` are upheld, otherwise the program will crash.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that use of the memory pointed to by `range` upholds `new_flags`, including any removal of accessibility or mutability."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/panicking.rs",
+    "line": 500,
+    "name": "r#try",
+    "declaration": "unsafe fn r#try < R , F : FnOnce () -> R > (f : F) -> Result < R , Box < dyn Any + Send > >",
+    "parent": null,
+    "documentation": " Invoke a closure, capturing the cause of an unwinding panic if one occurs.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/panicking.rs",
+    "line": 506,
+    "name": "r#try",
+    "declaration": "unsafe fn r#try < R , F : FnOnce () -> R > (f : F) -> Result < R , Box < dyn Any + Send > >",
+    "parent": null,
+    "documentation": " Invoke a closure, capturing the cause of an unwinding panic if one occurs.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/array.rs",
+    "line": 195,
+    "name": "write",
+    "declaration": "unsafe fn write (& self , token : & mut Token , msg : T) -> Result < () , T >",
+    "parent": "Channel < T >",
+    "documentation": " Writes a message into the channel.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/array.rs",
+    "line": 287,
+    "name": "read",
+    "declaration": "unsafe fn read (& self , token : & mut Token) -> Result < T , () >",
+    "parent": "Channel < T >",
+    "documentation": " Reads a message from the channel.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/array.rs",
+    "line": 462,
+    "name": "disconnect_receivers",
+    "declaration": "unsafe fn disconnect_receivers (& self) -> bool",
+    "parent": "Channel < T >",
+    "documentation": " Disconnects receivers and wakes up all blocked senders.\n\n Returns `true` if this call disconnected the channel.\n\n # Safety\n May only be called once upon dropping the last receiver. The\n destruction of all other receivers must have been observed with acquire\n ordering or stronger.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `disconnect_receivers` may only be called once, upon dropping the last receiver.",
+      "Before calling `disconnect_receivers`, the destruction of all other receivers must have been observed with acquire ordering or stronger."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/array.rs",
+    "line": 483,
+    "name": "discard_all_messages",
+    "declaration": "unsafe fn discard_all_messages (& self , tail : usize)",
+    "parent": "Channel < T >",
+    "documentation": " Discards all messages.\n\n `tail` should be the current (and therefore last) value of `tail`.\n\n # Panicking\n If a destructor panics, the remaining messages are leaked, matching the\n behavior of the unbounded channel.\n\n # Safety\n This method must only be called when dropping the last receiver. The\n destruction of all other receivers must have been observed with acquire\n ordering or stronger.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `tail` argument must be the current and therefore last value of the channel's tail.",
+      "`discard_all_messages` must only be called when dropping the last receiver.",
+      "Before calling `discard_all_messages`, the destruction of all other receivers must have been observed with acquire ordering or stronger."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/context.rs",
+    "line": 112,
+    "name": "wait_until",
+    "declaration": "unsafe fn wait_until (& self , deadline : Option < Instant >) -> Selected",
+    "parent": "Context",
+    "documentation": " Waits until an operation is selected and returns it.\n\n If the deadline is reached, `Selected::Aborted` will be selected.\n\n # Safety\n This may only be called from the thread this `Context` belongs to.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `Context::wait_until` may only be called from the thread that the `Context` belongs to."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/counter.rs",
+    "line": 57,
+    "name": "release",
+    "declaration": "unsafe fn release < F : FnOnce (& C) -> bool > (& self , disconnect : F)",
+    "parent": "Sender < C >",
+    "documentation": " Releases the sender reference.\n\n Function `disconnect` will be called if this is the last sender reference.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/counter.rs",
+    "line": 110,
+    "name": "release",
+    "declaration": "unsafe fn release < F : FnOnce (& C) -> bool > (& self , disconnect : F)",
+    "parent": "Receiver < C >",
+    "documentation": " Releases the receiver reference.\n\n Function `disconnect` will be called if this is the last receiver reference.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/list.rs",
+    "line": 88,
+    "name": "destroy",
+    "declaration": "unsafe fn destroy (this : * mut Block < T > , start : usize)",
+    "parent": "Block < T >",
+    "documentation": " Sets the `DESTROY` bit in slots starting from `start` and destroys the block.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/list.rs",
+    "line": 262,
+    "name": "write",
+    "declaration": "unsafe fn write (& self , token : & mut Token , msg : T) -> Result < () , T >",
+    "parent": "Channel < T >",
+    "documentation": " Writes a message into the channel.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/list.rs",
+    "line": 368,
+    "name": "read",
+    "declaration": "unsafe fn read (& self , token : & mut Token) -> Result < T , () >",
+    "parent": "Channel < T >",
+    "documentation": " Reads a message from the channel.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/zero.rs",
+    "line": 98,
+    "name": "write",
+    "declaration": "unsafe fn write (& self , token : & mut Token , msg : T) -> Result < () , T >",
+    "parent": "Channel < T >",
+    "documentation": " Writes a message into the packet.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/mpmc/zero.rs",
+    "line": 113,
+    "name": "read",
+    "declaration": "unsafe fn read (& self , token : & mut Token) -> Result < T , () >",
+    "parent": "Channel < T >",
+    "documentation": " Reads a message from the packet.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/once_lock.rs",
+    "line": 534,
+    "name": "get_unchecked",
+    "declaration": "unsafe fn get_unchecked (& self) -> & T",
+    "parent": "OnceLock < T >",
+    "documentation": " # Safety\n\n The cell must be initialized",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The OnceLock cell must be initialized before calling get_unchecked."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/once_lock.rs",
+    "line": 543,
+    "name": "get_unchecked_mut",
+    "declaration": "unsafe fn get_unchecked_mut (& mut self) -> & mut T",
+    "parent": "OnceLock < T >",
+    "documentation": " # Safety\n\n The cell must be initialized",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The OnceLock cell must be initialized before calling get_unchecked_mut."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/poison/rwlock.rs",
+    "line": 675,
+    "name": "new",
+    "declaration": "unsafe fn new (lock : & 'rwlock RwLock < T >) -> LockResult < RwLockReadGuard < 'rwlock , T > >",
+    "parent": "RwLockReadGuard < 'rwlock , T >",
+    "documentation": " Creates a new instance of `RwLockReadGuard<T>` from a `RwLock<T>`.\n\n # Safety\n\n This function is safe if and only if the same thread has successfully and safely called\n `lock.inner.read()`, `lock.inner.try_read()`, or `lock.inner.downgrade()` before\n instantiating this object.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Calling `RwLockReadGuard::new(lock)` is safe if and only if the same thread has successfully and safely called `lock.inner.read()`, `lock.inner.try_read()`, or `lock.inner.downgrade()` before instantiating the guard."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sync/poison/rwlock.rs",
+    "line": 691,
+    "name": "new",
+    "declaration": "unsafe fn new (lock : & 'rwlock RwLock < T >) -> LockResult < RwLockWriteGuard < 'rwlock , T > >",
+    "parent": "RwLockWriteGuard < 'rwlock , T >",
+    "documentation": " Creates a new instance of `RwLockWriteGuard<T>` from a `RwLock<T>`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/fs/windows/remove_dir_all.rs",
+    "line": 42,
+    "name": "nt_open_file",
+    "declaration": "unsafe fn nt_open_file (access : u32 , object_attribute : & c :: OBJECT_ATTRIBUTES , share : u32 , options : u32 ,) -> Result < File , WinError >",
+    "parent": null,
+    "documentation": " A wrapper around a raw NtOpenFile call.\n\n This isn't completely safe because `OBJECT_ATTRIBUTES` contains raw pointers.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/common/small_c_string.rs",
+    "line": 32,
+    "name": "run_with_cstr_stack",
+    "declaration": "unsafe fn run_with_cstr_stack < T > (bytes : & [u8] , f : & dyn Fn (& CStr) -> io :: Result < T > ,) -> io :: Result < T >",
+    "parent": null,
+    "documentation": " # Safety\n\n `bytes` must have a length less than `MAX_STACK_ALLOCATION`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `bytes` must have a length less than `MAX_STACK_ALLOCATION`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/hermit/args.rs",
+    "line": 10,
+    "name": "init",
+    "declaration": "unsafe fn init (argc : isize , argv : * const * const u8)",
+    "parent": null,
+    "documentation": " One-time global initialization.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/itron/spin.rs",
+    "line": 93,
+    "name": "set_unchecked",
+    "declaration": "unsafe fn set_unchecked (& self , (id , extra) : (abi :: ID , T))",
+    "parent": "SpinIdOnceCell < T >",
+    "documentation": " Assign the content without checking if it's already initialized or\n being initialized.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/itron/thread.rs",
+    "line": 86,
+    "name": "new",
+    "declaration": "unsafe fn new (stack : usize , p : Box < dyn FnOnce () >) -> io :: Result < Thread >",
+    "parent": "Thread",
+    "documentation": " # Safety\n\n See `thread::Builder::spawn_unchecked` for safety requirements.",
+    "model": "gpt-6.1-sol",
+    "mode": "llm",
+    "rules": [
+      "The caller must ensure that the spawned thread does not outlive any references in the supplied closure `p`."
+    ],
+    "status": "extracted",
+    "repair_request_cache": "/unsat-rust/eval/rule/std/requests/2dbd1b6b9bb9d764b6b139db"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/itron/thread.rs",
+    "line": 306,
+    "name": "terminate_and_delete_task",
+    "declaration": "unsafe fn terminate_and_delete_task (deleted_task : abi :: ID)",
+    "parent": null,
+    "documentation": " Terminates and deletes the specified task.\n\n This function will abort if `deleted_task` refers to the calling task.\n\n It is assumed that the specified task is solely managed by the caller -\n i.e., other threads must not \"resuscitate\" the specified task or delete it\n prematurely while this function is still in progress. It is allowed for the\n specified task to exit by its own.\n\n # Safety\n\n The task must be safe to terminate. This is in general not true\n because there might be pinned references to the task's stack.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The task identified by `deleted_task` must be safe to terminate; pinned references to its stack may make termination unsafe.",
+      "While `terminate_and_delete_task` is in progress, the task identified by `deleted_task` must be solely managed by the caller: other threads must not resuscitate it or delete it prematurely.",
+      "The task identified by `deleted_task` is allowed to exit on its own while `terminate_and_delete_task` is in progress."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/itron/thread.rs",
+    "line": 335,
+    "name": "terminate_and_delete_current_task",
+    "declaration": "unsafe fn terminate_and_delete_current_task () -> !",
+    "parent": null,
+    "documentation": " Terminates and deletes the calling task.\n\n Atomicity is not required - i.e., it can be assumed that other threads won't\n `ter_tsk` the calling task while this function is still in progress. (This\n property makes it easy to implement this operation on μITRON-derived kernels\n that don't support `exd_tsk`.)\n\n # Safety\n\n The task must be safe to terminate. This is in general not true\n because there might be pinned references to the task's stack.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The calling task must be safe to terminate, including with respect to any pinned references to its stack.",
+      "Atomicity is not required: the implementation may assume that other threads will not call `ter_tsk` on the calling task while `terminate_and_delete_current_task` is in progress."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 16,
+    "name": "UserSafeSized",
+    "declaration": "trait UserSafeSized : Copy + Sized",
+    "parent": null,
+    "documentation": " A type that can be safely read from or written to userspace.\n\n Non-exhaustive list of specific requirements for reading and writing:\n * **Type is `Copy`** (and therefore also not `Drop`). Copies will be\n   created when copying from/to userspace. Destructors will not be called.\n * **No references or Rust-style owned pointers** (`Vec`, `Arc`, etc.). When\n   reading from userspace, references into enclave memory must not be\n   created. Also, only enclave memory is considered managed by the Rust\n   compiler's static analysis. When reading from userspace, there can be no\n   guarantee that the value correctly adheres to the expectations of the\n   type. When writing to userspace, memory addresses of data in enclave\n   memory must not be leaked for confidentiality reasons. `User` and\n   `UserRef` are also not allowed for the same reasons.\n * **No fat pointers.** When reading from userspace, the size or vtable\n   pointer could be automatically interpreted and used by the code. When\n   writing to userspace, memory addresses of data in enclave memory (such\n   as vtable pointers) must not be leaked for confidentiality reasons.\n\n Non-exhaustive list of specific requirements for reading from userspace:\n * **Any bit pattern is valid** for this type (no `enum`s). There can be no\n   guarantee that the value correctly adheres to the expectations of the\n   type, so any value must be valid for this type.\n\n Non-exhaustive list of specific requirements for writing to userspace:\n * **No pointers to enclave memory.** Memory addresses of data in enclave\n   memory must not be leaked for confidentiality reasons.\n * **No internal padding.** Padding might contain previously-initialized\n   secret data stored at that memory location and must not be leaked for\n   confidentiality reasons.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "A type implementing `UserSafeSized` must be safe to read from and write to userspace.",
+      "A type implementing `UserSafeSized` must be `Copy` and must not be `Drop`; destructors will not be called when copying values from or to userspace.",
+      "A type implementing `UserSafeSized` must contain no references or Rust-style owned pointers, such as `Vec` or `Arc`.",
+      "A type implementing `UserSafeSized` must contain neither `User` nor `UserRef`.",
+      "A type implementing `UserSafeSized` must contain no fat pointers.",
+      "For reading from userspace, every bit pattern must be valid for a type implementing `UserSafeSized`; enums are not allowed.",
+      "Reading a type implementing `UserSafeSized` from userspace must not create references into enclave memory.",
+      "For writing to userspace, a type implementing `UserSafeSized` must contain no pointers to enclave memory.",
+      "Writing a type implementing `UserSafeSized` to userspace must not leak memory addresses of data in enclave memory, including vtable pointers.",
+      "For writing to userspace, a type implementing `UserSafeSized` must contain no internal padding."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 63,
+    "name": "UserSafe",
+    "declaration": "trait UserSafe",
+    "parent": null,
+    "documentation": " A type that can be represented in memory as one or more `UserSafeSized`s.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "A type implementing `UserSafe` must be representable in memory as one or more `UserSafeSized` values."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 69,
+    "name": "from_raw_sized_unchecked",
+    "declaration": "unsafe fn from_raw_sized_unchecked (ptr : * mut u8 , size : usize) -> * mut Self",
+    "parent": "UserSafe",
+    "documentation": " Constructs a pointer to `Self` given a memory range in user space.\n\n N.B., this takes a size, not a length!\n\n # Safety\n\n The caller must ensure the memory range is in user memory, is the\n correct size and is correctly aligned and points to the right type.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that the memory range specified by `ptr` and `size` is in user memory.",
+      "The caller must ensure that `size`, which is a size rather than a length, is correct for `Self`.",
+      "The caller must ensure that `ptr` is correctly aligned for `Self`.",
+      "The caller must ensure that `ptr` points to the right type, `Self`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 79,
+    "name": "from_raw_sized",
+    "declaration": "unsafe fn from_raw_sized (ptr : * mut u8 , size : usize) -> NonNull < Self >",
+    "parent": "UserSafe",
+    "documentation": " Constructs a pointer to `Self` given a memory range.\n\n N.B., this takes a size, not a length!\n\n # Safety\n\n The caller must ensure the memory range points to the correct type.\n\n # Panics\n\n This function panics if:\n\n * the pointer is not aligned.\n * the pointer is null.\n * the pointed-to range does not fit in the address space.\n * the pointed-to range is not in user memory.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that the memory range starting at `ptr` with size `size` in bytes points to the correct type, `Self`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 105,
+    "name": "check_ptr",
+    "declaration": "unsafe fn check_ptr (ptr : * const Self)",
+    "parent": "UserSafe",
+    "documentation": " Checks if a pointer may point to `Self` in user memory.\n\n # Safety\n\n The caller must ensure the memory range points to the correct type and\n length (if this is a slice).\n\n # Panics\n\n This function panics if:\n\n * the pointer is not aligned.\n * the pointer is null.\n * the pointed-to range is not in user memory.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to a memory range of the correct type (`Self`) and, if `Self` is a slice, the correct length."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 146,
+    "name": "from_raw_sized_unchecked",
+    "declaration": "unsafe fn from_raw_sized_unchecked (ptr : * mut u8 , size : usize) -> * mut Self",
+    "parent": "[T]",
+    "documentation": " # Safety\n Behavior is undefined if any of these conditions are violated:\n * `ptr` must be [valid] for writes of `size` many bytes, and it must be\n   properly aligned.\n\n [valid]: core::ptr#safety\n # Panics\n\n This function panics if:\n\n * the element size is not a factor of the size",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`ptr` must be valid for writes of `size` bytes and properly aligned for `T`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 212,
+    "name": "UserSafeCopyDestination",
+    "declaration": "trait UserSafeCopyDestination <T : ? Sized>",
+    "parent": null,
+    "documentation": " A type which can a destination for safely copying from userspace.\n\n # Safety\n\n Requires that `T` and `Self` have identical layouts.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Implementors of `UserSafeCopyDestination<T>` must ensure that `T` and `Self` have identical layouts."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 287,
+    "name": "from_raw",
+    "declaration": "unsafe fn from_raw (ptr : * mut T) -> Self",
+    "parent": "User < T >",
+    "documentation": " Creates an owned `User<T>` from a raw pointer.\n\n # Safety\n The caller must ensure `ptr` points to `T`, is freeable with the `free`\n usercall and the alignment of `T`, and is uniquely owned.\n\n # Panics\n This function panics if:\n\n * The pointer is not aligned\n * The pointer is null\n * The pointed-to range is not in user memory",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to a `T`.",
+      "The caller must ensure that `ptr` is freeable with the `free` usercall using the alignment of `T`.",
+      "The caller must ensure that `ptr` is uniquely owned."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 333,
+    "name": "from_raw_parts",
+    "declaration": "unsafe fn from_raw_parts (ptr : * mut T , len : usize) -> Self",
+    "parent": "User < [T] >",
+    "documentation": " Creates an owned `User<[T]>` from a raw thin pointer and a slice length.\n\n # Safety\n The caller must ensure `ptr` points to `len` elements of `T`, is\n freeable with the `free` usercall and the alignment of `T`, and is\n uniquely owned.\n\n # Panics\n This function panics if:\n\n * The pointer is not aligned\n * The pointer is null\n * The pointed-to range does not fit in the address space\n * The pointed-to range is not in user memory",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to `len` elements of `T`.",
+      "The caller must ensure that `ptr` is freeable with the `free` usercall using the alignment of `T`.",
+      "The caller must ensure that `ptr` is uniquely owned."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 395,
+    "name": "copy_to_userspace",
+    "declaration": "unsafe fn copy_to_userspace (src : * const u8 , dst : * mut u8 , len : usize)",
+    "parent": null,
+    "documentation": " Copies `len` bytes of data from enclave pointer `src` to userspace `dst`\n\n This function mitigates stale data vulnerabilities by ensuring all writes to untrusted memory are either:\n  - preceded by the VERW instruction and followed by the MFENCE; LFENCE instruction sequence\n  - or are in multiples of 8 bytes, aligned to an 8-byte boundary\n\n # Panics\n This function panics if:\n\n * The `src` pointer is null\n * The `dst` pointer is null\n * The `src` memory range is not in enclave memory\n * The `dst` memory range is not in user memory\n\n # References\n  - https://www.intel.com/content/www/us/en/security-center/advisory/intel-sa-00615.html\n  - https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/technical-documentation/processor-mmio-stale-data-vulnerabilities.html#inpage-nav-3-2-2",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "All writes to untrusted memory performed by copy_to_userspace are guaranteed either to be preceded by VERW and followed by the MFENCE; LFENCE instruction sequence, or to have a size that is a multiple of 8 bytes and be aligned to an 8-byte boundary."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 459,
+    "name": "copy_from_userspace",
+    "declaration": "unsafe fn copy_from_userspace (src : * const u8 , dst : * mut u8 , len : usize)",
+    "parent": null,
+    "documentation": " Copies `len` bytes of data from userspace pointer `src` to enclave pointer `dst`\n\n This function mitigates AEPIC leak vulnerabilities by ensuring all reads from untrusted memory are 8-byte aligned\n\n # Panics\n This function panics if:\n\n * The `src` pointer is null\n * The `dst` pointer is null\n * The `src` memory range is not in user memory\n * The `dst` memory range is not in enclave memory\n\n # References\n  - https://www.intel.com/content/www/us/en/security-center/advisory/intel-sa-00657.html\n  - https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/advisory-guidance/stale-data-read-from-xapic.html",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "All reads from untrusted memory performed by `copy_from_userspace` are 8-byte aligned, mitigating AEPIC leak vulnerabilities."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 530,
+    "name": "from_ptr",
+    "declaration": "unsafe fn from_ptr < 'a > (ptr : * const T) -> & 'a Self",
+    "parent": "UserRef < T >",
+    "documentation": " Creates a `&UserRef<[T]>` from a raw pointer.\n\n # Safety\n The caller must ensure `ptr` points to `T`.\n\n # Panics\n This function panics if:\n\n * The pointer is not aligned\n * The pointer is null\n * The pointed-to range is not in user memory",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to a `T`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 547,
+    "name": "from_mut_ptr",
+    "declaration": "unsafe fn from_mut_ptr < 'a > (ptr : * mut T) -> & 'a mut Self",
+    "parent": "UserRef < T >",
+    "documentation": " Creates a `&mut UserRef<[T]>` from a raw pointer. See the struct\n documentation for the nuances regarding a `&mut UserRef<T>`.\n\n # Safety\n The caller must ensure `ptr` points to `T`.\n\n # Panics\n This function panics if:\n\n * The pointer is not aligned\n * The pointer is null\n * The pointed-to range is not in user memory",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to a `T`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 628,
+    "name": "from_raw_parts",
+    "declaration": "unsafe fn from_raw_parts < 'a > (ptr : * const T , len : usize) -> & 'a Self",
+    "parent": "UserRef < [T] >",
+    "documentation": " Creates a `&UserRef<[T]>` from a raw thin pointer and a slice length.\n\n # Safety\n The caller must ensure `ptr` points to `n` elements of `T`.\n\n # Panics\n This function panics if:\n\n * The pointer is not aligned\n * The pointer is null\n * The pointed-to range does not fit in the address space\n * The pointed-to range is not in user memory",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to `len` elements of `T`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs",
+    "line": 645,
+    "name": "from_raw_parts_mut",
+    "declaration": "unsafe fn from_raw_parts_mut < 'a > (ptr : * mut T , len : usize) -> & 'a mut Self",
+    "parent": "UserRef < [T] >",
+    "documentation": " Creates a `&mut UserRef<[T]>` from a raw thin pointer and a slice length.\n See the struct documentation for the nuances regarding a\n `&mut UserRef<T>`.\n\n # Safety\n The caller must ensure `ptr` points to `n` elements of `T`.\n\n # Panics\n This function panics if:\n\n * The pointer is not aligned\n * The pointer is null\n * The pointed-to range does not fit in the address space\n * The pointed-to range is not in user memory",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `ptr` points to `len` elements of `T`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/mod.rs",
+    "line": 156,
+    "name": "launch_thread",
+    "declaration": "unsafe fn launch_thread () -> IoResult < () >",
+    "parent": null,
+    "documentation": " Usercall `launch_thread`. See the ABI documentation for more information.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/raw.rs",
+    "line": 17,
+    "name": "do_usercall",
+    "declaration": "unsafe fn do_usercall (nr : NonZero < u64 > , p1 : u64 , p2 : u64 , p3 : u64 , p4 : u64 , abort : bool ,) -> (u64 , u64)",
+    "parent": null,
+    "documentation": " Performs the raw usercall operation as defined in the ABI calling convention.\n\n # Safety\n\n The caller must ensure to pass parameters appropriate for the usercall `nr`\n and to observe all requirements specified in the ABI.\n\n # Panics\n\n Panics if `nr` is `0`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that p1, p2, p3, p4, and abort are appropriate for the usercall identified by nr.",
+      "The caller must observe all requirements specified in the ABI for the usercall identified by nr."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs",
+    "line": 37,
+    "name": "init",
+    "declaration": "unsafe fn init (& mut self)",
+    "parent": "UnsafeList < T >",
+    "documentation": " # Safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs",
+    "line": 68,
+    "name": "push",
+    "declaration": "unsafe fn push < 'a > (& mut self , entry : & 'a mut UnsafeListEntry < T >) -> & 'a T",
+    "parent": "UnsafeList < T >",
+    "documentation": " Pushes an entry onto the back of the list.\n\n # Safety\n\n The entry must remain allocated until the entry is removed from the\n list AND the caller who popped is done using the entry. Special\n care must be taken in the caller of `push` to ensure unwinding does\n not destroy the stack frame containing the entry.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The entry passed to `push` must remain allocated until it has been removed from the list and the caller who popped it is done using it.",
+      "The caller of `push` must ensure that unwinding does not destroy the stack frame containing the entry before the entry has been removed from the list and the caller who popped it is done using it."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs",
+    "line": 99,
+    "name": "pop",
+    "declaration": "unsafe fn pop < 'a > (& mut self) -> Option < & 'a T >",
+    "parent": "UnsafeList < T >",
+    "documentation": " Pops an entry from the front of the list.\n\n # Safety\n\n The caller must make sure to synchronize ending the borrow of the\n return value and deallocation of the containing entry.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must synchronize the end of the borrow of the value returned by `pop` with deallocation of the entry containing that value, so that the entry is not deallocated while the returned borrow is active."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs",
+    "line": 131,
+    "name": "remove",
+    "declaration": "unsafe fn remove (& mut self , entry : & mut UnsafeListEntry < T >)",
+    "parent": "UnsafeList < T >",
+    "documentation": " Removes an entry from the list.\n\n # Safety\n\n The caller must ensure that `entry` has been pushed onto `self`\n prior to this call and has not moved since then.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that `entry` was pushed onto `self` before calling `remove` and has not moved since it was pushed."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list/tests.rs",
+    "line": 4,
+    "name": "assert_empty",
+    "declaration": "unsafe fn assert_empty < T > (list : & mut UnsafeList < T >)",
+    "parent": null,
+    "documentation": " # Safety\n List must be valid.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `list` must be a valid `UnsafeList<T>`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/uefi/helpers.rs",
+    "line": 741,
+    "name": "from_raw",
+    "declaration": "unsafe fn from_raw (ptr : * mut crate :: ffi :: c_void) -> Self",
+    "parent": "OwnedEvent",
+    "documentation": " SAFETY: Assumes that ptr is a non-null valid UEFI event",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `ptr` must be non-null and must be a valid UEFI event."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/uefi/mod.rs",
+    "line": 38,
+    "name": "init",
+    "declaration": "unsafe fn init (argc : isize , argv : * const * const u8 , _sigpipe : u8)",
+    "parent": null,
+    "documentation": " # SAFETY\n - must be called only once during runtime initialization.\n - argc must be 2.\n - argv must be &[Handle, *mut SystemTable].",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, init must be called only once during runtime initialization.",
+      "For safety, argc must be 2.",
+      "For safety, argv must be &[Handle, *mut SystemTable]."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/uefi/mod.rs",
+    "line": 72,
+    "name": "cleanup",
+    "declaration": "unsafe fn cleanup ()",
+    "parent": null,
+    "documentation": " # SAFETY\n this is not guaranteed to run, for example when the program aborts.\n - must be called only once during runtime cleanup.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "cleanup must be called only once during runtime cleanup.",
+      "cleanup is not guaranteed to run, including when the program aborts."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/args.rs",
+    "line": 12,
+    "name": "init",
+    "declaration": "unsafe fn init (argc : isize , argv : * const * const u8)",
+    "parent": null,
+    "documentation": " One-time global initialization.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs",
+    "line": 25,
+    "name": "notify_one",
+    "declaration": "unsafe fn notify_one (self : Pin < & Self >)",
+    "parent": "Condvar",
+    "documentation": " # Safety\n `init` must have been called on this instance.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `init` must have been called on this `Condvar` instance before calling `notify_one`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs",
+    "line": 33,
+    "name": "notify_all",
+    "declaration": "unsafe fn notify_all (self : Pin < & Self >)",
+    "parent": "Condvar",
+    "documentation": " # Safety\n `init` must have been called on this instance.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `init` must have been called on this `Condvar` instance before calling `notify_all`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs",
+    "line": 41,
+    "name": "wait",
+    "declaration": "unsafe fn wait (self : Pin < & Self > , mutex : Pin < & Mutex >)",
+    "parent": "Condvar",
+    "documentation": " # Safety\n * `init` must have been called on this instance.\n * `mutex` must be locked by the current thread.\n * This condition variable may only be used with the same mutex.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`init` must have been called on this condition variable before calling `wait`.",
+      "The `mutex` passed to `wait` must be locked by the current thread.",
+      "This condition variable must only be used with the same mutex."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs",
+    "line": 51,
+    "name": "wait_timeout",
+    "declaration": "unsafe fn wait_timeout (& self , mutex : Pin < & Mutex > , dur : Duration) -> bool",
+    "parent": "Condvar",
+    "documentation": " # Safety\n * `init` must have been called on this instance.\n * `mutex` must be locked by the current thread.\n * This condition variable may only be used with the same mutex.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Before calling `wait_timeout`, `init` must have been called on this condition variable instance.",
+      "When calling `wait_timeout`, `mutex` must be locked by the current thread.",
+      "For safety, this condition variable may only be used with the same mutex."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs",
+    "line": 97,
+    "name": "init",
+    "declaration": "unsafe fn init (self : Pin < & mut Self >)",
+    "parent": "Condvar",
+    "documentation": " # Safety\n May only be called once per instance of `Self`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `Condvar::init` may only be called once per instance of `Condvar`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs",
+    "line": 139,
+    "name": "init",
+    "declaration": "unsafe fn init (self : Pin < & mut Self >)",
+    "parent": "Condvar",
+    "documentation": " # Safety\n May only be called once per instance of `Self`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `Condvar::init` may only be called once per instance of `Condvar`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs",
+    "line": 20,
+    "name": "init",
+    "declaration": "unsafe fn init (self : Pin < & mut Self >)",
+    "parent": "Mutex",
+    "documentation": " # Safety\n May only be called once per instance of `Self`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `Mutex::init` may only be called once per instance of `Mutex`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs",
+    "line": 60,
+    "name": "lock",
+    "declaration": "unsafe fn lock (self : Pin < & Self >)",
+    "parent": "Mutex",
+    "documentation": " # Safety\n * If `init` was not called on this instance, reentrant locking causes\n   undefined behaviour.\n * Destroying a locked mutex causes undefined behaviour.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "If `init` was not called on this mutex instance, locking it reentrantly causes undefined behaviour.",
+      "This mutex must not be destroyed while locked."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs",
+    "line": 85,
+    "name": "try_lock",
+    "declaration": "unsafe fn try_lock (self : Pin < & Self >) -> bool",
+    "parent": "Mutex",
+    "documentation": " # Safety\n * If `init` was not called on this instance, reentrant locking causes\n   undefined behaviour.\n * Destroying a locked mutex causes undefined behaviour.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "If `init` was not called on this mutex instance, `try_lock` must not lock it reentrantly; doing so causes undefined behaviour.",
+      "This mutex must not be destroyed while locked; doing so causes undefined behaviour."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs",
+    "line": 93,
+    "name": "unlock",
+    "declaration": "unsafe fn unlock (self : Pin < & Self >)",
+    "parent": "Mutex",
+    "documentation": " # Safety\n The mutex must be locked by the current thread.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The mutex must be locked by the current thread when `Mutex::unlock` is called."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/api.rs",
+    "line": 160,
+    "name": "SetFileInformation",
+    "declaration": "trait SetFileInformation",
+    "parent": null,
+    "documentation": " The `SetFileInformationByHandle` function takes a generic parameter by\n making the user specify the type (class), a pointer to the data and its\n size. This trait allows attaching that information to a Rust type so that\n [`set_file_information_by_handle`] can be called safely.\n\n This trait is designed so that it can support variable sized types.\n However, currently Rust's std only uses fixed sized structures.\n\n # Safety\n\n * `as_ptr` must return a pointer to memory that is readable up to `size` bytes.\n * `CLASS` must accurately reflect the type pointed to by `as_ptr`. E.g.\n the `FILE_BASIC_INFO` structure has the class `FileBasicInfo`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For an implementation of `SetFileInformation` to be safe, `as_ptr` must return a pointer to memory readable for `size` bytes.",
+      "For an implementation of `SetFileInformation` to be safe, `CLASS` must accurately identify the type pointed to by `as_ptr`; for example, `FILE_BASIC_INFO` must use the class `FileBasicInfo`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/api.rs",
+    "line": 181,
+    "name": "SizedSetFileInformation",
+    "declaration": "trait SizedSetFileInformation : Sized",
+    "parent": null,
+    "documentation": " Helper trait for implementing `SetFileInformation` for statically sized types.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/compat.rs",
+    "line": 45,
+    "name": "init",
+    "declaration": "unsafe extern \"C\" fn init ()",
+    "parent": null,
+    "documentation": " Preload some imported functions.\n\n Note that any functions included here will be unconditionally loaded in\n the final binary, regardless of whether or not they're actually used.\n\n Therefore, this should be limited to `compat_fn_optional` functions which\n must be preloaded or any functions where lazier loading demonstrates a\n negative performance impact in practical situations.\n\n Currently we only preload `WaitOnAddress` and `WakeByAddressSingle`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/compat.rs",
+    "line": 107,
+    "name": "new",
+    "declaration": "unsafe fn new (name : & CStr) -> Option < Self >",
+    "parent": "Module",
+    "documentation": " Try to get a handle to a loaded module.\n\n # SAFETY\n\n This should only be use for modules that exist for the lifetime of std\n (e.g. kernel32 and ntdll).",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `Module::new(name)` must only be used for modules that exist for the lifetime of std."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/handle.rs",
+    "line": 232,
+    "name": "synchronous_read",
+    "declaration": "unsafe fn synchronous_read (& self , buf : * mut mem :: MaybeUninit < u8 > , len : usize , offset : Option < u64 > ,) -> io :: Result < usize >",
+    "parent": "Handle",
+    "documentation": " Performs a synchronous read.\n\n If the handle is opened for asynchronous I/O then this abort the process.\n See #81357.\n\n If `offset` is `None` then the current file position is used.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/pipe.rs",
+    "line": 293,
+    "name": "alertable_io_internal",
+    "declaration": "unsafe fn alertable_io_internal (& self , io : impl FnOnce (& mut c :: OVERLAPPED , c :: LPOVERLAPPED_COMPLETION_ROUTINE) -> c :: BOOL ,) -> io :: Result < usize >",
+    "parent": "AnonPipe",
+    "documentation": " Synchronizes asynchronous reads or writes using our anonymous pipe.\n\n This is a wrapper around [`ReadFileEx`] or [`WriteFileEx`] that uses\n [Asynchronous Procedure Call] (APC) to synchronize reads or writes.\n\n Note: This should not be used for handles we don't create.\n\n # Safety\n\n `buf` must be a pointer to a buffer that's valid for reads or writes\n up to `len` bytes. The `AlertableIoFn` must be either `ReadFileEx` or `WriteFileEx`\n\n [`ReadFileEx`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfileex\n [`WriteFileEx`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefileex\n [Asynchronous Procedure Call]: https://docs.microsoft.com/en-us/windows/win32/sync/asynchronous-procedure-calls",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`self` must refer to a pipe handle created by this implementation; this API must not be used with handles it did not create.",
+      "The `buf` pointer used by the I/O operation supplied through `io` must point to a buffer valid for reads or writes up to `len` bytes.",
+      "The I/O function used by `io` must be either `ReadFileEx` or `WriteFileEx`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/pal/windows/thread.rs",
+    "line": 72,
+    "name": "set_name_wide",
+    "declaration": "unsafe fn set_name_wide (name : & [u16])",
+    "parent": "Thread",
+    "documentation": " # Safety\n\n `name` must end with a zero value",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `name` must end with a zero value."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/personality/dwarf/eh.rs",
+    "line": 179,
+    "name": "read_encoded_offset",
+    "declaration": "unsafe fn read_encoded_offset (reader : & mut DwarfReader , encoding : u8) -> Result < usize , () >",
+    "parent": null,
+    "documentation": " Reads an offset (`usize`) from `reader` whose encoding is described by `encoding`.\n\n `encoding` must be a [DWARF Exception Header Encoding as described by the LSB spec][LSB-dwarf-ext].\n In addition the upper (\"application\") part must be zero.\n\n # Errors\n Returns `Err` if `encoding`\n * is not a valid DWARF Exception Header Encoding,\n * is `DW_EH_PE_omit`, or\n * has a non-zero application part.\n\n [LSB-dwarf-ext]: https://refspecs.linuxfoundation.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/dwarfext.html",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`encoding` must be a valid DWARF Exception Header Encoding as described by the LSB specification.",
+      "The upper (\"application\") part of `encoding` must be zero."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/personality/dwarf/eh.rs",
+    "line": 213,
+    "name": "read_encoded_pointer",
+    "declaration": "unsafe fn read_encoded_pointer (reader : & mut DwarfReader , context : & EHContext < '_ > , encoding : u8 ,) -> Result < * const u8 , () >",
+    "parent": null,
+    "documentation": " Reads a pointer from `reader` whose encoding is described by `encoding`.\n\n `encoding` must be a [DWARF Exception Header Encoding as described by the LSB spec][LSB-dwarf-ext].\n\n # Errors\n Returns `Err` if `encoding`\n * is not a valid DWARF Exception Header Encoding,\n * is `DW_EH_PE_omit`, or\n * combines `DW_EH_PE_absptr` or `DW_EH_PE_aligned` application part with an integer encoding\n   (not `DW_EH_PE_absptr`) in the value format part.\n\n [LSB-dwarf-ext]: https://refspecs.linuxfoundation.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/dwarfext.html",
+    "model": "gpt-6.1-sol",
+    "mode": "llm",
+    "rules": [
+      "For safety, `encoding` must be a DWARF Exception Header Encoding as described by the LSB specification."
+    ],
+    "status": "extracted",
+    "repair_request_cache": "/unsat-rust/eval/rule/std/requests/2dbd1b6b9bb9d764b6b139db"
+  },
+  {
+    "path": "rust/library/std/src/sys/personality/dwarf/mod.rs",
+    "line": 24,
+    "name": "read",
+    "declaration": "unsafe fn read < T : Copy > (& mut self) -> T",
+    "parent": "DwarfReader",
+    "documentation": " Read a type T and then bump the pointer by that amount.\n\n DWARF streams are \"packed\", so all types must be read at align 1.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Reads of T from the DWARF stream must be performed with alignment 1."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/personality/dwarf/mod.rs",
+    "line": 35,
+    "name": "read_uleb128",
+    "declaration": "unsafe fn read_uleb128 (& mut self) -> u64",
+    "parent": "DwarfReader",
+    "documentation": " ULEB128 and SLEB128 encodings are defined in Section 7.6 - \"Variable Length Data\".",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/process/unix/unix.rs",
+    "line": 934,
+    "name": "new",
+    "declaration": "unsafe fn new (pid : pid_t , pidfd : pid_t) -> Self",
+    "parent": "Process",
+    "documentation": " # Safety\n\n `pidfd` must either be -1 (representing no file descriptor) or a valid, exclusively owned file\n descriptor (See [I/O Safety]).\n\n [I/O Safety]: crate::io#io-safety",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `pidfd` must be either -1 (representing no file descriptor) or a valid, exclusively owned file descriptor."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/mutex/fuchsia.rs",
+    "line": 102,
+    "name": "lock_contested",
+    "declaration": "unsafe fn lock_contested (& self , mut state : u32 , thread_self : zx_handle_t)",
+    "parent": "Mutex",
+    "documentation": " # Safety\n `thread_self` must be the handle for the current thread.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For `Mutex::lock_contested` to be safe, `thread_self` must be the handle for the current thread."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/once_box.rs",
+    "line": 24,
+    "name": "get_unchecked",
+    "declaration": "unsafe fn get_unchecked (& self) -> Pin < & T >",
+    "parent": "OnceBox < T >",
+    "documentation": " Gets access to the value, assuming it is already initialized and this\n initialization has been observed by the current thread.\n\n Since all modifications to the pointer have already been observed, the\n pointer load in this function can be performed with relaxed ordering,\n potentially allowing the optimizer to turn code like this:\n ```rust, ignore\n once_box.get_or_init(|| Box::pin(42));\n unsafe { once_box.get_unchecked() }\n ```\n into\n ```rust, ignore\n once_box.get_or_init(|| Box::pin(42))\n ```\n\n # Safety\n This causes undefined behavior if the assumption above is violated.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Before calling `OnceBox<T>::get_unchecked`, the value must already be initialized.",
+      "Before calling `OnceBox<T>::get_unchecked`, the current thread must have observed the value's initialization."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/futex.rs",
+    "line": 106,
+    "name": "read_unlock",
+    "declaration": "unsafe fn read_unlock (& self)",
+    "parent": "RwLock",
+    "documentation": " # Safety\n\n The `RwLock` must be read-locked (N readers) in order to call this.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "To call `RwLock::read_unlock` safely, the `RwLock` must be read-locked (N readers)."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/futex.rs",
+    "line": 178,
+    "name": "write_unlock",
+    "declaration": "unsafe fn write_unlock (& self)",
+    "parent": "RwLock",
+    "documentation": " # Safety\n\n The `RwLock` must be write-locked (single writer) in order to call this.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "To call `RwLock::write_unlock` safely, the `RwLock` must be write-locked with a single writer."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/futex.rs",
+    "line": 192,
+    "name": "downgrade",
+    "declaration": "unsafe fn downgrade (& self)",
+    "parent": "RwLock",
+    "documentation": " # Safety\n\n The `RwLock` must be write-locked (single writer) in order to call this.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "To call `RwLock::downgrade` safely, the `RwLock` must be write-locked with a single writer."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 159,
+    "name": "to_node",
+    "declaration": "unsafe fn to_node (state : State) -> NonNull < Node >",
+    "parent": null,
+    "documentation": " Converts a `State` into a `Node` by masking out the bottom bits of the state, assuming that the\n state points to a queue node.\n\n # Safety\n\n The state must contain a valid pointer to a queue node.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `state` argument must contain a valid pointer to a queue node."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 224,
+    "name": "wait",
+    "declaration": "unsafe fn wait (& self)",
+    "parent": "Node",
+    "documentation": " Wait until this node is marked as [`complete`](Node::complete)d by another thread.\n\n # Safety\n\n May only be called from the thread that created the node.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Node::wait may only be called from the thread that created the node."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 237,
+    "name": "complete",
+    "declaration": "unsafe fn complete (node : NonNull < Node >)",
+    "parent": "Node",
+    "documentation": " Atomically mark this node as completed.\n\n # Safety\n\n `node` must point to a valid `Node`, and the node may not outlive this call.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`node` must point to a valid `Node`.",
+      "The `Node` pointed to by `node` must not outlive this call to `Node::complete`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 253,
+    "name": "find_tail_and_add_backlinks",
+    "declaration": "unsafe fn find_tail_and_add_backlinks (head : NonNull < Node >) -> NonNull < Node >",
+    "parent": null,
+    "documentation": " Traverse the queue and find the tail, adding backlinks to the queue while traversing.\n\n This may be called from multiple threads at the same time as long as the queue is not being\n modified (this happens when unlocking multiple readers).\n\n # Safety\n\n * `head` must point to a node in a valid queue.\n * `head` must be in front of the previous head node that was used to perform the last removal.\n * The part of the queue starting with `head` must not be modified during this call.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`head` must point to a node in a valid queue.",
+      "`head` must be in front of the previous head node that was used to perform the last removal.",
+      "The part of the queue starting with `head` must not be modified during this call.",
+      "This function may be called concurrently from multiple threads as long as the queue is not being modified."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 288,
+    "name": "complete_all",
+    "declaration": "unsafe fn complete_all (tail : NonNull < Node >)",
+    "parent": null,
+    "documentation": " [`complete`](Node::complete)s all threads in the queue ending with `tail`.\n\n # Safety\n\n * `tail` must be a valid tail of a fully linked queue.\n * The current thread must have exclusive access to that queue.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`tail` must be a valid tail of a fully linked queue.",
+      "The current thread must have exclusive access to the queue ending with `tail`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 477,
+    "name": "read_unlock_contended",
+    "declaration": "unsafe fn read_unlock_contended (& self , state : State)",
+    "parent": "RwLock",
+    "documentation": " # Safety\n\n * There must be threads queued on the lock.\n * `state` must be a pointer to a node in a valid queue.\n * There cannot be a `downgrade` in progress.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "When calling `RwLock::read_unlock_contended`, there must be threads queued on the lock.",
+      "When calling `RwLock::read_unlock_contended`, `state` must be a pointer to a node in a valid queue.",
+      "When calling `RwLock::read_unlock_contended`, there must not be a `downgrade` in progress."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 518,
+    "name": "unlock_contended",
+    "declaration": "unsafe fn unlock_contended (& self , state : State)",
+    "parent": "RwLock",
+    "documentation": " # Safety\n\n * The lock must be exclusively owned by this thread.\n * There must be threads queued on the lock.\n * `state` must be a pointer to a node in a valid queue.\n * There cannot be a `downgrade` in progress.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The lock must be exclusively owned by the calling thread when calling `RwLock::unlock_contended`.",
+      "There must be threads queued on the lock when calling `RwLock::unlock_contended`.",
+      "The `state` argument to `RwLock::unlock_contended` must be a pointer to a node in a valid queue.",
+      "There must not be a `downgrade` in progress when calling `RwLock::unlock_contended`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 560,
+    "name": "downgrade",
+    "declaration": "unsafe fn downgrade (& self)",
+    "parent": "RwLock",
+    "documentation": " # Safety\n\n * The lock must be write-locked by this thread.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `RwLock::downgrade` must be called only when the lock is write-locked by the calling thread."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 579,
+    "name": "downgrade_slow",
+    "declaration": "unsafe fn downgrade_slow (& self , mut state : State)",
+    "parent": "RwLock",
+    "documentation": " Downgrades the lock from write-locked to read-locked in the case that there are threads\n waiting on the wait queue.\n\n This function will either wake up all of the waiters on the wait queue or designate the\n current holder of the queue lock to wake up all of the waiters instead. Once the waiters\n wake up, they will continue in the execution loop of `lock_contended`.\n\n # Safety\n\n * The lock must be write-locked by this thread.\n * `state` must be a pointer to a node in a valid queue.\n * There must be threads queued on the lock.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, the lock must be write-locked by the thread calling `downgrade_slow`.",
+      "For safety, `state` must be a pointer to a node in a valid queue.",
+      "For safety, there must be threads queued on the lock when `downgrade_slow` is called."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/rwlock/queue.rs",
+    "line": 631,
+    "name": "unlock_queue",
+    "declaration": "unsafe fn unlock_queue (& self , mut state : State)",
+    "parent": "RwLock",
+    "documentation": " Unlocks the queue. Wakes up all threads if a downgrade was requested, otherwise wakes up the\n next eligible thread(s) if the lock is unlocked.\n\n # Safety\n\n * The queue lock must be held by the current thread.\n * `state` must be a pointer to a node in a valid queue.\n * There must be threads queued on the lock.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The current thread must hold the queue lock when calling `RwLock::unlock_queue`.",
+      "When calling `RwLock::unlock_queue`, `state` must be a pointer to a node in a valid queue.",
+      "There must be threads queued on the lock when calling `RwLock::unlock_queue`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/thread_parking/futex.rs",
+    "line": 39,
+    "name": "new_in_place",
+    "declaration": "unsafe fn new_in_place (parker : * mut Parker)",
+    "parent": "Parker",
+    "documentation": " Constructs the futex parker. The UNIX parker implementation\n requires this to happen in-place.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "On UNIX, the `Parker` at `parker` must be constructed in place."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/thread_parking/id.rs",
+    "line": 31,
+    "name": "new_in_place",
+    "declaration": "unsafe fn new_in_place (parker : * mut Parker)",
+    "parent": "Parker",
+    "documentation": " Creates a new thread parker. UNIX requires this to happen in-place.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "On UNIX, the new `Parker` must be created in place at `parker`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/thread_parking/id.rs",
+    "line": 36,
+    "name": "init_tid",
+    "declaration": "unsafe fn init_tid (& self)",
+    "parent": "Parker",
+    "documentation": " # Safety\n * must always be called from the same thread\n * must be called before the state is set to PARKED",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "Parker::init_tid must always be called from the same thread.",
+      "Parker::init_tid must be called before the state is set to PARKED."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/thread_parking/pthread.rs",
+    "line": 20,
+    "name": "new_in_place",
+    "declaration": "unsafe fn new_in_place (parker : * mut Parker)",
+    "parent": "Parker",
+    "documentation": " Constructs the UNIX parker in-place.\n\n # Safety\n The constructed parker must never be moved.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The Parker constructed in place at `parker` must never be moved."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/sync/thread_parking/windows7.rs",
+    "line": 97,
+    "name": "new_in_place",
+    "declaration": "unsafe fn new_in_place (parker : * mut Parker)",
+    "parent": "Parker",
+    "documentation": " Constructs the Windows parker. The UNIX parker implementation\n requires this to happen in-place.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/destructors/list.rs",
+    "line": 20,
+    "name": "run",
+    "declaration": "unsafe fn run ()",
+    "parent": null,
+    "documentation": " The [`guard`] module contains platform-specific functions which will run this\n function on thread exit if [`guard::enable`] has been called.\n\n # Safety\n\n May only be run on thread exit to guarantee that there are no live references\n to TLS variables while they are destroyed.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `run` may only be called on thread exit, when there are no live references to TLS variables while they are destroyed."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/key/windows.rs",
+    "line": 147,
+    "name": "register_dtor",
+    "declaration": "unsafe fn register_dtor (key : & 'static LazyKey)",
+    "parent": null,
+    "documentation": " Should only be called once per key, otherwise loops or breaks may occur in\n the linked list.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `register_dtor` must be called at most once per key."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/key/windows.rs",
+    "line": 165,
+    "name": "run_dtors",
+    "declaration": "unsafe fn run_dtors ()",
+    "parent": null,
+    "documentation": " This will and must only be run by the destructor callback in [`guard`].",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `run_dtors` must only be called by the destructor callback in `guard`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/native/eager.rs",
+    "line": 23,
+    "name": "get",
+    "declaration": "unsafe fn get (& self) -> * const T",
+    "parent": "Storage < T >",
+    "documentation": " Gets a pointer to the TLS value. If the TLS variable has been destroyed,\n a null pointer is returned.\n\n The resulting pointer may not be used after thread destruction has\n occurred.\n\n # Safety\n The `self` reference must remain valid until the TLS destructor is run.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `self` reference must remain valid until the TLS destructor is run.",
+      "The pointer returned by `get` must not be used after thread destruction has occurred."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/native/eager.rs",
+    "line": 55,
+    "name": "destroy",
+    "declaration": "unsafe extern \"C\" fn destroy < T > (ptr : * mut u8)",
+    "parent": null,
+    "documentation": " Transition an `Alive` TLS variable into the `Destroyed` state, dropping its\n value.\n\n # Safety\n * Must only be called at thread destruction.\n * `ptr` must point to an instance of `Storage` with `Alive` state and be\n   valid for accessing that instance.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`destroy<T>` must only be called at thread destruction.",
+      "When calling `destroy<T>`, `ptr` must point to an instance of `Storage` in the `Alive` state and be valid for accessing that instance."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/native/lazy.rs",
+    "line": 41,
+    "name": "get_or_init",
+    "declaration": "unsafe fn get_or_init (& self , i : Option < & mut Option < T > > , f : impl FnOnce () -> T) -> * const T",
+    "parent": "Storage < T , D >",
+    "documentation": " Gets a pointer to the TLS value, potentially initializing it with the\n provided parameters. If the TLS variable has been destroyed, a null\n pointer is returned.\n\n The resulting pointer may not be used after reentrant inialialization\n or thread destruction has occurred.\n\n # Safety\n The `self` reference must remain valid until the TLS destructor is run.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The `self` reference must remain valid until the TLS destructor is run.",
+      "The pointer returned by `get_or_init` must not be used after reentrant initialization or thread destruction has occurred."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/native/lazy.rs",
+    "line": 84,
+    "name": "destroy",
+    "declaration": "unsafe extern \"C\" fn destroy < T > (ptr : * mut u8)",
+    "parent": null,
+    "documentation": " Transition an `Alive` TLS variable into the `Destroyed` state, dropping its\n value.\n\n # Safety\n * Must only be called at thread destruction.\n * `ptr` must point to an instance of `Storage<T, ()>` and be valid for\n   accessing that instance.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "destroy<T> must only be called at thread destruction.",
+      "For destroy<T>, ptr must point to an instance of Storage<T, ()> and be valid for accessing that instance."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys/thread_local/os.rs",
+    "line": 84,
+    "name": "try_initialize",
+    "declaration": "unsafe fn try_initialize (key : Key , ptr : * mut Value < T > , i : Option < & mut Option < T > > , f : impl FnOnce () -> T ,) -> * const T",
+    "parent": "Storage < T >",
+    "documentation": " # Safety\n * `key` must be the result of calling `self.key.force()`\n * `ptr` must be the current value associated with `key`.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`key` must be the result of calling `self.key.force()`.",
+      "`ptr` must be the current value associated with `key`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys_common/wstr.rs",
+    "line": 18,
+    "name": "new",
+    "declaration": "unsafe fn new (lpwstr : * const u16) -> Option < Self >",
+    "parent": "WStrUnits < '_ >",
+    "documentation": " Creates the iterator. Returns `None` if `lpwstr` is null.\n\n SAFETY: `lpwstr` must point to a null-terminated wide string that lives\n at least as long as the lifetime of this struct.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `lpwstr` must point to a null-terminated wide string that lives at least as long as the returned `WStrUnits` struct."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys_common/wtf8.rs",
+    "line": 56,
+    "name": "from_u32_unchecked",
+    "declaration": "unsafe fn from_u32_unchecked (value : u32) -> CodePoint",
+    "parent": "CodePoint",
+    "documentation": " Unsafely creates a new `CodePoint` without checking the value.\n\n Only use when `value` is known to be less than or equal to 0x10FFFF.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `value` must be less than or equal to 0x10FFFF when calling `CodePoint::from_u32_unchecked`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys_common/wtf8.rs",
+    "line": 197,
+    "name": "from_bytes_unchecked",
+    "declaration": "unsafe fn from_bytes_unchecked (value : Vec < u8 >) -> Wtf8Buf",
+    "parent": "Wtf8Buf",
+    "documentation": " Creates a WTF-8 string from a WTF-8 byte vec.\n\n Since the byte vec is not checked for valid WTF-8, this function is\n marked unsafe.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `value` must contain valid WTF-8."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys_common/wtf8.rs",
+    "line": 621,
+    "name": "from_bytes_unchecked",
+    "declaration": "unsafe fn from_bytes_unchecked (value : & [u8]) -> & Wtf8",
+    "parent": "Wtf8",
+    "documentation": " Creates a WTF-8 slice from a WTF-8 byte slice.\n\n Since the byte slice is not checked for valid WTF-8, this functions is\n marked unsafe.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The byte slice `value` must contain valid WTF-8."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys_common/wtf8.rs",
+    "line": 631,
+    "name": "from_mut_bytes_unchecked",
+    "declaration": "unsafe fn from_mut_bytes_unchecked (value : & mut [u8]) -> & mut Wtf8",
+    "parent": "Wtf8",
+    "documentation": " Creates a mutable WTF-8 slice from a mutable WTF-8 byte slice.\n\n Since the byte slice is not checked for valid WTF-8, this functions is\n marked unsafe.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The bytes in `value` must be valid WTF-8 when calling `Wtf8::from_mut_bytes_unchecked`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/sys_common/wtf8.rs",
+    "line": 965,
+    "name": "slice_unchecked",
+    "declaration": "unsafe fn slice_unchecked (s : & Wtf8 , begin : usize , end : usize) -> & Wtf8",
+    "parent": null,
+    "documentation": " Copied from core::str::raw::slice_unchecked",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/thread/mod.rs",
+    "line": 402,
+    "name": "spawn_unchecked",
+    "declaration": "unsafe fn spawn_unchecked < F , T > (self , f : F) -> io :: Result < JoinHandle < T > > where F : FnOnce () -> T , F : Send , T : Send ,",
+    "parent": "Builder",
+    "documentation": " Spawns a new thread without any lifetime restrictions by taking ownership\n of the `Builder`, and returns an [`io::Result`] to its [`JoinHandle`].\n\n The spawned thread may outlive the caller (unless the caller thread\n is the main thread; the whole process is terminated when the main\n thread finishes). The join handle can be used to block on\n termination of the spawned thread, including recovering its panics.\n\n This method is identical to [`thread::Builder::spawn`][`Builder::spawn`],\n except for the relaxed lifetime bounds, which render it unsafe.\n For a more complete documentation see [`thread::spawn`][`spawn`].\n\n # Errors\n\n Unlike the [`spawn`] free function, this method yields an\n [`io::Result`] to capture any failure to create the thread at\n the OS level.\n\n # Panics\n\n Panics if a thread name was set and it contained null bytes.\n\n # Safety\n\n The caller has to ensure that the spawned thread does not outlive any\n references in the supplied thread closure and its return type.\n This can be guaranteed in two ways:\n\n - ensure that [`join`][`JoinHandle::join`] is called before any referenced\n data is dropped\n - use only types with `'static` lifetime bounds, i.e., those with no or only\n `'static` references (both [`thread::Builder::spawn`][`Builder::spawn`]\n and [`thread::spawn`][`spawn`] enforce this property statically)\n\n # Examples\n\n ```\n use std::thread;\n\n let builder = thread::Builder::new();\n\n let x = 1;\n let thread_x = &x;\n\n let handler = unsafe {\n     builder.spawn_unchecked(move || {\n         println!(\"x = {}\", *thread_x);\n     }).unwrap()\n };\n\n // caller has to ensure `join()` is called, otherwise\n // it is possible to access freed memory if `x` gets\n // dropped before the thread closure is executed!\n handler.join().unwrap();\n ```\n\n [`io::Result`]: crate::io::Result",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "The caller must ensure that the thread spawned by `Builder::spawn_unchecked` does not outlive any references in the supplied closure `f` or its return type `T`. This may be guaranteed by calling `JoinHandle::join` before any referenced data is dropped, or by using only types with `'static` lifetime bounds—types containing no references or only `'static` references—for both `f` and `T`."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/thread/mod.rs",
+    "line": 1440,
+    "name": "park",
+    "declaration": "unsafe fn park (& self)",
+    "parent": "Thread",
+    "documentation": " Like the public [`park`], but callable on any handle. This is used to\n allow parking in TLS destructors.\n\n # Safety\n May only be called from the thread to which this handle belongs.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "`Thread::park(&self)` may only be called from the thread to which the handle belongs."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/thread/mod.rs",
+    "line": 1449,
+    "name": "park_timeout",
+    "declaration": "unsafe fn park_timeout (& self , dur : Duration)",
+    "parent": "Thread",
+    "documentation": " Like the public [`park_timeout`], but callable on any handle. This is\n used to allow parking in TLS destructors.\n\n # Safety\n May only be called from the thread to which this handle belongs.",
+    "model": "gpt-6.1-sol",
+    "mode": "batch",
+    "rules": [
+      "For safety, `Thread::park_timeout` may only be called from the thread to which `self` belongs."
+    ],
+    "status": "extracted"
+  },
+  {
+    "path": "rust/library/std/src/thread/mod.rs",
+    "line": 1589,
+    "name": "from_raw",
+    "declaration": "unsafe fn from_raw (ptr : * const ()) -> Thread",
+    "parent": "Thread",
+    "documentation": " Constructs a `Thread` from a raw pointer.\n\n The raw pointer must have been previously returned\n by a call to [`Thread::into_raw`].\n\n # Safety\n\n This function is unsafe because improper use may lead\n to memory unsafety, even if the returned `Thread` is never\n accessed.\n\n Creating a `Thread` from a pointer other than one returned\n from [`Thread::into_raw`] is **undefined behavior**.\n\n Calling this function twice on the same raw pointer can lead\n to a double-free if both `Thread` instances are dropped.",
+    "model": "gpt-6.1-sol",
+    "mode": "llm",
+    "rules": [
+      "The pointer passed to Thread::from_raw must have been previously returned by Thread::into_raw; passing any other pointer is undefined behavior, even if the returned Thread is never accessed.",
+      "If Thread::from_raw is called twice on the same raw pointer, the two resulting Thread instances must not both be dropped, as this can cause a double-free."
+    ],
+    "status": "extracted",
+    "repair_request_cache": "/unsat-rust/eval/rule/std/requests/2dbd1b6b9bb9d764b6b139db"
+  }
+]
