@@ -55,7 +55,8 @@ def check(root):
                     assert row.get('expression'), 'missing accepted expression'
             result['statuses'] = dict(counts)
             result['attempts'] = dict(Counter(str(row.get('attempt', 0)) for row in translated))
-            result['state'] = 'complete' if set(counts) <= {'translated', 'unexpressible'} else 'errors'
+            allowed = {'translated'} if manifest.get('output_contract') == 'expression_only' else {'translated', 'unexpressible'}
+            result['state'] = 'complete' if set(counts) <= allowed else 'errors'
         report[output.name] = result
     assert catalog(root / 'rules.csv') == merged, 'global catalog differs from library catalogs'
     assert [row['id'] for row in merged] == [f'rule-{i}' for i in range(1, len(merged)+1)], 'unstable eval IDs'

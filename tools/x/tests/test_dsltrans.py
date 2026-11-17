@@ -141,9 +141,9 @@ class CatalogTranslationChecks(unittest.TestCase):
             isolated.validate("$1.size > 0")
             self.assertFalse((Path(directory) / "grammar.ebnf").exists())
 
-    def test_plain_response_protocol_and_failure_marker(self):
+    def test_plain_response_protocol_requires_expression_validation(self):
         self.assertEqual(dsltrans.parse_model_output(" $2.end <= $4\n"), {"status": "translated", "expression": "$2.end <= $4"})
-        self.assertEqual(dsltrans.parse_model_output("UNEXPRESSIBLE\n"), {"status": "unexpressible", "expression": None})
+        self.assertEqual(dsltrans.parse_model_output("UNEXPRESSIBLE\n"), {"status": "translated", "expression": "UNEXPRESSIBLE"})
         self.assertEqual(dsltrans.parse_model_output("False")["status"], "translated")
         for text in ["", " \n"]:
             with self.assertRaises(dsltrans.ValidationError):
@@ -152,7 +152,7 @@ class CatalogTranslationChecks(unittest.TestCase):
     def test_model_responses_are_checked_as_raw_dsl(self):
         case = json.loads((dsltrans.ROOT / "tools/x/dsltrans_samples.json").read_text())[0]
         args = argparse.Namespace(model="gpt-6.1-sol", reasoning_effort="medium", max_output_tokens=6000, dslgen=str(dsltrans.ROOT / "tools/x/generated/dsl"), dry_run=False, resume=False, timeout=1)
-        cases = [("$2.size > 0\n", "translated"), ("UNEXPRESSIBLE", "unexpressible"), ('{"expression":"$2.size > 0"}', "validation_error"), ("```text\n$2.size > 0\n```", "validation_error"), ("UNEXPRESSIBLE\n$2.size > 0", "validation_error")]
+        cases = [("$2.size > 0\n", "translated"), ("UNEXPRESSIBLE", "validation_error"), ('{"expression":"$2.size > 0"}', "validation_error"), ("```text\n$2.size > 0\n```", "validation_error"), ("UNEXPRESSIBLE\n$2.size > 0", "validation_error")]
         for raw, expected in cases:
             with self.subTest(raw=raw), tempfile.TemporaryDirectory() as directory, patch("openai.OpenAI") as client:
                 response = SimpleNamespace(output_text=raw, model="gpt-6.1-sol", id="test-response", status="completed", usage=None, model_dump=lambda mode: {"output_text": raw, "status": "completed"})
@@ -163,9 +163,6 @@ class CatalogTranslationChecks(unittest.TestCase):
                 if expected == "translated":
                     self.assertEqual(result["expression"], "$2.size > 0")
                     self.assertEqual(result["validation"]["generated_grammar"], "passed")
-                elif expected == "unexpressible":
-                    self.assertIsNone(result["expression"])
-                    self.assertIn("UNEXPRESSIBLE", dsltrans.markdown([result]))
 
     def test_generated_parser_rejects_wrong_receiver_fields_directly(self):
         from lark.exceptions import LarkError

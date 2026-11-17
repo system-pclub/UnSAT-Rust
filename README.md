@@ -1,222 +1,152 @@
+# UnSAT-Rust
+
 ## Directory
-- ./crates: A list of real world rust crates
-- ./meta:   A list of metadata for each crate in ./crates
-- ./tools:  Helper tools for using this dataset
 
-## Setup
+- `benchmark/ruklee/`: RuKLEE benchmark crate snapshots.
+- `benchmark/safe4u/`: Safe4U benchmark crate snapshots.
+- `benchmark/culpa/`: CULPA compatibility-rerun crate snapshots.
+- `benchmark/rustsec/`: RustSec crate snapshots; see [the runbook](dev/rustsec/README.md).
+- `tools/`: patched Rust, KLEE, MIRScan, Safe4U and the `x` CLI implementation.
+- `docker/`: baseline analyzer images and runners.
+- `dev/`: experiment scripts and benchmark metadata.
+- `eval/`: experiment results and retained evidence.
+- `.local/`: local work copies, caches and intermediate outputs.
+
+Keep `benchmark/<name>/` source-only: its immediate children must be crate
+directories containing `Cargo.toml`. Write logs and results under `eval/` or
+`.local/`. All commands below start at the repository root and use Bash.
+
+## Safe4U
+
+The scanner entrypoint is [`tools/safe4u/cargo-safe4u`](tools/safe4u/cargo-safe4u).
+Configure the model, API endpoint and credentials before running:
+
 ```bash
-# Initialize submodule 
-$ git submodule update --init --recursive
-$ ./x build
+# Only create the config if it does not already exist.
+test -f tools/safe4u/env.json || cp tools/safe4u/env-example.json tools/safe4u/env.json
+# Edit tools/safe4u/env.json; it is ignored by Git.
 ```
 
-`x` builds `unsat-rust:local` on first use and mounts this repository at
-`/unsat-rust`. On macOS it builds and runs the image as `linux/amd64` so the
-patched x86_64 Rust/KLEE toolchain is used consistently.
+Build the image and scan one crate. Mount results separately so they persist
+outside the benchmark sources:
 
-## How to label a crate
 ```bash
-# Step 0: Copy crate folder under ./crates folder with folder name <crate-name>-<version number>
-# Step 1: Run following command to generate placeholder files:
-$ ./x sync --cargo-dir <crate folder>
-# This command will:
-# - Automatically find all unsafe APIs under public safe functions
-# - Generate placeholder files for rules (from rules.csv and studied_rules) regarding to these unsafe API callsites
-
-# Step 2: fill the <placeholder> for task1/2/3 
+crate=fast_id_map-0.1.0
+mkdir -p "eval/safe4u/$crate"
+docker build -f docker/safe4u/Dockerfile -t safe4u .
+docker run --rm \
+  -v "$PWD/benchmark/safe4u:/workspace/benchmark" \
+  -v "$PWD/eval/safe4u:/workspace/results" \
+  -v "$PWD/tools/safe4u/env.json:/opt/safe4u/env.json:ro" \
+  safe4u --crate "/workspace/benchmark/$crate" \
+  --out-dir "/workspace/results/$crate"
 ```
 
+To scan every crate sequentially, use this loop in place of the single-crate
+build/run block:
 
-
-## How to extract comment
 ```bash
-$ ./x extract
+mkdir -p eval/safe4u
+for crate_dir in benchmark/safe4u/*/; do
+  [[ -f "$crate_dir/Cargo.toml" ]] || continue
+  crate="$(basename "$crate_dir")"
+  docker build -f docker/safe4u/Dockerfile -t safe4u . || break
+  docker run --rm \
+    -v "$PWD/benchmark/safe4u:/workspace/benchmark" \
+    -v "$PWD/eval/safe4u:/workspace/results" \
+    -v "$PWD/tools/safe4u/env.json:/opt/safe4u/env.json:ro" \
+    safe4u --crate "/workspace/benchmark/$crate" \
+    --out-dir "/workspace/results/$crate" \
+    > "eval/safe4u/$crate.log" 2>&1
+  scan_status=$?
+  printf '%s: exit %s\n' "$crate" "$scan_status"
+done
 ```
 
-This runs `extract-comment`, LLM atomic-rule extraction, and LLM DSL
-translation in sequence. Outputs and resumable request artifacts are written
-under `.local/extract/`. Use `./x extract --help` for partial-pipeline and smoke
-test options.
+Each crate's output directory contains `results.json`, retrieved context and
+intermediate artifacts. `--model NAME` overrides the configured model;
+`--limit N` limits candidate functions; `--reuse-results` reads cached results
+without new model requests. Use separate output directories when comparing
+models or configurations. See [Safe4U options](tools/safe4u/README.md) and
+[container details](docker/safe4u/README.md).
 
-rule-446,rust/library/core/src/ptr/mut_ptr.rs:971,const unsafe fn add,"If the computed offset is non-zero, `self` must be derived from a pointer to some allocated object."
-rule-447,rust/library/core/src/ptr/mut_ptr.rs:971,const unsafe fn add,"If the computed offset is non-zero, the entire memory range between `self` and the result must be in bounds of that allocated object."
-rule-448,rust/library/core/src/ptr/mut_ptr.rs:971,const unsafe fn add,"If the computed offset is non-zero, the range between `self` and the result must not wrap around the edge of the address space."
-rule-449,rust/library/core/src/ptr/mut_ptr.rs:971,
+## CULPA
 
-## How to verify a rule
+The single-crate runner is [`docker/rust-comparison/run.py`](docker/rust-comparison/run.py);
+the batch runner is [`run-culpa-benchmark.py`](docker/rust-comparison/run-culpa-benchmark.py).
+Build the pinned upstream image, then run one crate:
+
 ```bash
-$ ./x sync --cargo-dir  crates/bevy_hecs-0.3.0
-
-$ ./x verify crates/bevy_hecs-0.3.0 \
-  --callsite src-world-rs-408-18 \
-  --rule rule-447 \
-  --report-json crates_inj/bevy_hecs-0.3.0/report.json \
-  --test \
-  --compose-loop-bound 1 \
-  --rustc "$PWD/tools/rust/build/x86_64-unknown-linux-gnu/stage1/bin/rustc" \
-  --klee-bin "$PWD/tools/klee/build/bin/klee"
+docker build -f docker/rust-comparison/Dockerfile.culpa \
+  -t uspec-rust-comparison-culpa:local docker/rust-comparison
+python3 docker/rust-comparison/run.py culpa revm-interpreter-10.0.3 \
+  --attempt example-1
 ```
 
+This reads `benchmark/ruklee/` and writes logs, findings and provenance under
+`eval/rust-comparison/<crate>/culpa/<attempt>/`. Choose a new attempt name for
+each rerun; existing attempts cannot be overwritten.
 
-tasks context:
+To reproduce the compatibility configuration, build both images and run the
+batch. The compatibility image patches analyzer compiler queries; report its
+results separately from unmodified upstream CULPA.
 
-bitm
-RankSimple's try_rank's get_unchecked is buggy
+```bash
+docker build -f docker/rust-comparison/Dockerfile.culpa \
+  -t uspec-rust-comparison-culpa:local docker/rust-comparison
+docker build -f docker/rust-comparison/Dockerfile.culpa-compat \
+  -t uspec-rust-comparison-culpa:compat docker/rust-comparison
+python3 docker/rust-comparison/run-culpa-benchmark.py \
+  --attempt compat-reproduction-1 --workers 4 \
+  --override-root benchmark/culpa \
+  --image uspec-rust-comparison-culpa:compat --env RUST_BACKTRACE=1
+python3 docker/rust-comparison/summarize-culpa.py \
+  eval/culpa/compat-reproduction-1/runs \
+  --output eval/culpa/compat-reproduction-1/selected
+```
 
-jh
-compressor.rs's f8_impl's read_unaligned is buggy
+The batch roster comes from `benchmark/ruklee/`; `--override-root` selects the
+copies in `benchmark/culpa/` where present. Defaults are four concurrent runs,
+two CPUs, two Cargo jobs, 12 GiB and 600 seconds per container. The runner copies
+sources into `.local/rust-comparison/work/` and automatically handles the
+`ptr_hash` dependency mount and `jomini` library-only setting in batch mode.
+Raw results go under `eval/culpa/<attempt>/runs/`, with batch metadata and runner
+logs alongside. Findings are analyzer alarms, not reviewed TP counts; failed or
+partial runs must be reviewed separately. See [the comparison runbook](docker/rust-comparison/README.md)
+for other analyzers and configuration details.
 
-tract-core
-ZoneScanner's next's get_unchecked_mut is buggy
+## RuKLEE (`./x`)
 
-revm
-Interpreter's program_counter's offset_from is buggy
-Interpreter's current_opcode's dereferance is buggy
+Initialize submodules once:
 
+```bash
+git submodule update --init --recursive
+```
 
-i_triangle
-i_triangle::delaunay::triangle::DTriangle::neighbor_by_order and
-i_triangle::delaunay::triangle::DTriangle::vertex_by_order 's get_unchecked is buggy
+Before every `./x` invocation, refresh the root image using Docker's cache.
+The wrapper currently builds it automatically only when the image is missing.
+On macOS, the image and wrapper use `linux/amd64`.
 
-aegis
-ScratchBuf's new's alloc_zeroed's is buggy
+```bash
+platform_args=()
+if [[ "$(uname -s)" == Darwin ]]; then platform_args=(--platform linux/amd64); fi
+docker build "${platform_args[@]}" --build-arg "USER_ID=$(id -u)" \
+  --build-arg "GROUP_ID=$(id -g)" -t unsat-rust:local .
+./x build
+```
 
+After refreshing the image again, verify all callsites and matching rules in
+one crate:
 
-jomini
-BufferWindow'sfunctions advance, window, window_len, consumed_data, get and fill_buf 's unsafe callees are buggy
+```bash
+./x verify benchmark/ruklee/revm-interpreter-10.0.3 \
+  --results-json eval/ruklee/revm-interpreter-10.0.3/full-matrix-results.json \
+  --logs-dir eval/ruklee/revm-interpreter-10.0.3/logs
+```
 
-i_tree
-`Tree::node` and `Tree::mut_node` methods in the public `tree` module. These methods accepted an arbitrary `u32` index and passed it directly to `Vec::get_unchecked` / `get_unchecked_mut` 
-- src-tree-rs-65-13
-- src-tree-rs-72-13
-
-splay_tree
-src/tree_core.rs, node_ref and node_mut's get_unchecked and get_unchecked_mut are buggy
-
-hugepage-rs
-hugepage-rs/src/lib.rs's dealloc is buggy
-
-Above are confirmed buggy place
-
-Jobs:
-1. make sure corresponding callsite's unsfe callee's rules(which callee have which rules can be checked in rules.csv) exist in ptr_rule_dsl.json (yes you can put any rules into it, not only the ptr rules)
-- before doing that, make sure operators can describe the rules
-- if no enough operators, add minimal but not duplicated operators (klee also need to add corresponding implementation)
-
-2. run ./x verify (skip llm and rerun) for these crates can actually
-- reach these callsites
-- result is at least one of unsafe callee's dsl rule need to sat and at least one of variable is certain symbol
-
-first analyze what progress now (since we already run ./x verify for these crates previously)
-then figure out what need to do to finish these two jobs
-
-
-bitm
-src-rank_select-mod-rs-328-21，try_rank -> get_unchecked
-src-rank_select-mod-rs-330-25，try_rank -> get_unchecked
-jh
-src-compressor-rs-112-16
-src-compressor-rs-113-16
-src-compressor-rs-114-16
-src-compressor-rs-115-16
-src-compressor-rs-135-16
-src-compressor-rs-136-16
-src-compressor-rs-137-16
-src-compressor-rs-138-16
-这些都是 compressor::f8_impl -> core::ptr::read_unaligned。
-tract-core
-ZoneScanner::next -> get_unchecked_mut：
-src-ops-cnn-patches-rs-470-14
-src-ops-cnn-patches-rs-476-18
-src-ops-cnn-patches-rs-424-14
-src-ops-cnn-patches-rs-425-17
-src-ops-cnn-patches-rs-431-14
-revm
-src-interpreter-rs-311-18，Interpreter::current_opcode -> raw ptr deref
-src-interpreter-rs-343-18，Interpreter::program_counter -> offset_from
-i_triangle
-src-delaunay-triangle-rs-13-14，DTriangle::neighbor_by_order -> get_unchecked
-src-delaunay-triangle-rs-19-14，DTriangle::vertex_by_order -> get_unchecked
-aegis 0.9.12
-src-c-raf-scratch-rs-15-28，ScratchBuf::new -> alloc_zeroed
-jomini
-BufferWindow 相关：
-src-buffer-rs-45-28，advance -> ptr.add
-src-buffer-rs-52-18，window -> from_raw_parts
-src-buffer-rs-57-18，window_len -> offset_from
-src-buffer-rs-67-18，consumed_data -> offset_from
-src-buffer-rs-74-28，get -> offset_from
-src-buffer-rs-75-27，get -> from_raw_parts
-src-buffer-rs-100-29，fill_buf -> ptr.add
-src-buffer-rs-106-37，fill_buf -> ptr.add
-raw ptr deref in fill_buf: src-buffer-rs-86-26, 92-30, 95-13, 99-22, 100-29, 103-32, 105-30
-i_tree
-src-tree-rs-65-13，Tree::node -> get_unchecked
-src-tree-rs-72-13，Tree::mut_node -> get_unchecked_mut
-splay_tree
-src-tree_core-rs-422-18，node_ref -> get_unchecked
-src-tree_core-rs-425-18，node_mut -> get_unchecked_mut
-hugepage-rs
-src-lib-rs-70-9，dealloc -> GlobalAlloc::dealloc
-
-## Newly discovered candidate bugs from full rerun
-
-Source results:
-- `.local/verify/full-10crates-after-fixes/*-full-matrix-results.json`
-
-Only entries with `status=violation` and `full_rerun_passed=true` are listed here.
-Entries already listed in the confirmed buggy places above are excluded.
-
-jh
-- `src-compressor-rs-113-36`, `compressor::f8_impl -> core::ptr::const_ptr::<impl *const T>::offset`
-  - rules: `rule-288`, `rule-289`, `rule-290`, `rule-291`
-  - json: `.local/verify/full-10crates-after-fixes/src-compressor-rs-113-36__rule-288.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-113-36__rule-289.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-113-36__rule-290.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-113-36__rule-291.json`
-- `src-compressor-rs-114-36`, `compressor::f8_impl -> core::ptr::const_ptr::<impl *const T>::offset`
-  - rules: `rule-288`, `rule-289`, `rule-290`, `rule-291`
-  - json: `.local/verify/full-10crates-after-fixes/src-compressor-rs-114-36__rule-288.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-114-36__rule-289.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-114-36__rule-290.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-114-36__rule-291.json`
-- `src-compressor-rs-115-36`, `compressor::f8_impl -> core::ptr::const_ptr::<impl *const T>::offset`
-  - rules: `rule-288`, `rule-289`, `rule-290`, `rule-291`
-  - json: `.local/verify/full-10crates-after-fixes/src-compressor-rs-115-36__rule-288.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-115-36__rule-289.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-115-36__rule-290.json`, `.local/verify/full-10crates-after-fixes/src-compressor-rs-115-36__rule-291.json`
-
-revm
-- `src-instructions-control-rs-2-24`, `instructions::control::rjumpv -> std::slice::from_raw_parts`
-  - rules: `rule-611`
-  - json: `.local/verify/full-10crates-after-fixes/src-instructions-control-rs-2-24__rule-611.json`
-- `src-instructions-stack-rs-32-30`, `instructions::stack::push -> std::slice::from_raw_parts`
-  - rules: `rule-611`
-  - json: `.local/verify/full-10crates-after-fixes/src-instructions-stack-rs-32-30__rule-611.json`
-- `src-interpreter-analysis-rs-2-24`, `interpreter::analysis::validate_eof_code -> std::slice::from_raw_parts`
-  - rules: `rule-611`
-  - json: `.local/verify/full-10crates-after-fixes/src-interpreter-analysis-rs-2-24__rule-611.json`
-- `src-interpreter-stack-rs-241-27`, `interpreter::stack::Stack::dup -> std::ptr::mut_ptr::<impl *mut T>::add`
-  - rules: `rule-448`, `rule-449`
-  - json: `.local/verify/full-10crates-after-fixes/src-interpreter-stack-rs-241-27__rule-448.json`, `.local/verify/full-10crates-after-fixes/src-interpreter-stack-rs-241-27__rule-449.json`
-- `src-interpreter-stack-rs-282-23`, `interpreter::stack::Stack::exchange -> std::ptr::mut_ptr::<impl *mut T>::add`
-  - rules: `rule-448`, `rule-449`
-  - json: `.local/verify/full-10crates-after-fixes/src-interpreter-stack-rs-282-23__rule-448.json`, `.local/verify/full-10crates-after-fixes/src-interpreter-stack-rs-282-23__rule-449.json`
-- `src-interpreter-stack-rs-304-23`, `interpreter::stack::Stack::push_slice -> std::ptr::mut_ptr::<impl *mut T>::add`
-  - rules: `rule-448`, `rule-449`
-  - json: `.local/verify/full-10crates-after-fixes/src-interpreter-stack-rs-304-23__rule-448.json`, `.local/verify/full-10crates-after-fixes/src-interpreter-stack-rs-304-23__rule-449.json`
-- `src-opcode-eof_printer-rs-2-24`, `opcode::eof_printer::print_eof_code -> std::slice::from_raw_parts`
-  - rules: `rule-611`
-  - json: `.local/verify/full-10crates-after-fixes/src-opcode-eof_printer-rs-2-24__rule-611.json`
-
-KLEE modification example
-- Example: `revm`, `src-instructions-control-rs-2-24__rule-611`.
-  - json: `.local/verify/full-10crates-after-fixes/src-instructions-control-rs-2-24__rule-611.json`
-  - init stage: `init_status=violation`, `has_certain_symbol=true`
-  - rule: `std::slice::from_raw_parts`, `is_initialized(memory_range(get_arg(0), get_arg(1) * sizeof(T)))`
-  - why this demonstrates the KLEE-side improvement: the bug is already detected in the init/KLEE phase, before relying on LLM testcase quality. This depends on KLEE being able to evaluate the new memory-range initialization DSL against a concrete/certain pointer-length pair at the unsafe callsite. The LLM/rerun phase then confirms it with `rerun_reported_callsite=true`, `rerun_dsl_sat=true`, and `full_rerun_passed=true`.
-
-
-+ find example, not only constructor, but also other methold call like mutable reference, etc..
-
-
-ruklee used rust features:
-+ template
-+ struct visbility
-+ func(&a, &b) original , dest does not overlap
-copy_nonoverlap
-+ xxxx (find more case and examples)
-
-+ each feature find an example to prove it works
+Use `--callsite ID --rule rule-N` to select a single check. The wrapper supplies
+the container Rust/KLEE paths; host `$PWD` toolchain overrides are unnecessary.
+`verify` syncs missing metadata automatically. See [`x` command documentation](tools/x/README.md)
+for the current `./x rule` documentation-to-DSL pipeline, and the
+[environment instructions](.agents/skills/ruklee-environment/SKILL.md) for build
+and execution requirements.

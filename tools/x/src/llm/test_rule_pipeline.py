@@ -150,18 +150,18 @@ class DurableJobs(unittest.TestCase):
             _write_json(output/'step0.json', {'files':{'tools/rust/library/core/src/test.rs':[
                 {'name':'f','line_number_start':i,'declaration_text':'unsafe fn f(b: u8)'} for i in (1,2,3)]}})
             api = Mock()
-            texts = iter(['$1 < 128', '$9 < 128', 'UNEXPRESSIBLE', '$1 <= 127'])
+            texts = iter(['$1 < 128', '$9 < 128', 'UNEXPRESSIBLE', '$1 <= 127', '$1 < 128'])
             api.responses.create.side_effect = lambda **kw: SimpleNamespace(model_dump=lambda mode: jobs.body(response(next(texts))))
             args = self.args('--workers','1')
             with patch.object(jobs, 'client', return_value=api):
                 pipeline.translate(root, output, args)
                 pipeline.translate(root, output, args)
-            self.assertEqual(api.responses.create.call_count, 4)
+            self.assertEqual(api.responses.create.call_count, 5)
             results=json.loads((output/'step2.json').read_text())
-            self.assertEqual([r['status'] for r in results], ['translated','translated','unexpressible'])
-            self.assertEqual([r['attempt'] for r in results], [0,1,0])
+            self.assertEqual([r['status'] for r in results], ['translated','translated','translated'])
+            self.assertEqual([r['attempt'] for r in results], [0,1,1])
             cache=next((output/'translations').iterdir())
-            self.assertEqual(json.loads((cache/'round-00/retry-queue.json').read_text()),['rule-2'])
+            self.assertEqual(json.loads((cache/'round-00/retry-queue.json').read_text()),['rule-2','rule-3'])
 
     def test_retry_bound_and_resume_with_larger_budget(self):
         root = _repo_root()
