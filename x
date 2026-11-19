@@ -10,6 +10,12 @@ die() {
     exit 1
 }
 
+# Claude uses its own lightweight image and loads CLAUDE_API_KEY on the host.
+if [[ "${1:-}" == "claude" ]]; then
+    shift
+    exec python3 "$repo_root/docker/rust-comparison/run-claude.py" "$@"
+fi
+
 command -v docker >/dev/null 2>&1 || die "docker is required"
 docker info >/dev/null 2>&1 || die "docker is not running"
 
