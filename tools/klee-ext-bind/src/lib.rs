@@ -19,6 +19,7 @@
 mod stubs;
 
 use core::ffi::{c_char, c_void};
+use core::ptr::NonNull;
 
 extern "C" {
     fn klee_ext_callsite(site_id: *const c_char);
@@ -75,14 +76,16 @@ pub trait RawPointerValue: Copy {
     fn as_const_void(self) -> *const c_void;
 }
 
-impl<T> RawPointerValue for *const T {
+// `T: ?Sized` keeps `*const str` / `*mut [T]` usable: `cast` drops the
+// metadata for the marker and the typed wrapper returns the original pointer.
+impl<T: ?Sized> RawPointerValue for *const T {
     #[inline(always)]
     fn as_const_void(self) -> *const c_void {
         self.cast::<c_void>()
     }
 }
 
-impl<T> RawPointerValue for *mut T {
+impl<T: ?Sized> RawPointerValue for *mut T {
     #[inline(always)]
     fn as_const_void(self) -> *const c_void {
         self.cast::<c_void>() as *const c_void
@@ -271,31 +274,47 @@ pub trait ArgPtrValue {
     fn as_arg_ptr_u64(self) -> u64;
 }
 
-impl<T> ArgPtrValue for *const T {
+// Only the data address is bound; `cast::<()>` drops slice/str metadata, which
+// a plain `as usize` cast of a fat pointer would reject.
+impl<T: ?Sized> ArgPtrValue for *const T {
     #[inline(always)]
     fn as_arg_ptr_u64(self) -> u64 {
-        self as usize as u64
+        self.cast::<()>() as usize as u64
     }
 }
 
-impl<T> ArgPtrValue for *mut T {
+impl<T: ?Sized> ArgPtrValue for *mut T {
     #[inline(always)]
     fn as_arg_ptr_u64(self) -> u64 {
-        self as usize as u64
+        self.cast::<()>() as usize as u64
     }
 }
 
-impl<T> ArgPtrValue for &*const T {
+impl<T: ?Sized> ArgPtrValue for &*const T {
     #[inline(always)]
     fn as_arg_ptr_u64(self) -> u64 {
-        *self as usize as u64
+        (*self).cast::<()>() as usize as u64
     }
 }
 
-impl<T> ArgPtrValue for &*mut T {
+impl<T: ?Sized> ArgPtrValue for &*mut T {
     #[inline(always)]
     fn as_arg_ptr_u64(self) -> u64 {
-        *self as usize as u64
+        (*self).cast::<()>() as usize as u64
+    }
+}
+
+impl<T: ?Sized> ArgPtrValue for NonNull<T> {
+    #[inline(always)]
+    fn as_arg_ptr_u64(self) -> u64 {
+        self.as_ptr().cast::<()>() as usize as u64
+    }
+}
+
+impl<T: ?Sized> ArgPtrValue for &NonNull<T> {
+    #[inline(always)]
+    fn as_arg_ptr_u64(self) -> u64 {
+        self.as_ptr().cast::<()>() as usize as u64
     }
 }
 

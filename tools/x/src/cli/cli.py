@@ -363,6 +363,13 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     verify_parser.add_argument(
+        "--ablation-level", type=str.lower,
+        choices=("a", "b", "c", "full"), default="full",
+        help=("Callchain candidate profile: a=buggy function/public fields; b=+constructors; "
+              "c=+mutable-reference returns; full=C plus symbolic execution/composition "
+              "of other candidates (default). Execution models stay unchanged."),
+    )
+    verify_parser.add_argument(
         "--stop-callsite-if-violated",
         action="store_true",
         help=(

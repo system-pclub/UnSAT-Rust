@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import shutil
 import tarfile
+import threading
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
@@ -41,14 +42,15 @@ def get_crates_from_db_dump(db_dump_dir: str, top_n: int = 1000, category: str =
 
     merged_df = pd.merge(crates_df, versions_df, left_on='id', right_on='crate_id')
     
-    categories_csv_path = f"{db_dump_dir}/data/categories.csv"
-    crates_categories_csv_path = f"{db_dump_dir}/data/crates_categories.csv"
-    categories_df = pd.read_csv(categories_csv_path, usecols=['id', 'category'])
-    crates_categories_df = pd.read_csv(crates_categories_csv_path, usecols=['crate_id', 'category_id'])
-    merged_df = pd.merge(merged_df, crates_categories_df, left_on='id', right_on='crate_id')
-    merged_df = pd.merge(merged_df, categories_df, left_on='category_id', right_on='id', suffixes=('', '_category'))
     if category:
+        categories_csv_path = f"{db_dump_dir}/data/categories.csv"
+        crates_categories_csv_path = f"{db_dump_dir}/data/crates_categories.csv"
+        categories_df = pd.read_csv(categories_csv_path, usecols=['id', 'category'])
+        crates_categories_df = pd.read_csv(crates_categories_csv_path, usecols=['crate_id', 'category_id'])
+        merged_df = pd.merge(merged_df, crates_categories_df, left_on='id', right_on='crate_id')
+        merged_df = pd.merge(merged_df, categories_df, left_on='category_id', right_on='id', suffixes=('', '_category'))
         merged_df = merged_df[merged_df['category'] == category]
+    merged_df = merged_df.drop_duplicates(subset=['name', 'num'])
     # By descending order of downloads, get the top N crates
     merged_df = merged_df.sort_values('downloads', ascending=False).head(top_n) 
     crates = [Crate(row['name'], row['repository'], row['num']) for _, row in merged_df.iterrows()]
@@ -70,6 +72,8 @@ def main():
     download_parser.add_argument('--temp-dir', type=str, default='.local/rawcrates', help='Temporary directory for downloading and extracting crates')
     download_parser.add_argument('--output-dir', type=str, default='.local/crates', help='Directory to save downloaded crates')
     download_parser.add_argument('--max-threads', type=int, default=8, help='Maximum parallel crate downloads')
+    download_parser.add_argument('--max-gb', type=float, default=None, help='Stop after downloading and extracting this many GB of new data (.crate + extracted)')
+    download_parser.add_argument('--min-free-gb', type=float, default=50, help='Stop when free disk space under --output-dir drops below this many GB')
     download_parser.set_defaults(func=command_download)
     download_one_parser = subparsers.add_parser('download-one', help='Download one exact crate version from crates.io')
     download_one_parser.add_argument('name', type=str, help='Crate name')
@@ -105,19 +109,46 @@ def command_download(args: argparse.Namespace) -> None:
     temp_dir = Path(args.temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
     max_threads = max(1, args.max_threads)
+    max_bytes = int(args.max_gb * 1e9) if args.max_gb is not None else None
+    min_free_bytes = int(args.min_free_gb * 1e9)
+
+    crates = [c for c in crates if not (temp_dir / f"{c.name}-{c.version}.crate").exists()]
+    print(f"{len(crates)} crates not yet in {temp_dir}")
+
+    lock = threading.Lock()
+    used_bytes = 0
+    done = 0
+    failed = 0
+    stop = threading.Event()
 
     def download_and_extract(crate: Crate) -> None:
-        dst = download_crate(crate, temp_dir)
-        extract_tar_gz(dst, output_dir)
+        nonlocal used_bytes, done, failed
+        if stop.is_set():
+            return
+        if max_bytes is not None and used_bytes >= max_bytes:
+            stop.set()
+            return
+        if shutil.disk_usage(output_dir).free < min_free_bytes:
+            print("Free disk space below --min-free-gb, stopping")
+            stop.set()
+            return
+        try:
+            dst = download_crate(crate, temp_dir)
+            extracted = extract_crate_archive(dst, output_dir)
+        except Exception as e:
+            with lock:
+                failed += 1
+            print(f"Error downloading {crate.name} v{crate.version}: {e}")
+            return
+        with lock:
+            used_bytes += dst.stat().st_size + extracted
+            done += 1
+            if done % 500 == 0:
+                print(f"Done {done} (failed={failed}), new data {used_bytes / 1e9:.1f} GB", flush=True)
 
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        future_to_crate = {executor.submit(download_and_extract, crate): crate for crate in crates}
-        for future in as_completed(future_to_crate):
-            crate = future_to_crate[future]
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Error downloading {crate.name} v{crate.version}: {e}")
+        list(executor.map(download_and_extract, crates))
+    print(f"Finished: {done} crates, {failed} failed, new data {used_bytes / 1e9:.1f} GB")
 
 def command_download_one(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
@@ -187,17 +218,24 @@ def download_file(url: str, dst: Path, force: bool = False) -> Path:
         return dst
 
     dst.parent.mkdir(parents=True, exist_ok=True)
+    partial = dst.with_name(dst.name + '.part')
     try:
-        with urlopen(url) as response, open(dst, 'wb') as file:
+        with urlopen(url) as response, open(partial, 'wb') as file:
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
                     break
                 file.write(chunk)
+        partial.replace(dst)
     except HTTPError as e:
+        partial.unlink(missing_ok=True)
         raise Exception(f"status code: {e.code}, error: {e.reason}") from e
     except URLError as e:
+        partial.unlink(missing_ok=True)
         raise Exception(f"failed to download {url}: {e.reason}") from e
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
     print(f"Downloaded: {dst}")
     return dst
 
@@ -229,7 +267,8 @@ def extract_tar_gz(file_path: Path, output_directory: Path) -> None:
     except Exception as e:
         print(f"Failed to extract {file_path}. Error: {e}")
 
-def extract_crate_archive(file_path: Path, output_directory: Path, force: bool = False) -> bool:
+def extract_crate_archive(file_path: Path, output_directory: Path, force: bool = False) -> int:
+    """Extract a crate and return the extracted size in bytes, or 0 if it already exists."""
     output_directory.mkdir(parents=True, exist_ok=True)
     output_directory = output_directory.resolve()
 
@@ -246,7 +285,7 @@ def extract_crate_archive(file_path: Path, output_directory: Path, force: bool =
             raise Exception(f"refusing to extract outside {output_directory}: {top_folder_name}")
         if dst.exists():
             if not force:
-                return False
+                return 0
             if not dst.is_dir():
                 raise Exception(f"target exists and is not a directory: {dst}")
             shutil.rmtree(dst)
@@ -261,8 +300,18 @@ def extract_crate_archive(file_path: Path, output_directory: Path, force: bool =
                     f"archive contains multiple top-level entries: {top_folder_name}, {member_top}"
                 )
 
-        file.extractall(path=output_directory)
-        return True
+        # Extract beside the target and rename, so an interrupted run never leaves a partial crate directory.
+        staging = output_directory / f".extracting-{top_folder_name}"
+        shutil.rmtree(staging, ignore_errors=True)
+        try:
+            if hasattr(tarfile, 'data_filter'):
+                file.extractall(path=staging, filter='data')
+            else:
+                file.extractall(path=staging)
+            (staging / top_folder_name).rename(dst)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+        return max(1, sum(member.size for member in members))
 
 if __name__ == "__main__":
     main()

@@ -603,6 +603,12 @@ def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> st
 def _rule_entry_to_ext_ast_json(
     entry: dict[str, Any], operators: list[dict[str, object]]
 ) -> str:
+    lowered = entry.get("dsl_v2")
+    if isinstance(lowered, dict):
+        if lowered.get("dsl_version") != 2 or not isinstance(lowered.get("expr"), dict):
+            raise RuntimeError("`dsl_v2` must be a version 2 lowered DSL document")
+        return json.dumps(lowered, separators=(",", ":"), ensure_ascii=False)
+
     smtlib = entry.get("smtlib")
     if not isinstance(smtlib, str) or not smtlib.strip():
         dsl = entry.get("dsl")
@@ -652,13 +658,26 @@ def _compose_status_from_output(
     timed_out: bool,
     callsite_id: str | None = None,
 ) -> str:
+    final_marker = "[compose-verify] final-query-begin"
+    # Failed snapshot execution leaves coverage missing even if later composed
+    # snapshots produce UNSAT; it is not superseded by the final query phase.
+    model_error = ("[ext.dsl] failed to evaluate expression: execution model:"
+                   in text.lower())
+    has_final_queries = final_marker in text
+    if has_final_queries:
+        text = text.rsplit(final_marker, 1)[1]
     lowered = text.lower()
     if timed_out:
         if "sat(constraints and not resolved constraint): sat" in lowered:
             return "violation-timeout"
+        if model_error or "[ext.dsl] failed to evaluate expression:" in lowered:
+            return "eval-error"
+        if "[ext.dsl] sat check failed:" in lowered:
+            return "solver-error"
         if "sat(constraints and not resolved constraint): unsat" in lowered:
-            return "verified-timeout"
-        if "query solved" in lowered or "[ext.dsl] at callsite" in text:
+            # Another path may remain unexplored when the process is killed.
+            return "reached-timeout"
+        if has_final_queries or "query solved" in lowered or "[ext.dsl] at callsite" in text:
             return "reached-timeout"
         if callsite_id:
             marker = f"[ext.exec] klee_ext_callsite site='{callsite_id}' target='{callsite_id}'"
@@ -667,6 +686,12 @@ def _compose_status_from_output(
         return "timeout"
     if "sat(constraints and not resolved constraint): sat" in lowered:
         return "violation"
+    if model_error or "[ext.dsl] failed to evaluate expression:" in lowered:
+        return "eval-error"
+    if "[ext.dsl] sat check failed:" in lowered:
+        return "solver-error"
+    if returncode is not None and returncode != 0:
+        return "klee-error"
     if "sat(constraints and not resolved constraint): unsat" in lowered:
         return "verified"
     if "query solved" in lowered:
@@ -681,6 +706,8 @@ def _compose_status_from_output(
         return "unknown"
     if returncode != 0:
         return "klee-error"
+    if has_final_queries:
+        return "no-final-result"
     return "ok"
 
 
@@ -782,10 +809,21 @@ def _compose_has_actionable_certainty(
     )
 
 
-def _merge_existing_matrix_rows(result_path: Path) -> dict[tuple[int, str], dict[str, Any]]:
+def _merge_existing_matrix_rows(
+    result_path: Path, *, ablation_level: str = "full",
+    disable_mut_ref_recovery: bool = False,
+) -> dict[tuple[int, str], dict[str, Any]]:
     if not result_path.is_file():
         return {}
     raw = _load_json(result_path)
+    if (isinstance(raw, dict) and "ablation_level" in raw
+            and raw.get("ablation_profile_version") != 2):
+        raise RuntimeError("Cannot resume results from an older ablation definition; rerun without --resume")
+    if isinstance(raw, dict) and (
+        raw.get("ablation_level", "full") != ablation_level
+        or bool(raw.get("disable_mut_ref_recovery", False)) != disable_mut_ref_recovery
+    ):
+        raise RuntimeError("Cannot resume results from a different ablation profile; use a separate --results-json or omit --resume")
     results = raw.get("results", []) if isinstance(raw, dict) else []
     merged: dict[tuple[int, str], dict[str, Any]] = {}
     if isinstance(results, list):
@@ -810,6 +848,7 @@ def _run_klee_compose_verify(
     output_dir: Path,
     timeout_sec: int | None,
     disable_mut_ref_recovery: bool = False,
+    ablation_level: str = "full",
 ) -> tuple[int, str]:
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -823,6 +862,7 @@ def _run_klee_compose_verify(
         _klee_constraint_arg(ast_json),
         "--compose-verify",
         f"--compose-verify-symbolic-loop-bound={compose_loop_bound}",
+        f"--ruklee-ablation={ablation_level}",
     ]
     if disable_mut_ref_recovery:
         cmd.append("--compose-verify-disable-mut-ref-recovery")
@@ -872,23 +912,19 @@ def _run_klee_compose_verify(
     if stderr:
         print(stderr, end="")
     combined = stdout + stderr
-    if timed_out:
-        status = _compose_status_from_output(
-            returncode, combined, timed_out=True, callsite_id=callsite_id
-        )
-        if status in {"violation-timeout", "reached-timeout"}:
-            return returncode, "candidate"
-        if status == "verified-timeout":
-            return returncode, "verified"
-        return returncode, "timeout"
-    if (
-        "SAT(constraints AND NOT resolved constraint): sat" in combined
-        or "query solved" in combined
-        or "query deferred for compose" in combined
-    ):
+    status = _compose_status_from_output(
+        returncode, combined, timed_out=timed_out, callsite_id=callsite_id
+    )
+    if status in {"eval-error", "solver-error", "klee-error"}:
+        return returncode, status
+    if status in {"violation", "violation-timeout", "reached", "reached-timeout"}:
         return returncode, "candidate"
-    if "SAT(constraints AND NOT resolved constraint): unsat" in combined:
+    if status == "verified":
         return returncode, "verified"
+    if timed_out:
+        return returncode, "timeout"
+    if "query deferred for compose" in combined:
+        return returncode, "candidate"
     return returncode, "unknown"
 
 
@@ -1331,9 +1367,11 @@ def _assign_matrix_rules_to_callsites(
 
     rules_by_callee = _load_rule_ids_by_callee(rule_dsl_path)
     rules_by_callee_name = _load_rule_ids_by_callee_name(rule_dsl_path)
+    catalog = _load_json(rule_dsl_path)
+    include_raw_pointer_deref = catalog.get("include_raw_pointer_deref", True)
     for callsite in callsites:
         if callsite.get("unsafe_callee") == RAW_PTR_DEREF_CALLEE:
-            callsite["rules"] = [RAW_PTR_DEREF_RULE]
+            callsite["rules"] = [RAW_PTR_DEREF_RULE] if include_raw_pointer_deref else []
             continue
         callee_path = callsite.get("unsafe_callee_path")
         callee_line = callsite.get("unsafe_callee_line_start")
@@ -2764,7 +2802,10 @@ def _run_verify_matrix_locked(
         for rule in row.get("rules", [])
         if isinstance(row.get("target_index"), int) and isinstance(rule, str)
     }
-    existing = _merge_existing_matrix_rows(result_path) if args.resume else {}
+    existing = _merge_existing_matrix_rows(
+        result_path, ablation_level=getattr(args, "ablation_level", "full"),
+        disable_mut_ref_recovery=bool(getattr(args, "disable_mut_ref_recovery", False)),
+    ) if args.resume else {}
     existing = {key: value for key, value in existing.items() if key in planned_keys}
     results: list[dict[str, Any]] = list(existing.values())
     counts: dict[str, int] = {}
@@ -2792,6 +2833,8 @@ def _run_verify_matrix_locked(
         "report_json": str(report_json) if report_json is not None else None,
         "klee_bin": args.klee_bin,
         "compose_loop_bound": args.compose_loop_bound,
+        "ablation_level": getattr(args, "ablation_level", "full"),
+        "ablation_profile_version": 2,
         "disable_mut_ref_recovery": bool(getattr(args, "disable_mut_ref_recovery", False)),
         "timeout_sec": args.timeout_sec,
         "test": args.test,
@@ -2884,6 +2927,7 @@ def _run_verify_matrix_locked(
                     callsite=_callsite_summary_from_row(row),
                     rule_id=str(rule),
                     init={
+                        "ablation_level": getattr(args, "ablation_level", "full"),
                         "status": "skipped-callsite-violated",
                         "returncode": None,
                         "timed_out": False,
@@ -2944,6 +2988,7 @@ def _run_verify_matrix_locked(
                     callsite=_callsite_summary_from_row(row),
                     rule_id=str(rule),
                     init={
+                        "ablation_level": getattr(args, "ablation_level", "full"),
                         "status": "not-in-ir",
                         "returncode": None,
                         "timed_out": False,
@@ -2986,6 +3031,7 @@ def _run_verify_matrix_locked(
                 f"--ext.callsite={llvm_callsite_id}",
                 "--compose-verify",
                 f"--compose-verify-symbolic-loop-bound={args.compose_loop_bound}",
+                f"--ruklee-ablation={getattr(args, 'ablation_level', 'full')}",
             ]
             if getattr(args, "disable_mut_ref_recovery", False):
                 cmd.append("--compose-verify-disable-mut-ref-recovery")
@@ -3071,6 +3117,7 @@ def _run_verify_matrix_locked(
                 "unsafe_callee_path": callsite.get("unsafe_callee_path"),
                 "unsafe_callee_line_start": callsite.get("unsafe_callee_line_start"),
                 "rule": rule,
+                "ablation_level": getattr(args, "ablation_level", "full"),
                 "status": status,
                 "returncode": returncode,
                 "timed_out": timed_out,
@@ -3091,6 +3138,7 @@ def _run_verify_matrix_locked(
                 rule_id=str(rule),
                 init={
                     "status": status,
+                    "ablation_level": getattr(args, "ablation_level", "full"),
                     "returncode": returncode,
                     "timed_out": timed_out,
                     "duration_sec": row["duration_sec"],
@@ -3212,6 +3260,7 @@ def _run_verify_matrix_locked(
                 callsite=_callsite_summary_from_row(row),
                 rule_id=rule_id,
                 init={
+                    "ablation_level": getattr(args, "ablation_level", "full"),
                     "status": row.get("status"),
                     "returncode": row.get("returncode"),
                     "timed_out": row.get("timed_out"),
@@ -3245,6 +3294,7 @@ def _run_verify_matrix_locked(
                 callsite=_callsite_summary_from_row(row),
                 rule_id=rule_id if isinstance(rule_id, str) else str(row.get("rule") or ""),
                 init={
+                    "ablation_level": getattr(args, "ablation_level", "full"),
                     "status": row.get("status"),
                     "returncode": row.get("returncode"),
                     "timed_out": row.get("timed_out"),
@@ -3417,6 +3467,7 @@ def run(args: argparse.Namespace) -> int:
         output_dir=compose_output,
         timeout_sec=args.timeout_sec,
         disable_mut_ref_recovery=getattr(args, "disable_mut_ref_recovery", False),
+        ablation_level=getattr(args, "ablation_level", "full"),
     )
     if compose_reach_only and compose_status in {"candidate", "verified", "unknown"}:
         # A root marker proves reachability/context for testcase generation, not
@@ -3433,6 +3484,7 @@ def run(args: argparse.Namespace) -> int:
             "compose_callsite": compose_callsite_id,
             "rule": args.rule,
             "status": "compose-verified-skip-testcase",
+            "ablation_level": getattr(args, "ablation_level", "full"),
             "reason": "compose-verify proved constraints AND NOT(rule) unsat",
             "klee_compose_log": str(artifact_dir / "klee-compose.log"),
         }
@@ -3461,6 +3513,7 @@ def run(args: argparse.Namespace) -> int:
             },
             rule_id=args.rule,
             init={
+                "ablation_level": getattr(args, "ablation_level", "full"),
                 "status": "verified",
                 "returncode": rc,
                 "compose_callsite": compose_callsite_id,
@@ -3517,6 +3570,7 @@ def run(args: argparse.Namespace) -> int:
         },
         rule_id=args.rule,
         init={
+            "ablation_level": getattr(args, "ablation_level", "full"),
             "status": compose_status,
             "returncode": rc,
             "compose_callsite": compose_callsite_id,

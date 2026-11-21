@@ -8,6 +8,7 @@ import subprocess
 import tomllib
 from typing import Iterable
 
+from cli.toolchain import pin_default_toolchain
 from dsl import (
     DSLParseError,
     DSLValidationError,
@@ -217,11 +218,11 @@ def _compile_crate(
     if report_path.exists():
         report_path.unlink()
 
-    clean_result = subprocess.run(["cargo", "clean"], cwd=crate_dir, check=False)
+    env = pin_default_toolchain(os.environ.copy())
+    clean_result = subprocess.run(["cargo", "clean"], cwd=crate_dir, env=env, check=False)
     if clean_result.returncode != 0:
         raise RuntimeError(f"cargo clean failed in {crate_dir} (exit: {clean_result.returncode})")
 
-    env = os.environ.copy()
     env["RUSTC"] = mirscan_rustc
     env["ANALYSIS_OUT"] = str(report_path)
     command = ["cargo", "check", "--lib"]

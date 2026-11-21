@@ -51,15 +51,20 @@ impl rustc_driver::Callbacks for CompilerCalls {
                 .fatal("raudit cannot be run on programs that fail compilation");
         }
 
-        let crate_fspath = match compiler.sess.io.output_dir {
-            Some(ref p) => {
-                let mut pp = p.clone();
-                // pop target/debug/deps
-                pp.pop();
-                pp.pop();
-                pp.pop();
-                pp
-            }
+        // Directories a crate root can be derived from, for both cargo target
+        // layouts: `target/debug/deps` (three levels below the crate) and the
+        // newer `target/debug/build/<package>/<hash>/out` (six levels).
+        let crate_fspaths = match compiler.sess.io.output_dir {
+            Some(ref p) => [3usize, 6]
+                .into_iter()
+                .filter_map(|levels| {
+                    let mut ancestor = p.as_path();
+                    for _ in 0..levels {
+                        ancestor = ancestor.parent()?;
+                    }
+                    Some(ancestor.to_path_buf())
+                })
+                .collect::<Vec<_>>(),
             None => return Compilation::Stop,
         };
         let current_pwd = std::env::current_dir().unwrap_or_else(|e| {
@@ -67,7 +72,7 @@ impl rustc_driver::Callbacks for CompilerCalls {
             std::process::exit(1);
         });
 
-        if crate_fspath != current_pwd {
+        if !crate_fspaths.contains(&current_pwd) {
             return Compilation::Continue;
         }
 

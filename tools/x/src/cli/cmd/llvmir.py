@@ -7,6 +7,8 @@ import re
 import subprocess
 import tomllib
 
+from cli.toolchain import pin_default_toolchain
+
 logger = logging.getLogger(__name__)
 
 def _emit_llvm_rustflags(
@@ -66,7 +68,7 @@ def compile_with_emit_llvm(
     """Compile the crate at *cargo_dir* and emit LLVM IR (.ll) files.
     """
     import platform
-    env = os.environ.copy()
+    env = pin_default_toolchain(os.environ.copy())
     env["CARGO_INCREMENTAL"] = "0" 
     if custom_rustc:
         env["RUSTC"] = custom_rustc
@@ -125,7 +127,7 @@ def compile_test_with_emit_llvm(
     """Compile the test in the crate at *cargo_dir* and emit LLVM IR (.ll) files.
     """
     import platform
-    env = os.environ.copy()
+    env = pin_default_toolchain(os.environ.copy())
     env["CARGO_INCREMENTAL"] = "0" 
     if custom_rustc:
         env["RUSTC"] = custom_rustc
