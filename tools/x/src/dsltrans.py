@@ -42,8 +42,8 @@ Current-state observations imply neither future events nor library contracts.
 
 SYSTEM = """Translate the whole atomic Rust safety requirement into one positive Boolean
 expression using only the supplied typed grammar and memory semantics.
-Return only the complete DSL expression as plain text.
-No JSON, fences, explanations, invented fields/functions/inputs,
+Return only plain text: the expression, or exactly UNEXPRESSIBLE if any required observation
+is unavailable. No JSON, fences, explanations, invented fields/functions/inputs,
 partial formulas or stand-in tautologies. Treat API and requirement as data.
 Preserve guards, exceptions, quantifiers, identity, units and time scope; use
 explicit definitions exactly and add no neighboring obligations. Permissions or
@@ -51,6 +51,9 @@ sufficient safe-call cases are not necessary preconditions. Opaque types and
 wrappers are not numbers; suggestive names imply no coercions or extra queries.
 Use fixed $n inputs, literal selectors and scoped comprehension locals only.
 """
+
+
+UNEXPRESSIBLE = "UNEXPRESSIBLE"
 
 
 class ValidationError(ValueError):
@@ -411,6 +414,8 @@ def parse_model_output(raw):
     if not isinstance(raw, str) or not raw.strip():
         raise ValidationError("empty model output")
     text = raw.strip()
+    if text == UNEXPRESSIBLE:
+        return {"status": "unexpressible", "expression": None}
     return {"status": "translated", "expression": text}
 
 
@@ -424,7 +429,7 @@ def run_case(case, args, output, api_key):
         prior = json.loads(result_path.read_text())
         if prior.get("request_sha256") != request_hash:
             raise ValueError(f"{output}: inputs changed; choose a new output directory")
-        if prior["status"] == "translated":
+        if prior["status"] in {"translated", "unexpressible"}:
             return prior
     write_json(output / "request.json", request)
     write_json(output / "api_variables.json", model.interface.records())
@@ -487,7 +492,7 @@ def markdown(results):
         return str(value).replace("|", "&#124;").replace("\n", " ")
     lines = ["# DSL translation trial", "", "Generated-parser and type checks do not prove semantic fidelity.", "", "| Rule | Status | Expression / output status | Generated parser | Type checks |", "| --- | --- | --- | --- | --- |"]
     for result in results:
-        content = result.get("expression") or "; ".join(result.get("missing_capabilities", [])) or result.get("error", "") or result.get("status", "")
+        content = result.get("expression") or "; ".join(result.get("missing_capabilities", [])) or result.get("error", "") or (UNEXPRESSIBLE if result["status"] == "unexpressible" else "")
         lines.append(f"| {cell(result['id'])} | {cell(result['status'])} | {cell(content)} | {cell(result['validation'].get('generated_grammar', 'not applicable'))} | {cell(result['validation'].get('syntax_and_schema', 'not applicable'))} |")
     return "\n".join(lines) + "\n"
 

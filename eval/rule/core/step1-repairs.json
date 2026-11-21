@@ -1,31 +1,6 @@
 {
-  "source_sha256": "cc9396c9eeaf4a2508a08cab10f6cc2704121c3b60750183c1fb0b3560c4793a",
+  "source_sha256": "51a83e6e62cf4f49f9855bc653d022405303a3737dad6cbc9bcd513793c9121a",
   "repairs": {
-    "390701cf120fc45d803cd7149fbb85e87d82b930a9ed2ca3217f0783bdd454a0": {
-      "result": {
-        "path": "rust/library/core/src/future/async_drop.rs",
-        "line": 221,
-        "name": "defer",
-        "declaration": "async unsafe fn defer < T : ? Sized > (to_drop : * mut T)",
-        "parent": null,
-        "documentation": " Basically a lazy version of `async_drop_in_place`. Returns a future\n that would call `AsyncDrop::async_drop` on a first poll.\n\n # Safety\n\n Same as `async_drop_in_place` except is lazy to avoid creating\n multiple mutable references.",
-        "model": "gpt-6.1-sol",
-        "mode": "llm",
-        "rules": [
-          "For safety, `to_drop` passed to `defer` must be valid for both reads and writes.",
-          "For safety, `to_drop` passed to `defer` must be properly aligned, even if `T` has size 0.",
-          "For safety, `to_drop` passed to `defer` must be nonnull, even if `T` has size 0.",
-          "For safety, the value pointed to by `to_drop` passed to `defer` must be valid for async dropping, including any additional invariants required by its type.",
-          "While `defer` is executing or its returned future is alive, the only permitted access to parts of the value pointed to by `to_drop` is through the `self: Pin<&mut Self>` references supplied to the `AsyncDrop::async_drop` methods invoked by the delegated `async_drop_in_place` operation or `AsyncDropInPlace<T>::poll`.",
-          "While `defer` is executing or its returned future is alive, the caller must guarantee that the value pointed to by `to_drop` does not move."
-        ],
-        "status": "extracted",
-        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/772a95b3c25ec50f62cc2d98"
-      },
-      "mode": "llm",
-      "model": "gpt-6.1-sol",
-      "requests_directory": "/unsat-rust/eval/rule/core/requests/772a95b3c25ec50f62cc2d98"
-    },
     "3720579c7294fa3d4b7aab7aecd2aa960b89e23a5c96b12358c90f58400d647a": {
       "result": {
         "path": "rust/library/core/src/iter/adapters/mod.rs",
@@ -44,24 +19,6 @@
           "Adapters implementing SourceIter::as_inner must uphold the source's public API even when they have access to its internals.",
           "Callers of SourceIter::as_inner must allow the source to be in any state consistent with its public API, including a state in which intervening adapters have consumed more elements than strictly necessary."
         ],
-        "status": "extracted",
-        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
-      },
-      "mode": "llm",
-      "model": "gpt-6.1-sol",
-      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
-    },
-    "d2100b0da409d333e1f040cc66272075b2608426e2c77ee229f59e1f14609cf2": {
-      "result": {
-        "path": "rust/library/core/src/iter/adapters/zip.rs",
-        "line": 606,
-        "name": "try_get_unchecked",
-        "declaration": "unsafe fn try_get_unchecked < I > (it : & mut I , idx : usize) -> I :: Item where I : Iterator ,",
-        "parent": null,
-        "documentation": " Like `Iterator::__iterator_get_unchecked`, but doesn't require the compiler to\n know that `U: TrustedRandomAccess`.\n\n ## Safety\n\n Same requirements calling `get_unchecked` directly.",
-        "model": "gpt-6.1-sol",
-        "mode": "llm",
-        "rules": [],
         "status": "extracted",
         "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
       },
@@ -106,30 +63,6 @@
           "For `offset_from_unsigned(self, origin)` to be safe, `self` and `origin` must either point to the same address, or both be derived from a pointer to the same allocated object with the entire memory range between them in bounds of that object.",
           "For `offset_from_unsigned(self, origin)` to be safe, the distance between `self` and `origin`, in bytes, must be an exact multiple of `size_of::<T>()`.",
           "For `offset_from_unsigned(self, origin)` to be safe, the distance between the pointers, in bytes and computed on mathematical integers without wrapping around, must not exceed `isize::MAX`."
-        ],
-        "status": "extracted",
-        "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
-      },
-      "mode": "llm",
-      "model": "gpt-6.1-sol",
-      "requests_directory": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"
-    },
-    "f672a32b754782ed007942b6bd2f320ae09eab70c5dd73d1230aeadb18f275b2": {
-      "result": {
-        "path": "rust/library/core/src/ptr/mod.rs",
-        "line": 1134,
-        "name": "swap_nonoverlapping_simple_untyped",
-        "declaration": "const unsafe fn swap_nonoverlapping_simple_untyped < T > (x : * mut T , y : * mut T , count : usize)",
-        "parent": null,
-        "documentation": " Same behavior and safety conditions as [`swap_nonoverlapping`]\n\n LLVM can vectorize this (at least it can for the power-of-two-sized types\n `swap_nonoverlapping` tries to use) so no need to manually SIMD it.",
-        "model": "gpt-6.1-sol",
-        "mode": "llm",
-        "rules": [
-          "Both `x` and `y` must be valid for both reads and writes of `count * size_of::<T>()` bytes.",
-          "Both `x` and `y` must be properly aligned for `T`, even when `count * size_of::<T>()` is zero.",
-          "The memory region beginning at `x` of size `count * size_of::<T>()` bytes must not overlap the memory region beginning at `y` of the same size.",
-          "The data in the regions may be uninitialized or otherwise violate the requirements of `T`.",
-          "The initialization state of the swapped data is preserved exactly."
         ],
         "status": "extracted",
         "repair_request_cache": "/unsat-rust/eval/rule/core/requests/09a6f550a23bf9103fa2f4fd"

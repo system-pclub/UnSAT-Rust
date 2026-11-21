@@ -138,7 +138,6 @@ def translate(root, output, args):
     directory = output / 'translations' / identity
     directory.mkdir(parents=True, exist_ok=True)
     _write_json(output / 'step2-input.json', {'mode': args.step2_mode, 'model': args.model,
-                'output_contract': 'expression_only',
                 'retries': args.retries, 'rules': rows, 'translations_directory': str(directory)})
     requests, cases = {}, {}
     # Prepare every input before any paid call. Preparation errors remain visible
@@ -188,7 +187,7 @@ def translate(root, output, args):
                 failed[key] = {**request, 'input': request['input'] + [
                     {'role': 'assistant', 'content': text or '(no completed response)'},
                     {'role': 'user', 'content': 'The previous output failed validation: ' + result['error'] +
-                     '\nReturn only a corrected complete DSL expression.'}]}
+                     '\nReturn a corrected complete expression, or UNEXPRESSIBLE if the whole requirement cannot be expressed.'}]}
             _write_json(round_dir / key / 'result.json', result)
             _write_json(directory / key / 'result.json', result)
             (round_dir / key / 'response.txt').write_text(text)
@@ -204,6 +203,6 @@ def translate(root, output, args):
         raise RuntimeError(f"preparation errors in {output / 'step2.json'}; inspect source context/schema")
     if requests and round_limit < args.retries:
         return True
-    if any(r['status'] != 'translated' for r in ordered):
+    if any(r['status'] not in {'translated', 'unexpressible'} for r in ordered):
         raise RuntimeError(f"incomplete translations in {output / 'step2.json'}; inspect errors or increase --retries")
     return False

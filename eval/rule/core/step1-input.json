@@ -163,14 +163,6 @@
       "documentation": " Creates an iterator over the elements in a partially-initialized buffer.\n\n If you have a fully-initialized array, then use [`IntoIterator`].\n But this is useful for returning partial results from unsafe code.\n\n # Safety\n\n - The `buffer[initialized]` elements must all be initialized.\n - The range must be canonical, with `initialized.start <= initialized.end`.\n - The range must be in-bounds for the buffer, with `initialized.end <= N`.\n   (Like how indexing `[0][100..100]` fails despite the range being empty.)\n\n It's sound to have more elements initialized than mentioned, though that\n will most likely result in them being leaked.\n\n # Examples\n\n ```\n #![feature(array_into_iter_constructors)]\n #![feature(maybe_uninit_uninit_array_transpose)]\n use std::array::IntoIter;\n use std::mem::MaybeUninit;\n\n # // Hi!  Thanks for reading the code. This is restricted to `Copy` because\n # // otherwise it could leak. A fully-general version this would need a drop\n # // guard to handle panics from the iterator, but this works for an example.\n fn next_chunk<T: Copy, const N: usize>(\n     it: &mut impl Iterator<Item = T>,\n ) -> Result<[T; N], IntoIter<T, N>> {\n     let mut buffer = [const { MaybeUninit::uninit() }; N];\n     let mut i = 0;\n     while i < N {\n         match it.next() {\n             Some(x) => {\n                 buffer[i].write(x);\n                 i += 1;\n             }\n             None => {\n                 // SAFETY: We've initialized the first `i` items\n                 unsafe {\n                     return Err(IntoIter::new_unchecked(buffer, 0..i));\n                 }\n             }\n         }\n     }\n\n     // SAFETY: We've initialized all N items\n     unsafe { Ok(buffer.transpose().assume_init()) }\n }\n\n let r: [_; 4] = next_chunk(&mut (10..16)).unwrap();\n assert_eq!(r, [10, 11, 12, 13]);\n let r: IntoIter<_, 40> = next_chunk(&mut (10..16)).unwrap_err();\n assert_eq!(r.collect::<Vec<_>>(), vec![10, 11, 12, 13, 14, 15]);\n ```"
     },
     {
-      "path": "rust/library/core/src/array/mod.rs",
-      "line": 889,
-      "name": "push_unchecked",
-      "declaration": "unsafe fn push_unchecked (& mut self , item : T)",
-      "parent": "Guard < '_ , T >",
-      "documentation": " Adds an item to the array and updates the initialized item counter.\n\n # Safety\n\n No more than N elements must be initialized."
-    },
-    {
       "path": "rust/library/core/src/ascii/ascii_char.rs",
       "line": 461,
       "name": "from_u8_unchecked",
@@ -219,22 +211,6 @@
       "documentation": " Get an exclusive reference to the value within the `UnsafeCell`.\n\n # Safety\n\n - It is Undefined Behavior to call this while any other\n   reference(s) to the wrapped value are alive.\n - Mutating the wrapped value through other means while the\n   returned reference is alive is Undefined Behavior.\n\n # Examples\n\n ```\n #![feature(unsafe_cell_access)]\n use std::cell::UnsafeCell;\n\n let uc = UnsafeCell::new(5);\n\n unsafe { *uc.as_mut_unchecked() += 1; }\n assert_eq!(uc.into_inner(), 6);\n ```"
     },
     {
-      "path": "rust/library/core/src/cell/lazy.rs",
-      "line": 188,
-      "name": "really_init",
-      "declaration": "unsafe fn really_init (this : & LazyCell < T , F >) -> & T",
-      "parent": "LazyCell < T , F >",
-      "documentation": " # Safety\n May only be called when the state is `Uninit`."
-    },
-    {
-      "path": "rust/library/core/src/char/convert.rs",
-      "line": 21,
-      "name": "from_u32_unchecked",
-      "declaration": "const unsafe fn from_u32_unchecked (i : u32) -> char",
-      "parent": null,
-      "documentation": " Converts a `u32` to a `char`, ignoring validity. See [`char::from_u32_unchecked`]."
-    },
-    {
       "path": "rust/library/core/src/char/methods.rs",
       "line": 199,
       "name": "from_u32_unchecked",
@@ -267,30 +243,6 @@
       "documentation": " Performs copy-assignment from `self` to `dest`.\n\n This is analogous to `std::ptr::write(dest.cast(), self.clone())`,\n except that `Self` may be a dynamically-sized type ([`!Sized`](Sized)).\n\n Before this function is called, `dest` may point to uninitialized memory.\n After this function is called, `dest` will point to initialized memory; it will be\n sound to create a `&Self` reference from the pointer with the [pointer metadata]\n from `self`.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `dest` must be [valid] for writes for `size_of_val(self)` bytes.\n * `dest` must be properly aligned to `align_of_val(self)`.\n\n [valid]: crate::ptr#safety\n [pointer metadata]: crate::ptr::metadata()\n\n # Panics\n\n This function may panic. (For example, it might panic if memory allocation for a clone\n of a value owned by `self` fails.)\n If the call panics, then `*dest` should be treated as uninitialized memory; it must not be\n read or dropped, because even if it was previously valid, it may have been partially\n overwritten.\n\n The caller may wish to to take care to deallocate the allocation pointed to by `dest`,\n if applicable, to avoid a memory leak (but this is not a requirement).\n\n Implementors should avoid leaking values by, upon unwinding, dropping all component values\n that might have already been created. (For example, if a `[Foo]` of length 3 is being\n cloned, and the second of the three calls to `Foo::clone()` unwinds, then the first `Foo`\n cloned should be dropped.)"
     },
     {
-      "path": "rust/library/core/src/clone/uninit.rs",
-      "line": 4,
-      "name": "CopySpec",
-      "declaration": "trait CopySpec : Clone",
-      "parent": null,
-      "documentation": " Private specialization trait used by CloneToUninit, as per\n [the dev guide](https://std-dev-guide.rust-lang.org/policy/specialization.html)."
-    },
-    {
-      "path": "rust/library/core/src/cmp/bytewise.rs",
-      "line": 3,
-      "name": "BytewiseEq",
-      "declaration": "trait BytewiseEq <Rhs = Self> : PartialEq < Rhs > + Sized",
-      "parent": null,
-      "documentation": " Types where `==` & `!=` are equivalent to comparing their underlying bytes.\n\n Importantly, this means no floating-point types, as those have different\n byte representations (like `-0` and `+0`) which compare as the same.\n Since byte arrays are `Eq`, that implies that these types are probably also\n `Eq`, but that's not technically required to use this trait.\n\n `Rhs` is *de facto* always `Self`, but the separate parameter is important\n to avoid the `specializing impl repeats parameter` error when consuming this.\n\n # Safety\n\n - `Self` and `Rhs` have no padding.\n - `Self` and `Rhs` have the same layout (size and alignment).\n - Neither `Self` nor `Rhs` have provenance, so integer comparisons are correct.\n - `<Self as PartialEq<Rhs>>::{eq,ne}` are equivalent to comparing the bytes."
-    },
-    {
-      "path": "rust/library/core/src/error.rs",
-      "line": 968,
-      "name": "Erased",
-      "declaration": "trait Erased <'a> : 'a",
-      "parent": null,
-      "documentation": " Represents a type-erased but identifiable object.\n\n This trait is exclusively implemented by the `TaggedOption` type."
-    },
-    {
       "path": "rust/library/core/src/ffi/c_str.rs",
       "line": 195,
       "name": "from_ptr",
@@ -305,14 +257,6 @@
       "declaration": "const unsafe fn from_bytes_with_nul_unchecked (bytes : & [u8]) -> & CStr",
       "parent": "CStr",
       "documentation": " Unsafely creates a C string wrapper from a byte slice.\n\n This function will cast the provided `bytes` to a `CStr` wrapper without\n performing any sanity checks.\n\n # Safety\n The provided slice **must** be nul-terminated and not contain any interior\n nul bytes.\n\n # Examples\n\n ```\n use std::ffi::CStr;\n\n let bytes = b\"Hello world!\\0\";\n\n let cstr = unsafe { CStr::from_bytes_with_nul_unchecked(bytes) };\n assert_eq!(cstr.to_bytes_with_nul(), bytes);\n ```"
-    },
-    {
-      "path": "rust/library/core/src/ffi/c_str.rs",
-      "line": 713,
-      "name": "strlen",
-      "declaration": "const unsafe fn strlen (ptr : * const c_char) -> usize",
-      "parent": null,
-      "documentation": " Calculate the length of a nul-terminated string. Defers to C's `strlen` when possible.\n\n # Safety\n\n The pointer must point to a valid buffer that contains a NUL terminator. The NUL must be\n located within `isize::MAX` from `ptr`."
     },
     {
       "path": "rust/library/core/src/ffi/va_list.rs",
@@ -331,62 +275,6 @@
       "documentation": " Copies the `va_list` at the current location."
     },
     {
-      "path": "rust/library/core/src/ffi/va_list.rs",
-      "line": 305,
-      "name": "va_end",
-      "declaration": "unsafe fn va_end (ap : & mut VaListImpl < '_ >)",
-      "parent": null,
-      "documentation": " Destroy the arglist `ap` after initialization with `va_start` or\n `va_copy`."
-    },
-    {
-      "path": "rust/library/core/src/ffi/va_list.rs",
-      "line": 311,
-      "name": "va_copy",
-      "declaration": "unsafe fn va_copy < 'f > (dest : * mut VaListImpl < 'f > , src : & VaListImpl < 'f >)",
-      "parent": null,
-      "documentation": " Copies the current location of arglist `src` to the arglist `dst`."
-    },
-    {
-      "path": "rust/library/core/src/ffi/va_list.rs",
-      "line": 316,
-      "name": "va_arg",
-      "declaration": "unsafe fn va_arg < T : sealed_trait :: VaArgSafe > (ap : & mut VaListImpl < '_ >) -> T",
-      "parent": null,
-      "documentation": " Loads an argument of type `T` from the `va_list` `ap` and increment the\n argument `ap` points to."
-    },
-    {
-      "path": "rust/library/core/src/fmt/mod.rs",
-      "line": 1806,
-      "name": "pad_formatted_parts",
-      "declaration": "unsafe fn pad_formatted_parts (& mut self , formatted : & numfmt :: Formatted < '_ >) -> Result",
-      "parent": "Formatter < 'a >",
-      "documentation": " Takes the formatted parts and applies the padding.\n\n Assumes that the caller already has rendered the parts with required precision,\n so that `self.precision` can be ignored.\n\n # Safety\n\n Any `numfmt::Part::Copy` parts in `formatted` must contain valid UTF-8."
-    },
-    {
-      "path": "rust/library/core/src/fmt/mod.rs",
-      "line": 1855,
-      "name": "write_formatted_parts",
-      "declaration": "unsafe fn write_formatted_parts (& mut self , formatted : & numfmt :: Formatted < '_ >) -> Result",
-      "parent": "Formatter < 'a >",
-      "documentation": " # Safety\n\n Any `numfmt::Part::Copy` parts in `formatted` must contain valid UTF-8."
-    },
-    {
-      "path": "rust/library/core/src/fmt/num.rs",
-      "line": 40,
-      "name": "GenericRadix",
-      "declaration": "trait GenericRadix : Sized",
-      "parent": null,
-      "documentation": " A type that represents a specific radix\n\n # Safety\n\n `digit` must return an ASCII character."
-    },
-    {
-      "path": "rust/library/core/src/fmt/rt.rs",
-      "line": 164,
-      "name": "fmt",
-      "declaration": "unsafe fn fmt (& self , f : & mut Formatter < '_ >) -> Result",
-      "parent": "Argument < '_ >",
-      "documentation": " Format this placeholder argument.\n\n # Safety\n\n This argument must actually be a placeholder argument.\n"
-    },
-    {
       "path": "rust/library/core/src/fmt/rt.rs",
       "line": 230,
       "name": "new",
@@ -401,54 +289,6 @@
       "declaration": "unsafe fn async_drop_in_place < T : ? Sized > (to_drop : * mut T) -> AsyncDropInPlace < T >",
       "parent": null,
       "documentation": " Creates the asynchronous destructor of the pointed-to value.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `to_drop` must be [valid](crate::ptr#safety) for both reads and writes.\n\n * `to_drop` must be properly aligned, even if `T` has size 0.\n\n * `to_drop` must be nonnull, even if `T` has size 0.\n\n * The value `to_drop` points to must be valid for async dropping,\n   which may mean it must uphold additional invariants. These\n   invariants depend on the type of the value being dropped. For\n   instance, when dropping a Box, the box's pointer to the heap must\n   be valid.\n\n * While `async_drop_in_place` is executing or the returned async\n   destructor is alive, the only way to access parts of `to_drop`\n   is through the `self: Pin<&mut Self>` references supplied to\n   the `AsyncDrop::async_drop` methods that `async_drop_in_place`\n   or `AsyncDropInPlace<T>::poll` invokes. This usually means the\n   returned future stores the `to_drop` pointer and user is required\n   to guarantee that dropped value doesn't move.\n"
-    },
-    {
-      "path": "rust/library/core/src/future/async_drop.rs",
-      "line": 142,
-      "name": "surface_async_drop_in_place",
-      "declaration": "async unsafe fn surface_async_drop_in_place < T : AsyncDrop + ? Sized > (ptr : * mut T)",
-      "parent": null,
-      "documentation": " Basically calls `AsyncDrop::async_drop` with pointer. Used to simplify\n generation of the code for `async_drop_in_place_raw`"
-    },
-    {
-      "path": "rust/library/core/src/future/async_drop.rs",
-      "line": 151,
-      "name": "surface_drop_in_place",
-      "declaration": "async unsafe fn surface_drop_in_place < T : Drop + ? Sized > (ptr : * mut T)",
-      "parent": null,
-      "documentation": " Basically calls `Drop::drop` with pointer. Used to simplify generation\n of the code for `async_drop_in_place_raw`"
-    },
-    {
-      "path": "rust/library/core/src/future/async_drop.rs",
-      "line": 198,
-      "name": "slice",
-      "declaration": "async unsafe fn slice < T > (s : * mut [T])",
-      "parent": null,
-      "documentation": " Async destructor for arrays and slices."
-    },
-    {
-      "path": "rust/library/core/src/future/async_drop.rs",
-      "line": 221,
-      "name": "defer",
-      "declaration": "async unsafe fn defer < T : ? Sized > (to_drop : * mut T)",
-      "parent": null,
-      "documentation": " Basically a lazy version of `async_drop_in_place`. Returns a future\n that would call `AsyncDrop::async_drop` on a first poll.\n\n # Safety\n\n Same as `async_drop_in_place` except is lazy to avoid creating\n multiple mutable references."
-    },
-    {
-      "path": "rust/library/core/src/future/async_drop.rs",
-      "line": 234,
-      "name": "either",
-      "declaration": "async unsafe fn either < O : IntoFuture < Output = () > , M : IntoFuture < Output = () > , T > (other : O , matched : M , this : * mut T , discr : < T as DiscriminantKind > :: Discriminant ,)",
-      "parent": null,
-      "documentation": " If `T`'s discriminant is equal to the stored one then awaits `M`\n otherwise awaits the `O`.\n\n # Safety\n\n Users should carefully manage the returned future, since it would\n try creating an immutable reference from `this` and get pointee's\n discriminant."
-    },
-    {
-      "path": "rust/library/core/src/hash/sip.rs",
-      "line": 113,
-      "name": "u8to64_le",
-      "declaration": "unsafe fn u8to64_le (buf : & [u8] , start : usize , len : usize) -> u64",
-      "parent": null,
-      "documentation": " Loads a u64 using up to 7 bytes of a byte slice. It looks clumsy but the\n `copy_nonoverlapping` calls that occur (via `load_int_le!`) all have fixed\n sizes and avoid calling `memcpy`, which is good for speed.\n\n Safety: this performs unchecked indexing of `buf` at `start..start+len`, so\n that must be in-bounds."
     },
     {
       "path": "rust/library/core/src/hint.rs",
@@ -515,22 +355,6 @@
       "documentation": " Retrieve the source of an iterator pipeline.\n\n # Safety\n\n Implementations must return the same mutable reference for their lifetime, unless\n replaced by a caller.\n\n Callers may only replace the reference when they stopped iteration and drop the\n iterator pipeline after extracting the source.\n\n This means iterator adapters can rely on the source not changing during\n iteration but they cannot rely on it in their Drop implementations.\n\n Implementing this method means adapters relinquish private-only access to their\n source and can only rely on guarantees made based on method receiver types.\n The lack of restricted access also requires that adapters must uphold the source's\n public API even when they have access to its internals.\n\n Callers in turn must expect the source to be in any state that is consistent with\n its public API since adapters sitting between it and the source have the same\n access. In particular an adapter may have consumed more elements than strictly necessary.\n\n The overall goal of these requirements is to let the consumer of a pipeline use\n * whatever remains in the source after iteration has stopped\n * the memory that has become unused by advancing a consuming iterator\n\n [`next()`]: Iterator::next()"
     },
     {
-      "path": "rust/library/core/src/iter/adapters/step_by.rs",
-      "line": 157,
-      "name": "StepByImpl",
-      "declaration": "trait StepByImpl <I>",
-      "parent": null,
-      "documentation": " Specialization trait to optimize `StepBy<Range<{integer}>>` iteration.\n\n # Safety\n\n Technically this is safe to implement (look ma, no unsafe!), but in reality\n a lot of unsafe code relies on ranges over integers being correct.\n\n For correctness *all* public StepBy methods must be specialized\n because `setup` drastically alters the meaning of the struct fields so that mixing\n different implementations would lead to incorrect results."
-    },
-    {
-      "path": "rust/library/core/src/iter/adapters/step_by.rs",
-      "line": 186,
-      "name": "StepByBackImpl",
-      "declaration": "trait StepByBackImpl <I>",
-      "parent": null,
-      "documentation": " Specialization trait for double-ended iteration.\n\n See also: `StepByImpl`\n\n # Safety\n\n The specializations must be implemented together with `StepByImpl`\n where applicable. I.e. if `StepBy` does support backwards iteration\n for a given iterator and that is specialized for forward iteration then\n it must also be specialized for backwards iteration."
-    },
-    {
       "path": "rust/library/core/src/iter/adapters/zip.rs",
       "line": 524,
       "name": "TrustedRandomAccess",
@@ -545,22 +369,6 @@
       "declaration": "trait TrustedRandomAccessNoCoerce : Sized",
       "parent": null,
       "documentation": " Like [`TrustedRandomAccess`] but without any of the requirements / guarantees around\n coercions to supertypes after `__iterator_get_unchecked` (they aren’t allowed here!), and\n without the requirement that subtypes / supertypes implement `TrustedRandomAccessNoCoerce`.\n\n This trait was created in PR #85874 to fix soundness issue #85873 without performance regressions.\n It is subject to change as we might want to build a more generally useful (for performance\n optimizations) and more sophisticated trait or trait hierarchy that replaces or extends\n [`TrustedRandomAccess`] and `TrustedRandomAccessNoCoerce`."
-    },
-    {
-      "path": "rust/library/core/src/iter/adapters/zip.rs",
-      "line": 606,
-      "name": "try_get_unchecked",
-      "declaration": "unsafe fn try_get_unchecked < I > (it : & mut I , idx : usize) -> I :: Item where I : Iterator ,",
-      "parent": null,
-      "documentation": " Like `Iterator::__iterator_get_unchecked`, but doesn't require the compiler to\n know that `U: TrustedRandomAccess`.\n\n ## Safety\n\n Same requirements calling `get_unchecked` directly."
-    },
-    {
-      "path": "rust/library/core/src/iter/adapters/zip.rs",
-      "line": 624,
-      "name": "try_get_unchecked",
-      "declaration": "unsafe fn try_get_unchecked (& mut self , index : usize) -> Self :: Item",
-      "parent": "SpecTrustedRandomAccess",
-      "documentation": " If `Self: TrustedRandomAccess`, it must be safe to call\n `Iterator::__iterator_get_unchecked(self, index)`."
     },
     {
       "path": "rust/library/core/src/iter/range.rs",
@@ -625,14 +433,6 @@
       "declaration": "trait TrustedStep : Step + Copy",
       "parent": null,
       "documentation": " A type that upholds all invariants of [`Step`].\n\n The invariants of [`Step::steps_between()`] are a superset of the invariants\n of [`TrustedLen`]. As such, [`TrustedLen`] is implemented for all range\n types with the same generic type argument.\n\n # Safety\n\n The implementation of [`Step`] for the given type must guarantee all\n invariants of all methods are upheld. See the [`Step`] trait's documentation\n for details. Consumers are free to rely on the invariants in unsafe code."
-    },
-    {
-      "path": "rust/library/core/src/iter/traits/unchecked_iterator.rs",
-      "line": 8,
-      "name": "next_unchecked",
-      "declaration": "unsafe fn next_unchecked (& mut self) -> Self :: Item",
-      "parent": "UncheckedIterator",
-      "documentation": " Gets the next item from a non-empty iterator.\n\n Because there's always a value to return, that means it can return\n the `Item` type directly, without wrapping it in an `Option`.\n\n # Safety\n\n This can only be called if `size_hint().0 != 0`, guaranteeing that\n there's at least one item available.\n\n Otherwise (aka when `size_hint().1 == Some(0)`), this is UB.\n\n # Note to Implementers\n\n This has a default implementation using [`Option::unwrap_unchecked`].\n That's probably sufficient if your `next` *always* returns `Some`,\n such as for infinite iterators.  In more complicated situations, however,\n sometimes there can still be `insertvalue`/`assume`/`extractvalue`\n instructions remaining in the IR from the `Option` handling, at which\n point you might want to implement this manually instead."
     },
     {
       "path": "rust/library/core/src/marker.rs",
@@ -889,30 +689,6 @@
       "declaration": "trait DerefPure",
       "parent": null,
       "documentation": " Perma-unstable marker trait. Indicates that the type has a well-behaved [`Deref`]\n (and, if applicable, [`DerefMut`]) implementation. This is relied on for soundness\n of deref patterns.\n\n FIXME(deref_patterns): The precise semantics are undecided; the rough idea is that\n successive calls to `deref`/`deref_mut` without intermediate mutation should be\n idempotent, in the sense that they return the same value as far as pattern-matching\n is concerned. Calls to `deref`/`deref_mut` must leave the pointer itself likewise\n unchanged."
-    },
-    {
-      "path": "rust/library/core/src/ops/index_range.rs",
-      "line": 18,
-      "name": "new_unchecked",
-      "declaration": "const unsafe fn new_unchecked (start : usize , end : usize) -> Self",
-      "parent": "IndexRange",
-      "documentation": " # Safety\n - `start <= end`"
-    },
-    {
-      "path": "rust/library/core/src/ops/index_range.rs",
-      "line": 52,
-      "name": "next_unchecked",
-      "declaration": "unsafe fn next_unchecked (& mut self) -> usize",
-      "parent": "IndexRange",
-      "documentation": " # Safety\n - Can only be called when `start < end`, aka when `len > 0`."
-    },
-    {
-      "path": "rust/library/core/src/ops/index_range.rs",
-      "line": 64,
-      "name": "next_back_unchecked",
-      "declaration": "unsafe fn next_back_unchecked (& mut self) -> usize",
-      "parent": "IndexRange",
-      "documentation": " # Safety\n - Can only be called when `start < end`, aka when `len > 0`."
     },
     {
       "path": "rust/library/core/src/option.rs",
@@ -1196,14 +972,6 @@
     },
     {
       "path": "rust/library/core/src/ptr/mod.rs",
-      "line": 1134,
-      "name": "swap_nonoverlapping_simple_untyped",
-      "declaration": "const unsafe fn swap_nonoverlapping_simple_untyped < T > (x : * mut T , y : * mut T , count : usize)",
-      "parent": null,
-      "documentation": " Same behavior and safety conditions as [`swap_nonoverlapping`]\n\n LLVM can vectorize this (at least it can for the power-of-two-sized types\n `swap_nonoverlapping` tries to use) so no need to manually SIMD it."
-    },
-    {
-      "path": "rust/library/core/src/ptr/mod.rs",
       "line": 1170,
       "name": "replace",
       "declaration": "const unsafe fn replace < T > (dst : * mut T , src : T) -> T",
@@ -1257,14 +1025,6 @@
       "declaration": "unsafe fn write_volatile < T > (dst : * mut T , src : T)",
       "parent": null,
       "documentation": " Performs a volatile write of a memory location with the given value without\n reading or dropping the old value.\n\n Volatile operations are intended to act on I/O memory, and are guaranteed\n to not be elided or reordered by the compiler across other volatile\n operations.\n\n `write_volatile` does not drop the contents of `dst`. This is safe, but it\n could leak allocations or resources, so care should be taken not to overwrite\n an object that should be dropped.\n\n Additionally, it does not drop `src`. Semantically, `src` is moved into the\n location pointed to by `dst`.\n\n # Notes\n\n Rust does not currently have a rigorously and formally defined memory model,\n so the precise semantics of what \"volatile\" means here is subject to change\n over time. That being said, the semantics will almost always end up pretty\n similar to [C11's definition of volatile][c11].\n\n The compiler shouldn't change the relative order or number of volatile\n memory operations. However, volatile memory operations on zero-sized types\n (e.g., if a zero-sized type is passed to `write_volatile`) are noops\n and may be ignored.\n\n [c11]: http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * `dst` must be [valid] for writes.\n\n * `dst` must be properly aligned.\n\n Note that even if `T` has size `0`, the pointer must be properly aligned.\n\n [valid]: self#safety\n\n Just like in C, whether an operation is volatile has no bearing whatsoever\n on questions involving concurrent access from multiple threads. Volatile\n accesses behave exactly like non-atomic accesses in that regard. In particular,\n a race between a `write_volatile` and any other operation (reading or writing)\n on the same location is undefined behavior.\n\n # Examples\n\n Basic usage:\n\n ```\n let mut x = 0;\n let y = &mut x as *mut i32;\n let z = 12;\n\n unsafe {\n     std::ptr::write_volatile(y, z);\n     assert_eq!(std::ptr::read_volatile(y), 12);\n }\n ```"
-    },
-    {
-      "path": "rust/library/core/src/ptr/mod.rs",
-      "line": 1832,
-      "name": "align_offset",
-      "declaration": "unsafe fn align_offset < T : Sized > (p : * const T , a : usize) -> usize",
-      "parent": null,
-      "documentation": " Align pointer `p`.\n\n Calculate offset (in terms of elements of `size_of::<T>()` stride) that has to be applied\n to pointer `p` so that pointer `p` would get aligned to `a`.\n\n # Safety\n `a` must be a power of two.\n\n # Notes\n This implementation has been carefully tailored to not panic. It is UB for this to panic.\n The only real change that can be made here is change of `INV_TABLE_MOD_16` and associated\n constants.\n\n If we ever decide to make it possible to call the intrinsic with `a` that is not a\n power-of-two, it will probably be more prudent to just change to a naive implementation rather\n than trying to adapt this to accommodate that change.\n\n Any questions go to @nagisa."
     },
     {
       "path": "rust/library/core/src/ptr/mut_ptr.rs",
@@ -1851,14 +1611,6 @@
       "documentation": " Converts this slice of bytes into a slice of ASCII characters,\n without checking whether they're valid.\n\n # Safety\n\n Every byte in the slice must be in `0..=127`, or else this is UB."
     },
     {
-      "path": "rust/library/core/src/slice/cmp.rs",
-      "line": 186,
-      "name": "UnsignedBytewiseOrd",
-      "declaration": "trait UnsignedBytewiseOrd",
-      "parent": null,
-      "documentation": " Marks that a type should be treated as an unsigned byte for comparisons.\n\n # Safety\n * The type must be readable as an `u8`, meaning it has to have the same\n   layout as `u8` and always be initialized.\n * For every `x` and `y` of this type, `Ord(x, y)` must return the same\n   value as `Ord::cmp(transmute::<_, u8>(x), transmute::<_, u8>(y))`."
-    },
-    {
       "path": "rust/library/core/src/slice/index.rs",
       "line": 155,
       "name": "SliceIndex",
@@ -2003,116 +1755,12 @@
       "documentation": " Forms a mutable slice from a pointer range.\n\n This is the same functionality as [`from_ptr_range`], except that a\n mutable slice is returned.\n\n This function is useful for interacting with foreign interfaces which\n use two pointers to refer to a range of elements in memory, as is\n common in C++.\n\n # Safety\n\n Behavior is undefined if any of the following conditions are violated:\n\n * The `start` pointer of the range must be a non-null, [valid] and properly aligned pointer\n   to the first element of a slice.\n\n * The `end` pointer must be a [valid] and properly aligned pointer to *one past*\n   the last element, such that the offset from the end to the start pointer is\n   the length of the slice.\n\n * The entire memory range of this slice must be contained within a single allocated object!\n   Slices can never span across multiple allocated objects.\n\n * The range must contain `N` consecutive properly initialized values of type `T`.\n\n * The memory referenced by the returned slice must not be accessed through any other pointer\n   (not derived from the return value) for the duration of lifetime `'a`.\n   Both read and write accesses are forbidden.\n\n * The total length of the range must be no larger than `isize::MAX`,\n   and adding that size to `start` must not \"wrap around\" the address space.\n   See the safety documentation of [`pointer::offset`].\n\n Note that a range created from [`slice::as_mut_ptr_range`] fulfills these requirements.\n\n # Panics\n\n This function panics if `T` is a Zero-Sized Type (“ZST”).\n\n # Caveat\n\n The lifetime for the returned slice is inferred from its usage. To\n prevent accidental misuse, it's suggested to tie the lifetime to whichever\n source lifetime is safe in the context, such as by providing a helper\n function taking the lifetime of a host value for the slice, or by explicit\n annotation.\n\n # Examples\n\n ```\n #![feature(slice_from_ptr_range)]\n\n use core::slice;\n\n let mut x = [1, 2, 3];\n let range = x.as_mut_ptr_range();\n\n unsafe {\n     assert_eq!(slice::from_mut_ptr_range(range), &mut [1, 2, 3]);\n }\n ```\n\n [valid]: ptr#safety"
     },
     {
-      "path": "rust/library/core/src/slice/rotate.rs",
-      "line": 6,
-      "name": "ptr_rotate",
-      "declaration": "unsafe fn ptr_rotate < T > (left : usize , mid : * mut T , right : usize)",
-      "parent": null,
-      "documentation": " Rotates the range `[mid-left, mid+right)` such that the element at `mid` becomes the first\n element. Equivalently, rotates the range `left` elements to the left or `right` elements to the\n right.\n\n # Safety\n\n The specified range must be valid for reading and writing."
-    },
-    {
-      "path": "rust/library/core/src/slice/rotate.rs",
-      "line": 39,
-      "name": "ptr_rotate_memmove",
-      "declaration": "unsafe fn ptr_rotate_memmove < T > (left : usize , mid : * mut T , right : usize)",
-      "parent": null,
-      "documentation": " Algorithm 1 is used if `min(left, right)` is small enough to fit onto a stack buffer. The\n `min(left, right)` elements are copied onto the buffer, `memmove` is applied to the others, and\n the ones on the buffer are moved back into the hole on the opposite side of where they\n originated.\n\n # Safety\n\n The specified range must be valid for reading and writing."
-    },
-    {
-      "path": "rust/library/core/src/slice/rotate.rs",
-      "line": 84,
-      "name": "ptr_rotate_gcd",
-      "declaration": "unsafe fn ptr_rotate_gcd < T > (left : usize , mid : * mut T , right : usize)",
-      "parent": null,
-      "documentation": " Algorithm 2 is used for small values of `left + right` or for large `T`. The elements\n are moved into their final positions one at a time starting at `mid - left` and advancing by\n `right` steps modulo `left + right`, such that only one temporary is needed. Eventually, we\n arrive back at `mid - left`. However, if `gcd(left + right, right)` is not 1, the above steps\n skipped over elements. For example:\n ```text\n left = 10, right = 6\n the `^` indicates an element in its final place\n 6 7 8 9 10 11 12 13 14 15 . 0 1 2 3 4 5\n after using one step of the above algorithm (The X will be overwritten at the end of the round,\n and 12 is stored in a temporary):\n X 7 8 9 10 11 6 13 14 15 . 0 1 2 3 4 5\n               ^\n after using another step (now 2 is in the temporary):\n X 7 8 9 10 11 6 13 14 15 . 0 1 12 3 4 5\n               ^                 ^\n after the third step (the steps wrap around, and 8 is in the temporary):\n X 7 2 9 10 11 6 13 14 15 . 0 1 12 3 4 5\n     ^         ^                 ^\n after 7 more steps, the round ends with the temporary 0 getting put in the X:\n 0 7 2 9 4 11 6 13 8 15 . 10 1 12 3 14 5\n ^   ^   ^    ^    ^       ^    ^    ^\n ```\n Fortunately, the number of skipped over elements between finalized elements is always equal, so\n we can just offset our starting position and do more rounds (the total number of rounds is the\n `gcd(left + right, right)` value). The end result is that all elements are finalized once and\n only once.\n\n Algorithm 2 can be vectorized by chunking and performing many rounds at once, but there are too\n few rounds on average until `left + right` is enormous, and the worst case of a single\n round is always there.\n\n # Safety\n\n The specified range must be valid for reading and writing."
-    },
-    {
-      "path": "rust/library/core/src/slice/rotate.rs",
-      "line": 207,
-      "name": "ptr_rotate_swap",
-      "declaration": "unsafe fn ptr_rotate_swap < T > (mut left : usize , mut mid : * mut T , mut right : usize)",
-      "parent": null,
-      "documentation": " Algorithm 3 utilizes repeated swapping of `min(left, right)` elements.\n\n ///\n ```text\n left = 11, right = 4\n [4 5 6 7 8 9 10 11 12 13 14 . 0 1 2 3]\n                  ^  ^  ^  ^   ^ ^ ^ ^ swapping the right most elements with elements to the left\n [4 5 6 7 8 9 10 . 0 1 2 3] 11 12 13 14\n        ^ ^ ^  ^   ^ ^ ^ ^ swapping these\n [4 5 6 . 0 1 2 3] 7 8 9 10 11 12 13 14\n we cannot swap any more, but a smaller rotation problem is left to solve\n ```\n when `left < right` the swapping happens from the left instead.\n\n # Safety\n\n The specified range must be valid for reading and writing."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/shared/pivot.rs",
-      "line": 41,
-      "name": "median3_rec",
-      "declaration": "unsafe fn median3_rec < T , F : FnMut (& T , & T) -> bool > (mut a : * const T , mut b : * const T , mut c : * const T , n : usize , is_less : & mut F ,) -> * const T",
-      "parent": null,
-      "documentation": " Calculates an approximate median of 3 elements from sections a, b, c, or\n recursively from an approximation of each, if they're large enough. By\n dividing the size of each section by 8 when recursing we have logarithmic\n recursion depth and overall sample from f(n) = 3*f(n/8) -> f(n) =\n O(n^(log(3)/log(8))) ~= O(n^0.528) elements.\n\n SAFETY: a, b, c must point to the start of initialized regions of memory of\n at least n elements."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/shared/smallsort.rs",
-      "line": 379,
-      "name": "swap_if_less",
-      "declaration": "unsafe fn swap_if_less < T , F > (v_base : * mut T , a_pos : usize , b_pos : usize , is_less : & mut F) where F : FnMut (& T , & T) -> bool ,",
-      "parent": null,
-      "documentation": " Swap two values in the slice pointed to by `v_base` at the position `a_pos` and `b_pos` if the\n value at position `b_pos` is less than the one at position `a_pos`.\n\n Purposefully not marked `#[inline]`, despite us wanting it to be inlined for integers like\n types. `is_less` could be a huge function and we want to give the compiler an option to\n not inline this function. For the same reasons that this function is very perf critical\n it should be in the same module as the functions that use it."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/shared/smallsort.rs",
-      "line": 538,
-      "name": "insert_tail",
-      "declaration": "unsafe fn insert_tail < T , F : FnMut (& T , & T) -> bool > (begin : * mut T , tail : * mut T , is_less : & mut F)",
-      "parent": null,
-      "documentation": " Sorts range [begin, tail] assuming [begin, tail) is already sorted.\n\n # Safety\n begin < tail and p must be valid and initialized for all begin <= p <= tail."
-    },
-    {
       "path": "rust/library/core/src/slice/sort/shared/smallsort.rs",
       "line": 610,
       "name": "sort4_stable",
       "declaration": "unsafe fn sort4_stable < T , F : FnMut (& T , & T) -> bool > (v_base : * const T , dst : * mut T , is_less : & mut F ,)",
       "parent": null,
       "documentation": " SAFETY: The caller MUST guarantee that `v_base` is valid for 4 reads and\n `dst` is valid for 4 writes. The result will be stored in `dst[0..4]`."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/shared/smallsort.rs",
-      "line": 660,
-      "name": "sort8_stable",
-      "declaration": "unsafe fn sort8_stable < T : FreezeMarker , F : FnMut (& T , & T) -> bool > (v_base : * mut T , dst : * mut T , scratch_base : * mut T , is_less : & mut F ,)",
-      "parent": null,
-      "documentation": " SAFETY: The caller MUST guarantee that `v_base` is valid for 8 reads and\n writes, `scratch_base` and `dst` MUST be valid for 8 writes. The result will\n be stored in `dst[0..8]`."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/shared/smallsort.rs",
-      "line": 748,
-      "name": "bidirectional_merge",
-      "declaration": "unsafe fn bidirectional_merge < T : FreezeMarker , F : FnMut (& T , & T) -> bool > (v : & [T] , dst : * mut T , is_less : & mut F ,)",
-      "parent": null,
-      "documentation": " Merge v assuming v[..len / 2] and v[len / 2..] are sorted.\n\n Original idea for bi-directional merging by Igor van den Hoven (quadsort),\n adapted to only use merge up and down. In contrast to the original\n parity_merge function, it performs 2 writes instead of 4 per iteration.\n\n # Safety\n The caller must guarantee that `dst` is valid for v.len() writes.\n Also `v.as_ptr()` and `dst` must not alias and v.len() must be >= 2.\n\n Note that T must be Freeze, the comparison function is evaluated on outdated\n temporary 'copies' that may not end up in the final array."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/stable/merge.rs",
-      "line": 73,
-      "name": "merge_up",
-      "declaration": "unsafe fn merge_up < F : FnMut (& T , & T) -> bool > (& mut self , mut right : * const T , right_end : * const T , is_less : & mut F ,)",
-      "parent": "MergeState < T >",
-      "documentation": " # Safety\n The caller MUST guarantee that `self` is initialized in a way where `start -> end` is\n the longer sub-slice and so that `dst` can be written to at least the shorter sub-slice\n length times. In addition `start -> end` and `right -> right_end` MUST be valid to be\n read. This function MUST only be called once."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/stable/merge.rs",
-      "line": 103,
-      "name": "merge_down",
-      "declaration": "unsafe fn merge_down < F : FnMut (& T , & T) -> bool > (& mut self , left_end : * const T , right_end : * const T , mut out : * mut T , is_less : & mut F ,)",
-      "parent": "MergeState < T >",
-      "documentation": " # Safety\n The caller MUST guarantee that `self` is initialized in a way where `left_end <- dst` is\n the shorter sub-slice and so that `out` can be written to at least the shorter sub-slice\n length times. In addition `left_end <- dst` and `right_end <- end` MUST be valid to be\n read. This function MUST only be called once."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/stable/quicksort.rs",
-      "line": 198,
-      "name": "new",
-      "declaration": "unsafe fn new (scan : * const T , scratch : * mut T , len : usize) -> Self",
-      "parent": "PartitionState < T >",
-      "documentation": " # Safety\n\n `scan` and `scratch` must point to valid disjoint buffers of length `len`. The\n scan buffer must be initialized."
-    },
-    {
-      "path": "rust/library/core/src/slice/sort/stable/quicksort.rs",
-      "line": 207,
-      "name": "partition_one",
-      "declaration": "unsafe fn partition_one (& mut self , towards_left : bool) -> * mut T",
-      "parent": "PartitionState < T >",
-      "documentation": " Depending on the value of `towards_left` this function will write a value\n to the growing left or right side of the scratch memory. This forms the\n branchless core of the partition.\n\n # Safety\n\n This function may be called at most `len` times. If it is called exactly\n `len` times the scratch buffer then contains a copy of each element from\n the scan buffer exactly once - a permutation, and num_left <= len."
     },
     {
       "path": "rust/library/core/src/str/converts.rs",
@@ -2203,22 +1851,6 @@
       "documentation": " Creates a string slice from another string slice, bypassing safety\n checks.\n\n This is generally not recommended, use with caution! For a safe\n alternative see [`str`] and [`IndexMut`].\n\n [`IndexMut`]: crate::ops::IndexMut\n\n This new slice goes from `begin` to `end`, including `begin` but\n excluding `end`.\n\n To get an immutable string slice instead, see the\n [`slice_unchecked`] method.\n\n [`slice_unchecked`]: str::slice_unchecked\n\n # Safety\n\n Callers of this function are responsible that three preconditions are\n satisfied:\n\n * `begin` must not exceed `end`.\n * `begin` and `end` must be byte positions within the string slice.\n * `begin` and `end` must lie on UTF-8 sequence boundaries."
     },
     {
-      "path": "rust/library/core/src/str/mod.rs",
-      "line": 946,
-      "name": "split_at_unchecked",
-      "declaration": "const unsafe fn split_at_unchecked (& self , mid : usize) -> (& str , & str)",
-      "parent": "str",
-      "documentation": " Divides one string slice into two at an index.\n\n # Safety\n\n The caller must ensure that `mid` is a valid byte offset from the start\n of the string and falls on the boundary of a UTF-8 code point."
-    },
-    {
-      "path": "rust/library/core/src/str/mod.rs",
-      "line": 964,
-      "name": "split_at_mut_unchecked",
-      "declaration": "const unsafe fn split_at_mut_unchecked (& mut self , mid : usize) -> (& mut str , & mut str)",
-      "parent": "str",
-      "documentation": " Divides one string slice into two at an index.\n\n # Safety\n\n The caller must ensure that `mid` is a valid byte offset from the start\n of the string and falls on the boundary of a UTF-8 code point."
-    },
-    {
       "path": "rust/library/core/src/str/pattern.rs",
       "line": 200,
       "name": "Searcher",
@@ -2235,28 +1867,12 @@
       "documentation": " A reverse searcher for a string pattern.\n\n This trait provides methods for searching for non-overlapping\n matches of a pattern starting from the back (right) of a string.\n\n It will be implemented by associated [`Searcher`]\n types of the [`Pattern`] trait if the pattern supports searching\n for it from the back.\n\n The index ranges returned by this trait are not required\n to exactly match those of the forward search in reverse.\n\n For the reason why this trait is marked unsafe, see the\n parent trait [`Searcher`]."
     },
     {
-      "path": "rust/library/core/src/str/pattern.rs",
-      "line": 1901,
-      "name": "small_slice_eq",
-      "declaration": "unsafe fn small_slice_eq (x : & [u8] , y : & [u8]) -> bool",
-      "parent": null,
-      "documentation": " Compares short slices for equality.\n\n It avoids a call to libc's memcmp which is faster on long slices\n due to SIMD optimizations but it incurs a function call overhead.\n\n # Safety\n\n Both slices must have the same length."
-    },
-    {
       "path": "rust/library/core/src/str/validations.rs",
       "line": 27,
       "name": "next_code_point",
       "declaration": "unsafe fn next_code_point < 'a , I : Iterator < Item = & 'a u8 > > (bytes : & mut I) -> Option < u32 >",
       "parent": null,
       "documentation": " Reads the next code point out of a byte iterator (assuming a\n UTF-8-like encoding).\n\n # Safety\n\n `bytes` must produce a valid UTF-8-like (UTF-8 or WTF-8) string"
-    },
-    {
-      "path": "rust/library/core/src/str/validations.rs",
-      "line": 71,
-      "name": "next_code_point_reverse",
-      "declaration": "unsafe fn next_code_point_reverse < 'a , I > (bytes : & mut I) -> Option < u32 > where I : DoubleEndedIterator < Item = & 'a u8 > ,",
-      "parent": null,
-      "documentation": " Reads the last code point out of a byte iterator (assuming a\n UTF-8-like encoding).\n\n # Safety\n\n `bytes` must produce a valid UTF-8-like (UTF-8 or WTF-8) string"
     },
     {
       "path": "rust/library/core/src/sync/atomic.rs",
@@ -2273,54 +1889,6 @@
       "declaration": "const unsafe fn from_ptr < 'a > (ptr : * mut * mut T) -> & 'a AtomicPtr < T >",
       "parent": "AtomicPtr < T >",
       "documentation": " Creates a new `AtomicPtr` from a pointer.\n\n # Examples\n\n ```\n use std::sync::atomic::{self, AtomicPtr};\n\n // Get a pointer to an allocated value\n let ptr: *mut *mut u8 = Box::into_raw(Box::new(std::ptr::null_mut()));\n\n assert!(ptr.cast::<AtomicPtr<u8>>().is_aligned());\n\n {\n     // Create an atomic view of the allocated value\n     let atomic = unsafe { AtomicPtr::from_ptr(ptr) };\n\n     // Use `atomic` for atomic operations, possibly share it with other threads\n     atomic.store(std::ptr::NonNull::dangling().as_ptr(), atomic::Ordering::Relaxed);\n }\n\n // It's ok to non-atomically access the value behind `ptr`,\n // since the reference to the atomic ended its lifetime in the block above\n assert!(!unsafe { *ptr }.is_null());\n\n // Deallocate the value\n unsafe { drop(Box::from_raw(ptr)) }\n ```\n\n # Safety\n\n * `ptr` must be aligned to `align_of::<AtomicPtr<T>>()` (note that on some platforms this\n   can be bigger than `align_of::<*mut T>()`).\n * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.\n * You must adhere to the [Memory model for atomic accesses]. In particular, it is not\n   allowed to mix atomic and non-atomic accesses, or atomic accesses of different sizes,\n   without synchronization.\n\n [valid]: crate::ptr#safety\n [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses"
-    },
-    {
-      "path": "rust/library/core/src/sync/atomic.rs",
-      "line": 3760,
-      "name": "atomic_add",
-      "declaration": "unsafe fn atomic_add < T : Copy > (dst : * mut T , val : T , order : Ordering) -> T",
-      "parent": null,
-      "documentation": " Returns the previous value (like __sync_fetch_and_add)."
-    },
-    {
-      "path": "rust/library/core/src/sync/atomic.rs",
-      "line": 3777,
-      "name": "atomic_sub",
-      "declaration": "unsafe fn atomic_sub < T : Copy > (dst : * mut T , val : T , order : Ordering) -> T",
-      "parent": null,
-      "documentation": " Returns the previous value (like __sync_fetch_and_sub)."
-    },
-    {
-      "path": "rust/library/core/src/sync/atomic.rs",
-      "line": 3928,
-      "name": "atomic_max",
-      "declaration": "unsafe fn atomic_max < T : Copy > (dst : * mut T , val : T , order : Ordering) -> T",
-      "parent": null,
-      "documentation": " returns the max value (signed comparison)"
-    },
-    {
-      "path": "rust/library/core/src/sync/atomic.rs",
-      "line": 3945,
-      "name": "atomic_min",
-      "declaration": "unsafe fn atomic_min < T : Copy > (dst : * mut T , val : T , order : Ordering) -> T",
-      "parent": null,
-      "documentation": " returns the min value (signed comparison)"
-    },
-    {
-      "path": "rust/library/core/src/sync/atomic.rs",
-      "line": 3962,
-      "name": "atomic_umax",
-      "declaration": "unsafe fn atomic_umax < T : Copy > (dst : * mut T , val : T , order : Ordering) -> T",
-      "parent": null,
-      "documentation": " returns the max value (unsigned comparison)"
-    },
-    {
-      "path": "rust/library/core/src/sync/atomic.rs",
-      "line": 3979,
-      "name": "atomic_umin",
-      "declaration": "unsafe fn atomic_umin < T : Copy > (dst : * mut T , val : T , order : Ordering) -> T",
-      "parent": null,
-      "documentation": " returns the min value (unsigned comparison)"
     },
     {
       "path": "rust/library/core/src/task/wake.rs",
@@ -2355,5 +1923,6 @@
       "documentation": " Creates a new `LocalWaker` from [`RawWaker`].\n\n The behavior of the returned `LocalWaker` is undefined if the contract defined\n in [`RawWaker`]'s and [`RawWakerVTable`]'s documentation is not upheld.\n Therefore this method is unsafe."
     }
   ],
-  "requests_directory": "/unsat-rust/eval/rule/core/requests/4cf019cb60f86a6a01e163f6"
+  "requests_directory": "/unsat-rust/eval/rule/core/requests/4cf019cb60f86a6a01e163f6",
+  "source_sha256": "51a83e6e62cf4f49f9855bc653d022405303a3737dad6cbc9bcd513793c9121a"
 }
