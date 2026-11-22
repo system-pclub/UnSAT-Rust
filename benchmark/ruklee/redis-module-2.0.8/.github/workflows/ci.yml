@@ -1,0 +1,87 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  test:
+    name: Build and run the unit tests using the latest rust.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        redis-version:
+          - [6-0, "7.2"]
+          - [6-2, "7.2"]
+          - [7-0, "7.2"]
+          - [7-2, "7.2"]
+        toolchain:
+          - stable
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Checkout redis sources
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          repository: redis/redis
+          ref: ${{ matrix.redis-version[1] }}
+          path: redis
+
+      - name: Install redis
+        run: |
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          cd redis
+          make -j
+          ./src/redis-server --version
+          make install PREFIX=/usr/local
+          redis-server --version
+
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Clang (for bindgen)
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y libclang-dev
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            # Install LLVM which provides libclang
+            brew install llvm
+            # Set environment variables for bindgen to find libclang
+            echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+            echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+          fi
+
+      - name: Install toolchain
+        id: tc
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --no-default-features --features min-redis-compatibility-version-${{ matrix.redis-version[0] }},bindgen-runtime
+
+      - name: Build debug
+        run: cargo build --no-default-features --features min-redis-compatibility-version-${{ matrix.redis-version[0] }},bindgen-runtime
+
+      - name: Build release
+        run: cargo build --release --no-default-features --features min-redis-compatibility-version-${{ matrix.redis-version[0] }},bindgen-runtime
+
+      - name: Test
+        run: cargo test --no-default-features --features min-redis-compatibility-version-${{ matrix.redis-version[0] }},bindgen-runtime
+
+      - name: Doc
+        run: cargo doc --no-default-features --features "all-features-but-xor bindgen/runtime min-redis-compatibility-version-${{ matrix.redis-version[0] }}"

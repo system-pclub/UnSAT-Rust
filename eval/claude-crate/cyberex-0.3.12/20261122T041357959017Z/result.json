@@ -1,0 +1,82 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/void.rs",
+      "function": "delete",
+      "unsafe_api": "Box::from_raw",
+      "requirement": "The pointer must have come from Box::into_raw for a Box<T> of the same type. It must be non-null, properly aligned, and not already freed.",
+      "explanation": "`delete<T>` is a safe pub fn. It passes an arbitrary `*mut c_void` to `Box::from_raw` after casting it to `*mut T`. Nothing checks that the pointer is null, dangling, already freed, or really a Box<T>. Safe callers can cause UB such as a double free or a type mismatch. The function should be `unsafe fn`."
+    },
+    {
+      "file": "/work/src/xffi/sto.rs",
+      "function": "cchar_to_string",
+      "unsafe_api": "CStr::from_ptr",
+      "requirement": "The pointer must point to a valid NUL-terminated C string. The memory must be readable up to and including the NUL, and must not be mutated during the call.",
+      "explanation": "This safe pub fn only checks for null. It then calls `CStr::from_ptr` on any non-null `*const c_char`. A dangling pointer, or a buffer without a NUL terminator, causes an out-of-bounds read. The function should be `unsafe fn`."
+    },
+    {
+      "file": "/work/src/xffi/xtr.rs",
+      "function": "string_to_buffer",
+      "unsafe_api": "std::ptr::copy_nonoverlapping, pointer::add, pointer::write_bytes",
+      "requirement": "`buf` must be valid for writes of `buf_max` bytes and properly aligned. The source and destination must not overlap. `add(len)` must stay inside the same allocation.",
+      "explanation": "This safe pub fn trusts the caller-supplied `buf` and `buf_max`. It only checks for null and zero, so it never verifies that `buf` points to `buf_max` writable bytes. It also never verifies that `buf` does not overlap `s`. A bad pointer or an oversized `buf_max` gives an out-of-bounds write. The same unchecked pointer is passed on by the wrapper `xffi::sto::string_to_buffer`. The function should be `unsafe fn`."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 14,
+        "outputTokens": 3434,
+        "cacheReadInputTokens": 15926,
+        "cacheCreationInputTokens": 21195,
+        "webSearchRequests": 0,
+        "costUSD": 0.0889481,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 600,
+        "cacheCreationEphemeral5mInputTokens": 21195,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 14,
+      "cache_creation_input_tokens": 21195,
+      "cache_read_input_tokens": 15926,
+      "output_tokens": 3434,
+      "output_tokens_details": {
+        "thinking_tokens": 600
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 21195
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1106,
+          "cache_read_input_tokens": 6099,
+          "cache_creation_input_tokens": 16218,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 16218,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.0889481,
+    "duration_ms": 25430,
+    "num_turns": 38
+  }
+}

@@ -1,13 +1,23 @@
 # Safe4U benchmark crates
 
-These crate snapshots are the inputs for the Safe4U experiments in
-`experiments.md`. Build artifacts from the source snapshots were not copied.
+The 32 requested crate snapshots are in `benchmark/safe4u`; exact published
+originals are in `benchmark/original`. The extra pre-existing fast_id_map snapshot
+is retained separately from the requested roster.
 
-All snapshots load and pass `cargo +1.83.0 check --locked` with their default
-features. Compatibility changes are intentionally limited to manifests and
-dependency lockfiles:
+All 32 requested snapshots passed default-feature `cargo check --lib` with Rust
+1.86.0, the compiler in the current Safe4U Dockerfile. Per-crate commands, compiler
+versions, source hashes, resulting dependency locks and logs are under
+`eval/safe4u/<crate>/compile-*/`. The final selected results are indexed in
+`dev/benchmark/compilation-matrix.json`.
 
-- `i_tree-0.9.0`: use Rust edition 2021 instead of edition 2024.
-- `aegis-0.9.12`: use the API-compatible `getrandom` 0.3 line.
-- `revm-interpreter-10.0.3`: lock transitive dependencies to releases whose
-  MSRV and manifest edition are supported by Rust/Cargo 1.83.
+Pre-existing compatibility copies and locks are retained, including the older
+`i_tree` edition adjustment, aegis/getrandom pin, and compatible revm dependency
+lock. New compatibility work replaces azul-css's then-unstable
+`len.is_multiple_of(2)` with the equivalent modulo expression. falcon_capstone's
+system headers are supplied by `docker/safe4u/Dockerfile.benchmark`, which adds
+`libcapstone-dev` to the original Safe4U image.
+
+See `dev/benchmark/compatibility-notes.md` for the complete TASK changes and
+`dev/benchmark/execution-environment.json` for the temporary Docker storage
+recovery used to finish the runs. These are compilation checks, not Safe4U alarm
+or vulnerability results.

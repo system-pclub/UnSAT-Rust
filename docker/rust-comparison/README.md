@@ -1,7 +1,8 @@
 # Rust comparison containers
 
-These containers reproduce seven baseline analyzers, including CULPA, for crates in
-`benchmark/ruklee`.  The original USpec run supplemented only
+These containers reproduce seven baseline analyzers, including CULPA. Pristine
+packages live in `benchmark/original`; compiler-compatible copies live in
+`benchmark/culpa`, `benchmark/ruklee`, and `benchmark/safe4u`.  The original USpec run supplemented only
 `fast-float-0.2.0` and `falcon_capstone-0.5.2`; this copy also accepts the
 additional local crates that are blank in `raudit.xlsx`'s `Comparison` tab.
 `revm` in the spreadsheet maps to `revm-interpreter-10.0.3`.
@@ -16,7 +17,7 @@ The runner discovers crates from `benchmark/ruklee` and copies sources without
 `target` into `.local/rust-comparison/work`.
 It never edits the benchmark source. Each unique `--attempt` preserves the exact
 command, source hashes, image ID, return status, and stdout/stderr under
-`eval/rust-comparison/<crate>/<tool>/<attempt>/`. Existing attempts cannot be
+`eval/<tool>/<crate>/<attempt>/`. Existing attempts cannot be
 overwritten. Nonzero exit codes, timeouts, unsupported features, and missing
 entry points must be reviewed separately from analyzer diagnostics; none imply
 a successful zero-alarm result.
@@ -69,10 +70,10 @@ docker build -f docker/rust-comparison/Dockerfile.culpa \
 python3 docker/rust-comparison/run.py culpa revm-interpreter-10.0.3 --attempt example
 python3 docker/rust-comparison/run-culpa-benchmark.py --attempt benchmark-1 --workers 4
 python3 docker/rust-comparison/summarize-culpa.py \
-  eval/culpa/benchmark-1/runs --output eval/culpa/benchmark-1
+  eval/culpa --attempt benchmark-1 --output .local/culpa-batches/benchmark-1/summary
 ```
 
-The batch uses the current 30 directories in `benchmark/ruklee`, default package
+The batch uses the 32 requested directories in `benchmark/culpa`, default package
 features, locked dependencies, two CPUs and Cargo jobs per container, 12 GiB per
 container, and a 600-second limit. The upstream default check configuration is
 retained. `--culpa-enable-violations` separately enables the optional upstream
@@ -120,7 +121,7 @@ python3 docker/rust-comparison/run-culpa-benchmark.py \
   --attempt compat-reproduction --workers 4 --override-root benchmark/culpa \
   --image uspec-rust-comparison-culpa:compat --env RUST_BACKTRACE=1
 python3 docker/rust-comparison/summarize-culpa.py \
-  eval/culpa/compat-reproduction/runs --output eval/culpa/compat-reproduction/selected
+  eval/culpa --attempt compat-reproduction --output .local/culpa-batches/compat-reproduction/selected
 ```
 
 The batch automatically preserves the existing `ptr_hash` dependency mount and
@@ -136,3 +137,97 @@ python3 -B eval/culpa/compatibility-fix/build_review.py
 The reviewed result is 37 TP, 41 FP, 20 invalid-binding reports and one unresolved
 report. Only TP and FP enter dissertation Table 4.6. These count requirements;
 the 37 TP involve 23 functions, with 15 later sinks of an already-unsafe path.
+
+### Claude CLI
+
+`Dockerfile.claude` installs Claude Code without the Rust toolchain. Set
+`CLAUDE_API_KEY` in the repository `.env` (or environment), then run:
+
+```bash
+./x claude benchmark/rustsec/ruint-1.17.0 \
+  --rule 'The index must be within the slice bounds.' \
+  --target-function 'algorithms::div::reciprocal::reciprocal_mg10' \
+  --unsafe-api 'core::slice::get_unchecked'
+python3 dev/run-benchmark-rustsec-by-claude.py
+```
+
+The wrapper builds the Claude image with Docker cache before running, mounts only
+that crate at `/work:ro`, and forwards the key as `ANTHROPIC_API_KEY` through the
+container environment. `--api-token`, `--model` (default `sonnet`) and `--timeout`
+(default 600 seconds) are also supported. Successful stdout is exactly
+`{"violation": true}` or `{"violation": false}`. CLI failures and malformed
+responses return nonzero; timeouts remove the container.
+
+The benchmark uses the 38 allowlist records with one manually reviewed rule/API
+selection per advisory in `dev/rustsec/claude-cases.json`. The `rule` string is
+exactly that row's original `rule` field from `rules.csv`, without an ID prefix,
+paraphrase, combined rules, or fallback. Selection reasons and source locations
+stay in the result metadata and are not sent to Claude. Cases with no applicable
+CSV rule are recorded as `no_matching_rule` without calling Claude. An original
+reported defect already fixed in the pinned snapshot is recorded separately as
+`reported_defect_not_in_snapshot`. Each matched input pins the original faulty
+API's file, line, source expression and source hash; the API string sent to Claude
+includes the exact location/expression. The CSV API name/path are also checked
+against the reviewed selection. A rule from a different API or another defect in
+the same function is not an eligible substitute. Run with
+`--dry-run` to inspect all inputs without API calls.
+
+It sends no advisory descriptions or known witnesses. Both toodee advisories run
+separately. Results and requests are saved to a fresh
+`eval/rustsec-claude/<timestamp>/` with true/false/no_matching_rule/error/timeout
+counts in `summary.json`. The model and timeout are constants in the script.
+Runs before this input policy was corrected used a generic fallback and must not
+be used as results for the verbatim-CSV experiment.
+These counts are Claude judgments, not confirmed vulnerability detections.
+
+Claude print mode and structured output follow the
+[official CLI documentation](https://code.claude.com/docs/en/headless).
+
+### Functions and structs only
+
+`dev/rustsec/prepare-claude-snippets.py` uses Tree-sitter to extract the selected
+function bodies and required struct declarations from the pinned sources, keeping
+impl/trait headers and cross-function defect context. Install `tree-sitter==0.25.2`
+and `tree-sitter-rust==0.24.0` in a Python environment inside the repository Docker
+image, then run the preparer there. Generated files and a source-span/hash manifest
+are written under `eval/rustsec-claude-snippets/inputs/<timestamp>/`.
+There are 38 `.rs` files, one per advisory (the two toodee advisories are separate).
+These are analysis excerpts, not compilable standalone crates.
+
+Run the comparison on the host using the printed manifest path:
+
+```bash
+python3 dev/run-benchmark-rustsec-by-claude.py \
+  --snippets-manifest eval/rustsec-claude-snippets/inputs/<timestamp>/manifest.json
+```
+
+Only the selected file is mounted as `/work/input.rs`; the original crate, Cargo
+manifest and experiment metadata are not mounted. The rule and verdict prompt
+remain the same, with the source instruction pointing to the file. Rule exclusions
+remain explicit. Results go under `eval/rustsec-claude-snippets/runs/`.
+The standalone `./x claude` entry also accepts an `.rs` file as its first argument.
+
+### Whole-crate Claude mode
+
+```bash
+./x claude benchmark/original/talc-5.0.3 --mode crate \
+  --libraries tools/rust/library --timeout 1800
+```
+
+The image contains copies of `library/core`, `library/std`, and `library/alloc`
+under `/libraries`. `--libraries` selects the local Rust library directory at
+build time. The prompt asks to list the crate's violations of unsafe fn
+requirements. It supplies no rule, target function, advisory or known bug list.
+The crate is mounted read-only at `/work`; Claude can use Read, Glob and Grep.
+The existing callsite mode and its boolean `violation` output remain available.
+
+Results use `eval/claude-crate/<crate-version>/<timestamp>/` and contain the exact
+prompt, source hashes, image ID, raw stdout/stderr and structured `violations`.
+Each finding contains file, function, unsafe API, requirement and explanation.
+`--output` selects a fresh explicit attempt directory; existing attempts cannot
+be overwritten. Errors and timeouts are recorded separately from empty findings.
+Model findings require independent review before being counted as bugs.
+
+New comparison runs use `eval/<tool>/<crate>/<attempt>/`. CULPA batch scheduling
+metadata now lives in `.local/culpa-batches/<attempt>/`; the summarizer can read
+`eval/culpa` recursively. Historical experiment paths above remain unchanged.

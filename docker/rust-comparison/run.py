@@ -29,8 +29,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tool", choices=TOOLS)
     parser.add_argument("crate")
-    parser.add_argument("--benchmark-root", type=Path, default=BENCHMARK_ROOT)
-    parser.add_argument("--output-root", type=Path, default=ROOT / "eval/rust-comparison")
+    parser.add_argument("--benchmark-root", type=Path,
+                        help="Defaults to benchmark/culpa for CULPA, benchmark/ruklee otherwise")
+    parser.add_argument("--output-root", type=Path, default=ROOT / "eval")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--memory", default="12g", help="Docker memory limit")
     parser.add_argument("--cpus", default="4", help="Docker CPU limit")
@@ -51,11 +52,12 @@ def main():
     parser.add_argument("--no-default-features", action="store_true", help="Disable default features in direct analysis")
     parser.add_argument("--checker-entry", help="MirChecker function entry name")
     args = parser.parse_args()
-    source_root = args.benchmark_root.resolve()
+    source_root = (args.benchmark_root or ROOT / "benchmark" /
+                   ("culpa" if args.tool == "culpa" else "ruklee")).resolve()
     if args.crate not in crate_choices(source_root):
         parser.error(f"Unknown crate {args.crate} under {source_root}")
     source = source_root / args.crate
-    output = args.output_root.resolve() / args.crate / args.tool / args.attempt
+    output = args.output_root.resolve() / args.tool / args.crate / args.attempt
     if output.exists():
         parser.error(f"Output already exists: {output}; use a new --attempt")
     output.mkdir(parents=True)

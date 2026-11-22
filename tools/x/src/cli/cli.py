@@ -421,6 +421,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--results-json",
         help="Matrix result JSON path when verifying multiple callsites/rules (default: .local/verify/<crate>/full-matrix-results.json).",
     )
+    verify_parser.add_argument('--result-format', choices=('native', 'claude'), default='native',
+                               help='Per-pair output format; claude retains native-result.json evidence.')
     verify_parser.add_argument(
         "--logs-dir",
         help="Matrix log directory when verifying multiple callsites/rules (default: .local/verify/<crate>/full-matrix-logs).",

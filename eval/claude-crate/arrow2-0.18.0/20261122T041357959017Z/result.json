@@ -1,0 +1,75 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/array/specification.rs",
+      "function": "check_indexes_unchecked",
+      "unsafe_api": "DictionaryKey::as_usize / the in-bounds requirement of Utf8Array::value_unchecked and DictValue::get_unchecked, which DictionaryArray relies on (key < values.len())",
+      "requirement": "Every dictionary key must be `< values.len()`. The `DictionaryArray` safety invariant says that `unchecked` calls on the values are then sound.",
+      "explanation": "The validation uses `k.as_usize() > len` where it must reject `>= len`. A key equal to `values.len()` passes `DictionaryArray::try_new` for key types that always fit `usize` (u8, u16, u32, u64). `DictionaryValuesIterTyped::next` and `next_back` then call `key.as_usize()` and `self.values.get_unchecked(idx)`, which reaches `Utf8Array::value_unchecked(idx)` with `idx == len`. That breaks the `i < self.len` precondition and reads out of bounds. The safe `check_indexes` function uses `>=`, so the two checks disagree."
+    },
+    {
+      "file": "/work/src/array/dictionary/mod.rs",
+      "function": "DictionaryArray::iter_typed",
+      "unsafe_api": "DictionaryValuesIterTyped::new, which leads to DictionaryKey::as_usize and DictValue::get_unchecked",
+      "requirement": "`DictionaryKey::as_usize` requires the caller to have checked that the key fits in `usize`. `DictValue::get_unchecked` requires `item` to be in bounds.",
+      "explanation": "`iter_typed` builds the unchecked iterator without any checks. `values_iter_typed` at least asserts `keys.null_count() == 0`, but `iter_typed` does not. `DictionaryArray::try_new` skips key validation when every key is null (`keys.null_count() == keys.len()`). Null slots can then hold arbitrary keys, such as negative `i8` values or values that are too large. The iterator's `next` calls `key.as_usize()` on every slot, including null slots. That hits `unreachable_unchecked()`, or passes an out-of-range index to `get_unchecked`."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 26,
+        "outputTokens": 8333,
+        "cacheReadInputTokens": 826765,
+        "cacheCreationInputTokens": 169363,
+        "webSearchRequests": 0,
+        "costUSD": 0.589466,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 4594,
+        "cacheCreationEphemeral5mInputTokens": 169363,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 26,
+      "cache_creation_input_tokens": 169363,
+      "cache_read_input_tokens": 826765,
+      "output_tokens": 8333,
+      "output_tokens_details": {
+        "thinking_tokens": 4594
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 169363
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1099,
+          "cache_read_input_tokens": 158145,
+          "cache_creation_input_tokens": 12340,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 12340,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.589466,
+    "duration_ms": 69863,
+    "num_turns": 46
+  }
+}

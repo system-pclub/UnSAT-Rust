@@ -1,0 +1,68 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/rank_select/select.rs",
+      "function": "select64",
+      "unsafe_api": "core::slice::<impl [T]>::get_unchecked (SELECT_U8.get_unchecked)",
+      "requirement": "The index passed to `get_unchecked` must be in bounds (< 2048 for SELECT_U8). Calling it with an out-of-bounds index is undefined behavior.",
+      "explanation": "This is the fallback path, used when the target lacks BMI2, which is the default build. `select64` is a safe `pub fn`, but it never checks that `rank < n.count_ones()`. The index is `((n >> place) & 0xFF) | (byte_rank << 8)`. If `rank` is at least the popcount of `n`, `byte_rank` is wrong, and the index can reach 2048 or more. It can also be large because the subtraction `rank.0 - ...` is not checked. `get_unchecked` then reads past the end of the 2048-element table, which is UB reachable from safe code, for example `select64(0, 200)`. The crate's own callers pass valid ranks. The public function itself has no precondition check and is not marked `unsafe`."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 12,
+        "outputTokens": 4979,
+        "cacheReadInputTokens": 44623,
+        "cacheCreationInputTokens": 62112,
+        "webSearchRequests": 0,
+        "costUSD": 0.20955629999999997,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 4144,
+        "cacheCreationEphemeral5mInputTokens": 62112,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 12,
+      "cache_creation_input_tokens": 62112,
+      "cache_read_input_tokens": 44623,
+      "output_tokens": 4979,
+      "output_tokens_details": {
+        "thinking_tokens": 4144
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 62112
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 3830,
+          "cache_read_input_tokens": 38141,
+          "cache_creation_input_tokens": 25093,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 25093,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.20955629999999997,
+    "duration_ms": 42788,
+    "num_turns": 9
+  }
+}

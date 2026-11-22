@@ -1,0 +1,89 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/macros.rs",
+      "function": "impl_vec_mut::try_reserve (via push/insert/reserve/append)",
+      "unsafe_api": "alloc::alloc::realloc",
+      "requirement": "`ptr` must be currently allocated via the global allocator with exactly the given `layout`. The layout must be the one used at allocation, and its size must be correct.",
+      "explanation": "`try_reserve` calls `realloc(self.ptr, current_layout(), ..)` whenever `cap != 0`. It never checks `destructor`. For a vec made with `from_const_slice`, such as `AzString::from_const_str` or any `&'static` data, `ptr` points into static memory, not the allocator. For a `StringArena` string (`External` destructor), `ptr` points into an arena chunk and `cap` holds an `Arc` pointer value. Calling the safe `push`, `insert`, `extend` or `append` on such a `U8Vec` reallocates memory the allocator doesn't own, with a bogus layout. That is undefined behavior."
+    },
+    {
+      "file": "/work/src/macros.rs",
+      "function": "impl_vec_mut::current_layout",
+      "unsafe_api": "core::alloc::Layout::from_size_align_unchecked",
+      "requirement": "`size`, rounded up to a multiple of `align`, must not overflow `isize`, and `align` must be a non-zero power of two.",
+      "explanation": "`size_of::<T>() * self.cap` is computed unchecked, and `cap` is not trusted. For arena-backed vecs, `cap` is an `Arc` pointer cast to `usize`. For externally supplied vecs, `cap` is arbitrary. The product can overflow or exceed `isize::MAX`, so the unchecked layout is invalid."
+    },
+    {
+      "file": "/work/src/macros.rs",
+      "function": "impl_vec_mut::as_mut (AsMut<[T]>)",
+      "unsafe_api": "core::slice::from_raw_parts_mut",
+      "requirement": "The data must be valid for reads and writes of `len * size_of::<T>()` bytes. The pointer must be non-null and aligned. The memory must not be shared or immutable, and no other reference may alias it.",
+      "explanation": "`as_mut` casts `*const T` to `*mut T` without checking `destructor` or null. For `NoDestructor` vecs built from `&'static [T]`, this creates a mutable slice over immutable static memory. For `External` vecs, such as arena strings, it creates a mutable slice over shared arena memory that other `AzString` views may alias."
+    },
+    {
+      "file": "/work/src/corety.rs",
+      "function": "AzString::copy_from_bytes / U8Vec::copy_from_bytes",
+      "unsafe_api": "core::slice::from_raw_parts / pointer::add",
+      "requirement": "`ptr.add(start)` must stay in bounds of the same allocation. The memory must be valid for reads of `len` bytes. `start + len` must not overflow.",
+      "explanation": "These are safe `pub fn`s that take a raw pointer and call `ptr.add(start)` and `from_raw_parts` on it. The validity requirements are only documented as a 'safety contract'. The overflow check is only a `debug_assert!`. A safe caller can pass an arbitrary pointer, or overflowing `start` and `len`, in release builds and cause undefined behavior. The functions should be `unsafe fn`. The `unsafe fn` `from_c_str` calls `AzString::copy_from_bytes` and so inherits the problem."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 14,
+        "outputTokens": 3237,
+        "cacheReadInputTokens": 95010,
+        "cacheCreationInputTokens": 55217,
+        "webSearchRequests": 0,
+        "costUSD": 0.1799415,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 1562,
+        "cacheCreationEphemeral5mInputTokens": 55217,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 14,
+      "cache_creation_input_tokens": 55217,
+      "cache_read_input_tokens": 95010,
+      "output_tokens": 3237,
+      "output_tokens_details": {
+        "thinking_tokens": 1562
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 55217
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1805,
+          "cache_read_input_tokens": 49680,
+          "cache_creation_input_tokens": 6659,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 6659,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.1799415,
+    "duration_ms": 29828,
+    "num_turns": 9
+  }
+}

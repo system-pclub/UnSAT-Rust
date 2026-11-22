@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 RAW_PTR_DEREF_RULE = "__raw_ptr_deref__"
 RAW_PTR_DEREF_CALLEE = "core::ptr::__raw_ptr_deref__"
 REACHABILITY_ONLY_RULES = {"rule-89", "rule-192"}
+_PAIR_RESULT_FORMAT = "native"
 
 
 def _klee_no_stats_args() -> list[str]:
@@ -1581,9 +1582,7 @@ def _write_pair_result(
         "rerun_has_certain_symbol": bool(rerun.get("has_certain_symbol")),
         "full_rerun_passed": bool(rerun.get("full_rerun_passed")),
     }
-    _atomic_write_json(
-        path,
-        {
+    document = {
             "schema_version": 2,
             "updated_at": _utc_now(),
             "crate": str(crate_dir),
@@ -1597,8 +1596,12 @@ def _write_pair_result(
                 "llm": llm or {},
                 "rerun": rerun,
             },
-        },
-    )
+        }
+    native_path = path.with_name('native-result.json') if _PAIR_RESULT_FORMAT == 'claude' else path
+    _atomic_write_json(native_path, document)
+    if _PAIR_RESULT_FORMAT == 'claude':
+        from ruklee_results import pair_report
+        _atomic_write_json(path, pair_report(document, native_path=native_path))
 
 
 def _tail_text(text: str, *, max_chars: int = 12000) -> str:
@@ -3281,6 +3284,7 @@ def _run_verify_matrix_locked(
             flush=True,
         )
         try:
+            testcase_started = time.monotonic()
             rerun_result = _run_llm_testcase_pipeline(
                 args=args,
                 repo_root=repo_root,
@@ -3331,7 +3335,8 @@ def _run_verify_matrix_locked(
                     "certainty_chain": row.get("certainty_chain"),
                     "has_certain_symbol": row.get("has_certain_symbol"),
                 },
-                llm=_stage_paths_from_pipeline(pipeline_state if isinstance(pipeline_state, dict) else {}),
+                llm={**_stage_paths_from_pipeline(pipeline_state if isinstance(pipeline_state, dict) else {}),
+                     'duration_sec': round(time.monotonic() - testcase_started, 3)},
                 rerun={
                     **rerun_result,
                     **_rerun_paths_for_result(artifact_dir, rerun_result),
@@ -3388,6 +3393,8 @@ def _run_verify_matrix_locked(
 
 
 def run(args: argparse.Namespace) -> int:
+    global _PAIR_RESULT_FORMAT
+    _PAIR_RESULT_FORMAT = getattr(args, 'result_format', 'native')
     repo_root = _find_repo_root()
     if args.compose_loop_bound < 0:
         raise RuntimeError("--compose-loop-bound must be non-negative")

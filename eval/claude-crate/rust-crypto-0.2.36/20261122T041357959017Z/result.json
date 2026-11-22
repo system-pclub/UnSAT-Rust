@@ -1,0 +1,124 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "write_u64v_le",
+      "unsafe_api": "slice::get_unchecked_mut / get_unchecked",
+      "requirement": "The index must be in bounds. Calling get_unchecked(0) on an empty slice is undefined behavior, even if the reference is never dereferenced.",
+      "explanation": "The only check is assert!(dst.len() == 8 * input.len()). If both slices are empty, that check passes and get_unchecked_mut(0) and get_unchecked(0) are called on empty slices. This is an out-of-bounds index."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "write_u32v_le",
+      "unsafe_api": "slice::get_unchecked_mut / get_unchecked",
+      "requirement": "The index must be in bounds (index 0 requires len > 0).",
+      "explanation": "Empty dst and input pass the length assertion. Both then call get_unchecked(_mut)(0) on empty slices."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "read_u64v_be",
+      "unsafe_api": "slice::get_unchecked_mut / get_unchecked; mem::uninitialized",
+      "requirement": "get_unchecked requires an in-bounds index. mem::uninitialized must not be used to produce a value of a type that doesn't allow uninitialized bytes, such as an integer.",
+      "explanation": "Empty dst and input pass the assertion, and get_unchecked(0) is then called on empty slices. Separately, `let mut tmp: u64 = mem::uninitialized()` creates an uninitialized integer, which is instant UB."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "read_u64v_le",
+      "unsafe_api": "slice::get_unchecked_mut / get_unchecked; mem::uninitialized",
+      "requirement": "The index must be in bounds. mem::uninitialized must not be used for integer types.",
+      "explanation": "This has the same empty-slice get_unchecked(0) problem as read_u64v_be. It also calls mem::uninitialized::<u64>()."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "read_u32v_be",
+      "unsafe_api": "slice::get_unchecked_mut / get_unchecked; mem::uninitialized",
+      "requirement": "The index must be in bounds. mem::uninitialized must not be used for integer types.",
+      "explanation": "Empty slices pass the assertion and reach get_unchecked(0). It also calls mem::uninitialized::<u32>()."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "read_u32v_le",
+      "unsafe_api": "slice::get_unchecked_mut / get_unchecked; mem::uninitialized",
+      "requirement": "The index must be in bounds. mem::uninitialized must not be used for integer types.",
+      "explanation": "Empty slices pass the assertion and reach get_unchecked(0). It also calls mem::uninitialized::<u32>()."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "read_u32_le",
+      "unsafe_api": "mem::uninitialized",
+      "requirement": "mem::uninitialized must not be used to create a value of a type, such as u32, that can't hold uninitialized bytes.",
+      "explanation": "`let mut tmp: u32 = mem::uninitialized()` creates an uninitialized integer. That is undefined behavior even though it is later overwritten with copy_nonoverlapping."
+    },
+    {
+      "file": "/work/src/cryptoutil.rs",
+      "function": "read_u32_be",
+      "unsafe_api": "mem::uninitialized",
+      "requirement": "mem::uninitialized must not be used to create a value of a type, such as u32, that can't hold uninitialized bytes.",
+      "explanation": "`let mut tmp: u32 = mem::uninitialized()` creates an uninitialized integer, which is undefined behavior."
+    },
+    {
+      "file": "/work/src/util.rs",
+      "function": "fixed_time_eq",
+      "unsafe_api": "slice::get_unchecked",
+      "requirement": "The index must be in bounds. Index 0 on an empty slice is out of bounds.",
+      "explanation": "If lhs and rhs are both empty, their lengths are equal and the code calls lhs.get_unchecked(0) and rhs.get_unchecked(0) on empty slices. This is undefined behavior."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 2133,
+        "cacheReadInputTokens": 5379,
+        "cacheCreationInputTokens": 14285,
+        "webSearchRequests": 0,
+        "costUSD": 0.0576004,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 268,
+        "cacheCreationEphemeral5mInputTokens": 14285,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 14285,
+      "cache_read_input_tokens": 5379,
+      "output_tokens": 2133,
+      "output_tokens_details": {
+        "thinking_tokens": 268
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 14285
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1740,
+          "cache_read_input_tokens": 2096,
+          "cache_creation_input_tokens": 13311,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 13311,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.0576004,
+    "duration_ms": 17295,
+    "num_turns": 8
+  }
+}

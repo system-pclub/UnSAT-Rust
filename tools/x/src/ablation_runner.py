@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Iterable
 
 
@@ -45,8 +46,7 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--crate",
         action="append",
-        choices=[name for name, _ in TOP10_CRATES],
-        help="Run only this workbook crate (repeatable; default: all ten).",
+        help="Select a short name or roster directory (repeatable; default: all input crates).",
     )
     parser.add_argument(
         "--results-root",
@@ -55,6 +55,14 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         help="Root for variant outputs (default: ablation/results).",
     )
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--roster", type=Path, help="JSON source roster with directory entries; otherwise use the legacy top ten.")
+    parser.add_argument("--rule-dsl", type=Path, help="Explicit baseline catalog; never changes the root catalog.")
+    parser.add_argument("--studied-rules", type=Path, help="Explicit sync allowlist, including a comment-only generated allowlist.")
+    parser.add_argument("--metadata-root", type=Path, help="Scheduling metadata outside eval (required for roster runs).")
+    parser.add_argument("--setting-name", help="Output setting directory name (default: variant name).")
+    parser.add_argument("--ablation-level", choices=("a", "b", "c", "full"), default="full")
+    parser.add_argument('--result-format', choices=('native', 'claude'), default='native')
+    parser.add_argument("--package-scope", choices=("root", "workbook"), help="Default: root for roster runs, workbook subpackages/features for legacy runs.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout-sec", type=int)
     parser.add_argument("--model", default="gpt-5.4-mini")
@@ -72,13 +80,73 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def selected_crates(names: list[str] | None) -> list[tuple[str, str]]:
+def selected_crates(names: list[str] | None, roster: Path | None = None) -> list[tuple[str, str]]:
+    rows = list(TOP10_CRATES)
+    if roster is not None:
+        document = json.loads(roster.read_text(encoding="utf-8"))
+        directories = [entry["directory"] for entry in document]
+        if len(directories) != len(set(directories)):
+            raise RuntimeError("duplicate crate directories in roster")
+        if any(not isinstance(name, str) or Path(name).name != name or name in {".", ".."} for name in directories):
+            raise RuntimeError("roster directories must be immediate crate directory names")
+        rows = [(directory, directory) for directory in directories]
     wanted = set(names or [])
-    return [row for row in TOP10_CRATES if not wanted or row[0] in wanted]
+    unknown = wanted - {name for row in rows for name in row}
+    if unknown:
+        raise RuntimeError(f"unknown input crates: {sorted(unknown)}")
+    return [row for row in rows if not wanted or wanted.intersection(row)]
+
+
+def _selected(args: argparse.Namespace) -> list[tuple[str, str]]:
+    roster = getattr(args, "roster", None)
+    return selected_crates(args.crate, _resolve(repo_root(), roster) if roster else None)
+
+
+def _workbook_scope(args: argparse.Namespace) -> bool:
+    return (getattr(args, "package_scope", None) or ("root" if getattr(args, "roster", None) else "workbook")) == "workbook"
+
+
+def _crate_directory(root: Path, args: argparse.Namespace, short: str, dirname: str) -> Path:
+    path = root / "benchmark/ruklee" / dirname
+    legacy_short = next((name for name, directory in TOP10_CRATES if directory == dirname), short)
+    return path / CRATE_SUBDIRS[legacy_short] if _workbook_scope(args) and legacy_short in CRATE_SUBDIRS else path
+
+
+def _output_root(root: Path, args: argparse.Namespace, variant: str) -> Path:
+    setting = getattr(args, "setting_name", None) or variant
+    if Path(setting).name != setting or setting in {".", ".."}:
+        raise RuntimeError("setting name must be one directory name")
+    if getattr(args, "roster", None) and not getattr(args, "metadata_root", None):
+        raise RuntimeError("roster runs require --metadata-root outside eval")
+    if getattr(args, "metadata_root", None):
+        metadata = _resolve(root, args.metadata_root).resolve()
+        if metadata == (root / "eval").resolve() or (root / "eval").resolve() in metadata.parents:
+            raise RuntimeError("scheduling metadata must be outside eval")
+    return _resolve(root, args.results_root) / setting
+
+
+def _baseline_path(root: Path, args: argparse.Namespace) -> Path:
+    return _resolve(root, getattr(args, "rule_dsl", None) or Path("ptr_rule_dsl.json"))
+
+
+def _preparation_root(root: Path, args: argparse.Namespace, variant: str) -> Path:
+    output = _output_root(root, args, variant)
+    if getattr(args, "metadata_root", None):
+        return _resolve(root, args.metadata_root) / output.name
+    return output
 
 
 def _resolve(root: Path, path: Path) -> Path:
     return path if path.is_absolute() else root / path
+
+
+def _container_path(root: Path, path: Path) -> str:
+    """x mounts the checkout at /unsat-rust, not at its host absolute path."""
+    try:
+        relative = _resolve(root, path).resolve().relative_to(root.resolve())
+    except ValueError as exc:
+        raise RuntimeError(f"x input/output must be inside the mounted checkout: {path}") from exc
+    return str(Path("/unsat-rust") / relative)
 
 
 def run_verify_variant(
@@ -89,46 +157,51 @@ def run_verify_variant(
     rule_dsl: Path | None = None,
 ) -> int:
     root = repo_root()
-    output_root = _resolve(root, args.results_root) / variant
+    output_root = _output_root(root, args, variant)
     output_root.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, Any] = {
         "variant": variant,
-        "crates": [short for short, _ in selected_crates(args.crate)],
+        "crates": [short for short, _ in _selected(args)],
+        "package_scope": "workbook" if _workbook_scope(args) else "root",
+        "rule_dsl": str(rule_dsl or _baseline_path(root, args)),
         "commands": [],
     }
     failed = False
-    for short_name, crate_dirname in selected_crates(args.crate):
-        crate_dir = root / "benchmark" / "ruklee" / crate_dirname
-        subdir = CRATE_SUBDIRS.get(short_name)
-        if subdir:
-            crate_dir = crate_dir / subdir
+    for short_name, crate_dirname in _selected(args):
+        crate_dir = _crate_directory(root, args, short_name, crate_dirname)
         if not (crate_dir / "Cargo.toml").is_file():
             raise RuntimeError(f"benchmark crate is missing: {crate_dir}")
         crate_output = output_root / crate_dirname
         command = [
             str(root / "x"),
             "verify",
-            str(crate_dir),
+            _container_path(root, crate_dir),
             "--results-json",
-            str(crate_output / "full-matrix-results.json"),
+            _container_path(root, crate_output / "full-matrix-results.json"),
             "--logs-dir",
-            str(crate_output / "full-matrix-logs"),
+            _container_path(root, crate_output if getattr(args, "roster", None) else crate_output / "full-matrix-logs"),
             "--ir-output-dir",
-            str(crate_output / "ir"),
+            _container_path(root, crate_output / "ir"),
             "--model",
             args.model,
             "--rustc",
-            str(args.rustc),
+            _container_path(root, args.rustc),
             "--klee-bin",
-            str(args.klee_bin),
+            _container_path(root, args.klee_bin),
         ]
+        command.extend(["--ablation-level", getattr(args, "ablation_level", "full")])
+        command.extend(['--result-format', getattr(args, 'result_format', 'native')])
+        rule_dsl = rule_dsl or getattr(args, "rule_dsl", None)
         if rule_dsl is not None:
-            command.extend(["--rule-dsl", str(rule_dsl)])
+            command.extend(["--rule-dsl", _container_path(root, rule_dsl)])
+        if getattr(args, "studied_rules", None):
+            command.extend(["--studied-rules", _container_path(root, args.studied_rules)])
         if args.resume:
             command.append("--resume")
         if args.timeout_sec is not None:
             command.extend(["--timeout-sec", str(args.timeout_sec)])
-        features = CRATE_FEATURES.get(short_name, ())
+        legacy_short = next((name for name, directory in TOP10_CRATES if directory == crate_dirname), short_name)
+        features = CRATE_FEATURES.get(legacy_short, ()) if _workbook_scope(args) else ()
         if features:
             command.extend(["--features", ",".join(features)])
         command.extend(extra_verify_args)
@@ -141,7 +214,18 @@ def run_verify_variant(
         cargo_bin = root / "tools/rust/build/x86_64-unknown-linux-gnu/stage0/bin"
         if cargo_bin.is_dir():
             env["PATH"] = f"{cargo_bin}{os.pathsep}{env.get('PATH', '')}"
+        build = ["docker", "build", "--build-arg", f"USER_ID={os.getuid()}", "--build-arg", f"GROUP_ID={os.getgid()}", "-t", "unsat-rust:local", "."]
+        if sys.platform == "darwin":
+            build[2:2] = ["--platform", "linux/amd64"]
+        subprocess.run(build, cwd=root, check=True)
+        started = time.monotonic()
         result = subprocess.run(command, cwd=root, env=env, check=False)
+        if getattr(args, 'result_format', 'native') == 'claude':
+            from ruklee_results import finish_crate
+            finish_crate(crate_output, setting=output_root.name.removeprefix('ruklee-'),
+                         crate=crate_dirname, catalog=_baseline_path(root, args), returncode=result.returncode,
+                         duration_sec=time.monotonic() - started,
+                         metadata=root / 'crates' / f'{crate_dir.name}.json')
         if result.returncode != 0:
             failed = True
             print(
@@ -150,7 +234,9 @@ def run_verify_variant(
                 file=sys.stderr,
                 flush=True,
             )
-    (output_root / "run-manifest.json").write_text(
+    manifest_root = _preparation_root(root, args, variant)
+    manifest_root.mkdir(parents=True, exist_ok=True)
+    (manifest_root / "run-manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
@@ -165,9 +251,9 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _report_for_crate(
-    root: Path, short_name: str, crate_dirname: str
+    root: Path, short_name: str, crate_dirname: str, args: argparse.Namespace | None = None
 ) -> dict[str, Any]:
-    metadata_name = CRATE_SUBDIRS.get(short_name, crate_dirname)
+    metadata_name = _crate_directory(root, args, short_name, crate_dirname).name if args is not None else CRATE_SUBDIRS.get(short_name, crate_dirname)
     document = _load_json(root / "crates" / f"{metadata_name}.json")
     report = document.get("report")
     if not isinstance(report, dict):
@@ -238,7 +324,7 @@ def _parse_json_response(text: str) -> Any:
 
 def prepare_without_rule_extraction(args: argparse.Namespace) -> Path:
     root = repo_root()
-    output_root = _resolve(root, args.results_root) / "without-rule-extraction"
+    output_root = _preparation_root(root, args, "without-rule-extraction")
     output_root.mkdir(parents=True, exist_ok=True)
     output_path = output_root / "direct-document-rules.json"
     existing: dict[str, Any] = {
@@ -258,8 +344,8 @@ def prepare_without_rule_extraction(args: argparse.Namespace) -> Path:
         raise RuntimeError(f"invalid ablation metadata in {output_path}")
 
     api_locations: set[tuple[str, int, str]] = set()
-    for short_name, crate_dirname in selected_crates(args.crate):
-        for target in _report_for_crate(root, short_name, crate_dirname).get("targets", []):
+    for short_name, crate_dirname in _selected(args):
+        for target in _report_for_crate(root, short_name, crate_dirname, args).get("targets", []):
             callee = target.get("callee") if isinstance(target, dict) else None
             if not isinstance(callee, dict):
                 continue
@@ -509,7 +595,7 @@ def _smtlib_selector_rule(
 
 def prepare_without_rule_translation(args: argparse.Namespace) -> Path:
     root = repo_root()
-    output_root = _resolve(root, args.results_root) / "without-rule-translation"
+    output_root = _preparation_root(root, args, "without-rule-translation")
     output_root.mkdir(parents=True, exist_ok=True)
     output_path = output_root / "smtlib-selector-rules.json"
     existing: dict[str, Any] = {
@@ -529,15 +615,15 @@ def prepare_without_rule_translation(args: argparse.Namespace) -> Path:
     if not isinstance(rules, dict) or not isinstance(processed_rules, list) or not isinstance(rejected, list):
         raise RuntimeError(f"invalid rule-translation ablation metadata in {output_path}")
 
-    shared = _load_json(root / "ptr_rule_dsl.json")
+    shared = _load_json(_baseline_path(root, args))
     shared_rules = shared.get("rules", {})
     if not isinstance(shared_rules, dict):
         raise RuntimeError("ptr_rule_dsl.json must contain a rules object")
-    by_api = _rule_index(root)
-    by_name = _rule_name_index(root)
+    by_api = _rule_index(root, _baseline_path(root, args))
+    by_name = _rule_name_index(root, _baseline_path(root, args))
     needed: dict[str, tuple[dict[str, Any], str, int, str]] = {}
-    for short_name, crate_dirname in selected_crates(args.crate):
-        for target in _report_for_crate(root, short_name, crate_dirname).get("targets", []):
+    for short_name, crate_dirname in _selected(args):
+        for target in _report_for_crate(root, short_name, crate_dirname, args).get("targets", []):
             callee = target.get("callee") if isinstance(target, dict) else None
             if not isinstance(callee, dict):
                 continue
@@ -695,8 +781,8 @@ Available selector operators:
     return output_path
 
 
-def _rule_index(root: Path) -> dict[tuple[str, int], list[tuple[str, dict[str, Any]]]]:
-    document = _load_json(root / "ptr_rule_dsl.json")
+def _rule_index(root: Path, catalog: Path | None = None) -> dict[tuple[str, int], list[tuple[str, dict[str, Any]]]]:
+    document = _load_json(catalog or root / "ptr_rule_dsl.json")
     raw_rules = document.get("rules", {})
     result: dict[tuple[str, int], list[tuple[str, dict[str, Any]]]] = {}
     if not isinstance(raw_rules, dict):
@@ -735,9 +821,9 @@ def _unsafe_function_name(value: object) -> str | None:
 
 
 def _rule_name_index(
-    root: Path,
+    root: Path, catalog: Path | None = None,
 ) -> dict[tuple[str, str], list[tuple[str, dict[str, Any]]]]:
-    document = _load_json(root / "ptr_rule_dsl.json")
+    document = _load_json(catalog or root / "ptr_rule_dsl.json")
     raw_rules = document.get("rules", {})
     result: dict[tuple[str, str], list[tuple[str, dict[str, Any]]]] = {}
     if not isinstance(raw_rules, dict):
@@ -856,10 +942,10 @@ def _related_code(crate_dir: Path, report: dict[str, Any], target: dict[str, Any
 
 def run_without_symbolic_execution(args: argparse.Namespace) -> int:
     root = repo_root()
-    output_root = _resolve(root, args.results_root) / "without-symbolic-execution"
+    output_root = _output_root(root, args, "without-symbolic-execution")
     output_root.mkdir(parents=True, exist_ok=True)
-    by_api = _rule_index(root)
-    by_name = _rule_name_index(root)
+    by_api = _rule_index(root, _baseline_path(root, args))
+    by_name = _rule_name_index(root, _baseline_path(root, args))
     if args.dry_run:
         client = None
     else:
@@ -867,12 +953,9 @@ def run_without_symbolic_execution(args: argparse.Namespace) -> int:
 
         client = OpenAILLM(model=args.model)
     failed = False
-    for short_name, crate_dirname in selected_crates(args.crate):
-        report = _report_for_crate(root, short_name, crate_dirname)
-        crate_dir = root / "benchmark" / "ruklee" / crate_dirname
-        subdir = CRATE_SUBDIRS.get(short_name)
-        if subdir:
-            crate_dir = crate_dir / subdir
+    for short_name, crate_dirname in _selected(args):
+        report = _report_for_crate(root, short_name, crate_dirname, args)
+        crate_dir = _crate_directory(root, args, short_name, crate_dirname)
         crate_output = output_root / crate_dirname
         crate_output.mkdir(parents=True, exist_ok=True)
         result_path = crate_output / "full-matrix-results.json"

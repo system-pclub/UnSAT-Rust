@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run CULPA on the frozen 30-crate roster and preserve each independent attempt."""
+"""Run CULPA on the prepared corpus and preserve each independent attempt."""
 import argparse
 import concurrent.futures
 import json
@@ -16,14 +16,14 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--crates", nargs="*")
-    parser.add_argument("--benchmark-root", type=Path, default=ROOT / "benchmark/ruklee")
+    parser.add_argument("--benchmark-root", type=Path, default=ROOT / "benchmark/culpa")
     parser.add_argument("--override-root", type=Path, help="Use copies in this directory when present")
     parser.add_argument("--image", help="Explicit CULPA image, recorded by each runner")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     args = parser.parse_args()
     crates = args.crates or sorted(p.name for p in args.benchmark_root.iterdir()
                                   if (p / "Cargo.toml").is_file())
-    output = ROOT / "eval/culpa" / args.attempt
+    output = ROOT / ".local/culpa-batches" / args.attempt
     output.mkdir(parents=True, exist_ok=True)
     manifest = output / "batch.json"
     if manifest.exists():
@@ -37,7 +37,7 @@ def main():
         command = [sys.executable, str(ROOT / "docker/rust-comparison/run.py"),
                    "culpa", crate, "--attempt", args.attempt,
                    "--benchmark-root", str(source_root),
-                   "--output-root", str(output / "runs"), "--timeout", str(args.timeout),
+                   "--output-root", str(ROOT / "eval"), "--timeout", str(args.timeout),
                    "--jobs", "2", "--cpus", "2", "--memory", "12g"]
         if args.image:
             command.extend(["--image", args.image])

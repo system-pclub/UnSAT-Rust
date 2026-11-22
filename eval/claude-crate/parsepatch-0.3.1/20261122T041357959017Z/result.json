@@ -1,0 +1,82 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/parser.rs",
+      "function": "LineReader::parse_numbers",
+      "unsafe_api": "slice::get_unchecked",
+      "requirement": "The range index must be in bounds (4 <= len)",
+      "explanation": "The code assumes the line starts with \"@@ -\", but parse_hunks is also called on a line from next(PatchReader::mv, ..), which accepts any line. Those calls come from parse_minus and the rename/copy path. A line shorter than 4 bytes, such as an empty line, makes get_unchecked(4..) out of bounds."
+    },
+    {
+      "file": "/work/src/parser.rs",
+      "function": "LineReader::parse_mode",
+      "unsafe_api": "slice::get_unchecked",
+      "requirement": "The range index must be in bounds (start.len() <= len)",
+      "explanation": "get_file_op only checks starts_with(\"new file\") (8 bytes) or starts_with(\"deleted file\") (12 bytes). It then calls parse_mode with the longer prefixes \"new file mode \" (14 bytes) and \"deleted file mode \" (18 bytes). A line such as \"new file\" is shorter than the prefix, so the slice start is past the end. parse_diff also calls parse_mode(\"new mode \") on an arbitrary line from next(mv) with no prefix check."
+    },
+    {
+      "file": "/work/src/parser.rs",
+      "function": "PatchReader::parse_diff",
+      "unsafe_api": "slice::get_unchecked",
+      "requirement": "The range index must be in bounds (shift <= len)",
+      "explanation": "A line only has to start with \"rename from\" (11 bytes) or \"copy from\" (9 bytes) to take the rename/copy branch. The code then calls line.buf.get_unchecked(12..) or get_unchecked(10..). A line that is exactly \"rename from\" or \"copy from\", or that is shorter than the shift, makes the range start out of bounds."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1971,
+        "cacheReadInputTokens": 4660,
+        "cacheCreationInputTokens": 12412,
+        "webSearchRequests": 0,
+        "costUSD": 0.051226,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 1009,
+        "cacheCreationEphemeral5mInputTokens": 12412,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 12412,
+      "cache_read_input_tokens": 4660,
+      "output_tokens": 1971,
+      "output_tokens_details": {
+        "thinking_tokens": 1009
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 12412
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1672,
+          "cache_read_input_tokens": 1377,
+          "cache_creation_input_tokens": 12157,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 12157,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.051226,
+    "duration_ms": 18217,
+    "num_turns": 7
+  }
+}

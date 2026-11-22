@@ -1,0 +1,75 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/quest_bindings.rs",
+      "function": "Drop::drop for Qureg (with derived Clone)",
+      "unsafe_api": "quest_sys::destroyQureg / quest_sys::destroyQuESTEnv",
+      "requirement": "The qureg and env must be valid, live objects that have not already been destroyed. Each can be destroyed only once.",
+      "explanation": "Qureg derives Clone, and the clone is a shallow copy of the C structs. Those structs hold raw pointers to the state vector and the environment. Safe code can clone a Qureg, and both copies will run drop. That calls destroyQureg and destroyQuESTEnv twice on the same handles, which is a double free."
+    },
+    {
+      "file": "/work/src/quest_bindings.rs",
+      "function": "Drop::drop for ComplexMatrixN (with derived Clone)",
+      "unsafe_api": "quest_sys::destroyComplexMatrixN",
+      "requirement": "The matrix must be a valid ComplexMatrixN that was created by createComplexMatrixN and has not already been destroyed.",
+      "explanation": "ComplexMatrixN derives Clone, so a clone is a shallow copy that holds the same raw row pointers. Dropping both the original and the clone destroys the same matrix twice, which is a double free. Safe code can also use the clone after the original is dropped, which is a use-after-free."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1083,
+        "cacheReadInputTokens": 5191,
+        "cacheCreationInputTokens": 5541,
+        "webSearchRequests": 0,
+        "costUSD": 0.0252216,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 356,
+        "cacheCreationEphemeral5mInputTokens": 5541,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 5541,
+      "cache_read_input_tokens": 5191,
+      "output_tokens": 1083,
+      "output_tokens_details": {
+        "thinking_tokens": 356
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 5541
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 837,
+          "cache_read_input_tokens": 1908,
+          "cache_creation_input_tokens": 4755,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 4755,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.0252216,
+    "duration_ms": 12069,
+    "num_turns": 6
+  }
+}

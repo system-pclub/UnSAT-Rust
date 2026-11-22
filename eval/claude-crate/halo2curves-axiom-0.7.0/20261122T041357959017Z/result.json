@@ -1,0 +1,68 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/lib.rs",
+      "function": "prefetch",
+      "unsafe_api": "core::ptr::const_ptr::<impl *const T>::add",
+      "requirement": "The offset computed with `add` must stay in bounds. The starting and resulting pointers must both be in bounds of, or one byte past the end of, the same allocation. The offset in bytes (`offset * size_of::<T>()`) must not overflow `isize`.",
+      "explanation": "`prefetch` is a safe `pub fn`, and the `offset` argument is never checked against `data.len()`. The body calls `data.as_ptr().add(offset)` inside an `unsafe` block. A caller can pass any `offset`, for example one greater than `data.len()`. That puts the result outside the slice's allocation, or makes the byte offset overflow `isize`. Either case is undefined behavior under `ptr::add`'s requirements. The function needs a bounds assertion, or it should use `wrapping_add`, or it should be marked `unsafe`."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 18,
+        "outputTokens": 1743,
+        "cacheReadInputTokens": 155670,
+        "cacheCreationInputTokens": 74768,
+        "webSearchRequests": 0,
+        "costUSD": 0.21995299999999998,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 347,
+        "cacheCreationEphemeral5mInputTokens": 74768,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 18,
+      "cache_creation_input_tokens": 74768,
+      "cache_read_input_tokens": 155670,
+      "output_tokens": 1743,
+      "output_tokens_details": {
+        "thinking_tokens": 347
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 74768
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 534,
+          "cache_read_input_tokens": 65382,
+          "cache_creation_input_tokens": 10508,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 10508,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.21995299999999998,
+    "duration_ms": 20252,
+    "num_turns": 19
+  }
+}

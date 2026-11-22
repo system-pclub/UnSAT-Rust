@@ -1,0 +1,794 @@
+{
+  "mode": "batch",
+  "model": "gpt-6.1-sol",
+  "retries": 3,
+  "rules": [
+    {
+      "id": "rule-1",
+      "path": "rust/library/std/src/collections/hash/map.rs:1051",
+      "name": "unsafe fn get_disjoint_unchecked_mut < Q : ? Sized , const N : usize > (& mut self , ks : [& Q ; N] ,) -> [Option < & '_ mut V > ; N] where K : Borrow < Q > , Q : Hash + Eq ,",
+      "rule": "When calling `get_disjoint_unchecked_mut`, the keys in `ks` must not overlap; overlapping keys cause undefined behavior even if the resulting references are not used."
+    },
+    {
+      "id": "rule-2",
+      "path": "rust/library/std/src/env.rs:307",
+      "name": "unsafe fn set_var < K : AsRef < OsStr > , V : AsRef < OsStr > > (key : K , value : V)",
+      "rule": "Calling `set_var` is safe in a single-threaded program."
+    },
+    {
+      "id": "rule-3",
+      "path": "rust/library/std/src/env.rs:307",
+      "name": "unsafe fn set_var < K : AsRef < OsStr > , V : AsRef < OsStr > > (key : K , value : V)",
+      "rule": "Calling `set_var` on Windows is always safe, in both single-threaded and multi-threaded programs."
+    },
+    {
+      "id": "rule-4",
+      "path": "rust/library/std/src/env.rs:307",
+      "name": "unsafe fn set_var < K : AsRef < OsStr > , V : AsRef < OsStr > > (key : K , value : V)",
+      "rule": "When calling `set_var` in a multi-threaded program on an operating system other than Windows, the caller must ensure that no other threads concurrently write or read the environment through functions or global variables other than those in `std::env`."
+    },
+    {
+      "id": "rule-5",
+      "path": "rust/library/std/src/env.rs:371",
+      "name": "unsafe fn remove_var < K : AsRef < OsStr > > (key : K)",
+      "rule": "Calling remove_var is safe in a single-threaded program."
+    },
+    {
+      "id": "rule-6",
+      "path": "rust/library/std/src/env.rs:371",
+      "name": "unsafe fn remove_var < K : AsRef < OsStr > > (key : K)",
+      "rule": "Calling remove_var on Windows is always safe, in both single-threaded and multi-threaded programs."
+    },
+    {
+      "id": "rule-7",
+      "path": "rust/library/std/src/env.rs:371",
+      "name": "unsafe fn remove_var < K : AsRef < OsStr > > (key : K)",
+      "rule": "When calling remove_var in a multi-threaded program on an operating system other than Windows, the caller must ensure that no other threads concurrently read or write the environment through functions or global variables other than those in std::env."
+    },
+    {
+      "id": "rule-8",
+      "path": "rust/library/std/src/ffi/os_str.rs:144",
+      "name": "unsafe fn from_encoded_bytes_unchecked (bytes : Vec < u8 >) -> Self",
+      "rule": "For safety, `bytes` must originate as a mixture of validated UTF-8 and bytes obtained from `OsStr::as_encoded_bytes` within the same Rust version built for the same target platform."
+    },
+    {
+      "id": "rule-9",
+      "path": "rust/library/std/src/ffi/os_str.rs:144",
+      "name": "unsafe fn from_encoded_bytes_unchecked (bytes : Vec < u8 >) -> Self",
+      "rule": "When constructing `bytes` from validated UTF-8 and bytes obtained from `OsStr::as_encoded_bytes` within the same Rust version built for the same target platform, the `OsStr::as_encoded_bytes` bytes may safely be split immediately before or immediately after any valid non-empty UTF-8 substring."
+    },
+    {
+      "id": "rule-10",
+      "path": "rust/library/std/src/ffi/os_str.rs:824",
+      "name": "unsafe fn from_encoded_bytes_unchecked (bytes : & [u8]) -> & Self",
+      "rule": "For safety, `bytes` must originate as a mixture of validated UTF-8 and bytes from `OsStr::as_encoded_bytes` produced within the same Rust version built for the same target platform."
+    },
+    {
+      "id": "rule-11",
+      "path": "rust/library/std/src/ffi/os_str.rs:824",
+      "name": "unsafe fn from_encoded_bytes_unchecked (bytes : & [u8]) -> & Self",
+      "rule": "For use as `bytes`, bytes from `OsStr::as_encoded_bytes` produced within the same Rust version built for the same target platform may safely be split immediately before or immediately after any valid non-empty UTF-8 substring."
+    },
+    {
+      "id": "rule-12",
+      "path": "rust/library/std/src/os/fd/owned.rs:71",
+      "name": "const unsafe fn borrow_raw (fd : RawFd) -> Self",
+      "rule": "The resource pointed to by `fd` must remain open for the duration of the returned `BorrowedFd`."
+    },
+    {
+      "id": "rule-13",
+      "path": "rust/library/std/src/os/fd/owned.rs:71",
+      "name": "const unsafe fn borrow_raw (fd : RawFd) -> Self",
+      "rule": "`fd` must not have the value `-1`."
+    },
+    {
+      "id": "rule-14",
+      "path": "rust/library/std/src/os/fd/raw.rs:72",
+      "name": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+      "rule": "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open."
+    },
+    {
+      "id": "rule-15",
+      "path": "rust/library/std/src/os/fd/raw.rs:72",
+      "name": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+      "rule": "For safety, `from_raw_fd` need not consume ownership of `fd`."
+    },
+    {
+      "id": "rule-16",
+      "path": "rust/library/std/src/os/fortanix_sgx/io.rs:31",
+      "name": "unsafe fn from_raw_fd (fd : RawFd , metadata : Self :: Metadata) -> Self",
+      "rule": "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open."
+    },
+    {
+      "id": "rule-17",
+      "path": "rust/library/std/src/os/fortanix_sgx/io.rs:31",
+      "name": "unsafe fn from_raw_fd (fd : RawFd , metadata : Self :: Metadata) -> Self",
+      "rule": "Consuming ownership of `fd` is not required for safety when calling `from_raw_fd`."
+    },
+    {
+      "id": "rule-18",
+      "path": "rust/library/std/src/os/solid/io.rs:96",
+      "name": "const unsafe fn borrow_raw (fd : RawFd) -> Self",
+      "rule": "The resource pointed to by `fd` must remain open for the lifetime of the returned `BorrowedFd`."
+    },
+    {
+      "id": "rule-19",
+      "path": "rust/library/std/src/os/solid/io.rs:96",
+      "name": "const unsafe fn borrow_raw (fd : RawFd) -> Self",
+      "rule": "`fd` must not have the value `SOLID_NET_INVALID_FD`."
+    },
+    {
+      "id": "rule-20",
+      "path": "rust/library/std/src/os/solid/io.rs:309",
+      "name": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+      "rule": "The `fd` passed to `from_raw_fd` must be an owned file descriptor; in particular, it must be open."
+    },
+    {
+      "id": "rule-21",
+      "path": "rust/library/std/src/os/solid/io.rs:309",
+      "name": "unsafe fn from_raw_fd (fd : RawFd) -> Self",
+      "rule": "For safety, `from_raw_fd` is not required to consume ownership of `fd`."
+    },
+    {
+      "id": "rule-22",
+      "path": "rust/library/std/src/os/unix/process.rs:60",
+      "name": "unsafe fn pre_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static",
+      "rule": "The caller must ensure that f is safe to run in the child process after fork, including compliance with applicable async-signal-safety requirements. Operations such as malloc, accessing environment variables through std::env, and acquiring a mutex are not guaranteed to be safe in this context."
+    },
+    {
+      "id": "rule-23",
+      "path": "rust/library/std/src/os/unix/process.rs:60",
+      "name": "unsafe fn pre_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static",
+      "rule": "The caller must ensure that f does not violate library invariants through invalid use of resources duplicated by fork, including file descriptors and memory-mapped regions."
+    },
+    {
+      "id": "rule-24",
+      "path": "rust/library/std/src/os/unix/process.rs:60",
+      "name": "unsafe fn pre_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static",
+      "rule": "Panicking in f is safe only if all format arguments for the panic message can be safely formatted in the child process after fork, even though Command calls std::panic::always_abort before invoking f."
+    },
+    {
+      "id": "rule-25",
+      "path": "rust/library/std/src/os/unix/process.rs:109",
+      "name": "unsafe fn before_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static ,",
+      "rule": "The closure `f`, which runs in the child process after `fork` and just before `exec`, must perform only async-signal-safe operations."
+    },
+    {
+      "id": "rule-26",
+      "path": "rust/library/std/src/os/unix/process.rs:109",
+      "name": "unsafe fn before_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static ,",
+      "rule": "The closure `f`, which runs in the child process after `fork` and just before `exec`, must not violate library invariants by making invalid use of resources duplicated by `fork`, including file descriptors and memory-mapped regions."
+    },
+    {
+      "id": "rule-27",
+      "path": "rust/library/std/src/os/unix/process.rs:109",
+      "name": "unsafe fn before_exec < F > (& mut self , f : F) -> & mut process :: Command where F : FnMut () -> io :: Result < () > + Send + Sync + 'static ,",
+      "rule": "Panicking in the closure `f`, which runs in the child process after `fork` and just before `exec`, is safe only if all format arguments for the panic message can be safely formatted, even though `Command` calls `std::panic::always_abort` before invoking the closure."
+    },
+    {
+      "id": "rule-28",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:134",
+      "name": "const unsafe fn borrow_raw (handle : RawHandle) -> Self",
+      "rule": "The resource pointed to by `handle` must be a valid open handle."
+    },
+    {
+      "id": "rule-29",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:134",
+      "name": "const unsafe fn borrow_raw (handle : RawHandle) -> Self",
+      "rule": "The resource pointed to by `handle` must remain open for the duration of the returned `BorrowedHandle`."
+    },
+    {
+      "id": "rule-30",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:134",
+      "name": "const unsafe fn borrow_raw (handle : RawHandle) -> Self",
+      "rule": "For safety, `handle` may have the value `INVALID_HANDLE_VALUE` (-1), which is sometimes a valid handle value."
+    },
+    {
+      "id": "rule-31",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:134",
+      "name": "const unsafe fn borrow_raw (handle : RawHandle) -> Self",
+      "rule": "For safety, `handle` may have the value `NULL` (0), which can occur when consoles are detached from processes or when `windows_subsystem` is used."
+    },
+    {
+      "id": "rule-32",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:331",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "If `handle` is not null, it must be an owned, open handle."
+    },
+    {
+      "id": "rule-33",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:331",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "If `handle` is not null, it must refer to a resource that may be freed via `CloseHandle`, rather than `RegCloseKey` or another close function."
+    },
+    {
+      "id": "rule-34",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:331",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "`handle` may be null."
+    },
+    {
+      "id": "rule-35",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:331",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "`handle` may have the value `INVALID_HANDLE_VALUE` (-1), provided it is an owned, open handle for a resource that may be freed via `CloseHandle`."
+    },
+    {
+      "id": "rule-36",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:357",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "Unless `handle` is `INVALID_HANDLE_VALUE` (-1), it must be an owned handle; in particular, it must be open."
+    },
+    {
+      "id": "rule-37",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:357",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "Unless `handle` is `INVALID_HANDLE_VALUE` (-1), it must refer to a resource that may be freed via `CloseHandle`, rather than `RegCloseKey` or another close function."
+    },
+    {
+      "id": "rule-38",
+      "path": "rust/library/std/src/os/windows/io/handle.rs:357",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "`handle` may be `INVALID_HANDLE_VALUE` (-1), without satisfying the requirements for an owned, open handle to a resource that may be freed via `CloseHandle`."
+    },
+    {
+      "id": "rule-39",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:46",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "For safety, `handle` must be an owned handle; in particular, it must be open."
+    },
+    {
+      "id": "rule-40",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:46",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "For safety, `handle` must refer to a resource that may be freed via `CloseHandle`, rather than requiring `RegCloseKey` or another close function."
+    },
+    {
+      "id": "rule-41",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:46",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "For safety, `handle` may have the value `INVALID_HANDLE_VALUE` (-1) when that value is a valid handle."
+    },
+    {
+      "id": "rule-42",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:46",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "Consuming ownership of `handle` is not required for safety."
+    },
+    {
+      "id": "rule-43",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:46",
+      "name": "unsafe fn from_raw_handle (handle : RawHandle) -> Self",
+      "rule": "When `from_raw_handle` is used to consume ownership of `handle`, the returned object takes responsibility for closing the handle when the object goes out of scope."
+    },
+    {
+      "id": "rule-44",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:195",
+      "name": "unsafe fn from_raw_socket (sock : RawSocket) -> Self",
+      "rule": "The sock passed to from_raw_socket must be an owned socket; in particular, it must be open."
+    },
+    {
+      "id": "rule-45",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:195",
+      "name": "unsafe fn from_raw_socket (sock : RawSocket) -> Self",
+      "rule": "The sock passed to from_raw_socket must be a socket that may be freed via closesocket."
+    },
+    {
+      "id": "rule-46",
+      "path": "rust/library/std/src/os/windows/io/raw.rs:195",
+      "name": "unsafe fn from_raw_socket (sock : RawSocket) -> Self",
+      "rule": "from_raw_socket is not required to consume ownership of sock."
+    },
+    {
+      "id": "rule-47",
+      "path": "rust/library/std/src/os/windows/io/socket.rs:53",
+      "name": "const unsafe fn borrow_raw (socket : RawSocket) -> Self",
+      "rule": "The resource identified by `socket` must remain open for the duration of the returned `BorrowedSocket`."
+    },
+    {
+      "id": "rule-48",
+      "path": "rust/library/std/src/os/windows/io/socket.rs:53",
+      "name": "const unsafe fn borrow_raw (socket : RawSocket) -> Self",
+      "rule": "`socket` must not have the value `INVALID_SOCKET`."
+    },
+    {
+      "id": "rule-49",
+      "path": "rust/library/std/src/os/windows/process.rs:507",
+      "name": "unsafe fn raw_attribute < T > (mut self , attribute : usize , value_ptr : * const T , value_size : usize ,) -> Self",
+      "rule": "The caller must ensure that the value pointed to by `value_ptr` lives longer than the resulting `ProcThreadAttributeList`."
+    },
+    {
+      "id": "rule-50",
+      "path": "rust/library/std/src/os/windows/process.rs:507",
+      "name": "unsafe fn raw_attribute < T > (mut self , attribute : usize , value_ptr : * const T , value_size : usize ,) -> Self",
+      "rule": "The caller must ensure that `value_size` is valid for the value pointed to by `value_ptr`."
+    },
+    {
+      "id": "rule-51",
+      "path": "rust/library/std/src/sync/mpmc/context.rs:112",
+      "name": "unsafe fn wait_until (& self , deadline : Option < Instant >) -> Selected",
+      "rule": "For safety, `Context::wait_until` may only be called from the thread that the `Context` belongs to."
+    },
+    {
+      "id": "rule-52",
+      "path": "rust/library/std/src/sys/pal/itron/thread.rs:86",
+      "name": "unsafe fn new (stack : usize , p : Box < dyn FnOnce () >) -> io :: Result < Thread >",
+      "rule": "The caller must ensure that the spawned thread does not outlive any references in the supplied closure `p`."
+    },
+    {
+      "id": "rule-53",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "A type implementing `UserSafeSized` must be safe to read from and write to userspace."
+    },
+    {
+      "id": "rule-54",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "A type implementing `UserSafeSized` must be `Copy` and must not be `Drop`; destructors will not be called when copying values from or to userspace."
+    },
+    {
+      "id": "rule-55",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "A type implementing `UserSafeSized` must contain no references or Rust-style owned pointers, such as `Vec` or `Arc`."
+    },
+    {
+      "id": "rule-56",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "A type implementing `UserSafeSized` must contain neither `User` nor `UserRef`."
+    },
+    {
+      "id": "rule-57",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "A type implementing `UserSafeSized` must contain no fat pointers."
+    },
+    {
+      "id": "rule-58",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "For reading from userspace, every bit pattern must be valid for a type implementing `UserSafeSized`; enums are not allowed."
+    },
+    {
+      "id": "rule-59",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "Reading a type implementing `UserSafeSized` from userspace must not create references into enclave memory."
+    },
+    {
+      "id": "rule-60",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "For writing to userspace, a type implementing `UserSafeSized` must contain no pointers to enclave memory."
+    },
+    {
+      "id": "rule-61",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "Writing a type implementing `UserSafeSized` to userspace must not leak memory addresses of data in enclave memory, including vtable pointers."
+    },
+    {
+      "id": "rule-62",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:16",
+      "name": "trait UserSafeSized : Copy + Sized",
+      "rule": "For writing to userspace, a type implementing `UserSafeSized` must contain no internal padding."
+    },
+    {
+      "id": "rule-63",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:63",
+      "name": "trait UserSafe",
+      "rule": "A type implementing `UserSafe` must be representable in memory as one or more `UserSafeSized` values."
+    },
+    {
+      "id": "rule-64",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:69",
+      "name": "unsafe fn from_raw_sized_unchecked (ptr : * mut u8 , size : usize) -> * mut Self",
+      "rule": "The caller must ensure that the memory range specified by `ptr` and `size` is in user memory."
+    },
+    {
+      "id": "rule-65",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:69",
+      "name": "unsafe fn from_raw_sized_unchecked (ptr : * mut u8 , size : usize) -> * mut Self",
+      "rule": "The caller must ensure that `size`, which is a size rather than a length, is correct for `Self`."
+    },
+    {
+      "id": "rule-66",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:69",
+      "name": "unsafe fn from_raw_sized_unchecked (ptr : * mut u8 , size : usize) -> * mut Self",
+      "rule": "The caller must ensure that `ptr` is correctly aligned for `Self`."
+    },
+    {
+      "id": "rule-67",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:69",
+      "name": "unsafe fn from_raw_sized_unchecked (ptr : * mut u8 , size : usize) -> * mut Self",
+      "rule": "The caller must ensure that `ptr` points to the right type, `Self`."
+    },
+    {
+      "id": "rule-68",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:79",
+      "name": "unsafe fn from_raw_sized (ptr : * mut u8 , size : usize) -> NonNull < Self >",
+      "rule": "The caller must ensure that the memory range starting at `ptr` with size `size` in bytes points to the correct type, `Self`."
+    },
+    {
+      "id": "rule-69",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:105",
+      "name": "unsafe fn check_ptr (ptr : * const Self)",
+      "rule": "The caller must ensure that `ptr` points to a memory range of the correct type (`Self`) and, if `Self` is a slice, the correct length."
+    },
+    {
+      "id": "rule-70",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:212",
+      "name": "trait UserSafeCopyDestination <T : ? Sized>",
+      "rule": "Implementors of `UserSafeCopyDestination<T>` must ensure that `T` and `Self` have identical layouts."
+    },
+    {
+      "id": "rule-71",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:287",
+      "name": "unsafe fn from_raw (ptr : * mut T) -> Self",
+      "rule": "The caller must ensure that `ptr` points to a `T`."
+    },
+    {
+      "id": "rule-72",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:287",
+      "name": "unsafe fn from_raw (ptr : * mut T) -> Self",
+      "rule": "The caller must ensure that `ptr` is freeable with the `free` usercall using the alignment of `T`."
+    },
+    {
+      "id": "rule-73",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:287",
+      "name": "unsafe fn from_raw (ptr : * mut T) -> Self",
+      "rule": "The caller must ensure that `ptr` is uniquely owned."
+    },
+    {
+      "id": "rule-74",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:333",
+      "name": "unsafe fn from_raw_parts (ptr : * mut T , len : usize) -> Self",
+      "rule": "The caller must ensure that `ptr` points to `len` elements of `T`."
+    },
+    {
+      "id": "rule-75",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:333",
+      "name": "unsafe fn from_raw_parts (ptr : * mut T , len : usize) -> Self",
+      "rule": "The caller must ensure that `ptr` is freeable with the `free` usercall using the alignment of `T`."
+    },
+    {
+      "id": "rule-76",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:333",
+      "name": "unsafe fn from_raw_parts (ptr : * mut T , len : usize) -> Self",
+      "rule": "The caller must ensure that `ptr` is uniquely owned."
+    },
+    {
+      "id": "rule-77",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:530",
+      "name": "unsafe fn from_ptr < 'a > (ptr : * const T) -> & 'a Self",
+      "rule": "The caller must ensure that `ptr` points to a `T`."
+    },
+    {
+      "id": "rule-78",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:547",
+      "name": "unsafe fn from_mut_ptr < 'a > (ptr : * mut T) -> & 'a mut Self",
+      "rule": "The caller must ensure that `ptr` points to a `T`."
+    },
+    {
+      "id": "rule-79",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:628",
+      "name": "unsafe fn from_raw_parts < 'a > (ptr : * const T , len : usize) -> & 'a Self",
+      "rule": "The caller must ensure that `ptr` points to `len` elements of `T`."
+    },
+    {
+      "id": "rule-80",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/alloc.rs:645",
+      "name": "unsafe fn from_raw_parts_mut < 'a > (ptr : * mut T , len : usize) -> & 'a mut Self",
+      "rule": "The caller must ensure that `ptr` points to `len` elements of `T`."
+    },
+    {
+      "id": "rule-81",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/raw.rs:17",
+      "name": "unsafe fn do_usercall (nr : NonZero < u64 > , p1 : u64 , p2 : u64 , p3 : u64 , p4 : u64 , abort : bool ,) -> (u64 , u64)",
+      "rule": "The caller must ensure that p1, p2, p3, p4, and abort are appropriate for the usercall identified by nr."
+    },
+    {
+      "id": "rule-82",
+      "path": "rust/library/std/src/sys/pal/sgx/abi/usercalls/raw.rs:17",
+      "name": "unsafe fn do_usercall (nr : NonZero < u64 > , p1 : u64 , p2 : u64 , p3 : u64 , p4 : u64 , abort : bool ,) -> (u64 , u64)",
+      "rule": "The caller must observe all requirements specified in the ABI for the usercall identified by nr."
+    },
+    {
+      "id": "rule-83",
+      "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs:68",
+      "name": "unsafe fn push < 'a > (& mut self , entry : & 'a mut UnsafeListEntry < T >) -> & 'a T",
+      "rule": "The entry passed to `push` must remain allocated until it has been removed from the list and the caller who popped it is done using it."
+    },
+    {
+      "id": "rule-84",
+      "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs:68",
+      "name": "unsafe fn push < 'a > (& mut self , entry : & 'a mut UnsafeListEntry < T >) -> & 'a T",
+      "rule": "The caller of `push` must ensure that unwinding does not destroy the stack frame containing the entry before the entry has been removed from the list and the caller who popped it is done using it."
+    },
+    {
+      "id": "rule-85",
+      "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs:99",
+      "name": "unsafe fn pop < 'a > (& mut self) -> Option < & 'a T >",
+      "rule": "The caller must synchronize the end of the borrow of the value returned by `pop` with deallocation of the entry containing that value, so that the entry is not deallocated while the returned borrow is active."
+    },
+    {
+      "id": "rule-86",
+      "path": "rust/library/std/src/sys/pal/sgx/waitqueue/unsafe_list.rs:131",
+      "name": "unsafe fn remove (& mut self , entry : & mut UnsafeListEntry < T >)",
+      "rule": "The caller must ensure that `entry` was pushed onto `self` before calling `remove` and has not moved since it was pushed."
+    },
+    {
+      "id": "rule-87",
+      "path": "rust/library/std/src/sys/pal/uefi/mod.rs:72",
+      "name": "unsafe fn cleanup ()",
+      "rule": "cleanup must be called only once during runtime cleanup."
+    },
+    {
+      "id": "rule-88",
+      "path": "rust/library/std/src/sys/pal/uefi/mod.rs:72",
+      "name": "unsafe fn cleanup ()",
+      "rule": "cleanup is not guaranteed to run, including when the program aborts."
+    },
+    {
+      "id": "rule-89",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:25",
+      "name": "unsafe fn notify_one (self : Pin < & Self >)",
+      "rule": "For safety, `init` must have been called on this `Condvar` instance before calling `notify_one`."
+    },
+    {
+      "id": "rule-90",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:33",
+      "name": "unsafe fn notify_all (self : Pin < & Self >)",
+      "rule": "For safety, `init` must have been called on this `Condvar` instance before calling `notify_all`."
+    },
+    {
+      "id": "rule-91",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:41",
+      "name": "unsafe fn wait (self : Pin < & Self > , mutex : Pin < & Mutex >)",
+      "rule": "`init` must have been called on this condition variable before calling `wait`."
+    },
+    {
+      "id": "rule-92",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:41",
+      "name": "unsafe fn wait (self : Pin < & Self > , mutex : Pin < & Mutex >)",
+      "rule": "The `mutex` passed to `wait` must be locked by the current thread."
+    },
+    {
+      "id": "rule-93",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:41",
+      "name": "unsafe fn wait (self : Pin < & Self > , mutex : Pin < & Mutex >)",
+      "rule": "This condition variable must only be used with the same mutex."
+    },
+    {
+      "id": "rule-94",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:51",
+      "name": "unsafe fn wait_timeout (& self , mutex : Pin < & Mutex > , dur : Duration) -> bool",
+      "rule": "Before calling `wait_timeout`, `init` must have been called on this condition variable instance."
+    },
+    {
+      "id": "rule-95",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:51",
+      "name": "unsafe fn wait_timeout (& self , mutex : Pin < & Mutex > , dur : Duration) -> bool",
+      "rule": "When calling `wait_timeout`, `mutex` must be locked by the current thread."
+    },
+    {
+      "id": "rule-96",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:51",
+      "name": "unsafe fn wait_timeout (& self , mutex : Pin < & Mutex > , dur : Duration) -> bool",
+      "rule": "For safety, this condition variable may only be used with the same mutex."
+    },
+    {
+      "id": "rule-97",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:97",
+      "name": "unsafe fn init (self : Pin < & mut Self >)",
+      "rule": "For safety, `Condvar::init` may only be called once per instance of `Condvar`."
+    },
+    {
+      "id": "rule-98",
+      "path": "rust/library/std/src/sys/pal/unix/sync/condvar.rs:139",
+      "name": "unsafe fn init (self : Pin < & mut Self >)",
+      "rule": "For safety, `Condvar::init` may only be called once per instance of `Condvar`."
+    },
+    {
+      "id": "rule-99",
+      "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs:20",
+      "name": "unsafe fn init (self : Pin < & mut Self >)",
+      "rule": "For safety, `Mutex::init` may only be called once per instance of `Mutex`."
+    },
+    {
+      "id": "rule-100",
+      "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs:60",
+      "name": "unsafe fn lock (self : Pin < & Self >)",
+      "rule": "If `init` was not called on this mutex instance, locking it reentrantly causes undefined behaviour."
+    },
+    {
+      "id": "rule-101",
+      "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs:60",
+      "name": "unsafe fn lock (self : Pin < & Self >)",
+      "rule": "This mutex must not be destroyed while locked."
+    },
+    {
+      "id": "rule-102",
+      "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs:85",
+      "name": "unsafe fn try_lock (self : Pin < & Self >) -> bool",
+      "rule": "If `init` was not called on this mutex instance, `try_lock` must not lock it reentrantly; doing so causes undefined behaviour."
+    },
+    {
+      "id": "rule-103",
+      "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs:85",
+      "name": "unsafe fn try_lock (self : Pin < & Self >) -> bool",
+      "rule": "This mutex must not be destroyed while locked; doing so causes undefined behaviour."
+    },
+    {
+      "id": "rule-104",
+      "path": "rust/library/std/src/sys/pal/unix/sync/mutex.rs:93",
+      "name": "unsafe fn unlock (self : Pin < & Self >)",
+      "rule": "The mutex must be locked by the current thread when `Mutex::unlock` is called."
+    },
+    {
+      "id": "rule-105",
+      "path": "rust/library/std/src/sys/pal/windows/api.rs:160",
+      "name": "trait SetFileInformation",
+      "rule": "For an implementation of `SetFileInformation` to be safe, `as_ptr` must return a pointer to memory readable for `size` bytes."
+    },
+    {
+      "id": "rule-106",
+      "path": "rust/library/std/src/sys/pal/windows/api.rs:160",
+      "name": "trait SetFileInformation",
+      "rule": "For an implementation of `SetFileInformation` to be safe, `CLASS` must accurately identify the type pointed to by `as_ptr`; for example, `FILE_BASIC_INFO` must use the class `FileBasicInfo`."
+    },
+    {
+      "id": "rule-107",
+      "path": "rust/library/std/src/sys/pal/windows/compat.rs:107",
+      "name": "unsafe fn new (name : & CStr) -> Option < Self >",
+      "rule": "For safety, `Module::new(name)` must only be used for modules that exist for the lifetime of std."
+    },
+    {
+      "id": "rule-108",
+      "path": "rust/library/std/src/sys/pal/windows/thread.rs:72",
+      "name": "unsafe fn set_name_wide (name : & [u16])",
+      "rule": "For safety, `name` must end with a zero value."
+    },
+    {
+      "id": "rule-109",
+      "path": "rust/library/std/src/sys/personality/dwarf/mod.rs:24",
+      "name": "unsafe fn read < T : Copy > (& mut self) -> T",
+      "rule": "Reads of T from the DWARF stream must be performed with alignment 1."
+    },
+    {
+      "id": "rule-110",
+      "path": "rust/library/std/src/sys/sync/once_box.rs:24",
+      "name": "unsafe fn get_unchecked (& self) -> Pin < & T >",
+      "rule": "Before calling `OnceBox<T>::get_unchecked`, the value must already be initialized."
+    },
+    {
+      "id": "rule-111",
+      "path": "rust/library/std/src/sys/sync/once_box.rs:24",
+      "name": "unsafe fn get_unchecked (& self) -> Pin < & T >",
+      "rule": "Before calling `OnceBox<T>::get_unchecked`, the current thread must have observed the value's initialization."
+    },
+    {
+      "id": "rule-112",
+      "path": "rust/library/std/src/sys/sync/rwlock/futex.rs:106",
+      "name": "unsafe fn read_unlock (& self)",
+      "rule": "To call `RwLock::read_unlock` safely, the `RwLock` must be read-locked (N readers)."
+    },
+    {
+      "id": "rule-113",
+      "path": "rust/library/std/src/sys/sync/rwlock/futex.rs:178",
+      "name": "unsafe fn write_unlock (& self)",
+      "rule": "To call `RwLock::write_unlock` safely, the `RwLock` must be write-locked with a single writer."
+    },
+    {
+      "id": "rule-114",
+      "path": "rust/library/std/src/sys/sync/rwlock/futex.rs:192",
+      "name": "unsafe fn downgrade (& self)",
+      "rule": "To call `RwLock::downgrade` safely, the `RwLock` must be write-locked with a single writer."
+    },
+    {
+      "id": "rule-115",
+      "path": "rust/library/std/src/sys/sync/rwlock/queue.rs:560",
+      "name": "unsafe fn downgrade (& self)",
+      "rule": "For safety, `RwLock::downgrade` must be called only when the lock is write-locked by the calling thread."
+    },
+    {
+      "id": "rule-116",
+      "path": "rust/library/std/src/sys/sync/thread_parking/futex.rs:39",
+      "name": "unsafe fn new_in_place (parker : * mut Parker)",
+      "rule": "On UNIX, the `Parker` at `parker` must be constructed in place."
+    },
+    {
+      "id": "rule-117",
+      "path": "rust/library/std/src/sys/sync/thread_parking/id.rs:31",
+      "name": "unsafe fn new_in_place (parker : * mut Parker)",
+      "rule": "On UNIX, the new `Parker` must be created in place at `parker`."
+    },
+    {
+      "id": "rule-118",
+      "path": "rust/library/std/src/sys/sync/thread_parking/pthread.rs:20",
+      "name": "unsafe fn new_in_place (parker : * mut Parker)",
+      "rule": "The Parker constructed in place at `parker` must never be moved."
+    },
+    {
+      "id": "rule-119",
+      "path": "rust/library/std/src/sys/thread_local/destructors/list.rs:20",
+      "name": "unsafe fn run ()",
+      "rule": "For safety, `run` may only be called on thread exit, when there are no live references to TLS variables while they are destroyed."
+    },
+    {
+      "id": "rule-120",
+      "path": "rust/library/std/src/sys/thread_local/key/windows.rs:165",
+      "name": "unsafe fn run_dtors ()",
+      "rule": "For safety, `run_dtors` must only be called by the destructor callback in `guard`."
+    },
+    {
+      "id": "rule-121",
+      "path": "rust/library/std/src/sys/thread_local/native/eager.rs:23",
+      "name": "unsafe fn get (& self) -> * const T",
+      "rule": "The `self` reference must remain valid until the TLS destructor is run."
+    },
+    {
+      "id": "rule-122",
+      "path": "rust/library/std/src/sys/thread_local/native/eager.rs:23",
+      "name": "unsafe fn get (& self) -> * const T",
+      "rule": "The pointer returned by `get` must not be used after thread destruction has occurred."
+    },
+    {
+      "id": "rule-123",
+      "path": "rust/library/std/src/sys/thread_local/native/lazy.rs:41",
+      "name": "unsafe fn get_or_init (& self , i : Option < & mut Option < T > > , f : impl FnOnce () -> T) -> * const T",
+      "rule": "The `self` reference must remain valid until the TLS destructor is run."
+    },
+    {
+      "id": "rule-124",
+      "path": "rust/library/std/src/sys/thread_local/native/lazy.rs:41",
+      "name": "unsafe fn get_or_init (& self , i : Option < & mut Option < T > > , f : impl FnOnce () -> T) -> * const T",
+      "rule": "The pointer returned by `get_or_init` must not be used after reentrant initialization or thread destruction has occurred."
+    },
+    {
+      "id": "rule-125",
+      "path": "rust/library/std/src/sys_common/wstr.rs:18",
+      "name": "unsafe fn new (lpwstr : * const u16) -> Option < Self >",
+      "rule": "For safety, `lpwstr` must point to a null-terminated wide string that lives at least as long as the returned `WStrUnits` struct."
+    },
+    {
+      "id": "rule-126",
+      "path": "rust/library/std/src/sys_common/wtf8.rs:56",
+      "name": "unsafe fn from_u32_unchecked (value : u32) -> CodePoint",
+      "rule": "For safety, `value` must be less than or equal to 0x10FFFF when calling `CodePoint::from_u32_unchecked`."
+    },
+    {
+      "id": "rule-127",
+      "path": "rust/library/std/src/sys_common/wtf8.rs:197",
+      "name": "unsafe fn from_bytes_unchecked (value : Vec < u8 >) -> Wtf8Buf",
+      "rule": "For safety, `value` must contain valid WTF-8."
+    },
+    {
+      "id": "rule-128",
+      "path": "rust/library/std/src/sys_common/wtf8.rs:621",
+      "name": "unsafe fn from_bytes_unchecked (value : & [u8]) -> & Wtf8",
+      "rule": "The byte slice `value` must contain valid WTF-8."
+    },
+    {
+      "id": "rule-129",
+      "path": "rust/library/std/src/thread/mod.rs:402",
+      "name": "unsafe fn spawn_unchecked < F , T > (self , f : F) -> io :: Result < JoinHandle < T > > where F : FnOnce () -> T , F : Send , T : Send ,",
+      "rule": "The caller must ensure that the thread spawned by `Builder::spawn_unchecked` does not outlive any references in the supplied closure `f` or its return type `T`. This may be guaranteed by calling `JoinHandle::join` before any referenced data is dropped, or by using only types with `'static` lifetime bounds—types containing no references or only `'static` references—for both `f` and `T`."
+    },
+    {
+      "id": "rule-130",
+      "path": "rust/library/std/src/thread/mod.rs:1589",
+      "name": "unsafe fn from_raw (ptr : * const ()) -> Thread",
+      "rule": "The pointer passed to Thread::from_raw must have been previously returned by Thread::into_raw; passing any other pointer is undefined behavior, even if the returned Thread is never accessed."
+    },
+    {
+      "id": "rule-131",
+      "path": "rust/library/std/src/thread/mod.rs:1589",
+      "name": "unsafe fn from_raw (ptr : * const ()) -> Thread",
+      "rule": "If Thread::from_raw is called twice on the same raw pointer, the two resulting Thread instances must not both be dropped, as this can cause a double-free."
+    }
+  ],
+  "translations_directory": "/unsat-rust/eval/rule/std/translations/c1e2ac46ee0ef93294bb645a"
+}

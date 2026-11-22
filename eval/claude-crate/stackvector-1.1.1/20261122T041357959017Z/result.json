@@ -1,0 +1,68 @@
+{
+  "violations": [
+    {
+      "file": "/work/src/lib.rs",
+      "function": "StackVec::from_vec_unchecked",
+      "unsafe_api": "core::mem::uninitialized",
+      "requirement": "mem::uninitialized (deprecated) is only sound when the type does not need to be initialized. The caller must guarantee that an uninitialized value of type `T` is valid. For nearly all types this is not the case, including integers, `bool`, references, `Box`, and arrays of those. It is always UB for types with invalid bit patterns, and `MaybeUninit` is the documented replacement.",
+      "explanation": "`from_vec_unchecked` calls `mem::uninitialized::<A>()`, where `A` is a generic `Array` type such as `[u8; N]` or `[Box<_>; N]`. It creates an uninitialized `A` value and then moves it, via `MaybeUninit::new(data)` and `data.ptr_mut()`. The code has no guarantee that `A` is valid when uninitialized, and for most `A` it is not. That makes the call undefined behavior. The code should have used `MaybeUninit::<A>::uninit()` instead."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 8,
+        "outputTokens": 1874,
+        "cacheReadInputTokens": 3283,
+        "cacheCreationInputTokens": 27527,
+        "webSearchRequests": 0,
+        "costUSD": 0.08790180000000002,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 1288,
+        "cacheCreationEphemeral5mInputTokens": 27527,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 8,
+      "cache_creation_input_tokens": 27527,
+      "cache_read_input_tokens": 3283,
+      "output_tokens": 1874,
+      "output_tokens_details": {
+        "thinking_tokens": 1288
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 27527
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1687,
+          "cache_read_input_tokens": 1122,
+          "cache_creation_input_tokens": 27527,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 27527,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.08790180000000002,
+    "duration_ms": 16741,
+    "num_turns": 5
+  }
+}

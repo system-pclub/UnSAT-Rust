@@ -58,13 +58,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--attempt", help="Select one attempt in the eval/<tool>/<crate>/<attempt> layout")
     parser.add_argument("--prefer-runs", type=Path, help="Select follow-up runs for matching crates; original runs remain untouched")
     args = parser.parse_args()
     rows, flat = [], []
-    paths = sorted(args.runs.rglob("run.json"))
+    def analyzer_runs(directory):
+        paths = []
+        for path in sorted(directory.rglob("run.json")):
+            record = json.loads(path.read_text())
+            if ("exit_code" in record and record.get("tool", "culpa") == "culpa"
+                    and (not args.attempt or record.get("attempt") == args.attempt)):
+                paths.append(path)
+        return paths
+    paths = analyzer_runs(args.runs)
     if args.prefer_runs:
         selected = {json.loads(p.read_text())["crate"]: p for p in paths}
-        for p in sorted(args.prefer_runs.rglob("run.json")):
+        for p in analyzer_runs(args.prefer_runs):
             selected[json.loads(p.read_text())["crate"]] = p
         paths = [selected[name] for name in sorted(selected)]
     for path in paths:

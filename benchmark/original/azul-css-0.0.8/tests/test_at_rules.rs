@@ -1,0 +1,1174 @@
+//! CSS @-rule and :lang() Pseudo-Class Parsing Tests
+//!
+//! Tests for @media, @os, and @lang CSS at-rule parsing and :lang() pseudo-class.
+//!
+//! NOTE: The azul_simplecss tokenizer has limited support for @-rules:
+//! - `@media screen { ... }` works (simple identifier after @media)
+//! - `@media (min-width: 800px) { ... }` does NOT work (parentheses not supported)
+//! - `@os linux { ... }` works (simple identifier after @os)
+//!
+//! For language support, use the standard CSS `:lang()` pseudo-class:
+//! - `div:lang(de) { ... }` works correctly
+
+use azul_css::css::{CssPathPseudoSelector, CssPathSelector};
+#[allow(unused_imports)]
+use azul_css::dynamic_selector::{
+    DynamicSelector, LanguageCondition, MediaType, MinMaxRange, OrientationType, OsCondition,
+};
+use azul_css::parser2::new_from_str;
+
+// ============================================================================
+// @media parsing tests
+// ============================================================================
+
+#[test]
+fn test_media_screen() {
+    let css = r#"
+        @media screen {
+            div { color: red; }
+        }
+    "#;
+    let (result, warnings) = new_from_str(css);
+
+    // Check that we parsed one rule
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1, "Expected 1 rule, got {}", rules.len());
+
+    // Check that the rule has a Media(Screen) condition
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(
+        conditions.len(),
+        1,
+        "Expected 1 condition, got {:?}",
+        conditions
+    );
+
+    match &conditions[0] {
+        DynamicSelector::Media(MediaType::Screen) => {}
+        other => panic!("Expected Media(Screen), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_media_print() {
+    let css = r#"
+        @media print {
+            div { color: black; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Media(MediaType::Print) => {}
+        other => panic!("Expected Media(Print), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_media_all() {
+    let css = r#"
+        @media all {
+            div { color: blue; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Media(MediaType::All) => {}
+        other => panic!("Expected Media(All), got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_min_width() {
+    let css = r#"
+        @media (min-width: 800px) {
+            div { display: flex; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::ViewportWidth(range) => {
+            assert_eq!(range.min(), Some(800.0));
+            assert!(range.max().is_none());
+        }
+        other => panic!("Expected ViewportWidth, got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_max_width() {
+    let css = r#"
+        @media (max-width: 600px) {
+            div { display: block; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::ViewportWidth(range) => {
+            assert!(range.min().is_none());
+            assert_eq!(range.max(), Some(600.0));
+        }
+        other => panic!("Expected ViewportWidth, got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_min_height() {
+    let css = r#"
+        @media (min-height: 500px) {
+            div { height: 100%; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::ViewportHeight(range) => {
+            assert_eq!(range.min(), Some(500.0));
+            assert!(range.max().is_none());
+        }
+        other => panic!("Expected ViewportHeight, got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_max_height() {
+    let css = r#"
+        @media (max-height: 1200px) {
+            div { overflow: auto; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::ViewportHeight(range) => {
+            assert!(range.min().is_none());
+            assert_eq!(range.max(), Some(1200.0));
+        }
+        other => panic!("Expected ViewportHeight, got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_orientation_portrait() {
+    let css = r#"
+        @media (orientation: portrait) {
+            div { flex-direction: column; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Orientation(OrientationType::Portrait) => {}
+        other => panic!("Expected Orientation(Portrait), got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_orientation_landscape() {
+    let css = r#"
+        @media (orientation: landscape) {
+            div { flex-direction: row; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Orientation(OrientationType::Landscape) => {}
+        other => panic!("Expected Orientation(Landscape), got {:?}", other),
+    }
+}
+
+#[test]
+// Now supported after simplecss improvements
+fn test_media_compound_screen_and_min_width() {
+    let css = r#"
+        @media screen and (min-width: 1024px) {
+            div { width: 960px; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(
+        conditions.len(),
+        2,
+        "Expected 2 conditions for compound query"
+    );
+
+    // Should have both Media(Screen) and ViewportWidth
+    let has_screen = conditions
+        .iter()
+        .any(|c| matches!(c, DynamicSelector::Media(MediaType::Screen)));
+    let has_viewport = conditions
+        .iter()
+        .any(|c| matches!(c, DynamicSelector::ViewportWidth(r) if r.min() == Some(1024.0)));
+
+    assert!(has_screen, "Expected Media(Screen) condition");
+    assert!(has_viewport, "Expected ViewportWidth(min: 1024) condition");
+}
+
+#[test]
+fn test_media_multiple_rules_in_block() {
+    let css = r#"
+        @media screen {
+            div { color: red; }
+            p { color: blue; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 2, "Expected 2 rules inside @media block");
+
+    // Both rules should have the same condition
+    for rule in &rules {
+        let conditions: Vec<_> = rule.conditions.iter().collect();
+        assert_eq!(conditions.len(), 1);
+        match &conditions[0] {
+            DynamicSelector::Media(MediaType::Screen) => {}
+            other => panic!("Expected Media(Screen), got {:?}", other),
+        }
+    }
+}
+
+#[test]
+fn test_no_conditions_for_regular_rules() {
+    let css = r#"
+        div { color: red; }
+        p { color: blue; }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 2);
+
+    for rule in &rules {
+        let conditions: Vec<_> = rule.conditions.iter().collect();
+        assert!(
+            conditions.is_empty(),
+            "Regular rules should have no conditions"
+        );
+    }
+}
+
+// ============================================================================
+// :lang() pseudo-class parsing tests
+// ============================================================================
+
+#[test]
+fn test_lang_pseudo_class_simple() {
+    // Standard CSS :lang() pseudo-class selector
+    let css = r#"div:lang(de) { color: red; }"#;
+    let (result, warnings) = new_from_str(css);
+
+    // Should parse without warnings
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1, "Expected 1 rule");
+
+    let rule = &rules[0];
+    let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+    // Check that the selector contains a Lang pseudo-class
+    let has_lang = path_selectors.iter().any(|sel| {
+        matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == "de")
+    });
+    assert!(
+        has_lang,
+        "Expected :lang(de) pseudo-selector in path: {:?}",
+        path_selectors
+    );
+}
+
+#[test]
+fn test_lang_pseudo_class_with_region() {
+    // BCP 47 tag with region (de-DE, en-US, etc.)
+    let css = r#"p:lang(de-DE) { font-family: Arial; }"#;
+    let (result, warnings) = new_from_str(css);
+
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+    let has_lang = path_selectors.iter().any(|sel| {
+        matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == "de-DE")
+    });
+    assert!(
+        has_lang,
+        "Expected :lang(de-DE) pseudo-selector in path: {:?}",
+        path_selectors
+    );
+}
+
+#[test]
+fn test_lang_pseudo_class_quoted() {
+    // :lang() with quoted value
+    let css = r#"span:lang("en-US") { font-family: Helvetica; }"#;
+    let (result, warnings) = new_from_str(css);
+
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+    let has_lang = path_selectors.iter().any(|sel| {
+        matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == "en-US")
+    });
+    assert!(
+        has_lang,
+        "Expected :lang(en-US) pseudo-selector (quotes stripped) in path: {:?}",
+        path_selectors
+    );
+}
+
+#[test]
+fn test_lang_pseudo_class_single_quoted() {
+    // :lang() with single-quoted value
+    let css = r#"div:lang('fr') { color: blue; }"#;
+    let (result, warnings) = new_from_str(css);
+
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+    let has_lang = path_selectors.iter().any(|sel| {
+        matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == "fr")
+    });
+    assert!(
+        has_lang,
+        "Expected :lang(fr) pseudo-selector (quotes stripped) in path: {:?}",
+        path_selectors
+    );
+}
+
+#[test]
+fn test_lang_pseudo_class_multiple_rules() {
+    // Multiple rules with different :lang() values
+    let css = r#"
+        div:lang(de) { color: black; }
+        div:lang(en) { color: white; }
+        div:lang(ja) { font-family: "MS Gothic"; }
+    "#;
+    let (result, warnings) = new_from_str(css);
+
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 3, "Expected 3 rules");
+
+    // Check each rule has the correct :lang() selector
+    let expected_langs = ["de", "en", "ja"];
+    for (i, rule) in rules.iter().enumerate() {
+        let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+        let has_expected_lang = path_selectors.iter().any(|sel| {
+            matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == expected_langs[i])
+        });
+        assert!(
+            has_expected_lang,
+            "Rule {} should have :lang({}), got: {:?}",
+            i, expected_langs[i], path_selectors
+        );
+    }
+}
+
+#[test]
+fn test_lang_pseudo_class_combined_with_class() {
+    // :lang() combined with class selector
+    let css = r#".content:lang(de) { padding: 10px; }"#;
+    let (result, warnings) = new_from_str(css);
+
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+    // Should have class "content" and :lang(de)
+    let has_class = path_selectors
+        .iter()
+        .any(|sel| matches!(sel, CssPathSelector::Class(c) if c.as_str() == "content"));
+    let has_lang = path_selectors.iter().any(|sel| {
+        matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == "de")
+    });
+
+    assert!(
+        has_class,
+        "Expected .content class in selector, got: {:?}",
+        path_selectors
+    );
+    assert!(
+        has_lang,
+        "Expected :lang(de) pseudo-selector, got: {:?}",
+        path_selectors
+    );
+}
+
+#[test]
+fn test_lang_pseudo_class_combined_with_other_pseudo() {
+    // :lang() combined with :hover
+    let css = r#"a:lang(en):hover { color: green; }"#;
+    let (result, warnings) = new_from_str(css);
+
+    assert!(
+        warnings.is_empty(),
+        "Expected no warnings, got: {:?}",
+        warnings
+    );
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let path_selectors: Vec<_> = rule.path.selectors.iter().collect();
+
+    // Should have both :lang(en) and :hover
+    let has_lang = path_selectors.iter().any(|sel| {
+        matches!(sel, CssPathSelector::PseudoSelector(CssPathPseudoSelector::Lang(lang)) if lang.as_str() == "en")
+    });
+    let has_hover = path_selectors.iter().any(|sel| {
+        matches!(
+            sel,
+            CssPathSelector::PseudoSelector(CssPathPseudoSelector::Hover)
+        )
+    });
+
+    assert!(
+        has_lang,
+        "Expected :lang(en) pseudo-selector, got: {:?}",
+        path_selectors
+    );
+    assert!(
+        has_hover,
+        "Expected :hover pseudo-selector, got: {:?}",
+        path_selectors
+    );
+}
+
+// ============================================================================
+// LanguageCondition matching tests
+// ============================================================================
+
+#[test]
+fn test_language_condition_exact_match() {
+    use azul_css::AzString;
+
+    let cond = LanguageCondition::Exact(AzString::from("de-DE".to_string()));
+
+    assert!(cond.matches("de-DE"));
+    assert!(cond.matches("DE-de")); // case-insensitive
+    assert!(!cond.matches("de"));
+    assert!(!cond.matches("de-AT"));
+    assert!(!cond.matches("en-US"));
+}
+
+#[test]
+fn test_language_condition_prefix_match() {
+    use azul_css::AzString;
+
+    let cond = LanguageCondition::Prefix(AzString::from("de".to_string()));
+
+    assert!(cond.matches("de"));
+    assert!(cond.matches("de-DE"));
+    assert!(cond.matches("de-AT"));
+    assert!(cond.matches("de-CH"));
+    assert!(cond.matches("DE-de")); // case-insensitive
+    assert!(!cond.matches("d"));
+    assert!(!cond.matches("deu"));
+    assert!(!cond.matches("en"));
+    assert!(!cond.matches("en-US"));
+}
+
+#[test]
+fn test_language_condition_prefix_exact_language() {
+    use azul_css::AzString;
+
+    let cond = LanguageCondition::Prefix(AzString::from("de-DE".to_string()));
+
+    assert!(cond.matches("de-DE"));
+    assert!(cond.matches("de-DE-formal")); // Extended subtag
+    assert!(!cond.matches("de"));
+    assert!(!cond.matches("de-AT"));
+}
+
+// ============================================================================
+// Mixed @media and regular rules
+// ============================================================================
+
+#[test]
+fn test_mixed_media_and_regular_rules() {
+    let css = r#"
+        div { color: black; }
+
+        @media screen {
+            div { color: blue; }
+        }
+
+        p { color: green; }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 3);
+
+    // First rule: no conditions
+    assert!(rules[0].conditions.iter().count() == 0);
+
+    // Second rule: @media screen condition
+    let cond1: Vec<_> = rules[1].conditions.iter().collect();
+    assert_eq!(cond1.len(), 1);
+    assert!(matches!(
+        cond1[0],
+        DynamicSelector::Media(MediaType::Screen)
+    ));
+
+    // Third rule: no conditions
+    assert!(rules[2].conditions.iter().count() == 0);
+}
+
+// ============================================================================
+// MinMaxRange tests
+// ============================================================================
+
+#[test]
+fn test_min_max_range_matches() {
+    let range = MinMaxRange::new(Some(100.0), Some(500.0));
+
+    assert!(!range.matches(99.0));
+    assert!(range.matches(100.0));
+    assert!(range.matches(300.0));
+    assert!(range.matches(500.0));
+    assert!(!range.matches(501.0));
+}
+
+#[test]
+fn test_min_max_range_min_only() {
+    let range = MinMaxRange::new(Some(100.0), None);
+
+    assert!(!range.matches(99.0));
+    assert!(range.matches(100.0));
+    assert!(range.matches(1000000.0));
+}
+
+#[test]
+fn test_min_max_range_max_only() {
+    let range = MinMaxRange::new(None, Some(500.0));
+
+    assert!(range.matches(0.0));
+    assert!(range.matches(500.0));
+    assert!(!range.matches(501.0));
+}
+
+#[test]
+fn test_min_max_range_unbounded() {
+    let range = MinMaxRange::new(None, None);
+
+    assert!(range.matches(f32::MIN));
+    assert!(range.matches(0.0));
+    assert!(range.matches(f32::MAX));
+}
+
+// ============================================================================
+// @os parsing tests
+// ============================================================================
+
+#[test]
+fn test_os_linux() {
+    let css = r#"
+        @os linux {
+            div { color: green; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1, "Expected 1 rule, got {}", rules.len());
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(
+        conditions.len(),
+        1,
+        "Expected 1 condition, got {:?}",
+        conditions
+    );
+
+    match &conditions[0] {
+        DynamicSelector::Os(OsCondition::Linux) => {}
+        other => panic!("Expected Os(Linux), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_os_windows() {
+    let css = r#"
+        @os windows {
+            div { font-family: Segoe UI; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Os(OsCondition::Windows) => {}
+        other => panic!("Expected Os(Windows), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_os_macos() {
+    let css = r#"
+        @os macos {
+            div { font-family: San Francisco; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Os(OsCondition::MacOS) => {}
+        other => panic!("Expected Os(MacOS), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_os_apple() {
+    // "apple" matches both macOS and iOS
+    let css = r#"
+        @os apple {
+            div { font-family: system-ui; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1);
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    assert_eq!(conditions.len(), 1);
+
+    match &conditions[0] {
+        DynamicSelector::Os(OsCondition::Apple) => {}
+        other => panic!("Expected Os(Apple), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_os_multiple_rules_in_block() {
+    let css = r#"
+        @os linux {
+            div { color: green; }
+            p { color: lime; }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 2, "Expected 2 rules inside @os block");
+
+    // Both rules should have the same condition
+    for rule in &rules {
+        let conditions: Vec<_> = rule.conditions.iter().collect();
+        assert_eq!(conditions.len(), 1);
+        match &conditions[0] {
+            DynamicSelector::Os(OsCondition::Linux) => {}
+            other => panic!("Expected Os(Linux), got {:?}", other),
+        }
+    }
+}
+
+#[test]
+fn test_os_aliases() {
+    // Test that various aliases work
+    let test_cases = [
+        ("win", OsCondition::Windows),
+        ("mac", OsCondition::MacOS),
+        ("osx", OsCondition::MacOS),
+        ("wasm", OsCondition::Web),
+        ("web", OsCondition::Web),
+        ("any", OsCondition::Any),
+    ];
+
+    for (alias, expected) in test_cases {
+        let css = format!("@os {} {{ div {{ color: red; }} }}", alias);
+        let (result, _warnings) = new_from_str(&css);
+
+        let rules: Vec<_> = result.rules().collect();
+        assert_eq!(rules.len(), 1, "Expected 1 rule for alias '{}'", alias);
+
+        let rule = &rules[0];
+        let conditions: Vec<_> = rule.conditions.iter().collect();
+        assert_eq!(conditions.len(), 1, "Expected 1 condition for alias '{}'", alias);
+
+        match &conditions[0] {
+            DynamicSelector::Os(os) if os == &expected => {}
+            other => panic!("For alias '{}': Expected Os({:?}), got {:?}", alias, expected, other),
+        }
+    }
+}
+
+// ============================================================================
+// Nested/Combined dynamic selectors tests
+// ============================================================================
+
+#[test]
+fn test_nested_os_and_media() {
+    // Test nesting: @os linux { @media screen { ... } }
+    let css = r#"
+        @os linux {
+            @media screen {
+                div { color: blue; }
+            }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1, "Expected 1 rule for nested @os + @media");
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    
+    // Should have both Os(Linux) and Media(Screen) conditions
+    assert_eq!(
+        conditions.len(),
+        2,
+        "Expected 2 conditions for nested selectors, got {:?}",
+        conditions
+    );
+
+    let has_os_linux = conditions
+        .iter()
+        .any(|c| matches!(c, DynamicSelector::Os(OsCondition::Linux)));
+    let has_media_screen = conditions
+        .iter()
+        .any(|c| matches!(c, DynamicSelector::Media(MediaType::Screen)));
+
+    assert!(has_os_linux, "Expected Os(Linux) condition");
+    assert!(has_media_screen, "Expected Media(Screen) condition");
+}
+
+#[test]
+fn test_nested_media_and_os() {
+    // Test nesting: @media screen { @os windows { ... } }
+    let css = r#"
+        @media screen {
+            @os windows {
+                div { font-family: Segoe UI; }
+            }
+        }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1, "Expected 1 rule for nested @media + @os");
+
+    let rule = &rules[0];
+    let conditions: Vec<_> = rule.conditions.iter().collect();
+    
+    assert_eq!(
+        conditions.len(),
+        2,
+        "Expected 2 conditions for nested selectors, got {:?}",
+        conditions
+    );
+
+    let has_media_screen = conditions
+        .iter()
+        .any(|c| matches!(c, DynamicSelector::Media(MediaType::Screen)));
+    let has_os_windows = conditions
+        .iter()
+        .any(|c| matches!(c, DynamicSelector::Os(OsCondition::Windows)));
+
+    assert!(has_media_screen, "Expected Media(Screen) condition");
+    assert!(has_os_windows, "Expected Os(Windows) condition");
+}
+
+#[test]
+fn test_mixed_os_media_and_regular_rules() {
+    let css = r#"
+        div { color: black; }
+
+        @os linux {
+            div { color: green; }
+        }
+
+        @media screen {
+            div { color: blue; }
+        }
+
+        p { color: red; }
+    "#;
+    let (result, _warnings) = new_from_str(css);
+
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 4, "Expected 4 rules");
+
+    // First rule: no conditions
+    assert!(rules[0].conditions.iter().count() == 0, "Rule 0 should have no conditions");
+
+    // Second rule: @os linux condition
+    let cond1: Vec<_> = rules[1].conditions.iter().collect();
+    assert_eq!(cond1.len(), 1);
+    assert!(matches!(cond1[0], DynamicSelector::Os(OsCondition::Linux)));
+
+    // Third rule: @media screen condition
+    let cond2: Vec<_> = rules[2].conditions.iter().collect();
+    assert_eq!(cond2.len(), 1);
+    assert!(matches!(cond2[0], DynamicSelector::Media(MediaType::Screen)));
+
+    // Fourth rule: no conditions
+    assert!(rules[3].conditions.iter().count() == 0, "Rule 3 should have no conditions");
+}
+
+// ============================================================================
+// OsCondition matching tests
+// ============================================================================
+
+#[test]
+fn test_os_condition_any_matches_all() {
+    use azul_css::dynamic_selector::DynamicSelectorContext;
+
+    let ctx_linux = DynamicSelectorContext {
+        os: OsCondition::Linux,
+        ..Default::default()
+    };
+    let ctx_windows = DynamicSelectorContext {
+        os: OsCondition::Windows,
+        ..Default::default()
+    };
+    let ctx_macos = DynamicSelectorContext {
+        os: OsCondition::MacOS,
+        ..Default::default()
+    };
+
+    let selector_any = DynamicSelector::Os(OsCondition::Any);
+    
+    assert!(selector_any.matches(&ctx_linux), "Any should match Linux");
+    assert!(selector_any.matches(&ctx_windows), "Any should match Windows");
+    assert!(selector_any.matches(&ctx_macos), "Any should match macOS");
+}
+
+#[test]
+fn test_os_condition_apple_matches_macos_and_ios() {
+    use azul_css::dynamic_selector::DynamicSelectorContext;
+
+    let ctx_macos = DynamicSelectorContext {
+        os: OsCondition::MacOS,
+        ..Default::default()
+    };
+    let ctx_ios = DynamicSelectorContext {
+        os: OsCondition::IOS,
+        ..Default::default()
+    };
+    let ctx_linux = DynamicSelectorContext {
+        os: OsCondition::Linux,
+        ..Default::default()
+    };
+
+    let selector_apple = DynamicSelector::Os(OsCondition::Apple);
+    
+    assert!(selector_apple.matches(&ctx_macos), "Apple should match macOS");
+    assert!(selector_apple.matches(&ctx_ios), "Apple should match iOS");
+    assert!(!selector_apple.matches(&ctx_linux), "Apple should NOT match Linux");
+}
+
+#[test]
+fn test_os_condition_specific_matches() {
+    use azul_css::dynamic_selector::DynamicSelectorContext;
+
+    let ctx_linux = DynamicSelectorContext {
+        os: OsCondition::Linux,
+        ..Default::default()
+    };
+    let ctx_windows = DynamicSelectorContext {
+        os: OsCondition::Windows,
+        ..Default::default()
+    };
+
+    let selector_linux = DynamicSelector::Os(OsCondition::Linux);
+    let selector_windows = DynamicSelector::Os(OsCondition::Windows);
+    
+    assert!(selector_linux.matches(&ctx_linux), "Linux should match Linux");
+    assert!(!selector_linux.matches(&ctx_windows), "Linux should NOT match Windows");
+    
+    assert!(selector_windows.matches(&ctx_windows), "Windows should match Windows");
+    assert!(!selector_windows.matches(&ctx_linux), "Windows should NOT match Linux");
+}
+
+#[test]
+fn test_combined_conditions_all_must_match() {
+    use azul_css::dynamic_selector::{DynamicSelectorContext, ThemeCondition};
+
+    // Context: Linux + Dark theme + Screen media
+    let ctx = DynamicSelectorContext {
+        os: OsCondition::Linux,
+        theme: ThemeCondition::Dark,
+        media_type: MediaType::Screen,
+        ..Default::default()
+    };
+
+    // All conditions match
+    let selector_linux = DynamicSelector::Os(OsCondition::Linux);
+    let selector_dark = DynamicSelector::Theme(ThemeCondition::Dark);
+    let selector_screen = DynamicSelector::Media(MediaType::Screen);
+    
+    assert!(selector_linux.matches(&ctx));
+    assert!(selector_dark.matches(&ctx));
+    assert!(selector_screen.matches(&ctx));
+
+    // Windows doesn't match
+    let selector_windows = DynamicSelector::Os(OsCondition::Windows);
+    assert!(!selector_windows.matches(&ctx));
+
+    // Light theme doesn't match
+    let selector_light = DynamicSelector::Theme(ThemeCondition::Light);
+    assert!(!selector_light.matches(&ctx));
+}
+
+// ============================================================================
+// Unified @os(...) parser: family[:de] [op version]
+// ============================================================================
+
+fn os_conditions(css_in: &str) -> Vec<DynamicSelector> {
+    let (result, _) = new_from_str(css_in);
+    let rules: Vec<_> = result.rules().collect();
+    assert_eq!(rules.len(), 1, "expected 1 rule for css: {css_in}");
+    rules[0].conditions.iter().cloned().collect()
+}
+
+#[test]
+fn test_os_paren_form_family_only() {
+    let conds = os_conditions("@os(linux) { div { color: red; } }");
+    assert_eq!(conds, vec![DynamicSelector::Os(OsCondition::Linux)]);
+}
+
+#[test]
+fn test_os_paren_form_with_de() {
+    use azul_css::dynamic_selector::{LinuxDesktopEnv, OsVersionCondition};
+    let conds = os_conditions("@os(linux:gnome) { div { color: red; } }");
+    assert_eq!(
+        conds,
+        vec![
+            DynamicSelector::Os(OsCondition::Linux),
+            DynamicSelector::OsVersion(OsVersionCondition::DesktopEnvironment(LinuxDesktopEnv::Gnome)),
+        ]
+    );
+}
+
+#[test]
+fn test_os_paren_form_with_version() {
+    use azul_css::dynamic_selector::{OsVersion, OsVersionCondition};
+    // Bare numeric form: "11" is a synonym for win-11.
+    let conds = os_conditions("@os(windows >= 11) { div { color: red; } }");
+    assert_eq!(
+        conds,
+        vec![
+            DynamicSelector::Os(OsCondition::Windows),
+            DynamicSelector::OsVersion(OsVersionCondition::Min(OsVersion::WIN_11)),
+        ]
+    );
+    // "win-11" must produce the same result.
+    let conds = os_conditions("@os(windows >= win-11) { div { color: red; } }");
+    assert_eq!(
+        conds,
+        vec![
+            DynamicSelector::Os(OsCondition::Windows),
+            DynamicSelector::OsVersion(OsVersionCondition::Min(OsVersion::WIN_11)),
+        ]
+    );
+}
+
+#[test]
+fn test_os_version_synonyms() {
+    use azul_css::dynamic_selector::{OsVersion, OsVersionCondition};
+    // Each line below should parse to the same DynamicSelector vec.
+    let cases: &[(&str, OsVersion)] = &[
+        // Windows: bare number, win-prefix, windows-prefix variants.
+        ("@os(windows >= 11) { div { color: red; } }",        OsVersion::WIN_11),
+        ("@os(windows >= win-11) { div { color: red; } }",    OsVersion::WIN_11),
+        ("@os(windows >= win11) { div { color: red; } }",     OsVersion::WIN_11),
+        ("@os(windows >= windows-11) { div { color: red; } }", OsVersion::WIN_11),
+        // macOS: codename and number.
+        ("@os(macos >= 14) { div { color: red; } }",          OsVersion::MACOS_SONOMA),
+        ("@os(macos >= sonoma) { div { color: red; } }",      OsVersion::MACOS_SONOMA),
+        // Linux: bare major now expands to <major>.0.
+        ("@os(linux >= 5) { div { color: red; } }",           OsVersion::LINUX_5_0),
+        ("@os(linux >= 5.0) { div { color: red; } }",         OsVersion::LINUX_5_0),
+    ];
+    for (css, expected_ver) in cases {
+        let conds = os_conditions(css);
+        assert_eq!(conds.len(), 2, "expected 2 conditions for: {css}");
+        match &conds[1] {
+            DynamicSelector::OsVersion(OsVersionCondition::Min(v)) => assert_eq!(v, expected_ver, "for: {css}"),
+            other => panic!("expected Min(...) version, got {other:?} for: {css}"),
+        }
+    }
+}
+
+#[test]
+fn test_os_paren_form_with_de_and_version() {
+    use azul_css::dynamic_selector::{DesktopEnvVersion, LinuxDesktopEnv, OsVersionCondition};
+    let conds = os_conditions("@os(linux:gnome > 40) { div { color: red; } }");
+    assert_eq!(
+        conds,
+        vec![
+            DynamicSelector::Os(OsCondition::Linux),
+            DynamicSelector::OsVersion(OsVersionCondition::DesktopEnvMin(
+                DesktopEnvVersion { env: LinuxDesktopEnv::Gnome, version_id: 40 }
+            )),
+        ]
+    );
+}
+
+#[test]
+fn test_os_de_version_match() {
+    use azul_css::dynamic_selector::{
+        DesktopEnvVersion, DynamicSelectorContext, LinuxDesktopEnv, OptionLinuxDesktopEnv,
+        OsVersionCondition,
+    };
+    let sel = DynamicSelector::OsVersion(OsVersionCondition::DesktopEnvMin(
+        DesktopEnvVersion { env: LinuxDesktopEnv::Gnome, version_id: 40 },
+    ));
+    // GNOME 42 — matches.
+    let ctx_42 = DynamicSelectorContext {
+        os: OsCondition::Linux,
+        desktop_env: OptionLinuxDesktopEnv::Some(LinuxDesktopEnv::Gnome),
+        de_version: 42,
+        ..Default::default()
+    };
+    assert!(sel.matches(&ctx_42));
+    // GNOME 38 — fails the >= 40 constraint.
+    let ctx_38 = DynamicSelectorContext { de_version: 38, ..ctx_42.clone() };
+    assert!(!sel.matches(&ctx_38));
+    // Unknown DE version (0) — never satisfies any DE-version constraint.
+    let ctx_unknown = DynamicSelectorContext { de_version: 0, ..ctx_42.clone() };
+    assert!(!sel.matches(&ctx_unknown));
+    // KDE — wrong DE.
+    let ctx_kde = DynamicSelectorContext {
+        desktop_env: OptionLinuxDesktopEnv::Some(LinuxDesktopEnv::KDE),
+        ..ctx_42
+    };
+    assert!(!sel.matches(&ctx_kde));
+}
