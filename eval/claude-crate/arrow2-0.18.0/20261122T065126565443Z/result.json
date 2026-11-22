@@ -1,0 +1,68 @@
+{
+  "violations": [
+    {
+      "location": "src/util/lexical.rs:21",
+      "function": "lexical_to_bytes_mut",
+      "unsafe_api": "std::slice::from_raw_parts_mut",
+      "requirement": "The memory range [ptr, ptr + len) must hold properly initialized values of type T. The resulting &mut [T] must refer to initialized data.",
+      "explanation": "The function is `pub` and safe. It builds a `&mut [u8]` over `buf.as_mut_ptr()` with length `buf.capacity()`, right after `buf.clear()` and `buf.reserve(..)`. Only the spare capacity is covered, and that memory is uninitialized. Creating a `&mut [u8]` over uninitialized bytes breaks the initialization requirement of `from_raw_parts_mut`, so it is undefined behavior. The code should have used `spare_capacity_mut` or `MaybeUninit`."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 38,
+        "outputTokens": 9470,
+        "cacheReadInputTokens": 1520649,
+        "cacheCreationInputTokens": 194286,
+        "webSearchRequests": 0,
+        "costUSD": 0.7325559,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 5357,
+        "cacheCreationEphemeral5mInputTokens": 194286,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 38,
+      "cache_creation_input_tokens": 194286,
+      "cache_read_input_tokens": 1520649,
+      "output_tokens": 9470,
+      "output_tokens_details": {
+        "thinking_tokens": 5357
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 194286
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 441,
+          "cache_read_input_tokens": 191528,
+          "cache_creation_input_tokens": 3932,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 3932,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.7325559,
+    "duration_ms": 83014,
+    "num_turns": 58
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "violations": [
+    {
+      "location": "src/backtest/data/mod.rs:162",
+      "function": "DataPtr::at",
+      "unsafe_api": "core::ptr::<*const T>::add",
+      "requirement": "The offset must stay in bounds of the same allocated object, so the computed pointer must not go past one byte beyond the end of the allocation. It must also not overflow isize.",
+      "explanation": "`at` is a pub safe fn. It calls `ptr.add(index)` without checking `index` against the buffer length. A caller can pass any index, including one that is out of bounds. The pointer can also be null or dangling, for example in the Default instance. Callers inside the crate check bounds, but `at` itself does not."
+    },
+    {
+      "location": "src/utils/aligned.rs:48",
+      "function": "AlignedArray::new",
+      "unsafe_api": "core::alloc::Layout::from_size_align_unchecked",
+      "requirement": "`align` must be non-zero and a power of two. The size, rounded up to a multiple of `align`, must not overflow isize.",
+      "explanation": "`new` is pub and safe. It only asserts the size bound. It never checks that the const generic `ALIGNMENT` is a power of two. For example, `ALIGNMENT = 3` or `ALIGNMENT = 0` would reach the unchecked constructor and cause undefined behavior. The `ALIGNMENT = 0` case would also underflow in `MAX_CAPACITY`."
+    },
+    {
+      "location": "src/utils/aligned.rs:49",
+      "function": "AlignedArray::new",
+      "unsafe_api": "alloc::alloc::alloc",
+      "requirement": "The layout must have a non-zero size.",
+      "explanation": "`new` only rejects `len == 0`. If `T` is a zero-sized type, `len * size_of::<T>()` is 0. The layout then has zero size and is passed to `alloc`, which is undefined behavior."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 18,
+        "outputTokens": 1772,
+        "cacheReadInputTokens": 34832,
+        "cacheCreationInputTokens": 18280,
+        "webSearchRequests": 0,
+        "costUSD": 0.0669392,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 507,
+        "cacheCreationEphemeral5mInputTokens": 18280,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 18,
+      "cache_creation_input_tokens": 18280,
+      "cache_read_input_tokens": 34832,
+      "output_tokens": 1772,
+      "output_tokens_details": {
+        "thinking_tokens": 507
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 18280
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 743,
+          "cache_read_input_tokens": 12689,
+          "cache_creation_input_tokens": 6765,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 6765,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.0669392,
+    "duration_ms": 20781,
+    "num_turns": 12
+  }
+}

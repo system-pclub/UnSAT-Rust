@@ -1,0 +1,75 @@
+{
+  "violations": [
+    {
+      "location": "src/vec.rs:184",
+      "function": "SyncVec::get_uncheck",
+      "unsafe_api": "core::slice::<[T]>::get_unchecked",
+      "requirement": "The index must be in bounds (index < len); calling with an out-of-bounds index is undefined behavior.",
+      "explanation": "The function is pub and safe, and it passes the caller's index straight to get_unchecked. It does no bounds check, so a safe caller can pass an out-of-bounds index and cause UB. `Index::index` also reaches this path."
+    },
+    {
+      "location": "src/map_btree.rs:337",
+      "function": "BtreeIter::next",
+      "unsafe_api": "core::ptr::const_ptr::<*const T>::as_ref",
+      "requirement": "The pointer must be either null or valid: properly aligned, dereferenceable, and pointing to an initialized value that is valid for the lifetime 'a with no conflicting mutable access.",
+      "explanation": "`next` is a safe method on a pub type. It calls `as_ref()` on a raw `*const V` stored in the map iterator and then unwraps the result. Nothing guarantees the pointer is valid or live for 'a, so a dangling pointer would give UB."
+    }
+  ],
+  "execution": {
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 16,
+        "outputTokens": 1895,
+        "cacheReadInputTokens": 85234,
+        "cacheCreationInputTokens": 47234,
+        "webSearchRequests": 0,
+        "costUSD": 0.1455904,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 311,
+        "cacheCreationEphemeral5mInputTokens": 47234,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 16,
+      "cache_creation_input_tokens": 47234,
+      "cache_read_input_tokens": 85234,
+      "output_tokens": 1895,
+      "output_tokens_details": {
+        "thinking_tokens": 311
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 47234
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 519,
+          "cache_read_input_tokens": 36062,
+          "cache_creation_input_tokens": 12346,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 12346,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "total_cost_usd": 0.1455904,
+    "duration_ms": 19392,
+    "num_turns": 21
+  }
+}
