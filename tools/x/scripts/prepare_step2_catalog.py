@@ -31,6 +31,30 @@ def apply_supplement(rules, supplement, models):
     return len(supplement.get('rules', []))
 
 
+def apply_overrides(rules, supplement, models):
+    """Replace the expression of generated rules whose translation is known to over-report.
+
+    An override only applies while the generated expression still equals ``expected``,
+    so a regenerated step2 corpus is never silently patched.
+    """
+    applied = 0
+    for entry in supplement.get('overrides', []):
+        for key in entry['rules']:
+            library, source_id = key.split(':')
+            rule = rules.get(f'step2-{library}-{source_id}')
+            if rule is None or rule['dsl'] != entry['expected']:
+                continue
+            api, expression = rule['api'], entry['expression']
+            if api not in models:
+                models[api] = Model(ROOT / 'tools/x/generated/dsl/schema.json', api)
+            document = dslv2.lower(models[api], expression)
+            document['source'] = expression
+            rule.update({'dsl': expression, 'expression': expression, 'dsl_v2': document,
+                         'override_reason': entry['reason']})
+            applied += 1
+    return applied
+
+
 def prepare(source, output, supplement=None):
     output.mkdir(parents=True, exist_ok=True)
     rules, excluded, errors, inputs, models = {}, [], [], {}, {}
@@ -60,7 +84,8 @@ def prepare(source, output, supplement=None):
             except Exception as error:
                 errors.append({'library': library, **row, 'lowering_error': str(error)})
     added = apply_supplement(rules, json.loads(supplement.read_text()), models) if supplement else 0
-    manifest = {'llm_requests': 0, 'supplement_rules': added, 'include_raw_pointer_deref': True,
+    overridden = apply_overrides(rules, json.loads(supplement.read_text()), models) if supplement else 0
+    manifest = {'llm_requests': 0, 'supplement_rules': added, 'overridden_rules': overridden, 'include_raw_pointer_deref': True,
                 'inputs': inputs, 'translated': len(rules),
                 'excluded_non_translated': len(excluded), 'lowering_errors': errors}
     (output / 'catalog-manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n')

@@ -1,0 +1,791 @@
+{
+  "policy": "Bind each original RustSec defect to its actual faulty callsite and that exact API contract. Pass exactly one verbatim rules.csv rule. No substitute calls, API contracts, or generic fallbacks. Exclusions remain in coverage.",
+  "cases": [
+    {
+      "advisory": "RUSTSEC-2023-0080",
+      "directory": "benchmark/rustsec/transpose-0.2.2",
+      "rule_id": "rule-576",
+      "target_function": "out_of_place::transpose_small (called by out_of_place::transpose)",
+      "unsafe_api": "core::slice::get_unchecked_mut",
+      "source_location": "src/out_of_place.rs:23",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2023-0080/advisory.md",
+      "selection_reason": "Integer multiplication wraps before the output length check; the report concerns an out-of-bounds output index.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/out_of_place.rs",
+        "line": 23,
+        "source_line": "*output.get_unchecked_mut(output_index) = *input.get_unchecked(input_index);",
+        "source_sha256": "d4287fa395820a633569f6e9a6412a14348f519bc94a48522c3d32aefac822be"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:665",
+        "name": "unsafe fn get_unchecked_mut < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0109",
+      "directory": "benchmark/rustsec/binary_vec_io-0.1.12",
+      "rule_id": "rule-610",
+      "target_function": "binary_write_from_ref",
+      "unsafe_api": "std::slice::from_raw_parts",
+      "source_location": "src/lib.rs:31",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0109/advisory.md",
+      "selection_reason": "The report constructs a byte slice of n objects from a reference to one object; select the readable-range requirement.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/lib.rs",
+        "line": 31,
+        "source_line": "let sli: &[u8] = std::slice::from_raw_parts(raw, n * (std::mem::size_of::<T>()));",
+        "source_sha256": "cf04045e2527405aed57b55b5c3ee3a0ed0495e2a2e7f6d8dbbfc281e53b5225"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/raw.rs:6",
+        "name": "const unsafe fn from_raw_parts < 'a , T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0137",
+      "directory": "benchmark/rustsec/ruint-1.17.0",
+      "rule_id": "rule-572",
+      "target_function": "algorithms::div::reciprocal::reciprocal_mg10",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/algorithms/div/reciprocal.rs:87",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0137/advisory.md",
+      "selection_reason": "The report concerns unchecked slice indexing when debug assertions are disabled.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/algorithms/div/reciprocal.rs",
+        "line": 87,
+        "source_line": "let v0 = Wrapping(*unsafe { TABLE.get_unchecked((d9.0 - 256) as usize) } as u64);",
+        "source_sha256": "0efee73bc551d8e9ab70ee23bec29aa29ca96ee55a258df931c62220dd3eedf2"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0063",
+      "directory": "benchmark/rustsec/fast-able-1.11.17",
+      "rule_id": "rule-572",
+      "target_function": "vec::SyncVec::get_uncheck",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/vec.rs:184",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0063/advisory.md",
+      "selection_reason": "The report concerns a safe accessor accepting an unchecked index.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/vec.rs",
+        "line": 184,
+        "source_line": "unsafe { (&*self.dirty.get()).get_unchecked(index) }",
+        "source_sha256": "0c1ae392aed819d9cc7bfd3eb141f1b78486f4d5840d65138a1414ba4f73a77c"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0113",
+      "directory": "benchmark/rustsec/shaman-0.1.0",
+      "rule_id": "rule-576",
+      "target_function": "cryptoutil::write_u64v_le",
+      "unsafe_api": "core::slice::get_unchecked_mut",
+      "source_location": "src/cryptoutil.rs:45",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0113/advisory.md",
+      "selection_reason": "The report names zero-length buffers; dst.get_unchecked_mut(0) must still have an in-bounds index.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/cryptoutil.rs",
+        "line": 45,
+        "source_line": "let mut x: *mut u8 = dst.get_unchecked_mut(0);",
+        "source_sha256": "5a43c5d34925edac05defab26733740849d4e450f6ad2f546b1187607b497bdc"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:665",
+        "name": "unsafe fn get_unchecked_mut < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0038",
+      "directory": "benchmark/rustsec/arrow2-0.18.0",
+      "rule_id": "rule-572",
+      "target_function": "compute::sort::row::Rows::row_unchecked",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/compute/sort/row/mod.rs:274",
+      "advisory_source": "https://rustsec.org/advisories/RUSTSEC-2025-0038.html",
+      "selection_reason": "The report names unchecked access to the underlying Rows buffer.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/compute/sort/row/mod.rs",
+        "line": 274,
+        "source_line": "let end = *self.offsets.get_unchecked(row + 1);",
+        "source_sha256": "c8ff18ab7700d3b75346cc931b85e8c9f1d6187888bc3df10b7d24994853f14d"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2024-0431",
+      "directory": "benchmark/rustsec/xous-0.9.50",
+      "rule_id": "rule-611",
+      "target_function": "definitions::MemoryRange::as_slice",
+      "unsafe_api": "std::slice::from_raw_parts",
+      "source_location": "src/definitions.rs:323",
+      "advisory_source": "https://rustsec.org/advisories/RUSTSEC-2024-0431.html",
+      "selection_reason": "The report concerns casting arbitrary bit patterns into slices of arbitrary T; select initialized T values rather than unrelated allocation rules.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/definitions.rs",
+        "line": 323,
+        "source_line": "core::slice::from_raw_parts(",
+        "source_sha256": "31233492cec46973e59d0012f18538dfae94176d39d26f955f91b0c9b4a024f4"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/raw.rs:6",
+        "name": "const unsafe fn from_raw_parts < 'a , T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2020-0039",
+      "directory": "benchmark/rustsec/simple-slab-0.3.2",
+      "rule_id": "rule-322",
+      "target_function": "Slab::remove",
+      "unsafe_api": "std::ptr::read",
+      "source_location": "src/lib.rs:96",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2020-0039/advisory.md",
+      "selection_reason": "The off-by-one last_elem read can read the uninitialized slot at self.len, including when the allocation has spare capacity.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/lib.rs",
+        "line": 96,
+        "source_line": "last_elem = ptr::read(last_elem_ptr);",
+        "source_sha256": "a1bd2058f6aa3788f75eced7f58a5813df0383e470c0d56ef7f916f236f496bc"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/mod.rs:1231",
+        "name": "const unsafe fn read < T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0165",
+      "directory": "benchmark/rustsec/i_tree-0.9.0",
+      "rule_id": "rule-572",
+      "target_function": "tree::Tree::node",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/tree.rs:65",
+      "advisory_source": "https://rustsec.org/advisories/RUSTSEC-2025-0165.html",
+      "selection_reason": "The report concerns an arbitrary u32 index passed to unchecked node access.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/tree.rs",
+        "line": 65,
+        "source_line": "self.store.buffer.get_unchecked(index as usize)",
+        "source_sha256": "f8a1b9322e80fec093049543de21afb195b6bb8cff19e31774683d3572a27506"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0164",
+      "directory": "benchmark/rustsec/i_triangle-0.26.0",
+      "rule_id": "rule-572",
+      "target_function": "delaunay::triangle::DTriangle::neighbor_by_order",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/delaunay/triangle.rs:13",
+      "advisory_source": "https://rustsec.org/advisories/RUSTSEC-2025-0164.html",
+      "selection_reason": "The report concerns an arbitrary order passed to unchecked array access.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/delaunay/triangle.rs",
+        "line": 13,
+        "source_line": "*self.neighbors.get_unchecked(order)",
+        "source_sha256": "226e11b23525de30bedcc6d17a1a83433390164e76514beb3faa6cc08a6ca45d"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2026-0123",
+      "directory": "benchmark/rustsec/rustdx-0.4.3",
+      "rule_id": "rule-572",
+      "target_function": "bytes_helper::into_arr2",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/bytes_helper.rs:24",
+      "advisory_source": "https://rustsec.org/advisories/RUSTSEC-2026-0123.html",
+      "selection_reason": "The report concerns pos..pos+N outside the input slice.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/bytes_helper.rs",
+        "line": 24,
+        "source_line": "arr.copy_from_slice(unsafe { slice.get_unchecked(pos..pos + 2) });",
+        "source_sha256": "8488f58db363a7875d317376e59520e41c529dcd903294e0c6d6ad905dca6f55"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2026-0129",
+      "directory": "benchmark/rustsec/dahl-salso-0.6.6",
+      "rule_id": "rule-572",
+      "target_function": "clustering::Clusterings::label",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/clustering.rs:98",
+      "advisory_source": "https://rustsec.org/advisories/RUSTSEC-2026-0129.html",
+      "selection_reason": "The report concerns label indexing after a constructor creates inconsistent dimensions.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/clustering.rs",
+        "line": 98,
+        "source_line": ".get_unchecked(draw_index * self.n_items + item_index)",
+        "source_sha256": "cc0a639b495b3162a4926d5704cf2a4910a77e5ef2f5fad55083a6adaf0eb101"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0039",
+      "directory": "benchmark/rustsec/anon-vec-0.1.1",
+      "rule_id": "rule-301",
+      "target_function": "vec::AnonVec::get_ref",
+      "unsafe_api": "core::ptr::const_ptr::add",
+      "source_location": "src/vec.rs:206",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0039/advisory.md",
+      "selection_reason": "The report names insufficient argument checks in get_ref; arbitrary index can move the pointer outside its allocation.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/vec.rs",
+        "line": 206,
+        "source_line": "unsafe { &*(ptr.add(index)) }",
+        "source_sha256": "f6d837f54e77f2436f4004a1d95e1b88602750625882d1b7ad011030115e62e1"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:881",
+        "name": "const unsafe fn add"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0034",
+      "directory": "benchmark/rustsec/fast_id_map-0.1.0",
+      "rule_id": "rule-576",
+      "target_function": "fast_map::FastMap::get",
+      "unsafe_api": "core::slice::get_unchecked_mut",
+      "source_location": "src/fast_map.rs:22",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0034/advisory.md",
+      "selection_reason": "The report concerns an unchecked Vec element index.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/fast_map.rs",
+        "line": 22,
+        "source_line": "unsafe { self.vec.get_unchecked_mut(index) }",
+        "source_sha256": "1ad8b4cbe34c55e2a4fb3f0fefa4979618e7709e08544d416a4cc2bb465810c6"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:665",
+        "name": "unsafe fn get_unchecked_mut < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0031",
+      "directory": "benchmark/rustsec/tanton_engine-1.0.0",
+      "rule_id": "rule-432",
+      "target_function": "search::Stack::offset",
+      "unsafe_api": "std::ptr::mut_ptr::offset",
+      "source_location": "src/search/mod.rs:103",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0031/advisory.md",
+      "selection_reason": "The report names missing boundary checks in Stack::offset; select the mutable-pointer allocation-range requirement.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/search/mod.rs",
+        "line": 103,
+        "source_line": "&mut *ptr.offset(count)",
+        "source_sha256": "368cfdfa1e626f0d979d6877ff11e268356f9d433f795c7c16e06bd9cea21e36"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+        "name": "const unsafe fn offset"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2026-0007",
+      "directory": "benchmark/rustsec/bytes-1.11.0",
+      "rule_id": "rule-580",
+      "target_function": "bytes_mut::BytesMut::spare_capacity_mut",
+      "unsafe_api": "core::slice::from_raw_parts_mut",
+      "source_location": "src/bytes_mut.rs:1117",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2026-0007/advisory.md",
+      "selection_reason": "The report concerns reserve overflow corrupting cap so the resulting spare-capacity slice extends beyond its allocation; MaybeUninit<u8> does not need initialized u8 values.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/bytes_mut.rs",
+        "line": 1117,
+        "source_line": "slice::from_raw_parts_mut(ptr.cast(), len)",
+        "source_sha256": "b93d48655775bab059ca7b91ce8d5a553916375d85ede1d04586ee781283afb6"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/raw.rs:142",
+        "name": "const unsafe fn from_raw_parts_mut < 'a , T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2021-0068",
+      "directory": "benchmark/rustsec/iced-x86-1.10.3",
+      "rule_id": "rule-572",
+      "target_function": "decoder::Decoder::new",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/decoder/mod.rs:458",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2021-0068/advisory.md",
+      "selection_reason": "The report specifically names get_unchecked(slice.len()); an unused result is still subject to bounds.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/decoder/mod.rs",
+        "line": 458,
+        "source_line": "let data_ptr_end: *const u8 = unsafe { data.get_unchecked(data.len()) };",
+        "source_sha256": "8968d2b0ef4a7f7e114b14d9020f944ee0d46450cddbbdcad9cb5c5b1bed299a"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2026-0186",
+      "directory": "benchmark/rustsec/memmap2-0.9.10",
+      "rule_id": "rule-432",
+      "target_function": "MmapInner::flush",
+      "unsafe_api": "std::ptr::mut_ptr::offset",
+      "source_location": "src/unix.rs:362",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2026-0186/advisory.md",
+      "selection_reason": "The report concerns pointer arithmetic outside the mapped allocation before msync; merely originating from an allocation is insufficient.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/unix.rs",
+        "line": 362,
+        "source_line": "unsafe { libc::msync(self.ptr.offset(offset), len as libc::size_t, libc::MS_SYNC) };",
+        "source_sha256": "fea7c7c21a6082bc77052e5e40a2bff1311103a19c2cd281ff383604fa799b35"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/mut_ptr.rs:371",
+        "name": "const unsafe fn offset"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0106",
+      "directory": "benchmark/rustsec/orx-pinned-vec-3.20.0",
+      "rule_id": "rule-301",
+      "target_function": "utils::slice::index_of_ptr",
+      "unsafe_api": "core::ptr::const_ptr::add",
+      "source_location": "src/utils/slice.rs:39",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0106/advisory.md",
+      "selection_reason": "The report concerns an empty slice causing len-1 underflow and an out-of-allocation pointer.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/utils/slice.rs",
+        "line": 39,
+        "source_line": "let ptr_end = (unsafe { ptr.add(slice.len() - 1) }) as usize;",
+        "source_sha256": "34c8c959ee34ad2f5d96fe86172b5edcec6135159502431850f657ce4aa959d0"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:881",
+        "name": "const unsafe fn add"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0033",
+      "directory": "benchmark/rustsec/scanner-0.1.0",
+      "rule_id": "rule-289",
+      "target_function": "Match::ptr",
+      "unsafe_api": "std::ptr::const_ptr::offset",
+      "source_location": "src/lib.rs:413",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0033/advisory.md",
+      "selection_reason": "The report names Match::ptr/get bounds checks; select the actual const-pointer offset range.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/lib.rs",
+        "line": 413,
+        "source_line": "unsafe { self.haystack.as_ptr().offset(self.at as isize) }",
+        "source_sha256": "1218ff7f378c67a17be9b3472850c5b93ae28008154bee8538ff4bf1d03143c2"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+        "name": "const unsafe fn offset"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0032",
+      "directory": "benchmark/rustsec/redox_uefi_std-0.1.13",
+      "rule_id": "rule-289",
+      "target_function": "ffi::nstr",
+      "unsafe_api": "core::ptr::const_ptr::offset",
+      "source_location": "src/ffi.rs:20",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0032/advisory.md",
+      "selection_reason": "The report concerns scanning past a buffer with no zero terminator; offset eventually leaves the allocation.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/ffi.rs",
+        "line": 20,
+        "source_line": "let w = unsafe { *wstring.offset(i) };",
+        "source_sha256": "0cae6e4895dca8f1b285756a852ad52ee96be4939e5367b6485b6739863ac298"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+        "name": "const unsafe fn offset"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2020-0042",
+      "directory": "benchmark/rustsec/stack-0.3.0",
+      "rule_id": "rule-955",
+      "target_function": "ArrayVec::insert",
+      "unsafe_api": "core::intrinsics::copy",
+      "source_location": "src/vector.rs:56",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2020-0042/advisory.md",
+      "selection_reason": "The report concerns unchecked insert index and a copy beyond the destination buffer.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/vector.rs",
+        "line": 56,
+        "source_line": "copy(ptr, ptr.uoffset(1), len - index);",
+        "source_sha256": "38f568339aa0de7532d9788dc98cf0119905f50d50e0674591c3450ed45e2927"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/intrinsics/mod.rs:3827",
+        "name": "const unsafe fn copy < T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2026-0133",
+      "directory": "benchmark/rustsec/auto_vec-0.2.0",
+      "rule_id": "rule-305",
+      "target_function": "AutoVec::iter",
+      "unsafe_api": "std::ptr::const_ptr::sub",
+      "source_location": "src/iter.rs:14",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2026-0133/advisory.md",
+      "selection_reason": "The report specifically concerns subtracting one from the first element pointer; choose range bounds, not just allocation provenance.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/iter.rs",
+        "line": 14,
+        "source_line": "current: unsafe {(&self.children[0] as *const *const RawAutoChild<T>).sub(1)},",
+        "source_sha256": "7f6162d36c831b48290cbf9384d45a72b309466baead94152912370c775de47e"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:987",
+        "name": "const unsafe fn sub"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0131",
+      "directory": "benchmark/rustsec/rtvm-interpreter-4.0.0",
+      "rule_id": "rule-294",
+      "target_function": "interpreter::Interpreter::program_counter",
+      "unsafe_api": "std::ptr::const_ptr::offset_from",
+      "source_location": "src/interpreter.rs:323",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0131/advisory.md",
+      "selection_reason": "The report names a public instruction_pointer field which can cease sharing the bytecode allocation.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/interpreter.rs",
+        "line": 323,
+        "source_line": "unsafe { self.instruction_pointer.offset_from(self.bytecode.as_ptr()) as usize }",
+        "source_sha256": "ad4d70b998646e23bcdebbeea4cb571a67d7dedf4941317c493aee84ae4a6bdf"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:597",
+        "name": "const unsafe fn offset_from"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0005",
+      "directory": "benchmark/rustsec/grcov-0.8.19",
+      "rule_id": "rule-576",
+      "target_function": "covdir::CDFileStats::get_coverage",
+      "unsafe_api": "core::slice::get_unchecked_mut",
+      "source_location": "src/covdir.rs:64",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0005/advisory.md",
+      "selection_reason": "The report concerns coverage data supplying an unchecked write index.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/covdir.rs",
+        "line": 64,
+        "source_line": "*lines.get_unchecked_mut((*line_num - 1) as usize) = line_count as i64;",
+        "source_sha256": "23b28f5aa70d46829caf23351243bf1e2a1b0bf6bcfd064e65f8ffd9f52e7eb5"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:665",
+        "name": "unsafe fn get_unchecked_mut < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0047",
+      "directory": "benchmark/rustsec/slab-0.4.10",
+      "rule_id": null,
+      "target_function": "Slab::get_disjoint_mut",
+      "unsafe_api": "raw mutable pointer dereference",
+      "source_location": "src/lib.rs:836",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0047/advisory.md",
+      "selection_reason": "The reported UB is forming a reference to an uninitialized Entry at &mut *entries_ptr.add(key). add can remain within capacity and the later assume_init call is not the original defect. rules.csv has no raw-dereference contract.",
+      "review_status": "no_matching_rule",
+      "callsite": {
+        "path": "src/lib.rs",
+        "line": 836,
+        "source_line": "match unsafe { &mut *entries_ptr.add(key) } {",
+        "source_sha256": "8e3ef311b7eca8fcef822fdede8860e317d5aa839cd69b7a7acc95789203b981"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0062",
+      "directory": "benchmark/rustsec/toodee-0.5.0",
+      "rule_id": "rule-956",
+      "target_function": "<DrainCol as Drop>::drop::<DropGuard as Drop>::drop",
+      "unsafe_api": "core::intrinsics::copy",
+      "source_location": "src/toodee.rs:1076",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0062/advisory.md",
+      "selection_reason": "The final copy reads orig_cols-col elements starting one position after col; its last source element exceeds the original vector. Select the source-read requirement.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/toodee.rs",
+        "line": 1076,
+        "source_line": "ptr::copy(src, dest, orig_cols - col);",
+        "source_sha256": "59204291d3cab4fcb88a9b2f5a4b05fe287159b0d177b149e31e295c6dce0a65"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/intrinsics/mod.rs:3827",
+        "name": "const unsafe fn copy < T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2025-0018",
+      "directory": "benchmark/rustsec/xmas-elf-0.9.1",
+      "rule_id": "rule-289",
+      "target_function": "hash::HashTable::get_bucket",
+      "unsafe_api": "core::ptr::const_ptr::offset",
+      "source_location": "src/hash.rs:31",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2025-0018/advisory.md",
+      "selection_reason": "The report concerns indexes validated against attacker-controlled counts instead of the section allocation.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/hash.rs",
+        "line": 31,
+        "source_line": "let ptr = (&self.first_bucket as *const u32).offset(index as isize);",
+        "source_sha256": "0d9fa25ebca2b685aa6a37e93136eafa6840b1c404f7b2e63ff4be46de419bc9"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/const_ptr.rs:374",
+        "name": "const unsafe fn offset"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2024-0408",
+      "directory": "benchmark/rustsec/pprof-0.13.0",
+      "rule_id": "rule-609",
+      "target_function": "collector::TempFdArrayIterator::next",
+      "unsafe_api": "std::slice::from_raw_parts",
+      "source_location": "src/collector.rs:225",
+      "advisory_source": "https://github.com/tikv/pprof-rs/issues/232",
+      "selection_reason": "The original issue #232 identifies precisely collector.rs:225: Vec<u8> storage is cast to *const T before from_raw_parts; T may require greater alignment. Select this reported misaligned call and its alignment rule, not the different addr_validate call.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/collector.rs",
+        "line": 225,
+        "source_line": "unsafe { std::slice::from_raw_parts(self.file_vec.as_ptr() as *const T, length) };",
+        "source_sha256": "b701eb1826d5775665cc02a8addf726d3cb7b9f1430d263ad39914897d7b0643"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/raw.rs:6",
+        "name": "const unsafe fn from_raw_parts < 'a , T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2023-0016",
+      "directory": "benchmark/rustsec/partial_sort-0.1.2",
+      "rule_id": "rule-572",
+      "target_function": "adjust_heap (called by partial_sort)",
+      "unsafe_api": "core::slice::get_unchecked",
+      "source_location": "src/lib.rs:113",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2023-0016/advisory.md",
+      "selection_reason": "The original last > v.len() release-mode defect reaches adjust_heap with len=last. Its get_unchecked(left_child) can exceed v.len(). The get_unchecked in the public last..v.len() loop is not the reported failure path because that loop is empty when last > v.len().",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/lib.rs",
+        "line": 113,
+        "source_line": "&& is_less(v.get_unchecked(left_child), v.get_unchecked(left_child + 1))",
+        "source_sha256": "aa12284a30a8e5871e423f8785915f2ec873a5d3c94f66270cee4743ef446b44"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/slice/mod.rs:625",
+        "name": "unsafe fn get_unchecked < I >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2021-0050",
+      "directory": "benchmark/rustsec/reorder-1.0.3",
+      "rule_id": "rule-1277",
+      "target_function": "swap_index",
+      "unsafe_api": "std::vec::Vec::set_len",
+      "source_location": "src/lib.rs:54",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2021-0050/advisory.md",
+      "selection_reason": "The report explicitly describes an iterator yielding fewer items than len and exposing uninitialized elements. Select initialization on set_len, not a merely similar bounds requirement.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/lib.rs",
+        "line": 54,
+        "source_line": "vec.set_len(len);",
+        "source_sha256": "bc94e5d1f1b9a9453e82ac5a4a4870eca0bdba059a35c54e6ea29c6151b4440d"
+      },
+      "rule_api": {
+        "path": "rust/library/alloc/src/vec/mod.rs:1832",
+        "name": "unsafe fn set_len (& mut self , new_len : usize)"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2021-0028",
+      "directory": "benchmark/rustsec/toodee-0.5.0",
+      "rule_id": null,
+      "target_function": "toodee::TooDee::insert_row",
+      "unsafe_api": "core::intrinsics::copy",
+      "source_location": "src/toodee.rs:696",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2021-0028/advisory.md",
+      "selection_reason": "The original report describes copy duplicating ownership while the old Vec length remains visible to panic/drop and iterator length mismatches exposing invalid elements. The pinned 0.5.0 insert_row already shortens the Vec at line 689 and asserts exhaustion at lines 704-707 before restoring its length. Do not relabel its later set_len as an unfixed reported defective call, or substitute another advisory in this crate.",
+      "review_status": "reported_defect_not_in_snapshot",
+      "callsite": {
+        "path": "src/toodee.rs",
+        "line": 696,
+        "source_line": "ptr::copy(p, suffix, len - start);",
+        "source_sha256": "59204291d3cab4fcb88a9b2f5a4b05fe287159b0d177b149e31e295c6dce0a65"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2021-0027",
+      "directory": "benchmark/rustsec/bam-0.1.2",
+      "rule_id": "rule-961",
+      "target_function": "bgzip::Block::load",
+      "unsafe_api": "std::vec::Vec::set_len",
+      "source_location": "src/bgzip/mod.rs:328",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2021-0027/advisory.md",
+      "selection_reason": "The report specifically concerns subtraction underflow setting a length beyond Vec capacity.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/bgzip/mod.rs",
+        "line": 328,
+        "source_line": "self.compressed.set_len(block_size - HEADER_SIZE - MIN_EXTRA_SIZE);",
+        "source_sha256": "1dd32efc5f61b3c5cd500ae37dc0c9b389c386a9876f502efbbb8ef4b81964fb"
+      },
+      "rule_api": {
+        "path": "rust/library/alloc/src/vec/mod.rs:1832",
+        "name": "unsafe fn set_len"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2019-0012",
+      "directory": "benchmark/rustsec/smallvec-0.6.9",
+      "rule_id": "rule-1241",
+      "target_function": "SmallVec::drop after SmallVec::grow (union feature)",
+      "unsafe_api": "std::vec::Vec::from_raw_parts",
+      "source_location": "lib.rs:1402",
+      "advisory_source": "https://github.com/smallvec/smallvec/issues/149",
+      "selection_reason": "Original issue #149 shrinks a spilled vector into inline storage without resetting capacity. With the union representation, Drop still treats inline bytes as a heap pointer and calls Vec::from_raw_parts on it. Bind this call and its allocator provenance obligation. The deallocate(ptr,cap) call during grow uses the old valid allocation and is not this faulty call. Without union, the representation mismatch may panic instead.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "lib.rs",
+        "line": 1402,
+        "source_line": "Vec::from_raw_parts(ptr, len, self.capacity);",
+        "source_sha256": "a34604945212fcb95eee841bffc3652636af7b91bbb9f8a710e454ad41224765"
+      },
+      "rule_api": {
+        "path": "rust/library/alloc/src/vec/mod.rs:514",
+        "name": "unsafe fn from_raw_parts (ptr : * mut T , length : usize , capacity : usize) -> Self"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2021-0111",
+      "directory": "benchmark/rustsec/tremor-script-0.11.5",
+      "rule_id": null,
+      "target_function": "merge/patch",
+      "unsafe_api": "core::intrinsics::transmute",
+      "source_location": "src/interpreter/expr.rs:483",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2021-0111/advisory.md",
+      "selection_reason": "The report concerns borrowed event data outliving its allocation via merge/patch. rules.csv has no matching intrinsic transmute lifetime/aliasing contract; transmutability::transmute is a different API.",
+      "review_status": "no_matching_rule",
+      "callsite": {
+        "path": "src/interpreter/expr.rs",
+        "line": 483,
+        "source_line": "unsafe { mem::transmute::<&Value, &mut Value>(current) },",
+        "source_sha256": "0f22ac319cfa969a98b3d49ebdbb8163191962217e4b66f6592dbf674f716322"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2020-0022",
+      "directory": "benchmark/rustsec/ozone-0.1.0",
+      "rule_id": "rule-192",
+      "target_function": "map::OccupiedEntry::remove_entry",
+      "unsafe_api": "std::mem::uninitialized",
+      "source_location": "src/map.rs:95",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2020-0022/advisory.md",
+      "selection_reason": "The report explicitly identifies creating and dropping uninitialized memory in map.rs; select uninitialized rather than unrelated buffer offset rules.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/map.rs",
+        "line": 95,
+        "source_line": "let mut key: K = unsafe { mem::uninitialized() };",
+        "source_sha256": "2fd9f4aac48472f3bf141c1d3198428b134dab31c53f85720cd3dc8a53b4c891"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/mem/mod.rs:651",
+        "name": "unsafe fn uninitialized < T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2023-0086",
+      "directory": "benchmark/rustsec/lexical-util-0.8.5",
+      "rule_id": "rule-324",
+      "target_function": "skip::Bytes::read / read_unchecked",
+      "unsafe_api": "std::ptr::read_unaligned",
+      "source_location": "src/skip.rs:439",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2023-0086/advisory.md",
+      "selection_reason": "The selected original Bytes::read issue is constructing arbitrary V with invalid bit patterns. The actual operation is read_unaligned<V>, not the unrelated assume_init issue also listed by the advisory.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/skip.rs",
+        "line": 439,
+        "source_line": "unsafe { ptr::read_unaligned::<V>(slc.as_ptr() as *const _) }",
+        "source_sha256": "ab143a16d4a8e5d385ce5489585dee542def0146cb923fda303465490ad000a7"
+      },
+      "rule_api": {
+        "path": "rust/library/core/src/ptr/mod.rs:1384",
+        "name": "const unsafe fn read_unaligned < T >"
+      }
+    },
+    {
+      "advisory": "RUSTSEC-2021-0094",
+      "directory": "benchmark/rustsec/rdiff-0.1.2",
+      "rule_id": "rule-961",
+      "target_function": "window::Window::new",
+      "unsafe_api": "std::vec::Vec::set_len",
+      "source_location": "src/window.rs:13",
+      "advisory_source": "dev/rustsec/evidence/RUSTSEC-2021-0094/advisory.md",
+      "selection_reason": "The report specifically concerns a Read implementation returning more bytes than the buffer capacity before set_len.",
+      "review_status": "matched",
+      "callsite": {
+        "path": "src/window.rs",
+        "line": 13,
+        "source_line": "front.set_len(size);",
+        "source_sha256": "fa15f09725c54b30ca295327b944320faf48108842e4916afac80dbebb1ae1e2"
+      },
+      "rule_api": {
+        "path": "rust/library/alloc/src/vec/mod.rs:1832",
+        "name": "unsafe fn set_len"
+      }
+    }
+  ]
+}

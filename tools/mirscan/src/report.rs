@@ -198,6 +198,13 @@ pub struct TypeInteractionInfo {
     pub public_fields: Vec<FieldInfo>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub field_layouts: Vec<FieldLayoutInfo>,
+    /// Set for a public enum whose every variant safe code can build with
+    /// arbitrary payload bits; `public_variant_fields` lists the payload fields
+    /// (`Variant.index`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub freely_constructible_variants: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub public_variant_fields: Vec<FieldInfo>,
     pub constructors: Vec<FnInfo>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub observers: Vec<FnInfo>,
@@ -3213,11 +3220,83 @@ fn collect_public_type_observers<'tcx>(tcx: TyCtxt<'tcx>, struct_def_id: DefId) 
     dedup_fn_infos(observers)
 }
 
+/// A payload type whose every bit pattern is a valid value that safe code can
+/// write: integers, floats and thin raw pointers.
+fn is_freely_constructible_payload<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    enum_def_id: DefId,
+    ty: Ty<'tcx>,
+) -> bool {
+    match ty.kind() {
+        ty::Int(_) | ty::Uint(_) | ty::Float(_) => true,
+        ty::RawPtr(pointee, _) => {
+            pointee.is_sized(tcx, ty::TypingEnv::non_body_analysis(tcx, enum_def_id))
+        }
+        _ => false,
+    }
+}
+
+/// Describes a public enum whose variants are all constructible from safe code
+/// with arbitrary payloads. Returns `None` otherwise, because a variant
+/// holding a private or invariant-carrying type would make some enum states
+/// unreachable from safe code.
+fn collect_public_variant_fields<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    enum_def_id: DefId,
+) -> Option<Vec<FieldInfo>> {
+    let adt_def = tcx.type_of(enum_def_id).skip_binder().ty_adt_def()?;
+    if adt_def.variants().is_empty() {
+        return None;
+    }
+    let identity_args = ty::GenericArgs::identity_for_item(tcx, enum_def_id);
+    let mut fields = Vec::new();
+    for variant in adt_def.variants() {
+        for (index, field) in variant.fields.iter().enumerate() {
+            let field_ty = field.ty(tcx, identity_args);
+            if !field.vis.is_public()
+                || !is_freely_constructible_payload(tcx, enum_def_id, field_ty)
+            {
+                return None;
+            }
+            fields.push(FieldInfo {
+                index: index.to_string(),
+                name: format!("{}.{}", variant.name, index),
+                path: format!("{}.{}", variant.name, index),
+            });
+        }
+    }
+    Some(fields)
+}
+
 fn collect_public_type_infos<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<TypeInteractionInfo> {
     let mut types = Vec::new();
 
     for local_def_id in tcx.hir_crate_items(()).definitions() {
         let def_id = local_def_id.to_def_id();
+
+        if matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::Enum) {
+            if !tcx.visibility(def_id).is_public()
+                || !tcx
+                    .effective_visibilities(())
+                    .is_directly_public(local_def_id)
+            {
+                continue;
+            }
+            let Some(public_variant_fields) = collect_public_variant_fields(tcx, def_id) else {
+                continue;
+            };
+            types.push(TypeInteractionInfo {
+                ty: get_struct_info(tcx, def_id),
+                public_fields: Vec::new(),
+                field_layouts: Vec::new(),
+                freely_constructible_variants: true,
+                public_variant_fields,
+                constructors: Vec::new(),
+                observers: Vec::new(),
+                mutators: Vec::new(),
+            });
+            continue;
+        }
 
         if !matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::Struct) {
             continue;
@@ -3233,6 +3312,8 @@ fn collect_public_type_infos<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<TypeInteractionInfo
             ty: get_struct_info(tcx, def_id),
             public_fields: collect_public_fields(tcx, def_id),
             field_layouts: collect_field_layouts(tcx, def_id),
+            freely_constructible_variants: false,
+            public_variant_fields: Vec::new(),
             constructors: collect_constructors(tcx, def_id),
             observers: collect_public_type_observers(tcx, def_id),
             mutators: collect_public_type_mutators(tcx, def_id),

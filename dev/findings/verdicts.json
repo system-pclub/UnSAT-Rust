@@ -1,0 +1,76 @@
+{
+  "apint-0.2.0::src-apint-casting-rs-26-13": {
+    "verdict": "误报",
+    "reason": "传给 `NonNull::new_unchecked`（在 `ApInt::new_ext` 内）的指针来自 `self.as_digit_slice().to_vec().into_boxed_slice().as_mut_ptr()`，Box 的指针永不为空。KLEE 正确绑定了目标，但反例把该指针取 0：`to_vec`/`into_boxed_slice` 的分配模型没有保留“非空”。"
+  },
+  "apint-0.2.0::src-apint-shift-rs-92-22": {
+    "verdict": "误报",
+    "reason": "`verify_shift_amount` 先保证 shift_amount < 位宽，因此 `digit_steps < digits.len()`，`offset(digit_steps)` 与随后的 `ptr::copy` 都在同一分配内。后端只在超时前报告 SAT。"
+  },
+  "arraystring-0.3.0::src-utils-rs-162-18": {
+    "verdict": "误报",
+    "reason": "调用受 `slice.is_char_boundary(size)` 保护，成立时必有 size <= len；KLEE 给出的反例是 size == len == 128 和 0 == 0，本身就在界内，说明 DSL 比较的是错误的内存范围。"
+  },
+  "ash-0.38.0+1.3.281::src-vk-prelude-rs-99-26": {
+    "verdict": "误报",
+    "reason": "切片的指针和长度来自同一个有效 `CStr::to_bytes_with_nul()`，`c_char` 与 `u8` 大小对齐相同，不可能违反 from_raw_parts 的任何要求。"
+  },
+  "awint_ext-0.18.1::src-awi_struct-awi-rs-296-17": {
+    "verdict": "真阳性",
+    "reason": "`Awi::umax(w)` 对 w = usize::MAX 申请约 2^61 字节，`alloc` 返回空指针后未检查就 `write_bytes`。纯 safe 调用 `Awi::umax(NonZeroUsize::new(usize::MAX).unwrap())` 即触发。",
+    "poc": "原生运行：`unsafe precondition(s) violated: ptr::write_bytes requires that the destination pointer is aligned and non-null`，进程 abort。"
+  },
+  "awint_ext-0.18.1::src-awi_struct-awi-rs-370-17": {
+    "verdict": "真阳性",
+    "reason": "与 296-17 相同：`umax_with_capacity` 对过大的 `min_capacity` 不检查 `alloc` 结果。",
+    "poc": "同上（同一代码模式，入口为 `Awi::umax_with_capacity`）。"
+  },
+  "awint_ext-0.18.1::src-awi_struct-awi-rs-499-13-add": {
+    "verdict": "真阳性",
+    "reason": "`reserve(additional)` 经 `internal_capacity_change` 调 `realloc`，失败返回空指针时仍对其 `.add(old_size)` 并 `write_bytes`。safe 调用 `Awi::reserve(usize::MAX / 2)` 即可触发。",
+    "poc": "原生运行：`Awi::zero(128 位)` 后 `reserve(usize::MAX / 2)`，Segmentation fault。"
+  },
+  "azul-core-0.0.8::src-resources-rs-821-16": {
+    "verdict": "真阳性",
+    "reason": "`ImageRef` 的 `data`、`copies` 是 pub 裸指针字段，safe 代码可构造任意值；safe 方法 `into_inner` 随即 `self.copies.as_ref()` 并解引用。",
+    "poc": "原生运行：`ImageRef { data: 0x8 as *const _, copies: 0x3 as *const AtomicUsize, run_destructor: false }.into_inner()`，Segmentation fault。"
+  },
+  "azul-css-0.0.8::src-corety-rs-517-30": {
+    "verdict": "真阳性",
+    "reason": "`U8Vec::copy_from_bytes(ptr, start, len)` 是 safe pub fn，只检查指针非空就 `from_raw_parts(ptr.add(start), len)`；文档把有效性写成“调用者必须保证”，但函数没有标成 unsafe。",
+    "poc": "原生运行：`U8Vec::copy_from_bytes(0x10 as *const u8, 0, 16)`，Segmentation fault。"
+  },
+  "azul-css-0.0.8::src-corety-rs-517-58": {
+    "verdict": "真阳性",
+    "reason": "同一函数里的 `ptr.add(start)`：start 任意，不保证落在同一分配内，且 `start + len` 溢出检查只是 `debug_assert!`。",
+    "poc": "同 517-30。"
+  },
+  "azul-css-0.0.8::src-corety-rs-755-21": {
+    "verdict": "误报",
+    "reason": "`chunk.as_ptr().add(offset)` 中 offset = chunk.len()，而此前的 `remaining` 记账保证剩余容量 >= len，所以结果在 chunk 容量内（或恰为末尾）。KLEE 把 Vec 的 len 与容量当成互不相关的符号。"
+  },
+  "bayer-0.1.5::src-ffi-rs-152-29": {
+    "verdict": "真阳性",
+    "reason": "`bayerrs_raster_mut_alloc` 是 `pub extern \"C\" fn`（没有 unsafe），safe 代码可直接调用；它只检查 `buf` 非空，就用调用者给的 `buf`/`buf_len` 做 `slice::from_raw_parts_mut`，指针不必指向任何有效内存。",
+    "poc": "原生运行：`bayerrs_raster_mut_alloc(0, 0, 4, 4, 12, 8, 0x10 as *mut u8, 48)` 返回非空 raster，即对未拥有的地址 0x10..0x40 构造了 `&mut [u8]`（UB，使用该 raster 前不会崩溃）。"
+  },
+  "bayer-0.1.5::src-ffi-rs-167-27": {
+    "verdict": "真阳性",
+    "reason": "`bayerrs_raster_mut_free` 同样是 safe 的 `pub extern \"C\" fn`，只检查空指针，随后 `Box::from_raw` 任意指针并在作用域结束时释放。",
+    "poc": "原生运行：`bayerrs_raster_mut_free(0x10 as *mut CRasterMut)`，Segmentation fault。"
+  },
+  "biome_rowan-0.5.8::src-green-trivia-rs-40-25": {
+    "verdict": "误报",
+    "reason": "`GreenTriviaData::to_owned` 是 `pub(crate)`，参数是 `&self`：`self as *const _ as *mut _` 来自一个有效引用，`from_raw` 里的 `as_ref` 因此必然指向有效对象。外部 safe 代码既不能调用它，也无法构造无效的 `GreenTriviaData`；KLEE 把接收者建模成任意内存。"
+  },
+  "allo-isolate-0.1.27::src-dart_array-rs-57-17": {
+    "verdict": "真阳性",
+    "reason": "`DartCObject`、`DartCObjectValue`（union）和 `DartNativeArray` 的字段都是 pub，safe 代码可以构造 `ty = DartArray`、`as_array` 为任意指针/长度的对象；safe 的 `Drop for DartCObject` 随后调用 `DartArray::from(self.value.as_array)`，对该指针做 `slice::from_raw_parts_mut` 和 `Box::from_raw`。",
+    "poc": "原生运行：构造 `DartCObject { ty: DartArray, value: as_array = DartNativeArray { length: 2, values: 0x10 as *mut _ } }` 后 `drop`，Segmentation fault。"
+  },
+  "allo-isolate-0.1.27::src-dart_array-rs-58-13": {
+    "verdict": "真阳性",
+    "reason": "`DartCObject`、`DartCObjectValue`（union）和 `DartNativeArray` 的字段都是 pub，safe 代码可以构造 `ty = DartArray`、`as_array` 为任意指针/长度的对象；safe 的 `Drop for DartCObject` 随后调用 `DartArray::from(self.value.as_array)`，对该指针做 `slice::from_raw_parts_mut` 和 `Box::from_raw`。",
+    "poc": "原生运行：构造 `DartCObject { ty: DartArray, value: as_array = DartNativeArray { length: 2, values: 0x10 as *mut _ } }` 后 `drop`，Segmentation fault。"
+  }
+}

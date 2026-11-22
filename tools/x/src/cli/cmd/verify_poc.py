@@ -872,6 +872,8 @@ def format_control_chains_text(chains: list[dict[str, Any]]) -> str:
             kind = step.get("kind")
             if kind == "public_field":
                 how.append(f"public field `{target}` is directly writable")
+            elif kind == "public_variant_field":
+                how.append(f"variant payload `{target}` of a public enum is directly constructible")
             elif kind == "mut_ref_escape" and function:
                 how.append(f"`{function}` returns `&mut` access to `{target}`")
             elif function:
@@ -1305,6 +1307,10 @@ def _step_phrase(step: dict[str, Any]) -> str | None:
             return f"set or populate public field `{root_type}.{field}`"
         if field:
             return f"set or populate public field `{field}`"
+    if kind == "public_variant_field":
+        root_type = step.get("root_type")
+        if root_type:
+            return f"construct a `{root_type}` variant with the needed payload"
     if kind in {"mut_ref_escape", "mutator", "observer", "constructor"}:
         function = step.get("function")
         field = step.get("field")

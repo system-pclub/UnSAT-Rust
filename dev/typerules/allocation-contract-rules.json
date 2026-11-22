@@ -1,0 +1,89 @@
+{
+  "include_raw_pointer_deref": false,
+  "rules": {
+    "allocation-request-minimum": {
+      "path": "rust/library/core/src/ptr/mod.rs:1231",
+      "name": "const unsafe fn read < T >",
+      "rule": "Synthetic observation: the allocation request minimum fitting-layout size does not exceed its returned size.",
+      "dsl": "$1.$mem.pointee.allocation.minimum_size <= $1.$mem.pointee.allocation.size",
+      "dsl_v2": {
+        "dsl_version": 2,
+        "source": "$1.$mem.pointee.allocation.minimum_size <= $1.$mem.pointee.allocation.size",
+        "slots": [
+          {
+            "slot": 1,
+            "name": "src",
+            "kind": "argument",
+            "rust_type": "* const T",
+            "arg_index": 0
+          },
+          {
+            "slot": 2,
+            "name": "T",
+            "kind": "type_parameter",
+            "rust_type": "type metadata",
+            "generic_index": 0
+          },
+          {
+            "slot": 3,
+            "name": "result",
+            "kind": "return_value",
+            "rust_type": "T"
+          }
+        ],
+        "uses_result": false,
+        "expr": {
+          "k": "cmp",
+          "left": {
+            "k": "attr",
+            "base": {
+              "k": "attr",
+              "base": {
+                "k": "attr",
+                "base": {
+                  "k": "mem",
+                  "base": {
+                    "k": "slot",
+                    "n": 1
+                  }
+                },
+                "name": "pointee"
+              },
+              "name": "allocation"
+            },
+            "name": "minimum_size"
+          },
+          "ops": [
+            "<="
+          ],
+          "rights": [
+            {
+              "k": "attr",
+              "base": {
+                "k": "attr",
+                "base": {
+                  "k": "attr",
+                  "base": {
+                    "k": "mem",
+                    "base": {
+                      "k": "slot",
+                      "n": 1
+                    }
+                  },
+                  "name": "pointee"
+                },
+                "name": "allocation"
+              },
+              "name": "size"
+            }
+          ]
+        }
+      },
+      "generated_rule": "core:rule-660",
+      "api": "const unsafe fn read < T > (src : * const T) -> T",
+      "case": "memory-state",
+      "note": "Synthetic byte-initialization observation regression, including padding; distinct from ptr::read's typed-validity contract.",
+      "synthetic_observation": true
+    }
+  }
+}

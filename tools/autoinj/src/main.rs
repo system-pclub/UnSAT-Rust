@@ -27,6 +27,16 @@ struct Meta {
 #[derive(Debug, Deserialize, Serialize)]
 struct Report {
     targets: Vec<Target>,
+    #[serde(default)]
+    types: Vec<TypeEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct TypeEntry {
+    #[serde(default)]
+    constructors: Vec<FnInfo>,
+    #[serde(default)]
+    mutators: Vec<FnInfo>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -388,7 +398,186 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
         inject_file_with_macros(&path, &injections, &macros)
             .with_context(|| format!("failed to inject {}", path.display()))?;
     }
+    keep_candidate_functions(crate_dir, meta);
     Ok(())
+}
+
+const KEEP_SYMBOL_PREFIX: &str = "__klee_keep_";
+
+/// A test-harness build only emits reachable functions, so a public
+/// constructor or mutator that no test calls would be absent from the IR and
+/// unusable for composing a safe receiver state. Give each such non-generic
+/// inherent function an exported symbol that still contains the legacy-mangled
+/// path KLEE matches report names against.
+fn keep_candidate_functions(crate_dir: &Path, meta: &Meta) {
+    // Injection rewrites files, so source lines no longer match the report;
+    // functions are identified by (impl type, name) within the reported file.
+    let mut per_name = BTreeMap::<String, BTreeSet<String>>::new();
+    for entry in &meta.report.types {
+        for function in entry.constructors.iter().chain(&entry.mutators) {
+            let (Some(name), Some(path)) = (&function.name, &function.path) else {
+                continue;
+            };
+            let flag = |key: &str| {
+                function
+                    .extra
+                    .get(key)
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+            };
+            if flag("require_template") || flag("is_unsafe") {
+                continue;
+            }
+            per_name
+                .entry(name.clone())
+                .or_default()
+                .insert(path.clone());
+        }
+    }
+    let mut per_file = BTreeMap::<String, BTreeMap<(String, String), String>>::new();
+    for (name, files) in per_name {
+        // One report name behind several files would export one symbol twice.
+        if files.len() != 1 {
+            continue;
+        }
+        let parts: Vec<&str> = name
+            .split("::")
+            .map(|part| part.split('<').next().unwrap_or(""))
+            .filter(|part| !part.is_empty())
+            .collect();
+        let [.., type_name, fn_name] = parts.as_slice() else {
+            continue;
+        };
+        let needle = rust_legacy_symbol_needle(&name);
+        if needle.is_empty() {
+            continue;
+        }
+        let Some(file) = files.into_iter().next() else {
+            continue;
+        };
+        per_file.entry(file).or_default().insert(
+            (type_name.to_string(), fn_name.to_string()),
+            format!("{KEEP_SYMBOL_PREFIX}ZN{needle}E"),
+        );
+    }
+    for (rel_file, symbols) in per_file {
+        let path = crate_dir.join(&rel_file);
+        let Ok(source) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(mut ast) = syn::parse_file(&source) else {
+            continue;
+        };
+        let mut counter = KeepFunctionCounter {
+            symbols: &symbols,
+            impl_type: None,
+            counts: BTreeMap::new(),
+        };
+        counter.visit_file(&ast);
+        let mut keeper = KeepFunctions {
+            symbols: &symbols,
+            counts: counter.counts,
+            generic_impl_depth: 0,
+            inherent_impl_depth: 0,
+            impl_type: None,
+            kept: 0,
+        };
+        keeper.visit_file_mut(&mut ast);
+        if keeper.kept > 0 {
+            let _ = fs::write(&path, prettyplease::unparse(&ast));
+        }
+    }
+}
+
+fn impl_self_type_name(item: &syn::ItemImpl) -> Option<String> {
+    match &*item.self_ty {
+        syn::Type::Path(path) => path.path.segments.last().map(|seg| seg.ident.to_string()),
+        _ => None,
+    }
+}
+
+struct KeepFunctionCounter<'a> {
+    symbols: &'a BTreeMap<(String, String), String>,
+    impl_type: Option<String>,
+    counts: BTreeMap<(String, String), usize>,
+}
+
+impl<'ast> Visit<'ast> for KeepFunctionCounter<'_> {
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        let saved = self.impl_type.replace(impl_self_type_name(item).unwrap_or_default());
+        visit::visit_item_impl(self, item);
+        self.impl_type = saved;
+    }
+
+    fn visit_impl_item_fn(&mut self, function: &'ast syn::ImplItemFn) {
+        if let Some(type_name) = &self.impl_type {
+            let key = (type_name.clone(), function.sig.ident.to_string());
+            if self.symbols.contains_key(&key) {
+                *self.counts.entry(key).or_default() += 1;
+            }
+        }
+        visit::visit_impl_item_fn(self, function);
+    }
+}
+
+struct KeepFunctions<'a> {
+    symbols: &'a BTreeMap<(String, String), String>,
+    counts: BTreeMap<(String, String), usize>,
+    generic_impl_depth: usize,
+    inherent_impl_depth: usize,
+    impl_type: Option<String>,
+    kept: usize,
+}
+
+impl VisitMut for KeepFunctions<'_> {
+    fn visit_item_impl_mut(&mut self, item: &mut syn::ItemImpl) {
+        let generic = has_instantiable_generics(&item.generics);
+        let inherent = item.trait_.is_none();
+        let saved = self.impl_type.replace(impl_self_type_name(item).unwrap_or_default());
+        self.generic_impl_depth += usize::from(generic);
+        self.inherent_impl_depth += usize::from(inherent);
+        visit_mut::visit_item_impl_mut(self, item);
+        self.generic_impl_depth -= usize::from(generic);
+        self.inherent_impl_depth -= usize::from(inherent);
+        self.impl_type = saved;
+    }
+
+    fn visit_impl_item_fn_mut(&mut self, function: &mut syn::ImplItemFn) {
+        visit_mut::visit_impl_item_fn_mut(self, function);
+        let Some(type_name) = self.impl_type.clone() else {
+            return;
+        };
+        let key = (type_name, function.sig.ident.to_string());
+        let Some(symbol) = self.symbols.get(&key) else {
+            return;
+        };
+        if self.counts.get(&key) != Some(&1) {
+            return;
+        }
+        let exported = function.attrs.iter().any(|attr| {
+            let text = quote!(#attr).to_string();
+            text.contains("no_mangle")
+                || text.contains("export_name")
+                || text.contains("track_caller")
+        });
+        if self.generic_impl_depth > 0
+            || self.inherent_impl_depth == 0
+            || has_instantiable_generics(&function.sig.generics)
+            || function.sig.unsafety.is_some()
+            || function.sig.asyncness.is_some()
+            || function.sig.abi.is_some()
+            || exported
+        {
+            return;
+        }
+        function.attrs.retain(|attr| !attr.path().is_ident("inline"));
+        function.attrs.push(parse_quote! { #[inline(never)] });
+        let symbol = syn::LitStr::new(symbol, proc_macro2::Span::call_site());
+        function
+            .attrs
+            .push(parse_quote! { #[unsafe(export_name = #symbol)] });
+        self.kept += 1;
+    }
 }
 
 fn target_path(target: &Target) -> Option<&str> {
@@ -427,28 +616,11 @@ fn inject_file_with_macros(
     let macro_ranges = macro_collector.ranges;
     let macro_invocations = macro_collector.invocations;
     let attribute_spans = macro_collector.attributes;
-    let const_ranges = ast
-        .items
-        .iter()
-        .flat_map(|item| match item {
-            syn::Item::Fn(item_fn) if item_fn.sig.constness.is_some() => {
-                let span = item_fn.span();
-                vec![(span.start().line, span.end().line)]
-            }
-            syn::Item::Impl(item_impl) => item_impl
-                .items
-                .iter()
-                .filter_map(|item| match item {
-                    syn::ImplItem::Fn(method) if method.sig.constness.is_some() => {
-                        let span = method.span();
-                        Some((span.start().line, span.end().line))
-                    }
-                    _ => None,
-                })
-                .collect(),
-            _ => Vec::new(),
-        })
-        .collect::<Vec<_>>();
+    let const_ranges = {
+        let mut collector = ConstFnCollector::default();
+        collector.visit_file(&ast);
+        collector.ranges
+    };
     let ordered_injections = order_injections_for_source(&source, injections)
         .into_iter()
         .filter(|injection| {
@@ -513,12 +685,16 @@ fn inject_file_with_macros(
                 );
                 continue;
             }
-            bail!(
-                "no call expression found at {}:{} in {}",
+            // One callsite the source-level injector cannot locate must not
+            // abort the whole crate: it is left uninstrumented ("not-in-ir").
+            eprintln!(
+                "warning: skipping callsite {} at {}:{} in {} because no source-level call expression was found",
+                injection.id,
                 injection.line,
                 injection.col,
                 path.display()
             );
+            continue;
         }
         next_temp_index = injector.next_temp_index;
     }
@@ -783,6 +959,36 @@ fn specialize_unreachable_macro(
     let definitions = specializer.definitions.values();
     let args = &mac.tokens;
     Some(parse_quote! {{ #(#definitions)* #replacement!(#args) }})
+}
+
+// Line ranges of every `const fn`, wherever it is nested (modules, impls, traits):
+// the injected runtime calls are not const.
+#[derive(Default)]
+struct ConstFnCollector {
+    ranges: Vec<(usize, usize)>,
+}
+
+impl<'ast> Visit<'ast> for ConstFnCollector {
+    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        if node.sig.constness.is_some() {
+            self.ranges.push((node.span().start().line, node.span().end().line));
+        }
+        visit::visit_item_fn(self, node);
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        if node.sig.constness.is_some() {
+            self.ranges.push((node.span().start().line, node.span().end().line));
+        }
+        visit::visit_impl_item_fn(self, node);
+    }
+
+    fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
+        if node.sig.constness.is_some() {
+            self.ranges.push((node.span().start().line, node.span().end().line));
+        }
+        visit::visit_trait_item_fn(self, node);
+    }
 }
 
 struct UnreachableMacroRewriter<'a> {
@@ -1325,6 +1531,9 @@ fn rewrite_stmt_matching_call_args(
         next_temp_index,
         local_block_depth: 0,
         rewrite_local_block_depth: 0,
+        pattern_names: Vec::new(),
+        rewrite_pattern_names: Vec::new(),
+        rewrite_recorded: false,
     };
     rewriter.visit_stmt_mut(stmt);
     rewriter.rewrite
@@ -1345,14 +1554,56 @@ fn matches_inside_local_block(
         next_temp_index,
         local_block_depth: 0,
         rewrite_local_block_depth: 0,
+        pattern_names: Vec::new(),
+        rewrite_pattern_names: Vec::new(),
+        rewrite_recorded: false,
     };
     rewriter.visit_stmt_mut(&mut probe);
     rewriter
         .rewrite
         .is_some_and(|rewrite| {
-            rewriter.rewrite_local_block_depth > 0
-                && (!rewrite.lift_stmts.is_empty() || !rewrite.ret_stmts.is_empty())
+            let lifted = || rewrite.lift_stmts.iter().chain(rewrite.ret_stmts.iter());
+            (rewriter.rewrite_local_block_depth > 0
+                && (!rewrite.lift_stmts.is_empty() || !rewrite.ret_stmts.is_empty()))
+                || lifted().any(|stmt| {
+                    let mentioned = stmt_ident_names(stmt);
+                    rewriter
+                        .rewrite_pattern_names
+                        .iter()
+                        .any(|name| mentioned.contains(name))
+                })
         })
+}
+
+// Names bound by a pattern (match arm, `if let`, closure parameter, `for`).
+fn pattern_binding_names(pat: &syn::Pat) -> Vec<String> {
+    struct Names(Vec<String>);
+    impl<'ast> Visit<'ast> for Names {
+        fn visit_pat_ident(&mut self, node: &'ast syn::PatIdent) {
+            self.0.push(node.ident.to_string());
+            visit::visit_pat_ident(self, node);
+        }
+    }
+    let mut names = Names(Vec::new());
+    names.visit_pat(pat);
+    names.0
+}
+
+fn stmt_ident_names(stmt: &syn::Stmt) -> BTreeSet<String> {
+    fn walk(tokens: TokenStream, out: &mut BTreeSet<String>) {
+        for tree in tokens {
+            match tree {
+                TokenTree::Ident(ident) => {
+                    out.insert(ident.to_string());
+                }
+                TokenTree::Group(group) => walk(group.stream(), out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(quote!(#stmt), &mut out);
+    out
 }
 
 struct CallRewriter<'a> {
@@ -1363,9 +1614,57 @@ struct CallRewriter<'a> {
     local_block_depth: usize,
     // Value of `local_block_depth` where the rewrite was made.
     rewrite_local_block_depth: usize,
+    // Names bound by enclosing patterns (match arms, `if let`, closures, loops).
+    pattern_names: Vec<String>,
+    // Value of `pattern_names` where the rewrite was made.
+    rewrite_pattern_names: Vec<String>,
+    rewrite_recorded: bool,
+}
+
+impl CallRewriter<'_> {
+    fn with_pattern<T>(&mut self, pats: Vec<&syn::Pat>, visit: impl FnOnce(&mut Self) -> T) -> T {
+        let before = self.pattern_names.len();
+        for pat in pats {
+            self.pattern_names.extend(pattern_binding_names(pat));
+        }
+        let result = visit(self);
+        self.pattern_names.truncate(before);
+        result
+    }
 }
 
 impl VisitMut for CallRewriter<'_> {
+    fn visit_arm_mut(&mut self, arm: &mut syn::Arm) {
+        let pat = arm.pat.clone();
+        self.with_pattern(vec![&pat], |this| visit_mut::visit_arm_mut(this, arm));
+    }
+
+    fn visit_expr_closure_mut(&mut self, closure: &mut syn::ExprClosure) {
+        let pats = closure.inputs.clone();
+        self.with_pattern(pats.iter().collect(), |this| {
+            visit_mut::visit_expr_closure_mut(this, closure)
+        });
+    }
+
+    fn visit_expr_for_loop_mut(&mut self, node: &mut syn::ExprForLoop) {
+        let pat = (*node.pat).clone();
+        self.with_pattern(vec![&pat], |this| visit_mut::visit_expr_for_loop_mut(this, node));
+    }
+
+    fn visit_expr_if_mut(&mut self, node: &mut syn::ExprIf) {
+        let mut pats = Vec::new();
+        collect_let_patterns(&node.cond, &mut pats);
+        self.with_pattern(pats.iter().collect(), |this| visit_mut::visit_expr_if_mut(this, node));
+    }
+
+    fn visit_expr_while_mut(&mut self, node: &mut syn::ExprWhile) {
+        let mut pats = Vec::new();
+        collect_let_patterns(&node.cond, &mut pats);
+        self.with_pattern(pats.iter().collect(), |this| {
+            visit_mut::visit_expr_while_mut(this, node)
+        });
+    }
+
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         let declares_locals = block
             .stmts
@@ -1380,9 +1679,23 @@ impl VisitMut for CallRewriter<'_> {
         let had_rewrite = self.rewrite.is_some();
         self.rewrite_expr(expr);
         // Innermost matches finish first, so the first recorded depth is theirs.
-        if !had_rewrite && self.rewrite.is_some() && self.rewrite_local_block_depth == 0 {
+        if !had_rewrite && self.rewrite.is_some() && !self.rewrite_recorded {
+            self.rewrite_recorded = true;
             self.rewrite_local_block_depth = self.local_block_depth;
+            self.rewrite_pattern_names = self.pattern_names.clone();
         }
+    }
+}
+
+fn collect_let_patterns(cond: &syn::Expr, out: &mut Vec<syn::Pat>) {
+    match cond {
+        syn::Expr::Let(expr_let) => out.push((*expr_let.pat).clone()),
+        syn::Expr::Binary(binary) => {
+            collect_let_patterns(&binary.left, out);
+            collect_let_patterns(&binary.right, out);
+        }
+        syn::Expr::Paren(paren) => collect_let_patterns(&paren.expr, out),
+        _ => {}
     }
 }
 
@@ -2398,6 +2711,70 @@ impl Slot {
     }
 
     #[test]
+    fn keep_candidate_functions_exports_only_unambiguous_non_generic_inherent_fns() -> Result<()> {
+        let tmp = TempDir::new("keep-candidates")?;
+        write(
+            &tmp.path().join("lib.rs"),
+            r#"pub struct Buf {
+    len: usize,
+}
+impl Buf {
+    #[inline]
+    pub const fn new(len: usize) -> Self {
+        Buf { len }
+    }
+    pub fn generic<T>(len: usize) -> Self {
+        Buf { len }
+    }
+}
+impl Buf {
+    pub fn dup() {}
+}
+mod inner {
+    impl super::Buf {
+        pub fn dup() {}
+    }
+}
+pub struct Wrap<T>(T);
+impl<T> Wrap<T> {
+    pub fn make(value: T) -> Self {
+        Wrap(value)
+    }
+}
+"#,
+        )?;
+        let function = |name: &str, line: u64, template: bool| -> serde_json::Value {
+            serde_json::json!({
+                "name": name, "path": "lib.rs", "line_start": line,
+                "require_template": template
+            })
+        };
+        let meta: Meta = serde_json::from_value(serde_json::json!({
+            "report": {
+                "targets": [],
+                "types": [
+                    {"constructors": [
+                        function("lib::Buf::new", 6, false),
+                        function("lib::Buf::generic", 9, true),
+                        function("lib::Buf::dup", 13, false),
+                        function("lib::Wrap::make", 15, false)
+                    ], "mutators": []}
+                ]
+            }
+        }))?;
+        keep_candidate_functions(tmp.path(), &meta);
+        let injected = fs::read_to_string(tmp.path().join("lib.rs"))?;
+        assert!(
+            injected.contains("export_name = \"__klee_keep_ZN3lib3Buf3newE\""),
+            "{injected}"
+        );
+        // Generic, ambiguous and generic-impl functions stay untouched.
+        assert_eq!(injected.matches("export_name").count(), 1, "{injected}");
+        assert!(injected.contains("inline(never)"), "{injected}");
+        Ok(())
+    }
+
+    #[test]
     fn inject_file_does_not_export_symbols_from_generic_callers() -> Result<()> {
         let tmp = TempDir::new("no-export-generic-caller")?;
         let source = tmp.path().join("lib.rs");
@@ -2603,6 +2980,99 @@ impl Select {
         let injected = fs::read_to_string(source)?;
         assert!(!injected.contains("klee_ext_bind::raw_pointer_deref!"));
         assert!(!injected.contains("klee_ext_bind::callsite!"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_skips_callsite_whose_args_use_match_arm_bindings() -> Result<()> {
+        let tmp = TempDir::new("skip-match-arm-binding")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub fn name(f: Option<fn(*const u8) -> *const i8>, ctx: *const u8) -> usize {
+    unsafe {
+        match f {
+            Some(cmd) => std::ffi::CStr::from_ptr(cmd(ctx)).to_bytes().len(),
+            None => 0,
+        }
+    }
+}
+"#,
+        )?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-4-25".to_string(),
+                line: 4,
+                col: 25,
+                callee_name: Some("std::ffi::CStr::from_ptr".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+                best_effort: false,
+                caller_name: None,
+                preserve_export: false,
+            }],
+        )?;
+
+        let injected = fs::read_to_string(source)?;
+        assert!(!injected.contains("let __klee_arg0 = cmd("), "{injected}");
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_skips_const_fn_nested_in_a_module() -> Result<()> {
+        let template = |qualifier: &str| {
+            format!(
+                "pub mod m {{\n    pub {qualifier}fn f(p: *const u8) -> u8 {{\n        unsafe {{ std::ptr::read(p) }}\n    }}\n}}\n"
+            )
+        };
+        let injection = || Injection {
+            id: "src-lib-rs-3-18".to_string(),
+            line: 3,
+            col: 18,
+            callee_name: Some("std::ptr::read".to_string()),
+            raw_pointer_deref: false,
+            source_line: None,
+            best_effort: false,
+            caller_name: None,
+            preserve_export: false,
+        };
+        let mut injected = Vec::new();
+        for qualifier in ["", "const "] {
+            let tmp = TempDir::new("nested-const-fn")?;
+            let source = tmp.path().join("lib.rs");
+            write(&source, &template(qualifier))?;
+            inject_file(&source, &[injection()])?;
+            injected.push(fs::read_to_string(source)?);
+        }
+        assert!(injected[0].contains("klee_ext_bind::callsite!"), "{}", injected[0]);
+        assert!(!injected[1].contains("klee_ext_bind::callsite!"), "{}", injected[1]);
+        Ok(())
+    }
+
+    #[test]
+    fn inject_file_skips_unlocatable_callsite_instead_of_failing() -> Result<()> {
+        let tmp = TempDir::new("skip-unlocatable")?;
+        let source = tmp.path().join("lib.rs");
+        write(&source, "pub fn f() -> u8 {\n    1\n}\n")?;
+
+        inject_file(
+            &source,
+            &[Injection {
+                id: "src-lib-rs-2-5".to_string(),
+                line: 2,
+                col: 5,
+                callee_name: Some("std::ptr::read".to_string()),
+                raw_pointer_deref: false,
+                source_line: None,
+                best_effort: false,
+                caller_name: None,
+                preserve_export: false,
+            }],
+        )?;
+
+        assert!(!fs::read_to_string(source)?.contains("klee_ext_bind::callsite!"));
         Ok(())
     }
 
@@ -3466,6 +3936,7 @@ impl D {
                     }),
                     extra: serde_json::Map::new(),
                 }],
+                types: Vec::new(),
             },
         };
 

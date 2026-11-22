@@ -1,0 +1,120 @@
+{
+  "include_raw_pointer_deref": false,
+  "rules": {
+    "rule-322-initialized": {
+      "path": "rust/library/core/src/ptr/mod.rs:1231",
+      "name": "const unsafe fn read < T >",
+      "rule": "Observation regression: every byte of the pointee region is initialized, including padding. This is separate from typed validity.",
+      "dsl": "$1.$mem.pointee.initialized",
+      "dsl_v2": {
+        "dsl_version": 2,
+        "source": "$1.$mem.pointee.initialized",
+        "slots": [
+          {
+            "slot": 1,
+            "name": "src",
+            "kind": "argument",
+            "rust_type": "* const T",
+            "arg_index": 0
+          },
+          {
+            "slot": 2,
+            "name": "T",
+            "kind": "type_parameter",
+            "rust_type": "type metadata",
+            "generic_index": 0
+          },
+          {
+            "slot": 3,
+            "name": "result",
+            "kind": "return_value",
+            "rust_type": "T"
+          }
+        ],
+        "uses_result": false,
+        "expr": {
+          "k": "attr",
+          "base": {
+            "k": "attr",
+            "base": {
+              "k": "mem",
+              "base": {
+                "k": "slot",
+                "n": 1
+              }
+            },
+            "name": "pointee"
+          },
+          "name": "initialized"
+        }
+      },
+      "generated_rule": "core:rule-660",
+      "api": "const unsafe fn read < T > (src : * const T) -> T",
+      "case": "memory-state",
+      "note": "Synthetic byte-initialization observation regression, including padding; distinct from ptr::read's typed-validity contract."
+    },
+    "rule-504": {
+      "path": "rust/library/core/src/ptr/non_null.rs:193",
+      "name": "const unsafe fn new_unchecked",
+      "rule": "`ptr` must be non-null.",
+      "dsl": "$1.$mem.pointee.start != 0",
+      "dsl_v2": {
+        "dsl_version": 2,
+        "source": "$1.$mem.pointee.start != 0",
+        "slots": [
+          {
+            "slot": 1,
+            "name": "ptr",
+            "kind": "argument",
+            "rust_type": "* mut T",
+            "arg_index": 0
+          },
+          {
+            "slot": 2,
+            "name": "T",
+            "kind": "type_parameter",
+            "rust_type": "type metadata",
+            "generic_index": 0
+          },
+          {
+            "slot": 3,
+            "name": "result",
+            "kind": "return_value",
+            "rust_type": "Self"
+          }
+        ],
+        "uses_result": false,
+        "expr": {
+          "k": "cmp",
+          "left": {
+            "k": "attr",
+            "base": {
+              "k": "attr",
+              "base": {
+                "k": "mem",
+                "base": {
+                  "k": "slot",
+                  "n": 1
+                }
+              },
+              "name": "pointee"
+            },
+            "name": "start"
+          },
+          "ops": [
+            "!="
+          ],
+          "rights": [
+            {
+              "k": "int",
+              "v": 0
+            }
+          ]
+        }
+      },
+      "generated_rule": "core:rule-843",
+      "api": "impl < T : ? Sized > core::ptr::non_null::NonNull < T > { const unsafe fn new_unchecked (ptr : * mut T) -> Self }",
+      "case": "pointer-views"
+    }
+  }
+}

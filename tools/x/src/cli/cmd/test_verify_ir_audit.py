@@ -76,6 +76,21 @@ class VerifyIrAuditTests(unittest.TestCase):
 
         self.assertFalse(actionable)
 
+    def test_optimistic_uncertainty_witness_is_not_actionable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            chain_path = Path(temporary) / "missing.json"
+            trace = (
+                "[ext.dsl] DSL still depends on uncertain_symbol values; continuing SAT "
+                "query under optimistic uncertainty\n"
+                "[ext.dsl] violation query uses certain symbol: true"
+            )
+
+            actionable = _compose_has_actionable_certainty(
+                chain_path, trace, raw_ptr_deref=False
+            )
+
+        self.assertFalse(actionable)
+
     def test_debug_definition_proves_body_when_autoinj_marker_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             ll_path = Path(temporary) / "crate.ll"

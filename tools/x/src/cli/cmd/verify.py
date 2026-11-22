@@ -802,6 +802,11 @@ def _compose_has_actionable_certainty(
         # certain input while still depending on an uncertain external result
         # that made the target reachable.
         return chain_all_certain
+    # A witness that was only found while continuing "under optimistic uncertainty"
+    # depends on values KLEE modelled freely (e.g. a Vec length without its
+    # `len <= capacity` invariant); it is not a bug reachable from safe code.
+    if "DSL still depends on uncertain_symbol values" in text:
+        return False
     return (
         "[ext.dsl] resolved constraint uses certain symbol: true" in text
         or "[ext.dsl] violation query uses certain symbol: true" in text
@@ -1416,6 +1421,59 @@ def _is_reached_callsite_status(status: object) -> bool:
         "reached-timeout",
         "low-confidence-sat",
     }
+
+
+def _write_simple_report(
+    results: list[dict[str, Any]],
+    result_path: Path,
+    rule_dsl_path: Path,
+    crate_dir: Path,
+) -> Path:
+    """One entry per (callsite, rule): violation true/false and the control call chain."""
+    dsl_by_rule: dict[str, str | None] = {}
+    entries = []
+    for row in sorted(results, key=_matrix_sort_key):
+        rule = str(row.get("rule"))
+        if rule not in dsl_by_rule:
+            try:
+                entry = _load_rule_entry(rule_dsl_path, rule)
+                dsl_by_rule[rule] = entry.get("dsl") or entry.get("expression")
+            except RuntimeError:
+                dsl_by_rule[rule] = None
+        # SAT found before the timeout still proves the violation, but only when the
+        # witness is controlled by a certain symbol (the other timeouts stayed unproven).
+        violation = _is_confirmed_callsite_violation(row) or (
+            row.get("status") == "violation-timeout" and bool(row.get("has_certain_symbol"))
+        )
+        callchain: list[Any] = []
+        call_chain: list[str] = []
+        chain_file = row.get("certainty_chain")
+        if violation and isinstance(chain_file, str) and Path(chain_file).is_file():
+            callchain = _load_json(Path(chain_file)).get("symbols", [])
+            info_path = Path(str(row.get("klee_output_dir"))) / "info"
+            if info_path.is_file():
+                call_chain = write_certainty_chain_json(
+                    info_path=info_path,
+                    output_path=Path(chain_file).with_name("callchain.json"),
+                    callsite=str(row.get("callsite")),
+                    rule=rule,
+                ).get("call_chain", [])
+        entries.append(
+            {
+                "crate": crate_dir.name,
+                "callsite": f"{row.get('path')}:{row.get('line')}:{row.get('col')}",
+                "caller": row.get("caller"),
+                "callee": row.get("unsafe_callee"),
+                "rule": rule,
+                "dsl": dsl_by_rule[rule],
+                "violation": violation,
+                "call_chain": call_chain,
+                "callchain": callchain,
+            }
+        )
+    report_path = result_path.with_name("violations.json")
+    _atomic_write_json(report_path, {"crate": crate_dir.name, "results": entries})
+    return report_path
 
 
 def _matrix_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3183,9 +3241,12 @@ def _run_verify_matrix_locked(
         f"other_or_unclassified={summary['other_or_unclassified']}"
     )
 
-    if args.skip_llm_testcase:
-        print(f"[verify:matrix] --skip-llm-testcase set; done: {result_path}")
-        return 0
+    report_path = _write_simple_report(results, result_path, rule_dsl_path, cargo_dir)
+    print(f"[verify:matrix] violations: {report_path}")
+    # The LLM PoC and rerun stages below are disabled: a pair is reported as a
+    # violation only when KLEE finds the DSL negation SAT with a certain symbol.
+    print(f"[verify:matrix] PoC/rerun disabled; done: {result_path}")
+    return 0
 
     llm_failures = 0
     for row in results:
