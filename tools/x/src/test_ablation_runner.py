@@ -71,6 +71,48 @@ def test_rules_for_target_falls_back_to_api_name_after_line_drift(tmp_path):
     assert [rule_id for rule_id, _ in rules] == ["rule-1"]
 
 
+def test_rules_for_target_filters_instance_rules_and_matches_aliases(tmp_path):
+    (tmp_path / "ptr_rule_dsl.json").write_text(
+        json.dumps(
+            {
+                "rules": {
+                    "usize": {
+                        "path": "rust/library/core/src/slice/mod.rs:625",
+                        "name": "unsafe fn get_unchecked (& self , index : usize) -> & T",
+                        "instance": {"I": "usize"},
+                    },
+                    "range-from": {
+                        "path": "rust/library/core/src/slice/mod.rs:625",
+                        "name": "unsafe fn get_unchecked (& self , index : core::ops::range::RangeFrom < usize >) -> & [T]",
+                        "instance": {"I": "RangeFrom<usize>"},
+                    },
+                    "copy": {
+                        "path": "rust/library/core/src/ptr/mod.rs:407",
+                        "name": "const unsafe fn copy < T > (src : * const T , dst : * mut T , count : usize)",
+                        "aliases": ["rust/library/core/src/intrinsics/mod.rs:3827"],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    by_location, by_name = _rule_index(tmp_path), _rule_name_index(tmp_path)
+    callee = {"name": "core::slice::<impl [T]>::get_unchecked",
+              "path": "rust/library/core/src/slice/mod.rs", "line_start": 655}
+
+    def ids(type_args):
+        return [rule_id for rule_id, _ in _rules_for_target(
+            callee=callee, by_location=by_location, by_name=by_name, type_args=type_args)]
+
+    assert ids([{"name": "I", "instantiated_ty": "usize"}]) == ["usize"]
+    assert ids([{"name": "I", "instantiated_ty": "std::ops::RangeFrom<usize>"}]) == ["range-from"]
+    assert ids([{"name": "I", "instantiated_ty": "std::ops::Range<usize>"}]) == []
+    assert ids(None) == []
+    # An alias at a different line of the definition file matches by name (toolchain line drift).
+    copy = {"name": "std::intrinsics::copy", "path": "rust/library/core/src/intrinsics/mod.rs", "line_start": 3830}
+    assert [r for r, _ in _rules_for_target(callee=copy, by_location=by_location, by_name=by_name)] == ["copy"]
+
+
 def test_rules_for_target_includes_raw_pointer_dereference():
     rules = _rules_for_target(
         callee={"name": "core::ptr::__raw_ptr_deref__"},

@@ -635,5 +635,6 @@ fn namespace(input: &Path) -> (PathBuf, String) {
 }
 
 mod catalog;
+mod cfg;
 mod surface;
 pub use catalog::Catalog;

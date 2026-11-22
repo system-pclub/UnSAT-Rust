@@ -62,6 +62,7 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--setting-name", help="Output setting directory name (default: variant name).")
     parser.add_argument("--ablation-level", choices=("a", "b", "c", "full"), default="full")
     parser.add_argument('--result-format', choices=('native', 'claude'), default='native')
+    parser.add_argument('--translation-cache-root', type=Path, help='Shared E/T cache outside eval; locked across crates.')
     parser.add_argument("--package-scope", choices=("root", "workbook"), help="Default: root for roster runs, workbook subpackages/features for legacy runs.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout-sec", type=int)
@@ -134,6 +135,39 @@ def _preparation_root(root: Path, args: argparse.Namespace, variant: str) -> Pat
     if getattr(args, "metadata_root", None):
         return _resolve(root, args.metadata_root) / output.name
     return output
+
+
+def _translation_root(root: Path, args: argparse.Namespace, variant: str) -> Path:
+    cache = getattr(args, 'translation_cache_root', None)
+    metadata = getattr(args, 'metadata_root', None)
+    if cache is None and getattr(args, 'roster', None) and metadata and metadata.parent.name == 'runners':
+        cache = metadata.parent.parent / 'translation-cache'
+    return _resolve(root, cache) / variant if cache else _preparation_root(root, args, variant)
+
+
+def _image_build(root):
+    command = ['docker', 'build', '--build-arg', f'USER_ID={os.getuid()}', '--build-arg', f'GROUP_ID={os.getgid()}', '-t', 'unsat-rust:local', '.']
+    if sys.platform == 'darwin':
+        command[2:2] = ['--platform', 'linux/amd64']
+    subprocess.run(command, cwd=root, check=True)
+
+
+def run_stage_in_docker(args, stage):
+    """LLM/grammar stages use the root image's Python dependencies, without nested x."""
+    root = repo_root()
+    output = _preparation_root(root, args, stage)
+    output.mkdir(parents=True, exist_ok=True)
+    arguments = {key: _container_path(root, value) if isinstance(value, Path) else value
+                 for key, value in vars(args).items()}
+    path = output / 'stage-arguments.json'
+    path.write_text(json.dumps(arguments, indent=2) + '\n')
+    _image_build(root)
+    command = ['docker', 'run', '--rm', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+               '-e', 'PYTHONPATH=/unsat-rust/tools/x/src', '-v', f'{root}:/unsat-rust',
+               '-w', '/unsat-rust', 'unsat-rust:local', '/opt/x/.venv/bin/python',
+               'tools/x/scripts/run_ablation_stage.py', '--stage', stage,
+               '--arguments', _container_path(root, path)]
+    return subprocess.run(command, cwd=root, check=False).returncode
 
 
 def _resolve(root: Path, path: Path) -> Path:
@@ -209,6 +243,9 @@ def run_verify_variant(
         print("+", " ".join(command), flush=True)
         if args.dry_run:
             continue
+        if getattr(args, 'result_format', 'native') == 'claude' and args.resume:
+            from ruklee_results import restore_pair_outputs
+            restore_pair_outputs(crate_output)
         env = os.environ.copy()
         env["RUSTC_BOOTSTRAP"] = "1"
         cargo_bin = root / "tools/rust/build/x86_64-unknown-linux-gnu/stage0/bin"
@@ -226,6 +263,8 @@ def run_verify_variant(
                          crate=crate_dirname, catalog=_baseline_path(root, args), returncode=result.returncode,
                          duration_sec=time.monotonic() - started,
                          metadata=root / 'crates' / f'{crate_dir.name}.json')
+            from ruklee_results import archive_crate
+            archive_crate(root, crate_output, crate_dir.name)
         if result.returncode != 0:
             failed = True
             print(
@@ -323,6 +362,13 @@ def _parse_json_response(text: str) -> Any:
 
 
 def prepare_without_rule_extraction(args: argparse.Namespace) -> Path:
+    if getattr(args, 'roster', None):
+        if repo_root() != Path('/unsat-rust'):
+            if run_stage_in_docker(args, 'without-rule-extraction'):
+                raise RuntimeError('direct-document translation stage failed; retained stage log and cache')
+            return _translation_root(repo_root(), args, 'without-rule-extraction') / 'direct-document-rules.json'
+        from ablation_translations import prepare_direct_document
+        return prepare_direct_document(args)
     root = repo_root()
     output_root = _preparation_root(root, args, "without-rule-extraction")
     output_root.mkdir(parents=True, exist_ok=True)
@@ -594,8 +640,12 @@ def _smtlib_selector_rule(
 
 
 def prepare_without_rule_translation(args: argparse.Namespace) -> Path:
+    if getattr(args, 'roster', None) and repo_root() != Path('/unsat-rust'):
+        if run_stage_in_docker(args, 'without-rule-translation'):
+            raise RuntimeError('SMT translation stage failed; retained stage log and cache')
+        return _translation_root(repo_root(), args, 'without-rule-translation') / 'smtlib-selector-rules.json'
     root = repo_root()
-    output_root = _preparation_root(root, args, "without-rule-translation")
+    output_root = _translation_root(root, args, "without-rule-translation")
     output_root.mkdir(parents=True, exist_ok=True)
     output_path = output_root / "smtlib-selector-rules.json"
     existing: dict[str, Any] = {
@@ -606,6 +656,7 @@ def prepare_without_rule_translation(args: argparse.Namespace) -> Path:
         "rules": {},
         "processed_rules": [],
         "rejected": [],
+        "include_raw_pointer_deref": False if getattr(args, 'roster', None) else True,
     }
     if args.resume and output_path.is_file():
         existing = _load_json(output_path)
@@ -616,6 +667,12 @@ def prepare_without_rule_translation(args: argparse.Namespace) -> Path:
         raise RuntimeError(f"invalid rule-translation ablation metadata in {output_path}")
 
     shared = _load_json(_baseline_path(root, args))
+    if getattr(args, 'roster', None):
+        fingerprint = {'baseline_sha256': hashlib.sha256(_baseline_path(root, args).read_bytes()).hexdigest(),
+                       'model': args.model, 'protocol': 'smtlib-variable-selectors-v1'}
+        if existing.get('input') not in (None, fingerprint):
+            raise RuntimeError('SMT cache input/model changed; choose a new cache')
+        existing['input'] = fingerprint
     shared_rules = shared.get("rules", {})
     if not isinstance(shared_rules, dict):
         raise RuntimeError("ptr_rule_dsl.json must contain a rules object")
@@ -631,7 +688,8 @@ def prepare_without_rule_translation(args: argparse.Namespace) -> Path:
             if not isinstance(path, str) or not isinstance(line, int):
                 continue
             for rule_id, _ in _rules_for_target(
-                callee=callee, by_location=by_api, by_name=by_name
+                callee=callee, by_location=by_api, by_name=by_name,
+                type_args=target.get("callee_type_args"),
             ):
                 entry = shared_rules.get(rule_id)
                 if isinstance(entry, dict):
@@ -746,6 +804,11 @@ Available selector operators:
                     "selectors": selectors,
                     "selector_text": selector_text,
                     "sorts": sorts,
+                    "baseline_dsl": entry.get('dsl'),
+                    "baseline_rule_ids": [rule_id],
+                    "evaluator_kind": "smtlib-with-variable-selectors",
+                    'generation_request': str(prompts_dir / f'{rule_id}.txt'),
+                    'generation_response': str(response_path),
                 }
                 rejected[:] = [
                     item for item in rejected
@@ -831,13 +894,40 @@ def _rule_name_index(
     for rule_id, entry in raw_rules.items():
         if not isinstance(rule_id, str) or not isinstance(entry, dict):
             continue
-        location = _parse_rule_location(entry)
         function_name = _unsafe_function_name(entry.get("name"))
-        if location is None or function_name is None:
+        if function_name is None:
             continue
-        path, _ = location
-        result.setdefault((path, function_name), []).append((rule_id, entry))
+        aliases = entry.get("aliases", [])
+        paths: set[str] = set()
+        for raw_path in [entry.get("path"), *(aliases if isinstance(aliases, list) else [])]:
+            if not isinstance(raw_path, str):
+                continue
+            path, sep, raw_line = raw_path.rpartition(":")
+            if sep and raw_line.isdigit():
+                paths.add(path.replace("\\", "/"))
+        for path in sorted(paths):
+            result.setdefault((path, function_name), []).append((rule_id, entry))
     return result
+
+
+_STD_TYPE_PATH_RE = re.compile(r"\b(?:std|core|alloc)::(?:[A-Za-z_][A-Za-z0-9_]*::)*")
+
+
+def _normalize_type_name(value: object) -> str:
+    return _STD_TYPE_PATH_RE.sub("", str(value)).replace(" ", "")
+
+
+def _rule_instance_matches(entry: object, type_args: object) -> bool:
+    """Same contract as verify.py: an ``instance`` rule applies to one monomorphic instantiation only."""
+    instance = entry.get("instance") if isinstance(entry, dict) else None
+    if not instance:
+        return True
+    actual = {
+        str(arg.get("name")): _normalize_type_name(arg.get("instantiated_ty"))
+        for arg in (type_args if isinstance(type_args, list) else [])
+        if isinstance(arg, dict)
+    }
+    return all(actual.get(str(name)) == _normalize_type_name(ty) for name, ty in instance.items())
 
 
 def _rules_for_target(
@@ -845,6 +935,7 @@ def _rules_for_target(
     callee: dict[str, Any],
     by_location: dict[tuple[str, int], list[tuple[str, dict[str, Any]]]],
     by_name: dict[tuple[str, str], list[tuple[str, dict[str, Any]]]],
+    type_args: object = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     name = callee.get("name")
     if name == "core::ptr::__raw_ptr_deref__":
@@ -861,11 +952,11 @@ def _rules_for_target(
     if not isinstance(path, str) or not isinstance(line, int):
         return []
     normalized_path = path.replace("\\", "/")
-    exact = by_location.get((normalized_path, line), [])
-    if exact:
-        return exact
-    function_name = _unsafe_function_name(name)
-    return by_name.get((normalized_path, function_name), []) if function_name else []
+    matched = by_location.get((normalized_path, line), [])
+    if not matched:
+        function_name = _unsafe_function_name(name)
+        matched = by_name.get((normalized_path, function_name), []) if function_name else []
+    return [(rule_id, entry) for rule_id, entry in matched if _rule_instance_matches(entry, type_args)]
 
 
 def _source_span(crate_dir: Path, item: object) -> str:
@@ -941,11 +1032,14 @@ def _related_code(crate_dir: Path, report: dict[str, Any], target: dict[str, Any
 
 
 def run_without_symbolic_execution(args: argparse.Namespace) -> int:
+    if getattr(args, 'roster', None) and repo_root() != Path('/unsat-rust'):
+        return run_stage_in_docker(args, 'without-symbolic-execution')
     root = repo_root()
     output_root = _output_root(root, args, "without-symbolic-execution")
     output_root.mkdir(parents=True, exist_ok=True)
     by_api = _rule_index(root, _baseline_path(root, args))
     by_name = _rule_name_index(root, _baseline_path(root, args))
+    include_raw = _load_json(_baseline_path(root, args)).get('include_raw_pointer_deref', True)
     if args.dry_run:
         client = None
     else:
@@ -962,12 +1056,14 @@ def run_without_symbolic_execution(args: argparse.Namespace) -> int:
         old_rows: dict[tuple[int, str], dict[str, Any]] = {}
         if args.resume and result_path.is_file():
             for row in _load_json(result_path).get("results", []):
-                if isinstance(row, dict) and isinstance(row.get("target_index"), int):
+                if isinstance(row, dict) and isinstance(row.get("target_index"), int) and row.get('status') != 'error':
                     old_rows[(row["target_index"], str(row.get("rule")))] = row
         rows = list(old_rows.values())
         prompts_dir = crate_output / "prompts"
         prompts_dir.mkdir(parents=True, exist_ok=True)
         targets = report.get("targets", [])
+        crate_started = time.monotonic()
+        planned_sites = []
         for target_index, target in enumerate(targets if isinstance(targets, list) else []):
             if not isinstance(target, dict):
                 continue
@@ -979,7 +1075,13 @@ def run_without_symbolic_execution(args: argparse.Namespace) -> int:
                 callee=callee,
                 by_location=by_api,
                 by_name=by_name,
+                type_args=target.get("callee_type_args"),
             )
+            if callee.get('name') == 'core::ptr::__raw_ptr_deref__' and not include_raw:
+                rules = []
+            planned_sites.append({'callsite_id': callsite.get('id'), 'path': callsite.get('path'),
+                                  'line': callsite.get('line'), 'caller': (target.get('caller') or {}).get('name'),
+                                  'rules': [identifier for identifier, _ in rules]})
             caller_code = _related_code(crate_dir, report, target)
             for rule_id, entry in rules:
                 result_key = (target_index, rule_id)
@@ -1004,6 +1106,7 @@ Related safe caller code:
                 if args.dry_run:
                     print(f"would LLM-audit {crate_dirname} target#{target_index} {rule_id}")
                     continue
+                pair_started = time.monotonic()
                 try:
                     assert client is not None
                     response = client.complete(
@@ -1036,6 +1139,7 @@ Related safe caller code:
                         "prediction": "violation" if violated else "verified",
                         "reason": parsed.get("reason") if error is None else None,
                         "error": error,
+                        'duration_sec': round(time.monotonic() - pair_started, 3),
                     }
                 )
                 result_path.write_text(
@@ -1045,6 +1149,7 @@ Related safe caller code:
                             "variant": "without-symbolic-execution",
                             "crate": str(crate_dir),
                             "model": args.model,
+                            'callsites': planned_sites,
                             "results": sorted(rows, key=lambda row: (row["target_index"], row["rule"])),
                         },
                         indent=2,
@@ -1053,4 +1158,31 @@ Related safe caller code:
                     + "\n",
                     encoding="utf-8",
                 )
+                if getattr(args, 'result_format', 'native') == 'claude':
+                    from ruklee_results import write_json
+                    row = rows[-1]
+                    pair_dir = crate_output / re.sub(r'[^A-Za-z0-9_.-]+', '-', str(callsite.get('id') or target_index)) / rule_id
+                    native_path = pair_dir / 'native-result.json'
+                    write_json(native_path, row)
+                    write_json(pair_dir / 'result.json', {
+                        'schema_version': 1,
+                        'violations': [{'file': row['path'], 'function': row['caller'], 'unsafe_api': row['unsafe_callee'],
+                                        'requirement': entry.get('rule'), 'explanation': row.get('reason')}] if violated and error is None else [],
+                        'crate': crate_dirname, 'setting': output_root.name.removeprefix('ruklee-'),
+                        'function': row['caller'], 'callsite': callsite, 'rule_id': rule_id,
+                        'rule': entry.get('rule'), 'dsl': entry.get('dsl'),
+                        'status': 'error' if error else 'llm-violation' if violated else 'llm-no-violation',
+                        'classification': 'inconclusive' if error else 'unreviewed_model_finding' if violated else 'model_reported_no_violation',
+                        'backend': 'llm', 'full_rerun_passed': False,
+                        'execution': {'model': args.model, 'duration_sec': row['duration_sec'],
+                                      'duration_ms': round(row['duration_sec'] * 1000, 3)},
+                        'evidence': {'native_result': str(native_path), 'prompt': str(prompts_dir / f'{stem}.txt'),
+                                     'response': str(prompts_dir / f'{stem}.response.txt')}, 'error': error})
+        if not args.dry_run:
+            from ruklee_results import write_json, finish_crate
+            write_json(result_path, {'schema_version': 1, 'variant': 'without-symbolic-execution', 'crate': str(crate_dir),
+                                    'model': args.model, 'callsites': planned_sites, 'results': rows})
+            finish_crate(crate_output, setting=output_root.name.removeprefix('ruklee-'), crate=crate_dirname,
+                         catalog=_baseline_path(root, args), returncode=1 if any(row.get('error') for row in rows) else 0,
+                         duration_sec=time.monotonic() - crate_started)
     return 1 if failed else 0

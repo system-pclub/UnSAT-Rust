@@ -562,7 +562,7 @@ impl VisitMut for KeepFunctions<'_> {
         });
         if self.generic_impl_depth > 0
             || self.inherent_impl_depth == 0
-            || has_instantiable_generics(&function.sig.generics)
+            || signature_is_generic(&function.sig)
             || function.sig.unsafety.is_some()
             || function.sig.asyncness.is_some()
             || function.sig.abi.is_some()
@@ -1129,7 +1129,7 @@ impl VisitMut for Injector<'_> {
         visit_mut::visit_item_fn_mut(self, function);
         if !inserted_before && self.inserted {
             let generic =
-                self.generic_impl_depth > 0 || has_instantiable_generics(&function.sig.generics);
+                self.generic_impl_depth > 0 || signature_is_generic(&function.sig);
             preserve_target_caller_symbol(&mut function.attrs, self.injection, generic);
         }
     }
@@ -1139,7 +1139,7 @@ impl VisitMut for Injector<'_> {
         visit_mut::visit_impl_item_fn_mut(self, function);
         if !inserted_before && self.inserted {
             let generic =
-                self.generic_impl_depth > 0 || has_instantiable_generics(&function.sig.generics);
+                self.generic_impl_depth > 0 || signature_is_generic(&function.sig);
             preserve_target_caller_symbol(&mut function.attrs, self.injection, generic);
         }
     }
@@ -1245,6 +1245,28 @@ fn rust_legacy_symbol_needle(name: &str) -> String {
             .then(|| format!("{}{}", simple.len(), simple))
         })
         .collect()
+}
+
+/// A signature is generic when it declares type/const parameters or takes an
+/// argument-position `impl Trait`, which is an anonymous type parameter that is
+/// absent from `sig.generics`. Such functions have one instance per argument type.
+fn signature_is_generic(sig: &syn::Signature) -> bool {
+    struct ImplTraitFinder(bool);
+    impl<'ast> Visit<'ast> for ImplTraitFinder {
+        fn visit_type_impl_trait(&mut self, _: &'ast syn::TypeImplTrait) {
+            self.0 = true;
+        }
+    }
+    if has_instantiable_generics(&sig.generics) {
+        return true;
+    }
+    let mut finder = ImplTraitFinder(false);
+    for input in &sig.inputs {
+        if let syn::FnArg::Typed(arg) = input {
+            finder.visit_type(&arg.ty);
+        }
+    }
+    finder.0
 }
 
 fn has_instantiable_generics(generics: &syn::Generics) -> bool {
@@ -2726,6 +2748,7 @@ impl Buf {
     pub fn generic<T>(len: usize) -> Self {
         Buf { len }
     }
+    pub fn fill(&mut self, mut f: impl FnMut(u8)) { f(0) }
 }
 impl Buf {
     pub fn dup() {}
@@ -2756,8 +2779,10 @@ impl<T> Wrap<T> {
                     {"constructors": [
                         function("lib::Buf::new", 6, false),
                         function("lib::Buf::generic", 9, true),
-                        function("lib::Buf::dup", 13, false),
-                        function("lib::Wrap::make", 15, false)
+                        // Argument-position `impl Trait` is an anonymous type parameter.
+                        function("lib::Buf::fill", 12, false),
+                        function("lib::Buf::dup", 14, false),
+                        function("lib::Wrap::make", 16, false)
                     ], "mutators": []}
                 ]
             }

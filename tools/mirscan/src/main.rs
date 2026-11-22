@@ -51,6 +51,15 @@ impl rustc_driver::Callbacks for CompilerCalls {
                 .fatal("raudit cannot be run on programs that fail compilation");
         }
 
+        // Cargo may invoke path dependencies from the primary package's cwd
+        // with the same target directory. They must finish producing metadata
+        // for dependent crates instead of stopping after our analysis callback.
+        if std::env::var_os("CARGO_MANIFEST_DIR").is_some()
+            && std::env::var_os("CARGO_PRIMARY_PACKAGE").is_none()
+        {
+            return Compilation::Continue;
+        }
+
         // Directories a crate root can be derived from, for both cargo target
         // layouts: `target/debug/deps` (three levels below the crate) and the
         // newer `target/debug/build/<package>/<hash>/out` (six levels).

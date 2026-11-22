@@ -1,20 +1,34 @@
 {
-  "description": "Hand-written additions to the generated step2 catalog (no LLM). 'aliases' attach extra callee path:line identities to an existing translated rule (re-exports/toolchain line drift); 'rules' add contracts for monomorphic instances of unsafe APIs whose generic step2 translation failed or was never extracted. Applied by prepare_step2_catalog.py; rule ids become step2-supplement-<n>. 'overrides' replace the expression of generated rules (only while the generated expression equals 'expected') that report violations the requirement does not imply.",
+  "description": "Hand-written additions to the generated step2 catalog (no LLM). 'aliases' attach (guarded by 'source_path', the rules' own location) extra callee path:line identities to an existing translated rule (re-exports/toolchain line drift); 'rules' add contracts for monomorphic instances of unsafe APIs whose generic step2 translation failed or was never extracted. Applied by prepare_step2_catalog.py; rule ids become step2-supplement-<n>. 'overrides' replace the expression of generated rules (only while the generated expression equals 'expected') that report violations the requirement does not imply. 'rules' may carry 'instance' (generic parameter -> concrete type); matching then requires the callsite's callee_type_args to agree.",
   "aliases": [
     {
       "rules": [
-        "core:rule-602",
-        "core:rule-603",
-        "core:rule-604",
-        "core:rule-605",
-        "core:rule-606",
-        "core:rule-607",
-        "core:rule-608"
+        "core:rule-476",
+        "core:rule-477",
+        "core:rule-479",
+        "core:rule-480",
+        "core:rule-485"
       ],
+      "source_path": "rust/library/core/src/ptr/mod.rs:407",
+      "paths": [
+        "rust/library/core/src/intrinsics/mod.rs:3827"
+      ],
+      "reason": "`ptr::copy` is a `#[doc(inline)] pub use` of `intrinsics::copy`; rules are extracted at the re-export, MIRScan reports the definition."
+    },
+    {
+      "rules": [
+        "core:rule-488",
+        "core:rule-489",
+        "core:rule-490",
+        "core:rule-491",
+        "core:rule-492",
+        "core:rule-493"
+      ],
+      "source_path": "rust/library/core/src/ptr/mod.rs:410",
       "paths": [
         "rust/library/core/src/intrinsics/mod.rs:3724"
       ],
-      "reason": "ptr::copy_nonoverlapping re-exports the intrinsics function that MIRScan reports as the callee."
+      "reason": "`ptr::copy_nonoverlapping` is a `#[doc(inline)] pub use` of `intrinsics::copy_nonoverlapping`; rules are extracted at the re-export, MIRScan reports the definition."
     }
   ],
   "rules": [
@@ -23,16 +37,132 @@
       "path": "rust/library/core/src/slice/mod.rs:625",
       "name": "unsafe fn get_unchecked (& self , index : usize) -> & T",
       "api": "impl < T > [T] { unsafe fn get_unchecked (& self , index : usize) -> & T }",
-      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = usize`); generic step2 rule-970 failed translation because `I` is opaque.",
+      "instance": {
+        "I": "usize"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = usize`); the generic step2 core:rule-847 is unexpressible because `I: SliceIndex` is opaque.",
       "expression": "$2 < len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:625",
+      "name": "unsafe fn get_unchecked (& self , index : core::ops::range::Range < usize >) -> & [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked (& self , index : core::ops::range::Range < usize >) -> & [T] }",
+      "instance": {
+        "I": "Range<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = Range<usize>`); the generic step2 core:rule-847 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.start <= $2.end and $2.end <= len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:625",
+      "name": "unsafe fn get_unchecked (& self , index : core::ops::range::RangeFrom < usize >) -> & [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked (& self , index : core::ops::range::RangeFrom < usize >) -> & [T] }",
+      "instance": {
+        "I": "RangeFrom<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = RangeFrom<usize>`); the generic step2 core:rule-847 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.start <= len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:625",
+      "name": "unsafe fn get_unchecked (& self , index : core::ops::range::RangeTo < usize >) -> & [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked (& self , index : core::ops::range::RangeTo < usize >) -> & [T] }",
+      "instance": {
+        "I": "RangeTo<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = RangeTo<usize>`); the generic step2 core:rule-847 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.end <= len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:625",
+      "name": "unsafe fn get_unchecked (& self , index : core::ops::range::RangeToInclusive < usize >) -> & [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked (& self , index : core::ops::range::RangeToInclusive < usize >) -> & [T] }",
+      "instance": {
+        "I": "RangeToInclusive<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = RangeToInclusive<usize>`); the generic step2 core:rule-847 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.end < len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:625",
+      "name": "unsafe fn get_unchecked (& self , index : core::ops::range::RangeInclusive < usize >) -> & [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked (& self , index : core::ops::range::RangeInclusive < usize >) -> & [T] }",
+      "instance": {
+        "I": "RangeInclusive<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked` (instance `I = RangeInclusive<usize>`); the generic step2 core:rule-847 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.start <= $2.end + 1 and $2.end < len($1)"
     },
     {
       "library": "core",
       "path": "rust/library/core/src/slice/mod.rs:665",
       "name": "unsafe fn get_unchecked_mut (& mut self , index : usize) -> & mut T",
       "api": "impl < T > [T] { unsafe fn get_unchecked_mut (& mut self , index : usize) -> & mut T }",
-      "rule": "For safety, `index` must be in bounds for `self` when calling `get_unchecked_mut` (instance `I = usize`); generic step2 rule-971 failed translation because `I` is opaque.",
+      "instance": {
+        "I": "usize"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked_mut` (instance `I = usize`); the generic step2 core:rule-848 is unexpressible because `I: SliceIndex` is opaque.",
       "expression": "$2 < len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:665",
+      "name": "unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::Range < usize >) -> & mut [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::Range < usize >) -> & mut [T] }",
+      "instance": {
+        "I": "Range<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked_mut` (instance `I = Range<usize>`); the generic step2 core:rule-848 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.start <= $2.end and $2.end <= len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:665",
+      "name": "unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeFrom < usize >) -> & mut [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeFrom < usize >) -> & mut [T] }",
+      "instance": {
+        "I": "RangeFrom<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked_mut` (instance `I = RangeFrom<usize>`); the generic step2 core:rule-848 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.start <= len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:665",
+      "name": "unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeTo < usize >) -> & mut [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeTo < usize >) -> & mut [T] }",
+      "instance": {
+        "I": "RangeTo<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked_mut` (instance `I = RangeTo<usize>`); the generic step2 core:rule-848 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.end <= len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:665",
+      "name": "unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeToInclusive < usize >) -> & mut [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeToInclusive < usize >) -> & mut [T] }",
+      "instance": {
+        "I": "RangeToInclusive<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked_mut` (instance `I = RangeToInclusive<usize>`); the generic step2 core:rule-848 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.end < len($1)"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/slice/mod.rs:665",
+      "name": "unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeInclusive < usize >) -> & mut [T]",
+      "api": "impl < T > [T] { unsafe fn get_unchecked_mut (& mut self , index : core::ops::range::RangeInclusive < usize >) -> & mut [T] }",
+      "instance": {
+        "I": "RangeInclusive<usize>"
+      },
+      "rule": "For safety, `index` must be in bounds for the slice when calling `get_unchecked_mut` (instance `I = RangeInclusive<usize>`); the generic step2 core:rule-848 is unexpressible because `I: SliceIndex` is opaque.",
+      "expression": "$2.start <= $2.end + 1 and $2.end < len($1)"
     },
     {
       "library": "core",
@@ -41,6 +171,14 @@
       "api": "impl Layout { const unsafe fn from_size_align_unchecked (size : usize , align : usize) -> Layout }",
       "rule": "`align` must be a non-zero power of two and `size`, rounded up to the nearest multiple of `align`, must not exceed `isize::MAX` (the preconditions of `Layout::from_size_align`, which step1 extracted no rule from).",
       "expression": "$2 in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, 268435456, 536870912, 1073741824, 2147483648, 4294967296, 8589934592, 17179869184, 34359738368, 68719476736, 137438953472, 274877906944, 549755813888, 1099511627776, 2199023255552, 4398046511104, 8796093022208, 17592186044416, 35184372088832, 70368744177664, 140737488355328, 281474976710656, 562949953421312, 1125899906842624, 2251799813685248, 4503599627370496, 9007199254740992, 18014398509481984, 36028797018963968, 72057594037927936, 144115188075855872, 288230376151711744, 576460752303423488, 1152921504606846976, 2305843009213693952, 4611686018427387904, 9223372036854775808] and ($1 + $2 - 1) // $2 * $2 <= 9223372036854775807"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/ffi/c_str.rs:195",
+      "name": "const unsafe fn from_ptr < 'a > (ptr : * const c_char) -> & 'a core::ffi::c_str::CStr",
+      "api": "impl  core::ffi::c_str::CStr { const unsafe fn from_ptr < 'a > (ptr : * const c_char) -> & 'a core::ffi::c_str::CStr }",
+      "rule": "`ptr` must be valid for reads of all bytes up to and including the nul terminator (core:rule-228, unexpressible because the length is a nul scan). Checked here as its necessary condition: the first byte at `ptr` is readable.",
+      "expression": "$1.$mem.pointee.readable"
     }
   ],
   "overrides": [

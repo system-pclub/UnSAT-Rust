@@ -1,4 +1,6 @@
-from ruklee_results import pair_report, finish_crate
+import tarfile
+
+from ruklee_results import pair_report, finish_crate, archive_crate, restore_pair_outputs
 
 
 def native(status, certain=False, confirmed=False):
@@ -34,3 +36,30 @@ def test_no_results_with_failed_compile_is_error(tmp_path):
                           returncode=1, duration_sec=3.0)
     assert result['status'] == 'error'
     assert result['violations'] == []
+
+
+def test_retention_keeps_all_tests_queries_and_source_target_directories(tmp_path):
+    output = tmp_path / 'eval/ruklee-full/demo'
+    klee = output / 'site/rule/klee-out'
+    klee.mkdir(parents=True)
+    for name in ('test000001.ktest', 'test000002.ktest', 'query.smt2', 'execution.err'):
+        (klee / name).write_text(name)
+    ir = output / 'ir'
+    ir.mkdir()
+    (ir / 'input.ll').write_text('exact linked IR')
+    injected = tmp_path / 'crates_inj/demo'
+    (injected / 'target').mkdir(parents=True)
+    (injected / 'target/cache').write_text('rebuildable')
+    (injected / 'src/target').mkdir(parents=True)
+    (injected / 'src/target/contract.rs').write_text('source, not cache')
+    (injected / 'Cargo.toml').write_text('[package]')
+    archive_crate(tmp_path, output, 'demo')
+    assert not klee.exists()
+    assert not ir.exists()
+    with tarfile.open(output / 'replay-inputs.tar.gz') as archive:
+        names = archive.getnames()
+    assert 'crates_inj/demo/src/target/contract.rs' in names
+    assert 'crates_inj/demo/target/cache' not in names
+    restore_pair_outputs(output)
+    assert {p.name for p in klee.iterdir()} == {'test000001.ktest', 'test000002.ktest', 'query.smt2', 'execution.err'}
+    assert (klee / 'test000002.ktest').read_text() == 'test000002.ktest'

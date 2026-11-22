@@ -571,13 +571,45 @@ def _load_rule_ids_by_callee_name(
     for rule_id, raw_entry in rules.items():
         if not isinstance(rule_id, str) or not isinstance(raw_entry, dict):
             continue
-        parsed = _parse_rule_path(raw_entry.get("path"))
         function_name = _unsafe_function_name(raw_entry.get("name"))
-        if parsed is None or function_name is None:
+        if function_name is None:
             continue
-        path, _ = parsed
-        grouped.setdefault((path, function_name), []).append(rule_id)
+        aliases = raw_entry.get("aliases", [])
+        for candidate in [raw_entry.get("path"), *(aliases if isinstance(aliases, list) else [])]:
+            parsed = _parse_rule_path(candidate)
+            if parsed is None:
+                continue
+            path, _ = parsed
+            keyed = grouped.setdefault((path, function_name), [])
+            if rule_id not in keyed:
+                keyed.append(rule_id)
     return {key: sorted(values) for key, values in grouped.items()}
+
+
+_STD_TYPE_PATH_RE = re.compile(r"\b(?:std|core|alloc)::(?:[A-Za-z_][A-Za-z0-9_]*::)*")
+
+
+def _normalize_type_name(value: object) -> str:
+    """Compare instantiated types independent of std/core re-export paths and spacing."""
+    return _STD_TYPE_PATH_RE.sub("", str(value)).replace(" ", "")
+
+
+def _rule_instance_matches(rule_entry: object, callee_type_args: object) -> bool:
+    """A rule with an ``instance`` map applies only to that monomorphic instantiation.
+
+    ``instance`` maps callee generic parameter names to concrete types, e.g.
+    ``{"I": "usize"}`` for ``<[T]>::get_unchecked::<usize>``. Rules without it match
+    every instantiation. An instance rule never matches unknown type arguments.
+    """
+    instance = rule_entry.get("instance") if isinstance(rule_entry, dict) else None
+    if not instance:
+        return True
+    actual = {
+        str(arg.get("name")): _normalize_type_name(arg.get("instantiated_ty"))
+        for arg in (callee_type_args if isinstance(callee_type_args, list) else [])
+        if isinstance(arg, dict)
+    }
+    return all(actual.get(str(name)) == _normalize_type_name(ty) for name, ty in instance.items())
 
 
 def _task1_to_ext_ast_json(task1: str, operators: list[dict[str, object]]) -> str:
@@ -794,9 +826,29 @@ def _control_chain_all_certain(chain_path: Path) -> bool | None:
     return all_certain if isinstance(all_certain, bool) else None
 
 
+def _has_unconditional_violation(text: str) -> bool:
+    """True when one DSL evaluation had no path constraint and folded to false."""
+    if "DSL still depends on uncertain_symbol values" in text:
+        return False
+    path_constraints: int | None = None
+    for line in text.splitlines():
+        match = re.search(r"\[ext\.dsl\] path constraints: count=(\d+)", line)
+        if match:
+            path_constraints = int(match.group(1))
+        elif "[ext.dsl] resolved constraint is constant: width=1 value=false" in line:
+            if path_constraints == 0:
+                return True
+    return False
+
+
 def _compose_has_actionable_certainty(
     chain_path: Path, text: str, raw_ptr_deref: bool
 ) -> bool:
+    # An unconditional violation is certain: the target is reached with no path
+    # constraint and the rule is false regardless of any input (for example the
+    # result of `mem::uninitialized::<u32>()` is never a valid `u32`).
+    if _has_unconditional_violation(text):
+        return True
     chain_all_certain = _control_chain_all_certain(chain_path)
     if chain_all_certain is not None:
         # The structured chain is authoritative: a query can mention a
@@ -1089,9 +1141,32 @@ def _matrix_callsite_rows(
                 "unsafe_callee": callee.get("name"),
                 "unsafe_callee_path": callee.get("path"),
                 "unsafe_callee_line_start": callee.get("line_start"),
+                "callee_type_args": raw_target.get("callee_type_args") or [],
+                "attribution": _callsite_attribution(raw_target),
             }
         )
     return rows
+
+
+def _callsite_attribution(raw_target: dict[str, Any]) -> list[str]:
+    """Other source lines that identify this unsafe call besides the root callsite.
+
+    MIRScan reports the root (outermost) callsite; ``unsafe_callsite`` is the
+    actual unsafe call when it sits in a followed helper, and ``def_site`` is the
+    line inside a local ``macro_rules!`` body when the call comes from a macro.
+    """
+    lines: list[str] = []
+    for key in ("callsite", "unsafe_callsite"):
+        site = raw_target.get(key)
+        if not isinstance(site, dict):
+            continue
+        candidates = [site.get("def_site")] if key == "callsite" else [site, site.get("def_site")]
+        for candidate in candidates:
+            if isinstance(candidate, dict) and candidate.get("path") and candidate.get("line"):
+                text = f"{candidate['path']}:{candidate['line']}"
+                if text not in lines:
+                    lines.append(text)
+    return lines
 
 
 _LLVM_DEFINE_RE = re.compile(r"^define\b.*@([^\s(]+).*?(?:!dbg !(\d+))?")
@@ -1391,7 +1466,12 @@ def _assign_matrix_rules_to_callsites(
                     rules = rules_by_callee_name.get(
                         (normalized_path, function_name), []
                     )
-        callsite["rules"] = rules
+        catalog_rules = catalog.get("rules", {}) if isinstance(catalog, dict) else {}
+        callsite["rules"] = [
+            rule_id
+            for rule_id in rules
+            if _rule_instance_matches(catalog_rules.get(rule_id), callsite.get("callee_type_args"))
+        ]
     return callsites
 
 
@@ -1465,6 +1545,7 @@ def _write_simple_report(
                 "callsite": f"{row.get('path')}:{row.get('line')}:{row.get('col')}",
                 "caller": row.get("caller"),
                 "callee": row.get("unsafe_callee"),
+                "attribution": row.get("attribution", []),
                 "rule": rule,
                 "dsl": dsl_by_rule[rule],
                 "violation": violation,
@@ -2969,6 +3050,7 @@ def _run_verify_matrix_locked(
                     "unsafe_callee": callsite.get("unsafe_callee"),
                     "unsafe_callee_path": callsite.get("unsafe_callee_path"),
                     "unsafe_callee_line_start": callsite.get("unsafe_callee_line_start"),
+                    "attribution": callsite.get("attribution", []),
                     "rule": rule,
                     "status": "skipped-callsite-violated",
                     "returncode": None,
@@ -3031,6 +3113,7 @@ def _run_verify_matrix_locked(
                     "unsafe_callee": callsite.get("unsafe_callee"),
                     "unsafe_callee_path": callsite.get("unsafe_callee_path"),
                     "unsafe_callee_line_start": callsite.get("unsafe_callee_line_start"),
+                    "attribution": callsite.get("attribution", []),
                     "rule": rule,
                     "status": "not-in-ir",
                     "returncode": None,
@@ -3177,6 +3260,7 @@ def _run_verify_matrix_locked(
                 "unsafe_callee": callsite.get("unsafe_callee"),
                 "unsafe_callee_path": callsite.get("unsafe_callee_path"),
                 "unsafe_callee_line_start": callsite.get("unsafe_callee_line_start"),
+                "attribution": callsite.get("attribution", []),
                 "rule": rule,
                 "ablation_level": getattr(args, "ablation_level", "full"),
                 "status": status,

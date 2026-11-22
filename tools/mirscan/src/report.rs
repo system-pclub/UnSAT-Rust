@@ -107,6 +107,17 @@ pub struct CallsiteInfo {
     pub col: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// For a call written inside a local `macro_rules!` body, the location in
+    /// the macro body; `line`/`path` are the invocation site.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub def_site: Option<SourceLocation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SourceLocation {
+    pub path: String,
+    pub line: usize,
+    pub col: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -279,16 +290,26 @@ fn source_relative_path(path: &str) -> String {
 }
 
 fn callsite_info(tcx: TyCtxt<'_>, span: Span) -> CallsiteInfo {
-    let loc = tcx
-        .sess
-        .source_map()
-        .lookup_char_pos(span.source_callsite().lo());
+    let source_map = tcx.sess.source_map();
+    let loc = source_map.lookup_char_pos(span.source_callsite().lo());
+    let path = normalize_to_rust_relative(&loc.file.name.prefer_local().to_string());
+    let def_site = span.from_expansion().then(|| {
+        let def = source_map.lookup_char_pos(span.lo());
+        let def_path = normalize_to_rust_relative(&def.file.name.prefer_local().to_string());
+        SourceLocation { path: def_path, line: def.line, col: def.col.to_usize() + 1 }
+    }).filter(|def| {
+        // Only a body of a macro defined in this crate's sources; std macros
+        // and synthetic expansion files keep the invocation site only.
+        !def.path.starts_with("rust/")
+            && !def.path.starts_with('<')
+            && def.path.ends_with(".rs")
+            && (def.path != path || def.line != loc.line)
+    });
     CallsiteInfo {
         line: loc.line,
         col: loc.col.to_usize() + 1,
-        path: Some(normalize_to_rust_relative(
-            &loc.file.name.prefer_local().to_string(),
-        )),
+        path: Some(path),
+        def_site,
     }
 }
 
@@ -1372,14 +1393,27 @@ fn collect_reachable_unsafe_calls<'tcx>(
         //
         // MIRSCAN_FOLLOW_SAFE_HELPERS=1 opts into the longer chain, which is how
         // an unsound public API that delegates to a private safe helper shows up.
-        if depth < max_call_depth && std::env::var_os("MIRSCAN_FOLLOW_SAFE_HELPERS").is_some() {
-            for (callee_def_id, callee_args, callsite_span) in unsafe_visitor.local_safe_calls {
-                let callee_args =
-                    ty::EarlyBinder::bind(callee_args).instantiate(tcx, current_args);
-                let next_root_callsite =
-                    root_callsite_span.or(Some(callsite_span.source_callsite()));
-                queue.push_back((callee_def_id, callee_args, depth + 1, next_root_callsite));
+        //
+        // Private (not source-visible) safe helpers are followed by default:
+        // they are never roots themselves, so an unsafe call inside them is only
+        // reachable — and only reported — through a visible caller. The target
+        // keeps the visible caller's callsite as root and the helper's call as
+        // `unsafe_callsite`. MIRSCAN_NO_FOLLOW_PRIVATE_HELPERS=1 restores the
+        // one-layer boundary.
+        let follow_all = std::env::var_os("MIRSCAN_FOLLOW_SAFE_HELPERS").is_some();
+        let follow_private = std::env::var_os("MIRSCAN_NO_FOLLOW_PRIVATE_HELPERS").is_none();
+        let private_helper_depth = max_call_depth.max(2);
+        for (callee_def_id, callee_args, callsite_span) in unsafe_visitor.local_safe_calls {
+            let follow = (follow_all && depth < max_call_depth)
+                || (follow_private
+                    && depth < private_helper_depth
+                    && !fn_is_public_or_source_visible(tcx, callee_def_id));
+            if !follow {
+                continue;
             }
+            let callee_args = ty::EarlyBinder::bind(callee_args).instantiate(tcx, current_args);
+            let next_root_callsite = root_callsite_span.or(Some(callsite_span.source_callsite()));
+            queue.push_back((callee_def_id, callee_args, depth + 1, next_root_callsite));
         }
     }
 

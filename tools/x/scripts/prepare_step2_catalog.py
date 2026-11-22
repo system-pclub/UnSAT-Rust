@@ -18,6 +18,9 @@ def apply_supplement(rules, supplement, models):
         for key in entry['rules']:
             library, source_id = key.split(':')
             rule = rules[f'step2-{library}-{source_id}']
+            expected = entry.get('source_path')
+            if expected is not None and rule['path'] != expected:
+                raise RuntimeError(f"alias {key} expects {expected} but the rule is at {rule['path']}; step2 was renumbered")
             rule['aliases'] = sorted({*rule.get('aliases', []), *entry['paths']})
     for number, row in enumerate(supplement.get('rules', []), 1):
         identifier = f'step2-supplement-{number}'

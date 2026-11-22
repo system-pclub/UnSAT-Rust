@@ -155,3 +155,72 @@ def test_memory_copy_counts_use_source_api_parameter_positions() -> None:
     for rule in ("rule-958", "rule-959", "rule-960"):
         assert "get_arg(2)" in rules[rule]["dsl"]
         assert "get_arg(4)" not in rules[rule]["dsl"]
+
+
+def test_matrix_rules_select_the_callee_instance(tmp_path) -> None:
+    rule_path = tmp_path / "rules.json"
+    rule_path.write_text(
+        json.dumps(
+            {
+                "rules": {
+                    "usize": {
+                        "path": "rust/library/core/src/slice/mod.rs:625",
+                        "name": "unsafe fn get_unchecked (& self , index : usize) -> & T",
+                        "instance": {"I": "usize"},
+                    },
+                    "range": {
+                        "path": "rust/library/core/src/slice/mod.rs:625",
+                        "name": "unsafe fn get_unchecked (& self , index : core::ops::range::Range < usize >) -> & [T]",
+                        "instance": {"I": "core::ops::range::Range<usize>"},
+                    },
+                    "copy": {
+                        "path": "rust/library/core/src/ptr/mod.rs:407",
+                        "name": "const unsafe fn copy < T > (src : * const T , dst : * mut T , count : usize)",
+                        "aliases": ["rust/library/core/src/intrinsics/mod.rs:3827"],
+                    },
+                },
+                "include_raw_pointer_deref": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def row(name, path, line, ty=None):
+        return {
+            "unsafe_callee": name, "unsafe_callee_path": path, "unsafe_callee_line_start": line,
+            "callee_type_args": [{"name": "I", "instantiated_ty": ty}] if ty else [],
+        }
+
+    slice_path = "rust/library/core/src/slice/mod.rs"
+    rows = _assign_matrix_rules_to_callsites(
+        callsites=[
+            row("core::slice::<impl [T]>::get_unchecked", slice_path, 655, "usize"),
+            row("core::slice::<impl [T]>::get_unchecked", slice_path, 655, "std::ops::Range<usize>"),
+            row("core::slice::<impl [T]>::get_unchecked", slice_path, 655, "std::ops::RangeFrom<usize>"),
+            row("std::intrinsics::copy", "rust/library/core/src/intrinsics/mod.rs", 3830),
+        ],
+        rule_dsl_path=rule_path,
+        requested_rule=None,
+    )
+
+    assert [r["rules"] for r in rows] == [["usize"], ["range"], [], ["copy"]]
+
+
+def test_unconditional_constant_violation_is_certain() -> None:
+    from cli.cmd.verify import _has_unconditional_violation
+
+    unconditional = (
+        "KLEE: [ext.dsl] path constraints: count=0\n"
+        "KLEE: [ext.dsl] resolved constraint is constant: width=1 value=false\n"
+    )
+    assert _has_unconditional_violation(unconditional)
+    # A false result in a later evaluation that has path constraints is not unconditional.
+    mixed = (
+        "KLEE: [ext.dsl] path constraints: count=0\n"
+        "KLEE: [ext.dsl] resolved constraint is constant: width=1 value=true\n"
+        "KLEE: [ext.dsl] path constraints: count=3\n"
+        "KLEE: [ext.dsl] resolved constraint is constant: width=1 value=false\n"
+    )
+    assert not _has_unconditional_violation(mixed)
+    assert not _has_unconditional_violation(
+        unconditional + "KLEE: [ext.dsl] DSL still depends on uncertain_symbol values\n")

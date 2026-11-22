@@ -15,6 +15,9 @@ pub struct Catalog {
     pub selectors: BTreeMap<String, Vec<Selector>>,
     pub aliases: BTreeMap<String, String>,
     pub alternatives: BTreeMap<String, Vec<Definition>>,
+    /// Declarations whose cfg alternatives were resolved for the analysis
+    /// target (exactly one alternative true, all others false).
+    pub cfg_selected: BTreeMap<String, Vec<String>>,
     pub files: Vec<String>,
     pub diagnostics: Vec<Diagnostic>,
     pub unexpanded_macros: Vec<Source>,
@@ -24,6 +27,7 @@ impl Catalog {
     pub fn generate(registry: &Registry) -> Result<Self> {
         let mut definitions = registry.definitions.clone();
         let mut alternatives = BTreeMap::new();
+        let mut cfg_selected = BTreeMap::new();
         for (name, items) in &registry.duplicates {
             let mut options = vec![registry.definitions[name].clone()];
             for (item, module, file) in items {
@@ -40,7 +44,17 @@ impl Catalog {
                 options.push(local.definitions.remove(name).unwrap());
             }
             definitions.remove(name);
-            alternatives.insert(name.clone(), options);
+            let verdicts: Vec<Option<bool>> =
+                options.iter().map(|o| cfg::conditions_hold(&o.conditions)).collect();
+            let chosen: Vec<usize> = (0..options.len()).filter(|&i| verdicts[i] == Some(true)).collect();
+            let rest_false = verdicts.iter().filter(|v| **v == Some(false)).count() == options.len() - 1;
+            if chosen.len() == 1 && rest_false {
+                let definition = options[chosen[0]].clone();
+                cfg_selected.insert(name.clone(), definition.conditions.clone());
+                definitions.insert(name.clone(), definition);
+            } else {
+                alternatives.insert(name.clone(), options);
+            }
         }
         let mut selectors = BTreeMap::new();
         for definition in definitions.values().cloned().collect::<Vec<_>>() {
@@ -158,6 +172,7 @@ impl Catalog {
             selectors,
             aliases,
             alternatives,
+            cfg_selected,
             files: registry.files.clone(),
             diagnostics: registry.diagnostics.clone(),
             unexpanded_macros: registry.macros.clone(),
@@ -240,6 +255,16 @@ mod tests {
         .unwrap();
         assert!(!c.definitions.contains_key("sample::A"));
         assert_eq!(c.alternatives["sample::A"].len(), 2);
+    }
+    #[test]
+    fn cfg_alternatives_are_selected_for_the_analysis_target() {
+        let c = Catalog::generate(&registry(
+            "#[cfg(target_pointer_width = \"32\")] struct A { x: u32 } #[cfg(target_pointer_width = \"64\")] struct A { y: u64 }",
+        ))
+        .unwrap();
+        assert!(c.definitions.contains_key("sample::A"));
+        assert!(!c.alternatives.contains_key("sample::A"));
+        assert!(c.cfg_selected.contains_key("sample::A"));
     }
     #[test]
     fn function_bodies_and_test_modules_do_not_affect_data_parsing() {
