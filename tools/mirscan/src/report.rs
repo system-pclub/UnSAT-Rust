@@ -55,6 +55,13 @@ pub struct FnInfo {
     pub is_unsafe: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trait_name: Option<String>,
+    /// For a generic (`require_template`) fn: a crate-prefixed Rust path to one
+    /// concrete instance whose where-clauses hold, e.g.
+    /// `<&[crate::node::Node<u8, u8>] as crate::iter::Nodes>::get_node`.
+    /// autoinj references it from an exported item so the instance is codegen'd
+    /// even when no test instantiates the generic caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instantiation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_ty: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -420,6 +427,10 @@ struct AffectedFieldsVisitor<'tcx> {
     body: &'tcx Body<'tcx>,
     roots: HashMap<rustc_middle::mir::Local, AffectedPath>,
     aliases: HashMap<rustc_middle::mir::Local, AffectedPath>,
+    // Locals holding a pointer *value* read out of a field (`copy (*self).ptr`):
+    // their alias path names the field, but what they expose is its pointee,
+    // never the field slot itself.
+    pointee_copies: HashSet<rustc_middle::mir::Local>,
     written: HashSet<String>,
 }
 
@@ -479,6 +490,25 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
         }
     }
 
+    /// Whether `rvalue` copies a pointer value (not the address of a place).
+    fn copies_pointee(&self, rvalue: &Rvalue<'tcx>) -> bool {
+        let place = match rvalue {
+            Rvalue::Use(operand) | Rvalue::Cast(_, operand, _) => operand.place(),
+            Rvalue::CopyForDeref(place) => Some(*place),
+            _ => None,
+        };
+        place.is_some_and(|place| self.operand_place_is_pointee(place))
+    }
+
+    fn operand_place_is_pointee(&self, place: Place<'tcx>) -> bool {
+        if place.projection.is_empty() {
+            self.pointee_copies.contains(&place.local)
+        } else {
+            // A value loaded from a projection (field, deref, index).
+            true
+        }
+    }
+
     fn record(&mut self, place: Place<'tcx>) {
         if let Some(path) = self.path_for_place(place) {
             self.written.insert(path.rendered());
@@ -512,7 +542,7 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
                                     ty::Ref(_, _, rustc_middle::mir::Mutability::Mut)
                                         | ty::RawPtr(_, rustc_middle::mir::Mutability::Mut)
                                 );
-                                if !is_mut_ref {
+                                if !is_mut_ref || self.operand_place_is_pointee(place) {
                                     continue;
                                 }
                                 if let Some(path) = self.path_for_operand(operand) {
@@ -527,7 +557,7 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
                                     self.body.local_decls[place.local].ty.kind(),
                                     ty::Ref(_, _, rustc_middle::mir::Mutability::Mut)
                                         | ty::RawPtr(_, rustc_middle::mir::Mutability::Mut)
-                                );
+                                ) && !self.operand_place_is_pointee(place);
                                 is_mut_ref
                                     .then(|| self.path_for_operand(operand))
                                     .flatten()
@@ -566,7 +596,10 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
             .get(&return_local)
             .cloned()
             .unwrap_or_default();
-        if sources.is_empty() && contains_mut_ref(self.body.local_decls[return_local].ty) {
+        if sources.is_empty()
+            && contains_mut_ref(self.body.local_decls[return_local].ty)
+            && !self.pointee_copies.contains(&return_local)
+        {
             if let Some(path) = self.aliases.get(&return_local) {
                 sources.push((0, path.clone()));
             }
@@ -671,6 +704,11 @@ impl<'tcx> AffectedFieldsVisitor<'tcx> {
                             if let Some(path) = self.alias_from_rvalue(rvalue) {
                                 if self.aliases.get(&destination.local) != Some(&path) {
                                     self.aliases.insert(destination.local, path);
+                                    changed = true;
+                                }
+                                if self.copies_pointee(rvalue)
+                                    && self.pointee_copies.insert(destination.local)
+                                {
                                     changed = true;
                                 }
                             }
@@ -812,6 +850,7 @@ fn collect_affected_fields<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<AffectedFieldsInfo> {
             body,
             roots,
             aliases: HashMap::new(),
+            pointee_copies: HashSet::new(),
             written: HashSet::new(),
         }
         .analyze();
@@ -1402,7 +1441,7 @@ fn collect_reachable_unsafe_calls<'tcx>(
         // one-layer boundary.
         let follow_all = std::env::var_os("MIRSCAN_FOLLOW_SAFE_HELPERS").is_some();
         let follow_private = std::env::var_os("MIRSCAN_NO_FOLLOW_PRIVATE_HELPERS").is_none();
-        let private_helper_depth = max_call_depth.max(2);
+        let private_helper_depth = max_call_depth.max(4);
         for (callee_def_id, callee_args, callsite_span) in unsafe_visitor.local_safe_calls {
             let follow = (follow_all && depth < max_call_depth)
                 || (follow_private
@@ -2563,6 +2602,7 @@ fn raw_pointer_deref_fn_info() -> FnInfo {
         mut_ref_escape_fields: vec![],
         written_fields: vec![],
         return_self_fields: vec![],
+        instantiation: None,
     }
 }
 
@@ -2803,6 +2843,7 @@ fn get_fn_info_with_template_flag<'tcx>(
         body_end: body_end_loc.line,
         require_template,
         is_unsafe: is_fn_unsafe(tcx, def_id),
+        instantiation: if require_template { template_instantiation(tcx, def_id) } else { None },
         trait_name,
         return_ty,
         symbol_match_hint,
@@ -2812,6 +2853,336 @@ fn get_fn_info_with_template_flag<'tcx>(
         written_fields: vec![],
         return_self_fields: vec![],
     }
+}
+
+/// Candidate type arguments for instantiating a generic caller, cheapest
+/// first. Library types cover common bounds (`GlobalAlloc`, `Read`); crate-local
+/// non-generic ADTs cover crate traits.
+fn instantiation_type_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<Ty<'tcx>> {
+    let mut candidates = vec![
+        tcx.types.u8,
+        tcx.types.u64,
+        tcx.types.u32,
+        tcx.types.usize,
+        tcx.types.i32,
+        tcx.types.unit,
+        Ty::new_imm_ref(tcx, tcx.lifetimes.re_static, Ty::new_slice(tcx, tcx.types.u8)),
+    ];
+    for def_id in tcx.hir_crate_items(()).definitions() {
+        if candidates.len() >= 32 {
+            break;
+        }
+        let def_id = def_id.to_def_id();
+        if !matches!(tcx.def_kind(def_id), rustc_hir::def::DefKind::Struct | rustc_hir::def::DefKind::Enum) {
+            continue;
+        }
+        if !tcx.generics_of(def_id).own_params.is_empty() || !visible_crate_wide(tcx, def_id) {
+            continue;
+        }
+        candidates.push(tcx.type_of(def_id).instantiate_identity());
+    }
+    for name in ["std::alloc::System"] {
+        if let Some(def_id) = lookup_std_adt(tcx, name) {
+            candidates.push(tcx.type_of(def_id).instantiate_identity());
+        }
+    }
+    candidates
+}
+
+/// Whether a `crate::`-prefixed path to `def_id` resolves from every module:
+/// each enclosing item below the crate root is at least `pub(crate)`, except
+/// for items directly in the root (root-private items are crate-visible).
+fn visible_crate_wide(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    let root = rustc_hir::def_id::CRATE_DEF_ID.to_def_id();
+    let mut current = def_id;
+    while let Some(parent) = tcx.opt_parent(current) {
+        if parent != root {
+            match tcx.visibility(current) {
+                ty::Visibility::Public => {}
+                ty::Visibility::Restricted(module) if module == root => {}
+                _ => return false,
+            }
+        }
+        current = parent;
+    }
+    true
+}
+
+fn inst_debug(line: String) {
+    use std::io::Write;
+    let Ok(out) = std::env::var("ANALYSIS_OUT") else { return };
+    if std::env::var_os("MIRSCAN_DEBUG_INST").is_none() && !std::path::Path::new(&format!("{out}.inst-debug")).exists() {
+        return;
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(format!("{out}.inst-debug")) {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
+/// The name a direct dependency is imported under (`--extern name=...`),
+/// which differs from its crate name for renamed dependencies.
+fn extern_prelude_name(tcx: TyCtxt<'_>, cnum: rustc_hir::def_id::CrateNum) -> Option<String> {
+    if cnum == rustc_hir::def_id::LOCAL_CRATE
+        || !tcx.extern_crate(cnum).is_some_and(|krate| krate.is_direct())
+    {
+        return None;
+    }
+    let source = tcx.used_crate_source(cnum);
+    let files: Vec<std::path::PathBuf> = source
+        .paths()
+        .map(|path| std::fs::canonicalize(path).unwrap_or_else(|_| path.clone()))
+        .collect();
+    for (name, entry) in tcx.sess.opts.externs.iter() {
+        if let rustc_session::config::ExternLocation::ExactPaths(paths) = &entry.location {
+            if paths.iter().any(|path| files.contains(path.canonicalized())) {
+                return Some(name.clone());
+            }
+        }
+    }
+    let name = tcx.crate_name(cnum).to_string();
+    tcx.sess.opts.externs.get(&name).map(|_| name)
+}
+
+/// Non-generic types implementing the traits that bound type parameter
+/// `index` of `def_id` (e.g. `ppv_lite86::generic::GenericMachine` for
+/// `M: Machine`); foreign types only when nameable from this crate.
+fn bound_implementer_candidates<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, index: u32) -> Vec<Ty<'tcx>> {
+    inst_debug(format!(
+        "{} param {index} predicates {:?}",
+        tcx.def_path_str(def_id),
+        tcx.predicates_of(def_id).predicates
+    ));
+    let mut traits = Vec::new();
+    let mut current = Some(def_id);
+    while let Some(item) = current {
+        for (clause, _) in tcx.predicates_of(item).predicates {
+            if let Some(trait_clause) = clause.as_trait_clause() {
+                let trait_pred = trait_clause.skip_binder();
+                if matches!(trait_pred.self_ty().kind(), ty::Param(param) if param.index == index)
+                    && !tcx.is_lang_item(trait_pred.def_id(), rustc_hir::LangItem::Sized)
+                {
+                    traits.push(trait_pred.def_id());
+                }
+            }
+        }
+        current = tcx.generics_of(item).parent;
+    }
+    let visible = tcx.visible_parent_map(());
+    let debug = true;
+    let mut candidates = Vec::new();
+    for trait_def_id in traits {
+        if debug {
+            inst_debug(format!("{} bound {}", tcx.def_path_str(def_id), tcx.def_path_str(trait_def_id)));
+        }
+        for impl_def_id in tcx.all_impls(trait_def_id) {
+            if debug {
+                let self_ty = tcx.type_of(impl_def_id).instantiate_identity();
+                let adt = match self_ty.kind() { ty::Adt(adt, _) => Some(adt.did()), _ => None };
+                inst_debug(format!(
+                    "  impl {self_ty} generics={} public={:?} visible={:?} prelude={:?}",
+                    tcx.generics_of(impl_def_id).count(),
+                    adt.map(|id| tcx.visibility(id).is_public()),
+                    adt.map(|id| visible.contains_key(&id)),
+                    adt.map(|id| extern_prelude_name(tcx, id.krate)),
+                ));
+            }
+            if candidates.len() >= 8 {
+                break;
+            }
+            if tcx.generics_of(impl_def_id).count() != 0 {
+                continue;
+            }
+            let self_ty = tcx.type_of(impl_def_id).instantiate_identity();
+            let ty::Adt(adt, _) = self_ty.kind() else {
+                continue;
+            };
+            let adt_id = adt.did();
+            let nameable = if adt_id.is_local() {
+                visible_crate_wide(tcx, adt_id)
+            } else {
+                tcx.visibility(adt_id).is_public()
+                    && visible.contains_key(&adt_id)
+                    && extern_prelude_name(tcx, adt_id.krate).is_some()
+            };
+            if nameable && !candidates.contains(&self_ty) {
+                candidates.push(self_ty);
+            }
+        }
+    }
+    candidates
+}
+
+/// Rewrite `crate_name::` to the extern prelude name of renamed dependencies.
+fn apply_extern_renames(tcx: TyCtxt<'_>, printed: String) -> String {
+    let mut printed = printed;
+    for &cnum in tcx.crates(()) {
+        let crate_name = tcx.crate_name(cnum).to_string();
+        let Some(alias) = extern_prelude_name(tcx, cnum) else {
+            continue;
+        };
+        if alias == crate_name || !printed.contains(&format!("{crate_name}::")) {
+            continue;
+        }
+        let mut out = String::new();
+        let mut rest = printed.as_str();
+        let needle = format!("{crate_name}::");
+        while let Some(pos) = rest.find(&needle) {
+            let boundary = rest[..pos]
+                .chars()
+                .last()
+                .map_or(true, |c| !(c.is_alphanumeric() || c == '_'))
+                && !out
+                    .chars()
+                    .last()
+                    .is_some_and(|c| pos == 0 && (c.is_alphanumeric() || c == '_'));
+            out.push_str(&rest[..pos]);
+            out.push_str(if boundary { &alias } else { &crate_name });
+            out.push_str("::");
+            rest = &rest[pos + needle.len()..];
+        }
+        out.push_str(rest);
+        printed = out;
+    }
+    printed
+}
+
+fn lookup_std_adt(tcx: TyCtxt<'_>, path: &str) -> Option<DefId> {
+    let mut segments = path.split("::");
+    let krate = segments.next()?;
+    let cnum = tcx
+        .crates(())
+        .iter()
+        .copied()
+        .find(|cnum| tcx.crate_name(*cnum).as_str() == krate)?;
+    let mut current = cnum.as_def_id();
+    for segment in segments {
+        current = tcx
+            .module_children(current)
+            .iter()
+            .find(|child| child.ident.name.as_str() == segment)
+            .and_then(|child| child.res.opt_def_id())?;
+    }
+    Some(current)
+}
+
+/// One concrete instance of a generic fn whose where-clauses hold, printed as a
+/// crate-prefixed Rust path. `None` when the fn has an argument-position
+/// `impl Trait` (no turbofish possible), a non-integer const parameter, or no
+/// candidate combination satisfies its predicates.
+fn template_instantiation<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
+    use rustc_middle::ty::GenericParamDefKind;
+    inst_debug(format!("template_instantiation {}", tcx.def_path_str(def_id)));
+    let mut params = Vec::new();
+    let mut generics = Some(tcx.generics_of(def_id));
+    while let Some(current) = generics {
+        params.extend(current.own_params.iter().cloned());
+        generics = current.parent.map(|parent| tcx.generics_of(parent));
+    }
+    let types = instantiation_type_candidates(tcx);
+    let mut choices: Vec<Vec<ty::GenericArg<'tcx>>> = Vec::new();
+    let mut slot_of = HashMap::new();
+    for param in &params {
+        let options: Vec<ty::GenericArg<'tcx>> = match param.kind {
+            GenericParamDefKind::Lifetime => continue,
+            GenericParamDefKind::Type { synthetic: true, .. } => return None,
+            GenericParamDefKind::Type { .. } => {
+                let mut options: Vec<Ty<'tcx>> =
+                    bound_implementer_candidates(tcx, def_id, param.index);
+                for ty in &types {
+                    if !options.contains(ty) {
+                        options.push(*ty);
+                    }
+                }
+                options.into_iter().map(Into::into).collect()
+            }
+            GenericParamDefKind::Const { .. } => {
+                let const_ty = tcx.type_of(param.def_id).instantiate_identity();
+                if const_ty == tcx.types.bool {
+                    vec![ty::Const::from_bool(tcx, true).into(), ty::Const::from_bool(tcx, false).into()]
+                } else if const_ty == tcx.types.usize {
+                    [3u64, 1, 64]
+                        .into_iter()
+                        .map(|n| ty::Const::from_target_usize(tcx, n).into())
+                        .collect()
+                } else {
+                    return None;
+                }
+            }
+        };
+        slot_of.insert(param.def_id, choices.len());
+        choices.push(options);
+    }
+    // Odometer over the candidate product, bounded.
+    let mut index = vec![0usize; choices.len()];
+    for _ in 0..512 {
+        let args = ty::GenericArgs::for_item(tcx, def_id, |param, _| match param.kind {
+            GenericParamDefKind::Lifetime => tcx.lifetimes.re_erased.into(),
+            _ => {
+                let slot = slot_of[&param.def_id];
+                choices[slot][index[slot]]
+            }
+        });
+        if !tcx.instantiate_and_check_impossible_predicates((def_id, args)) {
+            // Visible paths: a foreign trait such as `Iterator` must be spelled
+            // through its public re-export (`core::iter::Iterator`), not its
+            // private definition module.  Local items keep `crate::` paths.
+            // `Drop::drop` cannot be named (E0040); `drop_in_place::<Self>`
+            // instantiates the same destructor.
+            let drop_impl = tcx.lang_items().drop_trait().is_some()
+                && tcx
+                    .impl_of_method(def_id)
+                    .and_then(|impl_id| tcx.impl_trait_ref(impl_id))
+                    .is_some_and(|trait_ref| {
+                        Some(trait_ref.skip_binder().def_id) == tcx.lang_items().drop_trait()
+                    });
+            let printed = if drop_impl {
+                let impl_id = tcx.impl_of_method(def_id).unwrap();
+                let self_ty = tcx.type_of(impl_id).instantiate(tcx, args);
+                let self_ty = ty::print::with_crate_prefix!(ty::print::with_no_trimmed_paths!(
+                    self_ty.to_string()
+                ));
+                format!("core::ptr::drop_in_place::<{self_ty}>")
+            } else if let Some(impl_id) = tcx
+                .impl_of_method(def_id)
+                .filter(|impl_id| tcx.impl_trait_ref(*impl_id).is_none())
+            {
+                // Inherent methods print as `module::<impl Type>::name`, which
+                // is not a valid expression path; spell `<Type>::name::<..>`.
+                let parent_count = tcx.generics_of(def_id).parent_count;
+                ty::print::with_crate_prefix!(ty::print::with_no_trimmed_paths!({
+                    let self_ty = tcx.type_of(impl_id).instantiate(tcx, args);
+                    let own: Vec<String> =
+                        args[parent_count..].iter().map(|arg| arg.to_string()).collect();
+                    let own = own.into_iter().filter(|arg| !arg.starts_with('\'')).collect::<Vec<_>>();
+                    let turbofish = if own.is_empty() {
+                        String::new()
+                    } else {
+                        format!("::<{}>", own.join(", "))
+                    };
+                    format!("<{self_ty}>::{}{turbofish}", tcx.item_name(def_id))
+                }))
+            } else {
+                ty::print::with_crate_prefix!(ty::print::with_no_trimmed_paths!(
+                    tcx.def_path_str_with_args(def_id, args)
+                ))
+            };
+            return Some(apply_extern_renames(tcx, printed));
+        }
+        // Advance the odometer.
+        let mut position = 0;
+        loop {
+            if position == index.len() {
+                return None;
+            }
+            index[position] += 1;
+            if index[position] < choices[position].len() {
+                break;
+            }
+            index[position] = 0;
+            position += 1;
+        }
+    }
+    None
 }
 
 fn requires_template<'tcx>(
@@ -2826,6 +3197,17 @@ fn requires_template<'tcx>(
         if !tcx.generics_of(parent_def_id).own_params.is_empty() {
             return true;
         }
+    }
+    // Methods of a generic impl (e.g. `impl<K, V> Nodes for &[Node<K, V>]`)
+    // have no own parameters but are monomorphized per impl instance.
+    let mut generics = tcx.generics_of(caller_def_id).parent.map(|parent| tcx.generics_of(parent));
+    while let Some(current) = generics {
+        if current.own_params.iter().any(|param| {
+            !matches!(param.kind, ty::GenericParamDefKind::Lifetime)
+        }) {
+            return true;
+        }
+        generics = current.parent.map(|parent| tcx.generics_of(parent));
     }
     false
 }

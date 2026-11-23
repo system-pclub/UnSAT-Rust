@@ -214,13 +214,17 @@ def test_unconditional_constant_violation_is_certain() -> None:
         "KLEE: [ext.dsl] resolved constraint is constant: width=1 value=false\n"
     )
     assert _has_unconditional_violation(unconditional)
-    # A false result in a later evaluation that has path constraints is not unconditional.
-    mixed = (
+    # A false result reached through caller-controlled path constraints is certain.
+    certain_path = (
         "KLEE: [ext.dsl] path constraints: count=0\n"
         "KLEE: [ext.dsl] resolved constraint is constant: width=1 value=true\n"
         "KLEE: [ext.dsl] path constraints: count=3\n"
         "KLEE: [ext.dsl] resolved constraint is constant: width=1 value=false\n"
     )
-    assert not _has_unconditional_violation(mixed)
+    assert _has_unconditional_violation(certain_path)
+    # ...but not when the path depends on an uncertain value (logged after the constant).
+    uncertain_path = certain_path + (
+        "KLEE: [ext.dsl] uncertain values used by DSL: Foo.private_field\n")
+    assert not _has_unconditional_violation(uncertain_path)
     assert not _has_unconditional_violation(
         unconditional + "KLEE: [ext.dsl] DSL still depends on uncertain_symbol values\n")

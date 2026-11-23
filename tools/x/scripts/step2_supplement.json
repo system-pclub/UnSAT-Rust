@@ -179,6 +179,14 @@
       "api": "impl  core::ffi::c_str::CStr { const unsafe fn from_ptr < 'a > (ptr : * const c_char) -> & 'a core::ffi::c_str::CStr }",
       "rule": "`ptr` must be valid for reads of all bytes up to and including the nul terminator (core:rule-228, unexpressible because the length is a nul scan). Checked here as its necessary condition: the first byte at `ptr` is readable.",
       "expression": "$1.$mem.pointee.readable"
+    },
+    {
+      "library": "core",
+      "path": "rust/library/core/src/alloc/global.rs:155",
+      "name": "unsafe fn dealloc (& self , ptr : * mut u8 , layout : Layout)",
+      "api": "trait GlobalAlloc  : { unsafe fn dealloc (& self , ptr : * mut u8 , layout : core::alloc::layout::Layout) }",
+      "rule": "The caller must ensure that `ptr` points to a block of memory currently allocated via this allocator (core:rule-137, unexpressible because allocator provenance is not modeled). Checked here as its necessary condition: `ptr` is the start of a live allocation.",
+      "expression": "$2.$mem.pointee.allocation.exists and $2.$mem.pointee.start == $2.$mem.pointee.allocation.start"
     }
   ],
   "overrides": [

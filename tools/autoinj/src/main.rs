@@ -85,6 +85,8 @@ struct Injection {
     best_effort: bool,
     caller_name: Option<String>,
     preserve_export: bool,
+    /// MIRScan's concrete instance path for a generic caller (`FnInfo::instantiation`).
+    instantiation: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -200,16 +202,15 @@ fn rebase_paths_in_table(
                 "dependencies" | "dev-dependencies" | "build-dependencies" | "patch" | "replace"
             );
         if dependency_context && key == "path" {
-            if let Some(path) = item.as_str() {
-                let path = Path::new(path);
-                if path.is_relative() {
-                    let target = source_dir.join(path);
-                    *item = value(relative_path(dest_dir, &target)?);
-                }
+            if let Some(rebased) = rebase_dependency_path(item.as_str(), source_dir, dest_dir)? {
+                *item = value(rebased);
             }
             continue;
         }
         match item {
+            Item::Value(toml_edit::Value::InlineTable(inline)) if nested_dependency_context => {
+                rebase_paths_in_inline_table(inline, source_dir, dest_dir)?
+            }
             Item::Table(child) => {
                 rebase_paths_in_table(child, nested_dependency_context, source_dir, dest_dir)?
             }
@@ -219,6 +220,44 @@ fn rebase_paths_in_table(
                 }
             }
             _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Rebase one relative dependency path from the original crate to its copy.
+/// A path inside the crate (no `..`) was copied along with it and stays as is:
+/// rebasing it would make Cargo see the original and the copy as two packages.
+fn rebase_dependency_path(
+    path: Option<&str>,
+    source_dir: &Path,
+    dest_dir: &Path,
+) -> Result<Option<String>> {
+    let Some(path) = path.map(Path::new) else {
+        return Ok(None);
+    };
+    if !path.is_relative()
+        || !path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Ok(None);
+    }
+    Ok(Some(relative_path(dest_dir, &source_dir.join(path))?))
+}
+
+fn rebase_paths_in_inline_table(
+    table: &mut toml_edit::InlineTable,
+    source_dir: &Path,
+    dest_dir: &Path,
+) -> Result<()> {
+    for (key, item) in table.iter_mut() {
+        if key.get() == "path" {
+            if let Some(rebased) = rebase_dependency_path(item.as_str(), source_dir, dest_dir)? {
+                *item = toml_edit::Value::from(rebased);
+            }
+        } else if let toml_edit::Value::InlineTable(child) = item {
+            rebase_paths_in_inline_table(child, source_dir, dest_dir)?;
         }
     }
     Ok(())
@@ -382,12 +421,24 @@ fn inject_from_meta(crate_dir: &Path, meta: &Meta) -> Result<()> {
                             .caller
                             .as_ref()
                             .and_then(|caller| caller.name.clone()),
-                        preserve_export: target
+                        // The actual unsafe marker of a followed chain sits in a
+                        // helper, not in the reported caller.  Exporting the
+                        // helper under the caller's name would make KLEE take
+                        // the helper as the entry root and skip the caller's
+                        // checks; the root marker exports the caller instead.
+                        preserve_export: !(target.unsafe_callsite.is_some() && actual_unsafe)
+                            && target
+                                .caller
+                                .as_ref()
+                                .and_then(|caller| caller.extra.get("require_template"))
+                                .and_then(serde_json::Value::as_bool)
+                                == Some(false),
+                        instantiation: target
                             .caller
                             .as_ref()
-                            .and_then(|caller| caller.extra.get("require_template"))
-                            .and_then(serde_json::Value::as_bool)
-                            == Some(false),
+                            .and_then(|caller| caller.extra.get("instantiation"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string),
                     });
                 };
             push_injection(&target.callsite, false, false);
@@ -631,7 +682,7 @@ fn inject_file_with_macros(
             let supported_unreachable_macro = is_unreachable_injection(injection)
                 && macro_invocations.iter().any(|mac| {
                     span_matches(mac.span(), injection)
-                        && specialize_unreachable_macro(mac, injection, macros).is_some()
+                        && specialize_unreachable_macro(mac, injection, macros, false).is_some()
                 });
             if in_macro && !supported_unreachable_macro {
                 eprintln!(
@@ -940,6 +991,7 @@ fn specialize_unreachable_macro(
     mac: &syn::Macro,
     injection: &Injection,
     macros: &LocalMacroDefinitions,
+    statement: bool,
 ) -> Option<syn::Expr> {
     if mac.path.segments.len() != 1 {
         return None;
@@ -958,6 +1010,11 @@ fn specialize_unreachable_macro(
     }
     let definitions = specializer.definitions.values();
     let args = &mac.tokens;
+    if statement {
+        // A statement macro may expand to `let` statements, which are invalid in
+        // the expression position of a block tail; keep it a statement.
+        return Some(parse_quote! {{ #(#definitions)* #replacement!(#args); }});
+    }
     Some(parse_quote! {{ #(#definitions)* #replacement!(#args) }})
 }
 
@@ -1006,7 +1063,7 @@ impl VisitMut for UnreachableMacroRewriter<'_> {
         if let syn::Expr::Macro(node) = expr {
             if span_matches(node.mac.span(), self.injection) {
                 if let Some(replacement) =
-                    specialize_unreachable_macro(&node.mac, self.injection, self.macros)
+                    specialize_unreachable_macro(&node.mac, self.injection, self.macros, false)
                 {
                     *expr = replacement;
                     self.inserted = true;
@@ -1023,7 +1080,12 @@ impl VisitMut for UnreachableMacroRewriter<'_> {
         if let syn::Stmt::Macro(node) = stmt {
             if span_matches(node.mac.span(), self.injection) {
                 if let Some(replacement) =
-                    specialize_unreachable_macro(&node.mac, self.injection, self.macros)
+                    specialize_unreachable_macro(
+                        &node.mac,
+                        self.injection,
+                        self.macros,
+                        node.semi_token.is_some(),
+                    )
                 {
                     *stmt = syn::Stmt::Expr(replacement, node.semi_token);
                     self.inserted = true;
@@ -1131,6 +1193,9 @@ impl VisitMut for Injector<'_> {
             let generic =
                 self.generic_impl_depth > 0 || signature_is_generic(&function.sig);
             preserve_target_caller_symbol(&mut function.attrs, self.injection, generic);
+            if generic {
+                insert_instantiation_anchor(&mut function.block, self.injection);
+            }
         }
     }
 
@@ -1141,6 +1206,9 @@ impl VisitMut for Injector<'_> {
             let generic =
                 self.generic_impl_depth > 0 || signature_is_generic(&function.sig);
             preserve_target_caller_symbol(&mut function.attrs, self.injection, generic);
+            if generic {
+                insert_instantiation_anchor(&mut function.block, self.injection);
+            }
         }
     }
 
@@ -1294,6 +1362,42 @@ fn is_generated_target_export(attr: &syn::Attribute) -> bool {
         Ok(())
     });
     generated
+}
+
+const INSTANCE_SYMBOL_PREFIX: &str = "__klee_inst_";
+
+/// A generic caller has no code in the IR unless something instantiates it.
+/// Reference MIRScan's concrete instance from an exported, non-generic item
+/// nested in the caller's own body: it shares the caller's privacy scope, is
+/// defined once (nested items do not depend on outer generics), and forces
+/// codegen of that instance.
+fn insert_instantiation_anchor(block: &mut syn::Block, injection: &Injection) {
+    let Some(path) = injection.instantiation.as_deref() else {
+        return;
+    };
+    let Ok(expr) = syn::parse_str::<syn::ExprPath>(path) else {
+        return;
+    };
+    let suffix = injection
+        .id
+        .replace(|ch: char| !ch.is_ascii_alphanumeric(), "_");
+    let ident = syn::Ident::new(
+        &format!("{INSTANCE_SYMBOL_PREFIX}{suffix}"),
+        proc_macro2::Span::call_site(),
+    );
+    let symbol = syn::LitStr::new(
+        &format!("{INSTANCE_SYMBOL_PREFIX}{suffix}"),
+        proc_macro2::Span::call_site(),
+    );
+    let anchor: syn::Stmt = parse_quote! {
+        #[doc(hidden)]
+        #[allow(dead_code, non_snake_case, clippy::fn_to_numeric_cast)]
+        #[unsafe(export_name = #symbol)]
+        extern "C" fn #ident() -> usize {
+            #expr as usize
+        }
+    };
+    block.stmts.insert(0, anchor);
 }
 
 fn preserve_target_caller_symbol(
@@ -2331,6 +2435,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }
         ));
         assert!(span_matches(
@@ -2345,6 +2450,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }
         ));
     }
@@ -2445,6 +2551,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -2484,6 +2591,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -2504,7 +2612,7 @@ unsafe fn callee(_p: *mut u8, _layout: usize) {}
             id: id.to_string(), line: line + 1, col: text.find(needle).unwrap() + 1,
             callee_name: Some("core::hint::unreachable_unchecked".to_string()),
             raw_pointer_deref: false, source_line: None, best_effort: false,
-            caller_name: None, preserve_export: false,
+            caller_name: None, preserve_export: false, instantiation: None,
         }
     }
 
@@ -2567,6 +2675,21 @@ pub fn target(flag: bool) -> i32 { match flag { true => 7, false => never!() } }
         let compact = injected.replace(char::is_whitespace, "");
         assert!(compact.contains("matchflag{true=>7,false=>{macro_rules!"));
         assert!(compact.contains("klee_ext_bind::unreachable_unchecked!(\"branch-only\")"));
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_statement_macro_keeps_its_semicolon() -> Result<()> {
+        let tmp = TempDir::new("unreachable-statement-macro")?;
+        let path = tmp.path().join("lib.rs");
+        let source = r#"macro_rules! step { ($v:expr) => { let x = $v; if x > 3 { unsafe { core::hint::unreachable_unchecked() } } }; }
+pub fn target(v: u8) { step!(v); }
+"#;
+        write(&path, source)?;
+        inject_file(&path, &[unreachable_injection(source, "step!(v)", "stmt")])?;
+        let injected = fs::read_to_string(&path)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("__klee_unreachable_stmt_step!(v);}"));
         Ok(())
     }
 
@@ -2678,6 +2801,7 @@ impl Values {
                 best_effort: false,
                 caller_name: Some("values::Values::get".to_string()),
                 preserve_export: true,
+                instantiation: None,
             }],
         )?;
 
@@ -2701,7 +2825,39 @@ impl Values {
             best_effort: false,
             caller_name: Some(caller.to_string()),
             preserve_export: true,
+            instantiation: None,
         }
+    }
+
+    #[test]
+    fn inject_file_anchors_generic_caller_instance() -> Result<()> {
+        let tmp = TempDir::new("generic-instance-anchor")?;
+        let source = tmp.path().join("lib.rs");
+        write(
+            &source,
+            r#"pub struct Node<K, V>(K, V);
+pub trait Nodes {
+    fn get_node(&mut self, index: u32) -> u8;
+}
+impl<'a, K: 'a, V: 'a> Nodes for &'a [Node<K, V>] {
+    fn get_node(&mut self, index: u32) -> u8 {
+        let _n = unsafe { self.get_unchecked(index as usize) };
+        0
+    }
+}
+"#,
+        )?;
+        let mut injection = export_injection("src-lib-rs-7-27", 7, 27, "<&[Node<K, V>] as Nodes>::get_node");
+        injection.callee_name = Some("core::slice::<impl [T]>::get_unchecked".to_string());
+        injection.instantiation = Some("<&[crate::Node<u8, u8>] as crate::Nodes>::get_node".to_string());
+        inject_file(&source, &[injection])?;
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        assert!(compact.contains("export_name=\"__klee_inst_src_lib_rs_7_27\""), "{injected}");
+        assert!(compact.contains("<&[crate::Node<u8,u8>]ascrate::Nodes>::get_nodeasusize"), "{injected}");
+        // The generic caller itself keeps no export (one symbol per instance).
+        assert!(!compact.contains("__klee_target_"), "{injected}");
+        Ok(())
     }
 
     #[test]
@@ -2960,6 +3116,7 @@ pub fn make(p: *mut u8) -> W {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
         let compact = fs::read_to_string(source)?.replace(char::is_whitespace, "");
@@ -2999,6 +3156,7 @@ impl Select {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3037,6 +3195,7 @@ impl Select {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3062,6 +3221,7 @@ impl Select {
             best_effort: false,
             caller_name: None,
             preserve_export: false,
+            instantiation: None,
         };
         let mut injected = Vec::new();
         for qualifier in ["", "const "] {
@@ -3094,6 +3254,7 @@ impl Select {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3130,6 +3291,7 @@ fn make_value() -> u8 { 0 }
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3170,6 +3332,7 @@ fn make_value() -> u8 { 0 }
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3208,6 +3371,7 @@ pub unsafe fn release(ptr: *mut u8, layout: Layout) {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3245,6 +3409,7 @@ fn run(ptr: *const i8) {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3283,6 +3448,7 @@ fn make_value() -> u8 { 0 }
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3324,6 +3490,7 @@ fn make_value() -> u8 { 0 }
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
                 Injection {
                     id: "src-lib-rs-3-second".to_string(),
@@ -3335,6 +3502,7 @@ fn make_value() -> u8 { 0 }
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
             ],
         )?;
@@ -3390,6 +3558,7 @@ impl Rank {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3430,6 +3599,7 @@ impl Rank {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3470,6 +3640,7 @@ impl Rank {
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
                 Injection {
                     id: "src-lib-rs-4-15".to_string(),
@@ -3481,6 +3652,7 @@ impl Rank {
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
             ],
         )?;
@@ -3529,6 +3701,7 @@ fn consume(_: &mut u8) {}
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
                 Injection {
                     id: "src-lib-rs-3-19".to_string(),
@@ -3540,6 +3713,7 @@ fn consume(_: &mut u8) {}
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
             ],
         )?;
@@ -3583,6 +3757,7 @@ fn consume(_: &mut u8) {}
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3632,6 +3807,7 @@ impl Window {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3672,6 +3848,7 @@ impl Interpreter {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3711,6 +3888,7 @@ impl Error {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3746,6 +3924,7 @@ impl Buffer {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3790,6 +3969,7 @@ fn pop(interpreter: &mut Interpreter) -> u8 {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3837,6 +4017,7 @@ impl Tree {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -3881,6 +4062,7 @@ impl D {
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
                 Injection {
                     id: "src-lib-rs-5-9-get_unchecked_mut".to_string(),
@@ -3892,6 +4074,7 @@ impl D {
                     best_effort: false,
                     caller_name: None,
                     preserve_export: false,
+                    instantiation: None,
                 },
             ],
         )?;
@@ -3909,6 +4092,81 @@ impl D {
         assert!(compact.contains("klee_ext_bind::bind_arg_field_u64(0,b\"len\\0\",__klee_len"));
         assert!(compact.contains("klee_ext_bind::bind_arg_slice_index_value(1,&i,__klee_len"));
         assert!(compact.contains("=self.xs.get_unchecked_mut(i);"));
+        Ok(())
+    }
+
+    #[test]
+    fn inject_from_meta_exports_only_the_root_caller_of_a_followed_helper() -> Result<()> {
+        let tmp = TempDir::new("safe-wrapper-meta-root-export")?;
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src)?;
+        let source = src.join("lib.rs");
+        write(
+            &source,
+            r#"struct D { xs: Vec<u8> }
+
+impl D {
+    fn build(&mut self, i: usize) {
+        self.swap(i);
+    }
+
+    fn swap(&mut self, i: usize) {
+        unsafe { *self.xs.get_unchecked_mut(i) = 1; }
+    }
+}
+"#,
+        )?;
+        let meta = Meta {
+            crate_dir: None,
+            crate_name: None,
+            description: None,
+            report: Report {
+                targets: vec![Target {
+                    caller: Some(FnInfo {
+                        name: Some("D::build".to_string()),
+                        path: None,
+                        extra: serde_json::Map::from_iter([(
+                            "require_template".to_string(),
+                            serde_json::Value::Bool(false),
+                        )]),
+                    }),
+                    callee: Some(FnInfo {
+                        name: Some("core::slice::<impl [T]>::get_unchecked_mut".to_string()),
+                        path: None,
+                        extra: serde_json::Map::new(),
+                    }),
+                    callsite: Callsite {
+                        line: 5,
+                        col: 9,
+                        path: Some("src/lib.rs".to_string()),
+                        id: Some("src-lib-rs-5-9".to_string()),
+                        extra: serde_json::Map::new(),
+                    },
+                    unsafe_callsite: Some(Callsite {
+                        line: 9,
+                        col: 27,
+                        path: Some("src/lib.rs".to_string()),
+                        id: None,
+                        extra: serde_json::Map::new(),
+                    }),
+                    extra: serde_json::Map::new(),
+                }],
+                types: Vec::new(),
+            },
+        };
+
+        inject_from_meta(tmp.path(), &meta)?;
+
+        let injected = fs::read_to_string(source)?;
+        let compact = injected.replace(char::is_whitespace, "");
+        // Only the reported caller is exported; the helper holding the actual
+        // unsafe marker must not carry the caller's name (KLEE would take it as
+        // the entry root and skip the caller's checks).
+        assert_eq!(compact.matches("export_name").count(), 1, "{injected}");
+        let export = compact.find("export_name").unwrap();
+        let build = compact.find("fnbuild").unwrap();
+        let swap = compact.find("fnswap").unwrap();
+        assert!(export < build && build < swap, "{injected}");
         Ok(())
     }
 
@@ -4026,6 +4284,7 @@ fn dispatch(operation: &Operation) -> Result<(), ()> {
                 best_effort: false,
                 caller_name: None,
                 preserve_export: false,
+                instantiation: None,
             }],
         )?;
 
@@ -4061,6 +4320,38 @@ fn dispatch(operation: &Operation) -> Result<(), ()> {
         assert!(!compact.contains("klee_ext_bind::bind!"));
         assert!(compact.contains("klee_ext_bind::callsite!(\"src-lib-rs-3-9\");"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn copy_keeps_in_crate_paths_and_rebases_inline_tables() -> Result<()> {
+        let tmp = TempDir::new("rebase-in-crate")?;
+        let source_crate = tmp.path().join("source/crate");
+        let dest_crate = tmp.path().join("generated/deep/crate");
+        write(
+            &source_crate.join("Cargo.toml"),
+            r#"[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies.member]
+path = "member"
+
+[dependencies]
+outside = { path = "../outside" }
+
+[patch.crates-io]
+member = { path = "member" }
+"#,
+        )?;
+        write(&source_crate.join("src/lib.rs"), "pub fn fixture() {}\n")?;
+        copy_crate(&source_crate, &dest_crate)?;
+        rebase_relative_dependency_paths(&source_crate, &dest_crate)?;
+        let doc = fs::read_to_string(dest_crate.join("Cargo.toml"))?.parse::<DocumentMut>()?;
+        assert_eq!(doc["dependencies"]["member"]["path"].as_str(), Some("member"));
+        assert_eq!(doc["patch"]["crates-io"]["member"]["path"].as_str(), Some("member"));
+        let outside = doc["dependencies"]["outside"]["path"].as_str().unwrap_or_default();
+        assert!(outside.starts_with("../../../source/") && outside.ends_with("../outside"), "{outside}");
         Ok(())
     }
 

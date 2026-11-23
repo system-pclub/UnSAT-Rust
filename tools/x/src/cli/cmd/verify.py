@@ -827,17 +827,26 @@ def _control_chain_all_certain(chain_path: Path) -> bool | None:
 
 
 def _has_unconditional_violation(text: str) -> bool:
-    """True when one DSL evaluation had no path constraint and folded to false."""
+    """True when one DSL evaluation folded to false on a caller-controlled path.
+
+    The rule is false regardless of the values (for example the result of
+    `mem::uninitialized::<u64>()` is never a valid `u64`), so the violation is
+    certain whenever the path reaching it mentions no uncertain value: either
+    no path constraint at all, or constraints whose symbols KLEE did not list
+    as uncertain (caller arguments such as slice lengths).  KLEE prints the
+    uncertain values after the constant, so each evaluation is judged whole.
+    """
     if "DSL still depends on uncertain_symbol values" in text:
         return False
-    path_constraints: int | None = None
-    for line in text.splitlines():
-        match = re.search(r"\[ext\.dsl\] path constraints: count=(\d+)", line)
-        if match:
-            path_constraints = int(match.group(1))
-        elif "[ext.dsl] resolved constraint is constant: width=1 value=false" in line:
-            if path_constraints == 0:
-                return True
+    blocks = re.split(r"(?=KLEE: \[ext\.dsl\] path constraints: count=)", text)
+    for block in blocks:
+        match = re.search(r"\[ext\.dsl\] path constraints: count=(\d+)", block)
+        if not match:
+            continue
+        if "[ext.dsl] resolved constraint is constant: width=1 value=false" not in block:
+            continue
+        if int(match.group(1)) == 0 or "[ext.dsl] uncertain values used by DSL" not in block:
+            return True
     return False
 
 
@@ -848,6 +857,11 @@ def _compose_has_actionable_certainty(
     # constraint and the rule is false regardless of any input (for example the
     # result of `mem::uninitialized::<u32>()` is never a valid `u32`).
     if _has_unconditional_violation(text):
+        return True
+    # KLEE certified (CEGIS) caller-controlled values under which the path and
+    # the violation hold for every value of the uncertain symbols, so the
+    # witness does not depend on them whatever the control chain says.
+    if "[ext.dsl] violation holds for every value of the uncertain symbols" in text:
         return True
     chain_all_certain = _control_chain_all_certain(chain_path)
     if chain_all_certain is not None:
@@ -911,6 +925,8 @@ def _run_klee_compose_verify(
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.parent.mkdir(parents=True, exist_ok=True)
+    # KLEE writes the chain only when it composes; never read a previous run's.
+    (output_dir.parent / "klee-control-chains.json").unlink(missing_ok=True)
     cmd = [
         klee_bin,
         *_klee_no_stats_args(),
@@ -3167,6 +3183,8 @@ def _run_verify_matrix_locked(
             if output_dir.exists():
                 shutil.rmtree(output_dir)
             output_dir.parent.mkdir(parents=True, exist_ok=True)
+            # KLEE writes the chain only when it composes; never read a previous run's.
+            (output_dir.parent / "klee-control-chains.json").unlink(missing_ok=True)
             cmd = [
                 args.klee_bin,
                 *_klee_no_stats_args(),

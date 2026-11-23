@@ -66,6 +66,12 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--package-scope", choices=("root", "workbook"), help="Default: root for roster runs, workbook subpackages/features for legacy runs.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout-sec", type=int)
+    parser.add_argument(
+        "--debug-assertions",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Forwarded to x verify; --no-debug-assertions builds release-semantics IR.",
+    )
     parser.add_argument("--model", default="gpt-5.4-mini")
     parser.add_argument(
         "--rustc",
@@ -234,6 +240,8 @@ def run_verify_variant(
             command.append("--resume")
         if args.timeout_sec is not None:
             command.extend(["--timeout-sec", str(args.timeout_sec)])
+        if getattr(args, "debug_assertions", None) is not None:
+            command.append("--debug-assertions" if args.debug_assertions else "--no-debug-assertions")
         legacy_short = next((name for name, directory in TOP10_CRATES if directory == crate_dirname), short_name)
         features = CRATE_FEATURES.get(legacy_short, ()) if _workbook_scope(args) else ()
         if features:
