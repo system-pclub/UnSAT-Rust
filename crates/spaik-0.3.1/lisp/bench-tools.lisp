@@ -1,6 +1,0 @@
-(defmacro timeit (&body it)
-  `(let* ((s (instant))
-          (res (progn ,@it)))
-     (let ((el (- (instant) s)))
-       (println "Executed in {el} seconds"))
-     res))

@@ -1,3 +1,0 @@
-# Rapira - serialization library
-
-Like borsh and bincode...
